@@ -32,7 +32,7 @@ Dependency: the agreed product contract. Use a minimal browser harness; applicat
 - [ ] V04 — Demonstrate real speaker/time evidence from at least one durable candidate. Missing timestamps or identity remain unresolved.
 - [ ] V05 — Measure transcription errors, speaker confusion, unknown coverage, number/date errors, human correction time, runtime, and actual cost against an annotated subset.
 - [ ] V06 — Measure device memory and practical input limits; verify valid audio chunks, source offsets, and cross-chunk speaker mapping when needed.
-- [ ] V07 — Test timeout, disconnect, broken stream, cancellation, and provider-job recovery without hidden resubmission or SDK retries.
+- [x] V07 — Test timeout, disconnect, broken stream, cancellation, and provider-job recovery without hidden resubmission or SDK retries.
 - [ ] V08 — Record the selected provider, supported browsers, observed limitations, and remaining blockers in the feasibility document.
 
 Acceptance: direct browser operation and usable speaker/time output are demonstrated with recorded evidence. An imported or text-only transcript does not satisfy automatic speaker separation. The proposed 10–15-minute review target per hour of audio is evaluated against a manual baseline, not reported as an achieved capability.

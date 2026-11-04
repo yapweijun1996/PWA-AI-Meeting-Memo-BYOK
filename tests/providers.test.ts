@@ -57,6 +57,20 @@ it("does not retry an uncertain paid submission or expose a key in errors", asyn
   ).rejects.toThrow("may have been charged");
   expect(fetch).toHaveBeenCalledTimes(1);
 });
+it("retains billing uncertainty when a successful response body is interrupted", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(new Response('{"results":', { status: 200 }));
+  vi.stubGlobal("fetch", fetch);
+  await expect(
+    transcribe(
+      new Blob(["audio"]),
+      "synthetic-test",
+      new AbortController().signal,
+    ),
+  ).rejects.toMatchObject({ uncertain: true, charged: true });
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
 
 it("keeps owner and invalid dates unknown even when a model fills them", () => {
   const m = sampleMeeting();
@@ -92,17 +106,15 @@ it("keeps missing speaker metadata anonymous", () => {
 });
 
 it("treats a refusal as a failed billed result without a retry", async () => {
-  const fetch = vi
-    .fn()
-    .mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          status: "completed",
-          output: [{ type: "message", content: [{ type: "refusal" }] }],
-        }),
-        { status: 200 },
-      ),
-    );
+  const fetch = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        status: "completed",
+        output: [{ type: "message", content: [{ type: "refusal" }] }],
+      }),
+      { status: 200 },
+    ),
+  );
   vi.stubGlobal("fetch", fetch);
   await expect(
     generateMemo(
