@@ -6,3 +6,4 @@ Each entry records a task checkpoint. Full commits are available in Git history.
 - **F01** — npm install and npm run build pass on Node 22.23.3; locked React/Vite/TypeScript dependencies, ignored private data, and static build config added. Node 22 replaces the earlier Node 24 proposal to match the verified executor.
 - **S01** — Type checking and 3 domain tests pass: untimed imports stay untimed, unexpected fields/credentials are rejected, and invalid dates/dangling speaker references fail.
 - **S02** — Nine unit tests pass, including stale-write rejection, isolated delete/audio cleanup, and interrupted-request recovery; storage version is separate from source revision.
+- **S07** — Operations tests verify original evidence resolves after edits/splits, merge does not confirm identity, and undo creates a new source revision leaving old memo review stale.
