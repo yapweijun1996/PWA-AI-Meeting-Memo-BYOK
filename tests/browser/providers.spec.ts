@@ -125,6 +125,27 @@ test("memo submissions require confirmation, preserve evidence and mark source c
   await expect(
     page.getByText("The source is corrected.", { exact: true }),
   ).toBeVisible();
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page.getByLabel("action note").fill("Human amended follow-up.");
+  await page.getByRole("button", { name: "✓ Accept", exact: true }).click();
+  await expect(page.getByText(/Source details changed/)).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Generate new version", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Confirm and send", exact: true })
+    .click();
+  await expect(page.getByLabel("action note")).toHaveValue(
+    "Review inventory with finance.",
+  );
+  await expect(page.getByLabel("Memo version").locator("option")).toHaveCount(
+    2,
+  );
+  await page.getByLabel("Memo version").selectOption({ index: 0 });
+  await expect(page.getByLabel("action note")).toHaveValue(
+    "Human amended follow-up.",
+  );
+  expect(requests).toBe(2);
 });
 
 test("uncertain requests are recorded and never automatically resubmitted", async ({

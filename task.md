@@ -93,7 +93,7 @@ Dependency: Phase 2 reviewed evidence. Real audio-to-memo acceptance also depend
 - [ ] M02 — Generate summary, discussion, decisions, action items, open questions, and risks with validated segment/revision references.
 - [ ] M03 — Keep owner/date/amount unknowns nullable; preserve relative date wording, meeting timezone, and the distinction between suggestions and decisions.
 - [ ] M04 — Add item accept/edit/reject and transcript/audio navigation; validate that a reference is both resolvable and appropriate for human review.
-- [ ] M05 — Propagate source changes to stale review state; regenerate into a new version without overwriting accepted human edits.
+- [x] M05 — Propagate source changes to stale review state; regenerate into a new version without overwriting accepted human edits.
 - [ ] M06 — Export Markdown, TXT, and versioned JSON with review/unknown state; verify the complete recording-to-reviewed-memo-to-backup/restore flow.
 
 Acceptance: users can inspect the evidence behind every supported memo claim, correct it, preserve their edits, and export a faithful result. Valid JSON and existing source IDs alone do not establish factual accuracy.

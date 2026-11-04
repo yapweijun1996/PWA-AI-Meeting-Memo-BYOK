@@ -183,9 +183,10 @@ export const speakerName = (m: Meeting, ids: string[]) =>
         )
         .join(" + ")
     : "Unknown speaker";
-export function markdown(m: Meeting): string {
+export function markdown(m: Meeting, selectedVersionId?: string): string {
   const lines = [`# ${m.title}`, `${m.date} · ${m.timezone}`, ""];
-  const memo = m.memos.at(-1);
+  const memo =
+    m.memos.find((v) => v.id === selectedVersionId) || m.memos.at(-1);
   if (memo) {
     lines.push(
       `## Meeting memo${memo.sourceRevision !== m.revision && memo.items.some((i) => i.reviewedRevision !== m.revision) ? " — source changed; re-review required" : ""}`,

@@ -6,6 +6,7 @@ import {
   undoEdit,
   mergeSpeakers,
   resolveSource,
+  markdown,
 } from "../src/domain/operations";
 const meeting = () => ({
   ...createMeeting(),
@@ -69,4 +70,36 @@ it("never reuses a historical revision after an undo then a different edit", () 
   });
   expect(second.segments[0].revision).toBeGreaterThan(oldRef.revision);
   expect(resolveSource(second, oldRef)?.text).toBe("First correction");
+});
+
+it("exports the selected human memo version rather than silently selecting the newest", () => {
+  const m = meeting(),
+    source = { id: m.segments[0].id, revision: m.segments[0].revision };
+  const item = {
+    id: id(),
+    type: "summary" as const,
+    text: "Human original",
+    ownerId: null,
+    dueDate: null,
+    dueOriginal: null,
+    sources: [source],
+    review: "accepted" as const,
+  };
+  const first = {
+    id: id(),
+    createdAt: "now",
+    model: "fixture",
+    sourceRevision: m.revision,
+    items: [item],
+  };
+  m.memos = [
+    first,
+    {
+      ...first,
+      id: id(),
+      items: [{ ...item, id: id(), text: "New machine version" }],
+    },
+  ];
+  expect(markdown(m, first.id)).toContain("Human original");
+  expect(markdown(m, first.id)).not.toContain("New machine version");
 });

@@ -124,6 +124,52 @@ export function MeetingWorkspace({
       /* preserve the last saved state and show feedback */
     }
   }
+  function reviewMemoItem(
+    versionId: string,
+    itemId: string,
+    state: "accepted" | "pending" | "rejected",
+    article: Element | null,
+  ) {
+    const text = article?.querySelector("textarea")?.value;
+    const owner = (
+      article?.querySelector(
+        'select[aria-label="Action owner"]',
+      ) as HTMLSelectElement | null
+    )?.value;
+    const due = (
+      article?.querySelector(
+        'input[aria-label="Action due date"]',
+      ) as HTMLInputElement | null
+    )?.value;
+    if (state !== "rejected" && !text?.trim()) {
+      onError("Add note text before accepting or reviewing it.");
+      return;
+    }
+    void persistQuietly({
+      ...m,
+      memos: m.memos.map((v) =>
+        v.id === versionId
+          ? {
+              ...v,
+              items: v.items.map((x) =>
+                x.id === itemId
+                  ? {
+                      ...x,
+                      text: text?.trim() || x.text,
+                      ...(owner !== undefined
+                        ? { ownerId: owner || null }
+                        : {}),
+                      ...(due !== undefined ? { dueDate: due || null } : {}),
+                      review: state,
+                      reviewedRevision: m.revision,
+                    }
+                  : x,
+              ),
+            }
+          : v,
+      ),
+    });
+  }
   async function change(fn: (m: Meeting) => Meeting) {
     try {
       await persist(fn(m));
@@ -209,7 +255,7 @@ export function MeetingWorkspace({
                       null,
                       2,
                     )
-                  : markdown(m),
+                  : markdown(m, viewVersion),
               ],
               { type: format === "json" ? "application/json" : "text/plain" },
             );
@@ -841,6 +887,11 @@ export function MeetingWorkspace({
                       disabled={locked}
                       onBlur={(e) => {
                         if (
+                          e.relatedTarget instanceof Element &&
+                          e.relatedTarget.closest("[data-review-button]")
+                        )
+                          return;
+                        if (
                           e.target.value.trim() &&
                           e.target.value !== item.text
                         )
@@ -912,6 +963,11 @@ export function MeetingWorkspace({
                             defaultValue={item.dueDate || ""}
                             disabled={locked}
                             onBlur={(e) => {
+                              if (
+                                e.relatedTarget instanceof Element &&
+                                e.relatedTarget.closest("[data-review-button]")
+                              )
+                                return;
                               if (e.target.value !== (item.dueDate || ""))
                                 void persistQuietly({
                                   ...m,
@@ -970,26 +1026,14 @@ export function MeetingWorkspace({
                             key={state}
                             className={`text-button ${item.review === state ? "selected" : ""}`}
                             disabled={locked}
-                            onClick={() =>
-                              void persistQuietly({
-                                ...m,
-                                memos: m.memos.map((v) =>
-                                  v.id === memo.id
-                                    ? {
-                                        ...v,
-                                        items: v.items.map((x) =>
-                                          x.id === item.id
-                                            ? {
-                                                ...x,
-                                                review: state,
-                                                reviewedRevision: m.revision,
-                                              }
-                                            : x,
-                                        ),
-                                      }
-                                    : v,
-                                ),
-                              })
+                            data-review-button="true"
+                            onClick={(event) =>
+                              reviewMemoItem(
+                                memo.id,
+                                item.id,
+                                state,
+                                event.currentTarget.closest("article"),
+                              )
                             }
                           >
                             {state === "accepted"
