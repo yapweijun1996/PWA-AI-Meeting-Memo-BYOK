@@ -46,7 +46,7 @@ Dependency: product and architecture decisions. Synthetic UI/storage work does n
 - [x] F03 — Build Meeting Library, New Meeting/Import, Processing, Speaker Review, Transcript Editor, Memo Review, and Settings screen foundations.
 - [x] F04 — Establish accessible controls, responsive layout, compact evidence player, safe areas, opaque theme-aware system chrome, and mobile form sizing.
 - [x] F05 — Add manifest identity, start URL/scope, application icons, and install guidance matched to the deployment base.
-- [ ] F06 — Implement scoped/versioned app-shell caching and a truthful offline state; bypass provider traffic and user content in response caches.
+- [x] F06 — Implement scoped/versioned app-shell caching and a truthful offline state; bypass provider traffic and user content in response caches.
 - [ ] F07 — Implement waiting-worker notification, draft-safe user-controlled activation, visible update progress, and failure recovery.
 - [ ] F08 — Add the documented lint, typecheck, unit, build, and production-path browser scripts using synthetic fixtures.
 - [ ] F09 — Verify local clean install/build, hash-link refresh, manifest/assets/worker paths, offline shell, and update from build N to N+1.

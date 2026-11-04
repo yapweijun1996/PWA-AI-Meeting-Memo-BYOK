@@ -11,3 +11,4 @@ Each entry records a task checkpoint. Full commits are available in Git history.
 - **F02** — Chromium and WebKit production-path create/reload/navigation tests pass; skip navigation focuses content without overwriting the hash route.
 - **F04** — Axe WCAG A/AA checks pass for library/settings in both engines; 390px navigation has no overflow. Fixed contrast, dialog error feedback and historical source inspection. Browser online heuristics no longer prevent explicit requests.
 - **F05** — Both browsers verify manifest identity/start URL/scope and all PNG icon responses under the repository base; HTML now links manifest and Apple/favicons.
+- **F06** — Chromium and WebKit reload saved meetings offline; cached URLs remain under the app path and exclude all provider traffic. Cache names and cleanup are project-specific.
