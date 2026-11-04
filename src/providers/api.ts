@@ -259,7 +259,13 @@ export function normalizeMemo(value: unknown, m: Meeting): MemoItem[] {
       type: item.type,
       text: item.text,
       ownerId: owner?.id ?? null,
-      dueDate: item.due_date,
+      dueDate:
+        item.due_date &&
+        /^\d{4}-\d{2}-\d{2}$/.test(item.due_date) &&
+        !Number.isNaN(Date.parse(item.due_date)) &&
+        new Date(item.due_date).toISOString().slice(0, 10) === item.due_date
+          ? item.due_date
+          : null,
       dueOriginal: item.due_original,
       sources,
       review: "pending",

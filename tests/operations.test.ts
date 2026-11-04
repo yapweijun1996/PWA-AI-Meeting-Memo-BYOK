@@ -59,3 +59,14 @@ describe("human revisions and provenance", () => {
     expect(merged.segments[1].speakerIds).toEqual([merged.speakers[0].id]);
   });
 });
+it("never reuses a historical revision after an undo then a different edit", () => {
+  const m = meeting(),
+    s = m.segments[0];
+  const first = editSegment(m, s.id, { text: "First correction" });
+  const oldRef = { id: s.id, revision: first.segments[0].revision };
+  const second = editSegment(undoEdit(first), s.id, {
+    text: "Second correction",
+  });
+  expect(second.segments[0].revision).toBeGreaterThan(oldRef.revision);
+  expect(resolveSource(second, oldRef)?.text).toBe("First correction");
+});

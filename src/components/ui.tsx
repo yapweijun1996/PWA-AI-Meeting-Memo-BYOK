@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { X, FileAudio, MessageSquareText } from "lucide-react";
 export function Modal({
   title,
@@ -10,6 +10,13 @@ export function Modal({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const listener = (event: Event) =>
+      setError((event as CustomEvent<string>).detail);
+    addEventListener("memo-operation-error", listener);
+    return () => removeEventListener("memo-operation-error", listener);
+  }, []);
   useEffect(() => {
     const d = ref.current;
     d?.showModal();
@@ -27,6 +34,11 @@ export function Modal({
           <X size={20} />
         </button>
       </header>
+      {error && (
+        <div className="notice danger modal-error" role="alert">
+          {error}
+        </div>
+      )}
       {children}
     </dialog>
   );

@@ -72,6 +72,7 @@ export function MeetingWorkspace({
     [audioMissing, setAudioMissing] = useState(false);
   const player = useRef<HTMLAudioElement>(null),
     playUntil = useRef<number | null>(null);
+  const [evidence, setEvidence] = useState<Segment>();
   const locked = saving || processing;
   useEffect(() => {
     let cancelled = false,
@@ -111,6 +112,13 @@ export function MeetingWorkspace({
       setSaving(false);
     }
   }
+  async function persistQuietly(next: Meeting) {
+    try {
+      await persist(next);
+    } catch {
+      /* preserve the last saved state and show feedback */
+    }
+  }
   async function change(fn: (m: Meeting) => Meeting) {
     try {
       await persist(fn(m));
@@ -141,6 +149,7 @@ export function MeetingWorkspace({
     setNotice("Request submitted. Keep this page open.");
     try {
       onUpdate(await runJob(m, stage));
+      setViewVersion(undefined);
       setNotice(
         stage === "speech"
           ? "Transcript ready. Review speakers and passages before making notes."
@@ -237,7 +246,8 @@ export function MeetingWorkspace({
       onError(e instanceof Error ? e.message : "Could not resolve job state.");
     }
   }
-  const memo = m.memos.at(-1),
+  const [viewVersion, setViewVersion] = useState<string>();
+  const memo = m.memos.find((v) => v.id === viewVersion) || m.memos.at(-1),
     unknown = m.speakers.filter((s) => !s.confirmed).length,
     pending = m.segments.filter((s) => !s.reviewed).length;
   const segments = pendingOnly
@@ -339,7 +349,7 @@ export function MeetingWorkspace({
           <button
             className="button primary compact"
             onClick={() => setConfirmStage("speech")}
-            disabled={locked || !url || !navigator.onLine}
+            disabled={locked || !url}
           >
             <AudioLines size={15} />
             Transcribe
@@ -758,7 +768,7 @@ export function MeetingWorkspace({
             </div>
             <button
               className="button primary compact"
-              disabled={locked || !m.segments.length || !navigator.onLine}
+              disabled={locked || !m.segments.length}
               onClick={() => setConfirmStage("memo")}
             >
               <Sparkles size={15} />
@@ -775,16 +785,7 @@ export function MeetingWorkspace({
                     aria-label="Memo version"
                     value={memo.id}
                     onChange={(e) => {
-                      const chosen = m.memos.find(
-                        (v) => v.id === e.target.value,
-                      )!;
-                      void persist({
-                        ...m,
-                        memos: [
-                          ...m.memos.filter((v) => v.id !== chosen.id),
-                          chosen,
-                        ],
-                      });
+                      setViewVersion(e.target.value);
                     }}
                   >
                     {m.memos.map((v, i) => (
@@ -837,7 +838,7 @@ export function MeetingWorkspace({
                           e.target.value.trim() &&
                           e.target.value !== item.text
                         )
-                          void persist({
+                          void persistQuietly({
                             ...m,
                             memos: m.memos.map((v) =>
                               v.id === memo.id
@@ -867,7 +868,7 @@ export function MeetingWorkspace({
                             value={item.ownerId || ""}
                             disabled={locked}
                             onChange={(e) =>
-                              void persist({
+                              void persistQuietly({
                                 ...m,
                                 memos: m.memos.map((v) =>
                                   v.id === memo.id
@@ -906,7 +907,7 @@ export function MeetingWorkspace({
                             disabled={locked}
                             onBlur={(e) => {
                               if (e.target.value !== (item.dueDate || ""))
-                                void persist({
+                                void persistQuietly({
                                   ...m,
                                   memos: m.memos.map((v) =>
                                     v.id === memo.id
@@ -945,26 +946,7 @@ export function MeetingWorkspace({
                             key={`${source.id}:${source.revision}`}
                             className="source-link"
                             onClick={() => {
-                              const current = m.segments.find(
-                                (t) => t.id === source.id,
-                              );
-                              if (current) {
-                                setTab("transcript");
-                                setHighlight(current.id);
-                                setTimeout(
-                                  () =>
-                                    document
-                                      .getElementById(`segment-${current.id}`)
-                                      ?.scrollIntoView({
-                                        block: "center",
-                                        behavior: "smooth",
-                                      }),
-                                  50,
-                                );
-                              } else
-                                setNotice(
-                                  `Historical source r${source.revision}: ${s?.text || "Source unavailable"}`,
-                                );
+                              if (s) setEvidence(s);
                             }}
                           >
                             Passage{" "}
@@ -983,7 +965,7 @@ export function MeetingWorkspace({
                             className={`text-button ${item.review === state ? "selected" : ""}`}
                             disabled={locked}
                             onClick={() =>
-                              void persist({
+                              void persistQuietly({
                                 ...m,
                                 memos: m.memos.map((v) =>
                                   v.id === memo.id
@@ -1089,7 +1071,10 @@ export function MeetingWorkspace({
               if (Number.isFinite(d)) {
                 setDuration(d);
                 if (m.audio && m.audio.duration !== d && !saving)
-                  void persist({ ...m, audio: { ...m.audio, duration: d } });
+                  void persistQuietly({
+                    ...m,
+                    audio: { ...m.audio, duration: d },
+                  });
               }
             }}
             onTimeUpdate={(e) => {
@@ -1234,8 +1219,7 @@ export function MeetingWorkspace({
               <button
                 className="button primary"
                 disabled={
-                  !getKey(confirmStage === "speech" ? "deepgram" : "openai") ||
-                  !navigator.onLine
+                  !getKey(confirmStage === "speech" ? "deepgram" : "openai")
                 }
                 onClick={() => void process()}
               >
@@ -1251,6 +1235,57 @@ export function MeetingWorkspace({
                 Add your key in Settings first
               </a>
             )}
+          </div>
+        </Modal>
+      )}
+      {evidence && (
+        <Modal
+          title={`Source passage · r${evidence.revision}`}
+          onClose={() => setEvidence(undefined)}
+        >
+          <div className="modal-body">
+            <Pill>Saved evidence revision</Pill>
+            <p className="evidence-text">{evidence.text}</p>
+            <p className="muted small">
+              {evidence.start === null
+                ? "Audio time unknown"
+                : `${formatTime(evidence.start)} – ${formatTime(evidence.end!)}`}{" "}
+              · {speakerName(m, evidence.speakerIds)}
+            </p>
+            <div className="toolbar-actions">
+              <button
+                className="button secondary"
+                disabled={!url || evidence.start === null}
+                onClick={() => cue(evidence)}
+              >
+                <Play size={15} />
+                Play source audio
+              </button>
+              {m.segments.some((s) => s.id === evidence.id) && (
+                <button
+                  className="button primary"
+                  onClick={() => {
+                    const key = evidence.id;
+                    setEvidence(undefined);
+                    setTab("transcript");
+                    setHighlight(key);
+                    setTimeout(
+                      () =>
+                        document
+                          .getElementById(`segment-${key}`)
+                          ?.scrollIntoView({ block: "center" }),
+                      50,
+                    );
+                  }}
+                >
+                  View current passage
+                </button>
+              )}
+            </div>
+            <p className="small muted">
+              This is the exact revision cited by the note. Current transcript
+              wording may differ.
+            </p>
           </div>
         </Modal>
       )}

@@ -28,6 +28,14 @@ export function editMeeting(
   draft.revision = m.revision + 1;
   return validateMeeting(draft);
 }
+function nextRevision(m: Meeting, s: Segment) {
+  return (
+    Math.max(
+      s.revision,
+      ...m.history.filter((h) => h.id === s.id).map((h) => h.revision),
+    ) + 1
+  );
+}
 export function editSegment(
   m: Meeting,
   segmentId: string,
@@ -36,7 +44,7 @@ export function editSegment(
   return editMeeting(m, (d) => {
     d.segments = d.segments.map((s) =>
       s.id === segmentId
-        ? { ...s, ...patch, revision: s.revision + 1, parents: [ref(s)] }
+        ? { ...s, ...patch, revision: nextRevision(m, s), parents: [ref(s)] }
         : s,
     );
   });
@@ -54,7 +62,7 @@ export function assignSegments(
             ...s,
             speakerIds,
             reviewed: false,
-            revision: s.revision + 1,
+            revision: nextRevision(m, s),
             parents: [ref(s)],
           }
         : s,
@@ -79,7 +87,7 @@ export function mergeSpeakers(m: Meeting, from: string, into: string): Meeting {
             speakerIds: [
               ...new Set(s.speakerIds.map((x) => (x === from ? into : x))),
             ],
-            revision: s.revision + 1,
+            revision: nextRevision(m, s),
             reviewed: false,
             parents: [ref(s)],
           }

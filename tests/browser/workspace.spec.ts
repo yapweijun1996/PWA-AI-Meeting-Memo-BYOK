@@ -92,3 +92,123 @@ test("responsive navigation and dialogs do not overflow on a phone-sized viewpor
     ),
   ).toBe(true);
 });
+
+test("full backup restores as a new copy without replacing the original", async ({
+  page,
+}, testInfo) => {
+  await page.goto(base);
+  await create(page, "Backup round trip");
+  await page.getByText("Export", { exact: true }).click();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Full backup with audio" }).click();
+  const file = await download,
+    path = testInfo.outputPath("meeting.zip");
+  await file.saveAs(path);
+  page.on("dialog", (d) => void d.accept());
+  await page.locator(".nav-file input").setInputFiles(path);
+  await expect(
+    page.getByRole("heading", {
+      name: "Backup round trip (restored)",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: /Transcript/ }).click();
+  await expect(
+    page.getByText("Review the current stock process.", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "All meetings", exact: true }).click();
+  await expect(page.locator(".meeting-card")).toHaveCount(2);
+});
+
+test("scoped worker supports offline reload without caching API data", async ({
+  page,
+  context,
+}) => {
+  await page.goto(base);
+  await create(page, "Offline review");
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  await expect
+    .poll(() => page.evaluate(() => !!navigator.serviceWorker.controller))
+    .toBe(true);
+  await context.setOffline(true);
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Offline review", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Review the current stock process.", { exact: true }),
+  ).toBeVisible();
+  const cached = await page.evaluate(async () => {
+    const result: string[] = [];
+    for (const key of await caches.keys()) {
+      for (const request of await (await caches.open(key)).keys())
+        result.push(request.url);
+    }
+    return result;
+  });
+  expect(
+    cached.every((url) => url.startsWith("http://127.0.0.1:4180" + base)),
+  ).toBe(true);
+  expect(
+    cached.some((url) => url.includes("openai") || url.includes("deepgram")),
+  ).toBe(false);
+  await context.setOffline(false);
+});
+
+test("stale tab edits are rejected without losing the unsaved form text", async ({
+  page,
+  context,
+}) => {
+  await page.goto(base);
+  await create(page, "Two tab review");
+  const other = await context.newPage();
+  await other.goto(page.url());
+  await other
+    .getByRole("button", { name: "Edit passage", exact: true })
+    .first()
+    .click();
+  await other.getByLabel("Transcript text").fill("Unsaved second-tab text");
+  await page
+    .getByRole("button", { name: "Edit passage", exact: true })
+    .first()
+    .click();
+  await page.getByLabel("Transcript text").fill("Winning first-tab text");
+  await page.getByRole("button", { name: "Save correction" }).click();
+  await expect(
+    page.getByText("Winning first-tab text", { exact: true }),
+  ).toBeVisible();
+  await other.getByRole("button", { name: "Save correction" }).click();
+  await expect(other.getByRole("dialog").getByRole("alert")).toContainText(
+    "another tab",
+  );
+  await expect(other.getByLabel("Transcript text")).toHaveValue(
+    "Unsaved second-tab text",
+  );
+  await other.close();
+});
+
+test("quota failure is visible and preserves an unsaved correction", async ({
+  page,
+}) => {
+  await page.goto(base);
+  await create(page, "Quota review");
+  await page
+    .getByRole("button", { name: "Edit passage", exact: true })
+    .first()
+    .click();
+  await page.getByLabel("Transcript text").fill("Keep this unsaved correction");
+  await page.evaluate(() => {
+    IDBObjectStore.prototype.put = function () {
+      throw new DOMException("Storage quota exceeded", "QuotaExceededError");
+    };
+  });
+  await page.getByRole("button", { name: "Save correction" }).click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
+    "quota",
+  );
+  await expect(page.getByLabel("Transcript text")).toHaveValue(
+    "Keep this unsaved correction",
+  );
+});

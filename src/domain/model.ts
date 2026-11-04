@@ -172,6 +172,13 @@ export function validateMeeting(value: unknown): Meeting {
     throw new Error("Duplicate record ID");
   if (m.segments.some((s) => s.speakerIds.some((x) => !speakerIds.has(x))))
     throw new Error("Unknown speaker reference");
+  const immutable = new Map<string, string>();
+  for (const s of [...m.history, ...m.segments]) {
+    const value = JSON.stringify(s);
+    if (immutable.has(ref(s)) && immutable.get(ref(s)) !== value)
+      throw new Error("Conflicting evidence revisions");
+    immutable.set(ref(s), value);
+  }
   const refs = new Set([...m.history, ...m.segments].map(ref));
   if (
     m.memos.some((v) =>
