@@ -125,6 +125,7 @@ export async function runJob(
               createdAt: new Date().toISOString(),
               sourceRevision: m.revision,
               items: result,
+              originalItems: structuredClone(result),
             },
           ],
         };

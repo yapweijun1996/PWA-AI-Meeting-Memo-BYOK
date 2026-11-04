@@ -129,6 +129,7 @@ export const MeetingSchema = z
             sourceRevision: z.number().int().positive(),
             model: z.string().max(100),
             items: z.array(MemoItemSchema).max(500),
+            originalItems: z.array(MemoItemSchema).max(500).optional(),
           })
           .strict(),
       )
@@ -200,7 +201,9 @@ export function validateMeeting(value: unknown): Meeting {
   const refs = new Set([...m.history, ...m.segments].map(ref));
   if (
     m.memos.some((v) =>
-      v.items.some((i) => i.sources.some((s) => !refs.has(ref(s)))),
+      [...v.items, ...(v.originalItems || [])].some((i) =>
+        i.sources.some((s) => !refs.has(ref(s))),
+      ),
     )
   )
     throw new Error("Unresolved memo evidence");

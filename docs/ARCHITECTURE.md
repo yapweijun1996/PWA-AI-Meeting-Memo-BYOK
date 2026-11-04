@@ -67,11 +67,13 @@ Use UUIDs, explicit schema/source/storage versions, finite second-based audio ti
 | `Speaker` | `id`, meeting ID, display name, identity state, source labels scoped by run/chunk |
 | `SegmentRevision` | stable segment ID, revision, audio ID, nullable start/end, speaker IDs, original/edited text, timing origin, assignment/review state, parent revision refs |
 | `ReviewOperation` | operation ID, affected revisions, before/after refs, undo state; committed with the change |
-| `MemoVersion` | version ID, meeting/source revision, generation run, preserved human edits |
+| `MemoVersion` | version ID, meeting/source revision, model, separate `originalItems` snapshot and editable `items`; older backups may lack the snapshot |
 | `MemoItem` | item ID/type/text, nullable owner/date, original date wording, source `(segmentId, revision)` refs, review state |
 | `ProcessingJob` | job/chunk IDs, stage, state, provider run, attempts, input hash, sanitized request ID, estimate, billing state, checkpoint |
 
 Original provider results are immutable. Current transcript views project those results plus human revisions. Splitting or merging preserves lineage, so an old citation can still resolve to its original revision while being visibly stale.
+
+Each new memo version clones the normalized generated items into `originalItems` before human review. Text/owner/date/review edits change only `items`; JSON and full backups retain both. The UI exposes the original text and fields. Existing v1 backups without originals remain readable and explicitly report that the original was not saved; it cannot be inferred from corrected text. The field is optional for old-backup compatibility. Older app builds may reject new optional fields, so update open tabs before editing newly created memo data; a refused old-client read must never trigger deletion or a lossy rewrite.
 
 Start with a conservative invalidation rule: text, assignment, speaker identity, date, or timezone changes increment the meeting source revision and mark generated memo items for re-review. More selective invalidation can follow with tests. New generations never overwrite an accepted human version.
 

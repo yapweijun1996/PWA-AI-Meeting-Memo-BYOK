@@ -24,4 +24,36 @@ describe("meeting boundaries", () => {
     expect(() => validateMeeting(m)).toThrow("Unknown speaker");
     expect(() => createMeeting({ date: "2026-02-30" })).toThrow();
   });
+  it("preserves separate generated originals and validates their evidence", () => {
+    const m = {
+      ...createMeeting(),
+      ...importTranscript("Jamie: Confirm the stock."),
+    };
+    const item = {
+      id: crypto.randomUUID(),
+      type: "summary" as const,
+      text: "Generated original",
+      ownerId: null,
+      dueDate: null,
+      dueOriginal: null,
+      sources: [{ id: m.segments[0].id, revision: m.segments[0].revision }],
+      review: "pending" as const,
+    };
+    m.memos = [
+      {
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+        model: "fixture",
+        sourceRevision: m.revision,
+        items: [item],
+        originalItems: [structuredClone(item)],
+      },
+    ];
+    m.memos[0].items[0].text = "Human correction";
+    expect(validateMeeting(m).memos[0].originalItems?.[0].text).toBe(
+      "Generated original",
+    );
+    m.memos[0].originalItems![0].sources[0].id = crypto.randomUUID();
+    expect(() => validateMeeting(m)).toThrow("Unresolved memo evidence");
+  });
 });

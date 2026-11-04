@@ -146,6 +146,12 @@ test("memo submissions require confirmation, preserve evidence and mark source c
   await expect(page.getByLabel("action note")).toHaveValue(
     "Human amended follow-up.",
   );
+  await page.getByText("Original generated item", { exact: true }).click();
+  await expect(
+    page
+      .locator(".original-text")
+      .getByText("Review inventory with finance.", { exact: true }),
+  ).toBeVisible();
   expect(requests).toBe(2);
 });
 
@@ -338,8 +344,14 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
     expect(text).toContain("accepted");
     expect(text).not.toContain("synthetic-test-only");
     expect(text).not.toContain("synthetic-deepgram-only");
-    if (extension === "json")
-      expect(JSON.parse(text).audio.present).toBe(false);
+    if (extension === "json") {
+      const document = JSON.parse(text);
+      expect(document.audio.present).toBe(false);
+      expect(document.memos[0].originalItems[0].text).toBe(
+        "A greeting was exchanged.",
+      );
+      expect(document.memos[0].items[0].text).toBe("Human reviewed greeting.");
+    }
   }
   const downloaded = page.waitForEvent("download");
   await page.getByRole("button", { name: "Full backup with audio" }).click();
@@ -361,6 +373,12 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
   await expect(
     page.getByRole("button", { name: "✓ Accept", exact: true }),
   ).toHaveClass(/selected/);
+  await page.getByText("Original generated item", { exact: true }).click();
+  await expect(
+    page
+      .locator(".original-text")
+      .getByText("A greeting was exchanged.", { exact: true }),
+  ).toBeVisible();
 });
 
 test("a foreground timeout remains uncertain and never resubmits on reload", async ({

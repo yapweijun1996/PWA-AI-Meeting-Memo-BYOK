@@ -132,7 +132,7 @@ The browser application and automatic Pages publication are implemented. The use
 | Evidence | Current result |
 | --- | --- |
 | Design and implementation on `main` | Each completed task has its own committed/pushed checkpoint in [implementation evidence](docs/IMPLEMENTATION-LOG.md) and Git history |
-| Local checks | Lint, typecheck, build, 25 unit tests, all 34 current browser cases, two-engine update tests and artifact checks PASS; deployment CI passed its prior 32-case browser baseline |
+| Local checks | Lint, typecheck, build, all 26 unit tests, all 34 browser cases, two-engine update tests and artifact checks PASS; detailed verified checkpoints are recorded in [validation](docs/VALIDATION.md) |
 | Active auto-deployment | [Trusted-main workflow](.github/workflows/pages.yml) checks before publishing only `dist/`; no provider keys are used |
 | Successful publication | [Run 41845407515](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41845407515), build `18cd59c`; served identity, HTTPS, scoped worker, hash refresh, synthetic storage and offline reload PASS in both engines |
 | Update hardening | Stale-HTTP-cache regression fixed; [run 41847942972](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41847942972) published `6e0fcdf`; actual Chromium/WebKit upgrade, saved editor, old assets and new-build offline reload PASS |

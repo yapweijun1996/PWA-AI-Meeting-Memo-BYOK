@@ -18,7 +18,7 @@ import {
   Upload,
   Users,
 } from "lucide-react";
-import type { Meeting, Segment } from "../domain/model";
+import type { Meeting, MemoItem, Segment } from "../domain/model";
 import { id, importTranscript } from "../domain/model";
 import {
   assignSegments,
@@ -916,6 +916,10 @@ export function MeetingWorkspace({
                           });
                       }}
                     />
+                    <OriginalNote
+                      item={memo.originalItems?.find((x) => x.id === item.id)}
+                      meeting={m}
+                    />
                     {item.type === "action" && (
                       <div className="action-fields">
                         <label>
@@ -1651,5 +1655,35 @@ export function MeetingWorkspace({
         </Modal>
       )}
     </div>
+  );
+}
+
+function OriginalNote({
+  item,
+  meeting,
+}: {
+  item?: MemoItem;
+  meeting: Meeting;
+}) {
+  return (
+    <details className="original-text">
+      <summary>Original generated item</summary>
+      {item ? (
+        <>
+          <p>{item.text}</p>
+          <p className="small muted">
+            Owner:{" "}
+            {item.ownerId ? speakerName(meeting, [item.ownerId]) : "To confirm"}
+            {" · "}Due: {item.dueDate || "To confirm"}
+            {item.dueOriginal ? ` · Said: ${item.dueOriginal}` : ""}
+          </p>
+        </>
+      ) : (
+        <p>
+          This older memo version did not save a separate original. Its original
+          cannot be reconstructed from human edits.
+        </p>
+      )}
+    </details>
   );
 }

@@ -7,7 +7,7 @@ Date: 2026-11-04. Product: browser-first BYOK beta. Host used for local checks: 
 | Check | Evidence |
 | --- | --- |
 | Lint and TypeScript | PASS on the implementation candidate |
-| Unit tests | PASS: 25 tests covering schemas, evidence revisions, undo, invalid source IDs, nullable fields, refusal, incomplete responses, HTTP rejection/billing separation, request limits, storage conflicts, deletion, and backup validation |
+| Unit tests | PASS: 26 tests covering schemas, separate generated memo originals, evidence revisions, undo, invalid source IDs, nullable fields, refusal, incomplete responses, HTTP rejection/billing separation, request limits, storage conflicts, deletion, and backup validation |
 | Browser workflow | PASS: all 34 current Chromium/WebKit cases locally; the clean GitHub Actions deployment runs linked below passed the prior 32-case baseline before the added two-engine HTTP rejection/billing regression |
 | PWA update | PASS in both engines: waiting-worker prompt, explicit activation/reload, open-editor/active-request protection, saved draft and old asset preserved, unrelated cache retained, visible activation failure and forward recovery |
 | Accessibility | PASS automated axe WCAG A/AA library/settings checks; keyboard/focus and 390px navigation exercised; not a complete assistive-technology certification |
@@ -17,6 +17,8 @@ Date: 2026-11-04. Product: browser-first BYOK beta. Host used for local checks: 
 Browser cases use synthetic text/audio. They cover upload/checksum, speaker normalization, confirmation, correction, bulk assignment, merge/split/undo, historical source inspection, session-key clearing, explicit send confirmation, unknown billing, cancellation, backup/restore, offline reload, multi-tab conflicts, and injected quota failures. Injected quota failure tests error handling, not a measured device storage ceiling.
 
 The continuous workflow uses a generated one-second silent WAV and mocked speech/notes. It exports MD, TXT and JSON after human acceptance, checks credential exclusion, restores a checksummed audio ZIP into a separate meeting, and verifies both transcript and human review survived. The timeout case advances the browser clock past nine minutes and verifies one submission, possibly-charged status, and no resubmission after reload.
+
+New memo versions also retain a separate normalized generated snapshot: UI review, JSON export and full-audio restore checks verify human edits leave it unchanged. Existing backups without the optional snapshot are supported, with no invented original. Old app builds should update before reading newly created memo data.
 
 ## Deployment
 

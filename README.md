@@ -12,7 +12,7 @@ Live app: **https://yapweijun1996.github.io/PWA-AI-Meeting-Memo-BYOK/**. GitHub 
 2. In **Settings & API keys**, enter a Deepgram key for speech and/or an OpenAI key for notes. Keys are kept only for this page session; reload requires re-entry. Saving a key makes no API request.
 3. Choose **Transcribe** and review the provider, recording, and estimated/unknown charge before confirming. Keep the page open.
 4. Listen to speaker samples, confirm names, correct text and assignments, merge voices, split passages, and undo changes. Unknown timing or identity stays explicit.
-5. Choose **Generate meeting notes**, review what is sent to OpenAI, then inspect, edit, accept, or reject each cited item. Source changes require re-review; new generations preserve older human versions.
+5. Choose **Generate meeting notes**, review what is sent to OpenAI, then inspect, edit, accept, or reject each cited item. **Original generated item** shows its separately saved generated snapshot. Source changes require re-review; new generations preserve older human versions.
 6. Export Markdown/TXT for the selected notes version, JSON for all meeting data without audio, or ZIP for a full backup with audio. **Restore backup** creates a separate copy.
 
 Use **How it works → Explore a synthetic example** to try local review without a recording, key, or charge. The example contains invented text and no recorded audio or generated memo.
@@ -33,6 +33,7 @@ Browser storage is not backup or synchronization. Export a full backup regularly
 - Audio uploads are capped at 50 MB and sent as the original container. No arbitrary byte chunking, full-file PCM conversion, or local model inference is advertised.
 - Memo input is capped at 80,000 serialized characters and output at 8,000 tokens. Unsupported inputs are rejected before submission rather than silently truncated.
 - Requests time out after nine minutes; this stops waiting, not necessarily remote processing or billing.
+- New memo versions preserve normalized generated items separately from human edits. Older backups without that snapshot still load, with the original explicitly unavailable. Update all open tabs before reviewing newly created memo data.
 - Charges use your provider account. Speech estimates require an entered plan rate and known duration; unknown rates and memo cost stay unknown. Reported token/duration usage is not an invoice.
 - No automatic email, ERP writes, KB writes, team sync, live meeting joining, PDF generation, or cross-meeting voiceprints.
 
