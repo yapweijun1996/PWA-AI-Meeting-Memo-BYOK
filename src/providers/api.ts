@@ -327,6 +327,7 @@ export async function generateMemo(
   const input = JSON.stringify({
     meeting: {
       title: m.title,
+      languages: m.languages,
       date: m.date,
       timezone: m.timezone,
       type: m.kind,

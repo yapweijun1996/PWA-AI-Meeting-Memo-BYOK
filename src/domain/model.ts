@@ -1,5 +1,7 @@
 import { z } from "zod";
 export const id = () => crypto.randomUUID();
+export const localDate = (now = new Date()) =>
+  `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 const key = z.string().uuid();
 const text = z.string().max(20000);
 const time = z.number().finite().nonnegative().nullable();
@@ -224,7 +226,7 @@ export function createMeeting(
     version: 0,
     id: id(),
     title: "Untitled meeting",
-    date: now.slice(0, 10),
+    date: localDate(),
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     languages: "Chinese, English",
     attendees: [],

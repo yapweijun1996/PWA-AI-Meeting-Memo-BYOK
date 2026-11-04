@@ -275,7 +275,7 @@ export default function App() {
           </div>
           <span className="privacy-top">
             <ShieldCheck size={15} />
-            {online ? "Private by design" : "Offline · local work available"}
+            {online ? "Private by design" : "Browser reports offline"}
           </span>
         </header>
         <main id="main-content" tabIndex={-1}>
@@ -488,7 +488,7 @@ export default function App() {
                           </span>
                           <Pill tone={m.memos.length ? "green" : "neutral"}>
                             {m.memos.length
-                              ? "Notes ready"
+                              ? "Draft notes"
                               : m.segments.length
                                 ? "Review transcript"
                                 : "Ready to start"}

@@ -116,8 +116,8 @@ export function PwaStatus() {
       {offline && (
         <div className="notice">
           <WifiOff size={17} />
-          Offline · review, edit, and export saved meetings. Cloud AI needs a
-          connection.
+          Browser reports offline · review, edit, and export saved meetings.
+          Cloud AI needs a connection.
         </div>
       )}
       {(waiting || refreshReady) && (

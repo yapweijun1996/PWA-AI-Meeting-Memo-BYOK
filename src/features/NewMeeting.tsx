@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { FileAudio, FileText, Plus, Upload, Check } from "lucide-react";
 import {
   createMeeting,
+  localDate,
   importTranscript,
   validateMeeting,
   type Meeting,
@@ -117,7 +118,7 @@ export function NewMeeting({
               type="date"
               name="date"
               required
-              defaultValue={new Date().toISOString().slice(0, 10)}
+              defaultValue={localDate()}
             />
           </label>
           <label>

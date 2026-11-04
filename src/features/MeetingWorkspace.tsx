@@ -1245,7 +1245,7 @@ export function MeetingWorkspace({
               <dd>
                 {confirmStage === "speech"
                   ? `Your complete recording (${((m.audio?.size || 0) / 1024 / 1024).toFixed(1)} MB)`
-                  : "Transcript, speaker names, meeting date/timezone, title and glossary"}
+                  : "Transcript, speaker names and meeting context (title, date, timezone, languages, type and glossary)"}
               </dd>
               <dt>Model</dt>
               <dd>
