@@ -48,6 +48,13 @@ export default function App() {
     [mobileNav, setMobileNav] = useState(false),
     [help, setHelp] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
+  function reportError(message: string) {
+    setError(message);
+    window.dispatchEvent(
+      new CustomEvent("memo-operation-error", { detail: message }),
+    );
+  }
+
   const refresh = useCallback(async () => {
     setMeetings(await listMeetings());
   }, []);
@@ -142,7 +149,14 @@ export default function App() {
   ).length;
   return (
     <div className="app-shell">
-      <a className="skip-link" href="#main-content">
+      <a
+        className="skip-link"
+        href="#main-content"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById("main-content")?.focus();
+        }}
+      >
         Skip to content
       </a>
       {mobileNav && (
@@ -270,7 +284,7 @@ export default function App() {
                   await refresh();
                   navigate("/");
                 }}
-                onError={setError}
+                onError={reportError}
               />
             ) : (
               <div className="empty">
@@ -526,7 +540,7 @@ export default function App() {
         <NewMeeting
           onClose={() => setNewOpen(false)}
           onCreated={created}
-          onError={setError}
+          onError={reportError}
         />
       )}
       {help && (

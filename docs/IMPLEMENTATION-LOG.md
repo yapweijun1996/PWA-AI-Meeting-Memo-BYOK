@@ -8,3 +8,4 @@ Each entry records a task checkpoint. Full commits are available in Git history.
 - **S02** — Nine unit tests pass, including stale-write rejection, isolated delete/audio cleanup, and interrupted-request recovery; storage version is separate from source revision.
 - **S07** — Operations tests verify original evidence resolves after edits/splits, merge does not confirm identity, and undo creates a new source revision leaving old memo review stale.
 - **F03** — Production build, 13 unit tests and six Chromium/WebKit browser checks pass: create/import, correction/undo, confirmation/reload, session-key clearing and mobile navigation. App screens now connect the local repository and provider adapters; live API behavior remains unverified.
+- **F02** — Chromium and WebKit production-path create/reload/navigation tests pass; skip navigation focuses content without overwriting the hash route.
