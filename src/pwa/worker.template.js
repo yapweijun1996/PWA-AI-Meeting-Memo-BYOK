@@ -5,7 +5,16 @@ const ASSETS = __PRECACHE_ASSETS__;
 const PREFIX = "meeting-memo-byok:" + BASE + ":";
 const CACHE = PREFIX + VERSION;
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)));
+  // Unhashed HTML must bypass a still-fresh HTTP cache when a new release installs.
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      .then((cache) =>
+        cache.addAll(
+          ASSETS.map((url) => new Request(url, { cache: "reload" })),
+        ),
+      ),
+  );
 });
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") void self.skipWaiting();
@@ -34,12 +43,10 @@ self.addEventListener("fetch", (event) => {
     return;
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (!response.ok) throw new Error("Navigation unavailable");
-          return response;
-        })
-        .catch(() => caches.match(BASE + "index.html", { cacheName: CACHE })),
+      // Serve HTML and hashed assets from the same activated release, online or offline.
+      caches
+        .match(BASE + "index.html", { cacheName: CACHE })
+        .then((cached) => cached || fetch(request, { cache: "no-store" })),
     );
     return;
   }

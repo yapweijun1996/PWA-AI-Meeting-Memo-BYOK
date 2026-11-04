@@ -49,11 +49,12 @@ const manifest = {
 };
 await writeFile("dist/manifest.webmanifest", JSON.stringify(manifest, null, 2));
 const files = (await walk("dist")).filter((p) => !p.endsWith("sw.js")).sort();
+const source = await readFile("src/pwa/worker.template.js", "utf8");
 const hash = createHash("sha256");
+hash.update(source);
 for (const file of files) hash.update(await readFile(file));
 const build = hash.digest("hex").slice(0, 16);
 const assets = files.map((p) => base + p.replace(/^dist\//, ""));
-const source = await readFile("src/pwa/worker.template.js", "utf8");
 await writeFile(
   "dist/sw.js",
   source

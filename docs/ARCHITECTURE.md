@@ -35,7 +35,7 @@ The implementation uses React/TypeScript/Vite, npm with a locked dependency tree
 | `src/storage/` | IndexedDB transactions, migrations, backup/restore |
 | `src/providers/` | Explicit provider contracts, normalization, cost and errors |
 | `src/jobs/` | Foreground scheduler, checkpoints, billing uncertainty |
-| `src/audio/` | Playback and bounded decode/encode workers |
+| `src/audio/` | Original-file limits/metadata and bounded checksum worker; no decode/encode pipeline shipped |
 | `src/pwa/` | Install, connectivity, worker update UX |
 
 Prefer two small initial integrations over a universal plugin framework: one browser-validated speech provider and one memo provider. The speech integration must prove speaker/time capability before release. The same provider can serve both roles only when its contracts support them.
@@ -142,7 +142,7 @@ Bundle runtime scripts locally, avoid trackers and remote script CDNs, render im
 
 Cache a bounded, versioned app shell under this project's path. Intercept only same-origin app assets/navigation in scope; let provider requests bypass caching. Clone a response before asynchronous cache writes if a custom caching handler is needed.
 
-Use network/revalidation for HTML and content-hashed static assets for immutable caching. Configure worker update discovery and test actual Pages headers. Clean only this app's obsolete cache names and retain assets needed by still-running clients.
+Precache each release with `Request.cache="reload"` so fresh browser HTTP entries cannot supply old HTML. Serve navigations from the activated release's cached index, keeping HTML and its hashed assets together online and offline. Worker discovery bypasses HTTP caching and changes only through the explicit activation flow. Cache identity includes both assets and worker source. Clean only this app's obsolete cache names and retain one previous app cache for still-running clients. [Request cache modes](https://developer.mozilla.org/en-US/docs/Web/API/Request/cache), [Cache.addAll Request inputs](https://developer.mozilla.org/en-US/docs/Web/API/Cache/addAll)
 
 The update flow is: detect waiting worker, notify, save edits, settle active submissions or expose a safe pause, user clicks update, show progress, activate, wait for controller change, reload. Provide timeout/error recovery. Coordinate database migrations and old tabs before schema changes. Never auto-reload while reviewing or processing a meeting.
 

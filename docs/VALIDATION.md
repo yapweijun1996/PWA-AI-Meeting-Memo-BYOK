@@ -30,6 +30,8 @@ Live site: [Meeting Memo](https://yapweijun1996.github.io/PWA-AI-Meeting-Memo-BY
 - Live browser inspection at 2026-11-04 14:20 UTC: Chromium `156.0.8078.4` and Linux WebKit `27.2` both PASS HTTPS, manifest/icons, exact source/build identity, project worker scope, direct hash refresh, synthetic meeting persistence, offline reload, static-only scoped caches, 390px overflow check, and no unexpected external requests or page errors.
 - A real deployed N-to-N+1 client check is in progress; its result is recorded separately from the local update harness.
 
+Update regression found during release testing: `18cd59c → 4417977` preserved data in both engines, but Chromium offline reload still loaded the old HTML/build; WebKit loaded the new one. A local server with `Cache-Control: public, max-age=600` reproduced the Chromium failure. The fix bypasses HTTP cache during precaching, serves the activated release's index for navigation, and includes worker source in cache identity. The regression now passes locally in both engines, including distinct HTML release markers after offline reload and forward recovery. The fix still requires the next live-deployment check before R09 is complete.
+
 ## Acceptance intentionally still open
 
 The user chose to enter BYOK credentials in the finished page and perform live acceptance; no development key is created. The following are **NOT RUN**, rather than inferred from mocks:

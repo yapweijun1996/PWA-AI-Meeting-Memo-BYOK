@@ -41,9 +41,23 @@ const server = createServer((req, res) => {
   }
   res.writeHead(200, {
     "Content-Type": types[path.extname(target)] || "application/octet-stream",
-    "Cache-Control": "no-store",
+    "Cache-Control": "public, max-age=600",
   });
-  res.end(file);
+  const release = activeWorker.includes("forward-recovery")
+    ? "forward"
+    : activeWorker === sw
+      ? "initial"
+      : "next";
+  res.end(
+    target === base + "index.html"
+      ? file
+          .toString()
+          .replace(
+            "<head>",
+            `<head><meta name="pwa-test-release" content="${release}">`,
+          )
+      : file,
+  );
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const url = `http://127.0.0.1:${server.address().port}${base}`;
@@ -57,6 +71,9 @@ try {
     try {
       const page = await browser.newPage();
       await page.goto(url);
+      await expect(
+        page.locator('meta[name="pwa-test-release"]'),
+      ).toHaveAttribute("content", "initial");
       await page.evaluate(async () => {
         await navigator.serviceWorker.ready;
         await caches.open("unrelated-app-sentinel");
@@ -177,6 +194,12 @@ try {
       await expect(
         page.getByText("Saved draft survives activation.", { exact: true }),
       ).toBeVisible();
+      await browser.contexts()[0].setOffline(true);
+      await page.reload();
+      await expect(
+        page.locator('meta[name="pwa-test-release"]'),
+      ).toHaveAttribute("content", "next");
+      await browser.contexts()[0].setOffline(false);
       assert.equal(
         await page.evaluate(
           async (base) =>
@@ -249,6 +272,12 @@ try {
       await expect(
         page.getByText("Saved draft survives activation.", { exact: true }),
       ).toBeVisible();
+      await browser.contexts()[0].setOffline(true);
+      await page.reload();
+      await expect(
+        page.locator('meta[name="pwa-test-release"]'),
+      ).toHaveAttribute("content", "forward");
+      await browser.contexts()[0].setOffline(false);
       console.log(
         `PASS ${name}: N→N+1, active-request/editor protection, saved draft, old asset, unrelated cache, visible activation failure and forward recovery`,
       );
