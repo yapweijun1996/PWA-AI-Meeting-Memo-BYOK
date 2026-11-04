@@ -4,3 +4,4 @@ Each entry records a task checkpoint. Full commits are available in Git history.
 
 - **V01** — Reviewed official Deepgram and OpenAI contracts; docs/PROVIDERS.md records separate credentials, metadata, limits, billing and live validation gates.
 - **F01** — npm install and npm run build pass on Node 22.23.3; locked React/Vite/TypeScript dependencies, ignored private data, and static build config added. Node 22 replaces the earlier Node 24 proposal to match the verified executor.
+- **S01** — Type checking and 3 domain tests pass: untimed imports stay untimed, unexpected fields/credentials are rejected, and invalid dates/dangling speaker references fail.
