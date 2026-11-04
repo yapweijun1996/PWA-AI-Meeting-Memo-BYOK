@@ -52,6 +52,7 @@ export const MemoItemSchema = z
       .min(1)
       .max(100),
     review: z.enum(["pending", "accepted", "rejected", "edited"]),
+    reviewedRevision: z.number().int().positive().nullable().optional(),
   })
   .strict();
 const SnapshotSchema = z
@@ -83,6 +84,16 @@ export const JobSchema = z
     createdAt: z.string(),
     updatedAt: z.string(),
     requestId: z.string().max(200).nullable(),
+    usage: z
+      .object({
+        inputTokens: z.number().int().nonnegative().nullable(),
+        outputTokens: z.number().int().nonnegative().nullable(),
+        seconds: z.number().nonnegative().nullable(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    estimateUsd: z.number().nonnegative().nullable().optional(),
     message: z.string().max(1000),
     inputRevision: z.number().int().positive(),
   })

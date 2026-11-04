@@ -43,7 +43,21 @@ self.addEventListener("fetch", (event) => {
     );
     return;
   }
-  if (!ASSETS.includes(url.pathname)) return;
+  if (!ASSETS.includes(url.pathname)) {
+    if (!url.pathname.startsWith(BASE + "assets/")) return;
+    event.respondWith(
+      (async () => {
+        for (const key of (await caches.keys()).filter((key) =>
+          key.startsWith(PREFIX),
+        )) {
+          const cached = await caches.match(url.pathname, { cacheName: key });
+          if (cached) return cached;
+        }
+        return fetch(request);
+      })(),
+    );
+    return;
+  }
   event.respondWith(
     (async () => {
       const cached = await caches.match(url.pathname, { cacheName: CACHE });

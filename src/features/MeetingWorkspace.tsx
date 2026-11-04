@@ -37,7 +37,7 @@ import { getAudio, getMeeting, saveMeeting } from "../storage/repository";
 import { backupMeeting, download, safeFilename } from "../storage/backup";
 import { inspectAudio } from "../audio/files";
 import { getKey, getSpeechRate } from "../providers/credentials";
-import { cancelProcessing, runJob } from "../jobs/runner";
+import { cancelProcessing, runJob, isProcessingMeeting } from "../jobs/runner";
 import { Empty, Modal, Pill } from "../components/ui";
 export function MeetingWorkspace({
   meeting: m,
@@ -52,7 +52,7 @@ export function MeetingWorkspace({
 }) {
   const [tab, setTab] = useState("transcript"),
     [saving, setSaving] = useState(false),
-    [processing, setProcessing] = useState(false),
+    [processing, setProcessing] = useState(() => isProcessingMeeting(m.id)),
     [notice, setNotice] = useState(""),
     [confirmStage, setConfirmStage] = useState<"speech" | "memo">(),
     [metadata, setMetadata] = useState(false),
@@ -74,6 +74,11 @@ export function MeetingWorkspace({
     playUntil = useRef<number | null>(null);
   const [evidence, setEvidence] = useState<Segment>();
   const locked = saving || processing;
+  useEffect(() => {
+    const changed = () => setProcessing(isProcessingMeeting(m.id));
+    addEventListener("memo-processing-changed", changed);
+    return () => removeEventListener("memo-processing-changed", changed);
+  }, [m.id]);
   useEffect(() => {
     let cancelled = false,
       object = "";
@@ -798,13 +803,14 @@ export function MeetingWorkspace({
                 </label>
                 <span>{memo.model}</span>
               </div>
-              {memo.sourceRevision !== m.revision && (
-                <div className="notice sand">
-                  Source details changed after these notes were generated.
-                  Review every item against the current transcript; accepted
-                  items from the old source remain stale.
-                </div>
-              )}
+              {memo.sourceRevision !== m.revision &&
+                memo.items.some((i) => i.reviewedRevision !== m.revision) && (
+                  <div className="notice sand">
+                    Source details changed after these notes were generated.
+                    Review every item against the current transcript; accepted
+                    items from the old source remain stale.
+                  </div>
+                )}
               <div className="memo-list">
                 {memo.items.map((item) => (
                   <article
@@ -973,7 +979,11 @@ export function MeetingWorkspace({
                                         ...v,
                                         items: v.items.map((x) =>
                                           x.id === item.id
-                                            ? { ...x, review: state }
+                                            ? {
+                                                ...x,
+                                                review: state,
+                                                reviewedRevision: m.revision,
+                                              }
                                             : x,
                                         ),
                                       }
@@ -1029,6 +1039,23 @@ export function MeetingWorkspace({
                   {j.billing.replaceAll("_", " ")}
                 </span>
                 <p>{j.message}</p>
+                {j.usage && (
+                  <p className="small muted">
+                    {j.usage.inputTokens !== null
+                      ? `${j.usage.inputTokens} input tokens · ${j.usage.outputTokens ?? "unknown"} output tokens`
+                      : j.usage.seconds !== null
+                        ? `${j.usage.seconds.toFixed(1)} seconds reported`
+                        : "Provider usage not reported"}
+                    . Usage is not an invoice.
+                  </p>
+                )}
+                <p className="small muted">
+                  Estimate:{" "}
+                  {j.estimateUsd != null
+                    ? `US$${j.estimateUsd.toFixed(3)}`
+                    : "unknown"}{" "}
+                  · {j.createdAt.slice(0, 10)}
+                </p>
                 {j.requestId && <code>Provider request: {j.requestId}</code>}
               </div>
             ))}

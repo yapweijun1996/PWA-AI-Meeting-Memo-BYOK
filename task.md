@@ -1,6 +1,6 @@
 # Implementation tasks
 
-Updated: 2026-11-04. Current stage: documentation complete; application implementation has not started.
+Updated: 2026-11-04. Current stage: P0 implementation and browser verification in progress. Live paid API and physical-device acceptance remain separate.
 
 This file tracks execution. [Product requirements](docs/PRODUCT.md), [architecture](docs/ARCHITECTURE.md), [feasibility](docs/FEASIBILITY.md), [deployment](docs/DEPLOYMENT.md), and [the roadmap](docs/ROADMAP.md) define the detailed contracts. A checked task requires evidence, not just code or a proposed design.
 
@@ -78,7 +78,7 @@ Dependency: Phase 0 provider decision and Phase 2 storage/evidence contracts.
 - [ ] I02 — Implement the selected speech adapter with verified capability checks, normalized output, sanitized provenance, and explicit SDK retry settings.
 - [ ] I03 — Add data-destination confirmation, dated stage estimates, unknown-rate handling, and explicit authorization before submission.
 - [ ] I04 — Implement supported audio preparation in bounded workers; preserve independent channels and source offsets and reject unsupported inputs gracefully.
-- [ ] I05 — Persist job intent, per-chunk results, provisional stream state, and separate execution/billing status.
+- [x] I05 — Persist job intent, per-chunk results, provisional stream state, and separate execution/billing status.
 - [ ] I06 — Implement pause/cancel/reload recovery, key re-entry, verified file re-selection, and polling of recorded provider job IDs where supported.
 - [ ] I07 — Handle ambiguous paid outcomes through review; prevent automatic resubmission from the scheduler, SDK, worker, or connectivity event.
 - [ ] I08 — Run authorized browser integration and failure tests; record provider/model, fixture, browser, source commit, usage, and outcome without storing private recordings in Git.

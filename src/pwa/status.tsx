@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Download, RefreshCw, WifiOff } from "lucide-react";
 import { isProcessing } from "../jobs/runner";
+import { flushWrites } from "../storage/repository";
 export function PwaStatus() {
+  const [refreshReady, setRefreshReady] = useState(false);
   const [waiting, setWaiting] = useState<ServiceWorker>(),
     [updating, setUpdating] = useState(false),
     [error, setError] = useState(""),
@@ -14,6 +16,15 @@ export function PwaStatus() {
   >();
   useEffect(() => {
     const on = () => setOffline(!navigator.onLine);
+    let controlled = !!navigator.serviceWorker?.controller;
+    const controlChanged = () => {
+      if (controlled) setRefreshReady(true);
+      controlled = true;
+    };
+    navigator.serviceWorker?.addEventListener(
+      "controllerchange",
+      controlChanged,
+    );
     const prompt = (e: Event) => {
       e.preventDefault();
       setInstall(
@@ -57,6 +68,10 @@ export function PwaStatus() {
         );
     }
     return () => {
+      navigator.serviceWorker?.removeEventListener(
+        "controllerchange",
+        controlChanged,
+      );
       removeEventListener("online", on);
       removeEventListener("offline", on);
       removeEventListener("beforeinstallprompt", prompt);
@@ -69,7 +84,19 @@ export function PwaStatus() {
     }
     if (!confirm("Apply the update now? Save any open text edits first."))
       return;
+    try {
+      await flushWrites();
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Save your changes before updating.",
+      );
+      return;
+    }
     setUpdating(true);
+    if (!waiting && refreshReady) {
+      location.reload();
+      return;
+    }
     const timer = setTimeout(() => {
       setUpdating(false);
       setError("Update did not activate. Try again when connected.");
@@ -93,7 +120,7 @@ export function PwaStatus() {
           connection.
         </div>
       )}
-      {waiting && (
+      {(waiting || refreshReady) && (
         <div className="notice update" role="status">
           <RefreshCw size={17} />
           <span>A new version is ready. Save your work before updating.</span>

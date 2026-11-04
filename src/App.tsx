@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ArrowUpRight,
+  ArrowUp,
   AudioLines,
   BookOpen,
   ChevronRight,
@@ -48,6 +49,22 @@ export default function App() {
     [mobileNav, setMobileNav] = useState(false),
     [help, setHelp] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
+  const [topHidden, setTopHidden] = useState(false),
+    [showTop, setShowTop] = useState(false);
+  useEffect(() => {
+    let last = scrollY;
+    const onScroll = () => {
+      const y = scrollY;
+      if (Math.abs(y - last) > 14) {
+        setTopHidden(y > last && y > 100);
+        last = y;
+      }
+      setShowTop(y > 700);
+    };
+    addEventListener("scroll", onScroll, { passive: true });
+    return () => removeEventListener("scroll", onScroll);
+  }, []);
+
   function reportError(message: string) {
     setError(message);
     window.dispatchEvent(
@@ -93,18 +110,27 @@ export default function App() {
     return () => removeEventListener("memo-storage-changed", fn);
   }, [refresh]);
   useEffect(() => {
+    let cancelled = false;
     const id = route.match(/^\/meetings\/([^/]+)/)?.[1];
     setCurrent(undefined);
     if (id) {
       setLoading(true);
       void getMeeting(id)
         .then((m) => {
+          if (cancelled) return;
           if (!m) throw new Error("This meeting is no longer available.");
           setCurrent(m);
         })
-        .catch((e) => setError(e.message))
-        .finally(() => setLoading(false));
+        .catch((e) => {
+          if (!cancelled) setError(e.message);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
     }
+    return () => {
+      cancelled = true;
+    };
   }, [route]);
   useEffect(() => {
     const guard = (e: BeforeUnloadEvent) => {
@@ -230,7 +256,7 @@ export default function App() {
         </div>
       </aside>
       <div className="main-shell">
-        <header className="topbar">
+        <header className={`topbar ${topHidden ? "topbar-hidden" : ""}`}>
           <div className="breadcrumb">
             <button
               className="icon-button mobile-menu"
@@ -274,7 +300,7 @@ export default function App() {
                 key={current.id}
                 meeting={current}
                 onUpdate={(m) => {
-                  setCurrent(m);
+                  if (location.hash === `#/meetings/${m.id}`) setCurrent(m);
                   void refresh();
                 }}
                 onDelete={async () => {
@@ -536,6 +562,22 @@ export default function App() {
           )}
         </main>
       </div>
+      {showTop && (
+        <button
+          className={`back-to-top ${current?.audio ? "above-player" : ""}`}
+          aria-label="Back to top"
+          onClick={() =>
+            scrollTo({
+              top: 0,
+              behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+                ? "auto"
+                : "smooth",
+            })
+          }
+        >
+          <ArrowUp size={18} />
+        </button>
+      )}
       {newOpen && (
         <NewMeeting
           onClose={() => setNewOpen(false)}

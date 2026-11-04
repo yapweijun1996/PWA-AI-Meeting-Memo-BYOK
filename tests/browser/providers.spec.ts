@@ -228,13 +228,11 @@ test("audio upload, diarization normalization and full-audio backup work through
   wav.writeUInt16LE(16, 34);
   wav.write("data", 36);
   wav.writeUInt32LE(32000, 40);
-  await page
-    .getByLabel("Attach audio", { exact: true })
-    .setInputFiles({
-      name: "synthetic-silence.wav",
-      mimeType: "audio/wav",
-      buffer: wav,
-    });
+  await page.getByLabel("Attach audio", { exact: true }).setInputFiles({
+    name: "synthetic-silence.wav",
+    mimeType: "audio/wav",
+    buffer: wav,
+  });
   await expect(
     page.getByText("synthetic-silence.wav", { exact: true }).first(),
   ).toBeVisible();
@@ -299,4 +297,95 @@ test("cancelling a submitted request records billing uncertainty", async ({
   await expect(
     page.getByText("Memo · outcome unknown", { exact: true }),
   ).toBeVisible();
+});
+
+test("a completed background request cannot replace a different meeting view", async ({
+  page,
+}) => {
+  let release: () => void = () => {};
+  await page.route("https://api.openai.com/v1/responses", async (route) => {
+    const input = JSON.parse(route.request().postDataJSON().input);
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await route.fulfill({
+      json: {
+        status: "completed",
+        output: [
+          {
+            type: "message",
+            content: [
+              {
+                type: "output_text",
+                text: JSON.stringify({
+                  items: [
+                    {
+                      type: "summary",
+                      text: "Original meeting notes",
+                      owner_speaker_id: null,
+                      due_date: null,
+                      due_original: null,
+                      source_segment_ids: [input.segments[0].id],
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        ],
+      },
+      headers: { "Access-Control-Allow-Origin": "*" },
+    });
+  });
+  await page.goto(base);
+  await create(page, "Original meeting");
+  const hash = new URL(page.url()).hash,
+    id = hash.split("/").at(-1)!;
+  await page.getByRole("link", { name: "Settings & API keys" }).click();
+  await page
+    .getByLabel("OpenAI API key", { exact: true })
+    .fill("synthetic-test-only");
+  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.evaluate((hash) => {
+    location.hash = hash;
+  }, hash);
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page
+    .getByRole("button", { name: "Generate meeting notes", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Confirm and send", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Stop waiting", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: /Your meetings/ }).click();
+  await create(page, "Different meeting");
+  release();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (id) =>
+          new Promise<string>((resolve) => {
+            const open = indexedDB.open("meeting-memo-byok-v1");
+            open.onsuccess = () => {
+              const db = open.result,
+                read = db
+                  .transaction("meetings")
+                  .objectStore("meetings")
+                  .get(id);
+              read.onsuccess = () => {
+                resolve(read.result?.jobs.at(-1)?.state || "");
+                db.close();
+              };
+            };
+          }),
+        id,
+      ),
+    )
+    .toBe("completed");
+  await expect(
+    page.getByRole("heading", { name: "Different meeting", exact: true }),
+  ).toBeVisible();
+  expect(new URL(page.url()).hash).not.toBe(hash);
 });

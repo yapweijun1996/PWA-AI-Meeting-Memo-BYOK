@@ -3,6 +3,7 @@ import {
   id,
   segment,
   type Meeting,
+  type Job,
   type MemoItem,
   type Speaker,
   type Segment,
@@ -316,6 +317,10 @@ export async function generateMemo(
   m: Meeting,
   key: string,
   signal: AbortSignal,
+  onUsage?: (
+    usage: NonNullable<Job["usage"]>,
+    requestId: string | null,
+  ) => void,
 ) {
   if (!key.trim())
     throw new ProviderError("Enter an OpenAI key in Settings.", false);
@@ -368,6 +373,13 @@ export async function generateMemo(
   const response = z
     .object({
       status: z.string(),
+      id: z.string().max(200).optional(),
+      usage: z
+        .object({
+          input_tokens: z.number().int().nonnegative(),
+          output_tokens: z.number().int().nonnegative(),
+        })
+        .optional(),
       output: z.array(
         z.object({
           type: z.string(),
@@ -378,6 +390,15 @@ export async function generateMemo(
       ),
     })
     .safeParse(value);
+  if (response.success)
+    onUsage?.(
+      {
+        inputTokens: response.data.usage?.input_tokens ?? null,
+        outputTokens: response.data.usage?.output_tokens ?? null,
+        seconds: null,
+      },
+      response.data.id ?? null,
+    );
   if (!response.success || response.data.status !== "completed")
     throw new ProviderError(
       "The memo response was incomplete or refused. Existing notes were preserved.",

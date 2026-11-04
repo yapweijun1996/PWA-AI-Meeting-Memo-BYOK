@@ -188,7 +188,7 @@ export function markdown(m: Meeting): string {
   const memo = m.memos.at(-1);
   if (memo) {
     lines.push(
-      `## Meeting memo${memo.sourceRevision !== m.revision ? " — source changed; re-review required" : ""}`,
+      `## Meeting memo${memo.sourceRevision !== m.revision && memo.items.some((i) => i.reviewedRevision !== m.revision) ? " — source changed; re-review required" : ""}`,
       "",
     );
     for (const item of memo.items.filter((i) => i.review !== "rejected")) {
