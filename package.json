@@ -13,7 +13,9 @@
     "typecheck": "tsc -b",
     "lint": "eslint src tests",
     "test:unit": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:pwa": "node scripts/test-update.mjs",
+    "check:artifact": "node scripts/check-artifact.mjs"
   },
   "dependencies": {
     "fflate": "0.8.3",

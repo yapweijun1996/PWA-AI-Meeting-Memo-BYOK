@@ -16,6 +16,9 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    concurrency:
+      group: verify-${{ github.ref }}
+      cancel-in-progress: true
     env:
       VITE_BASE_PATH: /PWA-AI-Meeting-Memo-BYOK/
       VITE_BUILD_ID: ${{ github.sha }}
@@ -25,7 +28,7 @@ jobs:
       - name: Use the project Node runtime
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '24'
+          node-version-file: .node-version
           cache: npm
       - name: Install the locked dependency tree
         run: npm ci
@@ -41,6 +44,10 @@ jobs:
         run: npx --no-install playwright install --with-deps chromium webkit
       - name: Verify the production build in browsers
         run: npm run test:e2e
+      - name: Verify PWA updates and artifact boundaries
+        run: |
+          npm run test:pwa
+          npm run check:artifact
       - name: Upload only the verified site
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5

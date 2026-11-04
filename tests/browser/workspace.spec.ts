@@ -54,9 +54,7 @@ test("local review, corrections, undo, speaker confirmation and reload", async (
   await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
-test("keys are session-only and do not enter local data or JSON exports", async ({
-  page,
-}) => {
+test("keys stay in session memory and clear on reload", async ({ page }) => {
   await page.goto(`${base}#/settings`);
   await page
     .getByLabel("OpenAI API key", { exact: true })

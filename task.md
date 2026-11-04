@@ -48,7 +48,7 @@ Dependency: product and architecture decisions. Synthetic UI/storage work does n
 - [x] F05 — Add manifest identity, start URL/scope, application icons, and install guidance matched to the deployment base.
 - [x] F06 — Implement scoped/versioned app-shell caching and a truthful offline state; bypass provider traffic and user content in response caches.
 - [x] F07 — Implement waiting-worker notification, draft-safe user-controlled activation, visible update progress, and failure recovery.
-- [ ] F08 — Add the documented lint, typecheck, unit, build, and production-path browser scripts using synthetic fixtures.
+- [x] F08 — Add the documented lint, typecheck, unit, build, and production-path browser scripts using synthetic fixtures.
 - [x] F09 — Verify local clean install/build, hash-link refresh, manifest/assets/worker paths, offline shell, and update from build N to N+1.
 
 Acceptance: a runnable static app and repeatable checks exist. Provider quality and full meeting processing may still be pending; those capabilities are not advertised as complete.
