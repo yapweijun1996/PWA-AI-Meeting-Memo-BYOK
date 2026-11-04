@@ -104,7 +104,7 @@ Dependency: runnable app, passing documented checks, and authorization for publi
 
 - [ ] R01 — Choose a dedicated production hostname or explicitly document acceptance of the shared owner-hostname trust boundary for a personal prototype.
 - [x] R02 — Review the inactive workflow against the real package/scripts and current action/runtime compatibility, then activate `.github/workflows/pages.yml`.
-- [ ] R03 — Verify that PRs only check, failed checks prevent publication, only trusted `main` publishes, stale commits are skipped, and only `dist/` is uploaded.
+- [x] R03 — Verify that PRs only check, failed checks prevent publication, only trusted `main` publishes, stale commits are skipped, and only `dist/` is uploaded.
 - [x] R04 — Configure/recheck the `github-pages` environment branch restrictions; keep provider keys out of workflow and build inputs.
 - [ ] R05 — Complete an authorized deployment and record the source commit, successful Actions run, deployment URL, and deployed asset/build identity.
 - [ ] R06 — Test actual production-origin CORS, HTTPS, hash refresh, installed launch, worker scope, cache behavior, and unexpected network destinations.

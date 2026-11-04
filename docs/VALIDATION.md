@@ -8,8 +8,8 @@ Date: 2026-11-04. Product: browser-first BYOK beta. Host used for local checks: 
 | --- | --- |
 | Lint and TypeScript | PASS on the implementation candidate |
 | Unit tests | PASS: 22 tests covering schemas, evidence revisions, undo, invalid source IDs, nullable fields, refusal, incomplete responses, request limits, storage conflicts, deletion, and backup validation |
-| Browser workflow | PASS: full 30-case Chromium/WebKit baseline, followed by four focused cases covering the expanded continuous recording-to-backup workflow and new timeout regression; CI will verify all 32 current cases together |
-| PWA update | PASS in both engines: waiting-worker prompt, explicit activation/reload, saved meeting preserved, unrelated cache retained |
+| Browser workflow | PASS: all 32 Chromium/WebKit cases in the clean GitHub Actions run linked below, plus focused local regressions |
+| PWA update | PASS in both engines: waiting-worker prompt, explicit activation/reload, open-editor/active-request protection, saved draft and old asset preserved, unrelated cache retained, visible activation failure and forward recovery |
 | Accessibility | PASS automated axe WCAG A/AA library/settings checks; keyboard/focus and 390px navigation exercised; not a complete assistive-technology certification |
 | Production artifact | PASS static-file/path/manifest checks and scan for known credential/test fixture patterns; no guarantee that scanning alone detects all secrets |
 | Dependency audit | PASS: zero reported production or development vulnerabilities in the checked lockfile |
@@ -20,9 +20,15 @@ The continuous workflow uses a generated one-second silent WAV and mocked speech
 
 ## Deployment
 
-Status: pending first verified GitHub Actions publication. The Pages configuration already uses workflows with HTTPS, and its environment branch policy allows only `main`. A configured URL alone is not deployment evidence. Record the successful run and served build after publication.
+Status: first verified GitHub Actions publication **PASS**. The environment branch policy allows only `main`; provider keys are absent from the workflow and build.
 
-Target: https://yapweijun1996.github.io/PWA-AI-Meeting-Memo-BYOK/
+Live site: [Meeting Memo](https://yapweijun1996.github.io/PWA-AI-Meeting-Memo-BYOK/).
+
+- Source/build: `18cd59c2a114385c449c4b0d493ea28c30083a3a`.
+- Successful verify and publish: [Actions run 41845407515](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41845407515).
+- Served worker cache identity: `1b1db8a1eb23af4e`, independently read from the deployed worker and matching CI build output.
+- Live browser inspection at 2026-11-04 14:20 UTC: Chromium `156.0.8078.4` and Linux WebKit `27.2` both PASS HTTPS, manifest/icons, exact source/build identity, project worker scope, direct hash refresh, synthetic meeting persistence, offline reload, static-only scoped caches, 390px overflow check, and no unexpected external requests or page errors.
+- A real deployed N-to-N+1 client check is in progress; its result is recorded separately from the local update harness.
 
 ## Acceptance intentionally still open
 
@@ -40,7 +46,7 @@ P1/P2 items such as microphone capture, full waveforms, encrypted backups, local
 
 | Area | Result and scope |
 | --- | --- |
-| Hosting and build identity | Local production-path checks PASS; first Actions deployment and live build verification pending |
+| Hosting and build identity | PASS clean Actions checks, trusted-main publication and served build/worker identities; PR permissions and failed-check gating verified from workflow structure |
 | Privacy and keys | PASS memory-only/session clearing, destination-specific mock headers, exported credential exclusion and static artifact checks; shared-origin production acceptance NOT RUN |
 | Provider access and quality | Mock orchestration PASS; authenticated production CORS, valid account/model access, real accuracy and charges NOT RUN |
 | Recovery and billing | PASS simulated disconnect, incomplete body, timeout, cancellation and reload with no automatic resubmission; real phone suspension and provider settlement NOT RUN |
@@ -50,8 +56,8 @@ P1/P2 items such as microphone capture, full waveforms, encrypted backups, local
 | Memo | PASS structural/source validation, nullable owner/date, refusal, human edit/accept/reject controls and version preservation; real factual quality and review time NOT RUN |
 | Storage and backup | PASS Chromium/WebKit transactions, conflicts, injected quota errors, missing-audio labeling, atomic delete, JSON/ZIP restore and malformed archive/schema rejection; OS eviction and historical production migration NOT RUN (first schema release) |
 | Manifest and install | PASS identity, scope, icons and project launch URL; physical Home Screen/installed launch NOT RUN |
-| Offline and worker scope | PASS cached app shell and local meeting reload, project-only cache/worker scope and unrelated-cache retention |
-| Update lifecycle | PASS local two-engine N-to-N+1 prompt, explicit activation, progress and preserved saved meeting; live update and operational revert pending |
+| Offline and worker scope | PASS local and live cached app shell/local meeting reload, project-only cache/worker scope and unrelated-cache retention |
+| Update lifecycle | PASS local two-engine N-to-N+1 prompt, explicit activation/progress, draft/request protection, old-client asset fallback, visible failure and forward recovery; live update in progress; destructive migration/revert NOT RUN |
 | Responsive and navigation | PASS 390px layout, drawer, hash refresh, smart top bar and contextual scroll-to-top; physical landscape/keyboard and pinch gestures NOT RUN |
 | Accessibility | PASS automated library/settings axe A/AA and exercised keyboard/focus; full screen-reader certification NOT RUN |
 | iOS status bar and safe areas | CSS viewport/safe-area and opaque light theme implemented; physical Safari/standalone inspection NOT RUN |

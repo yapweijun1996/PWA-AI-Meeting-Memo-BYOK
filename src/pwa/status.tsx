@@ -78,6 +78,10 @@ export function PwaStatus() {
     };
   }, []);
   async function update() {
+    if (document.querySelector("dialog[open]")) {
+      setError("Save or close the open editor before updating.");
+      return;
+    }
     if (isProcessing()) {
       setError("Finish the active provider request before updating.");
       return;
