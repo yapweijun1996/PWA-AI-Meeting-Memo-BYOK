@@ -43,7 +43,7 @@ Dependency: product and architecture decisions. Synthetic UI/storage work does n
 
 - [x] F01 — Create the TypeScript/Vite app, choose compatible dependency versions, commit the npm lockfile, and pin the local/CI Node major.
 - [ ] F02 — Implement project-base configuration and hash navigation for `/PWA-AI-Meeting-Memo-BYOK/`.
-- [ ] F03 — Build Meeting Library, New Meeting/Import, Processing, Speaker Review, Transcript Editor, Memo Review, and Settings screen foundations.
+- [x] F03 — Build Meeting Library, New Meeting/Import, Processing, Speaker Review, Transcript Editor, Memo Review, and Settings screen foundations.
 - [ ] F04 — Establish accessible controls, responsive layout, compact evidence player, safe areas, opaque theme-aware system chrome, and mobile form sizing.
 - [ ] F05 — Add manifest identity, start URL/scope, application icons, and install guidance matched to the deployment base.
 - [ ] F06 — Implement scoped/versioned app-shell caching and a truthful offline state; bypass provider traffic and user content in response caches.
