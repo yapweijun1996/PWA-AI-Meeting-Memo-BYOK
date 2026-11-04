@@ -80,7 +80,7 @@ Dependency: Phase 0 provider decision and Phase 2 storage/evidence contracts.
 - [x] I04 — Implement supported audio preparation in bounded workers; preserve independent channels and source offsets and reject unsupported inputs gracefully.
 - [x] I05 — Persist job intent, per-chunk results, provisional stream state, and separate execution/billing status.
 - [x] I06 — Implement pause/cancel/reload recovery, key re-entry, verified file re-selection, and polling of recorded provider job IDs where supported.
-- [ ] I07 — Handle ambiguous paid outcomes through review; prevent automatic resubmission from the scheduler, SDK, worker, or connectivity event.
+- [x] I07 — Handle ambiguous paid outcomes through review; prevent automatic resubmission from the scheduler, SDK, worker, or connectivity event.
 - [ ] I08 — Run authorized browser integration and failure tests; record provider/model, fixture, browser, source commit, usage, and outcome without storing private recordings in Git.
 
 Acceptance: a real supported recording produces usable local evidence, completed results survive interruption, and uncertain requests are never silently resubmitted.
