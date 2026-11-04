@@ -1,0 +1,83 @@
+# Inactive blueprint. See ../DEPLOYMENT.md for application prerequisites.
+# Copy to .github/workflows/pages.yml only with a runnable, verified app.
+name: Verify and publish meeting memo
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VITE_BASE_PATH: /PWA-AI-Meeting-Memo-BYOK/
+      VITE_BUILD_ID: ${{ github.sha }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Use the project Node runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install the locked dependency tree
+        run: npm ci
+      - name: Lint source
+        run: npm run lint
+      - name: Check types
+        run: npm run typecheck
+      - name: Verify domain behavior
+        run: npm run test:unit
+      - name: Build the static application
+        run: npm run build
+      - name: Install test browsers
+        run: npx --no-install playwright install --with-deps chromium webkit
+      - name: Verify the production build in browsers
+        run: npm run test:e2e
+      - name: Upload only the verified site
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+        with:
+          path: dist
+
+  publish:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: pages-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.publish.outputs.page_url }}
+    steps:
+      - name: Check that this is still the main head
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
+          if [ "$latest_sha" = "$GITHUB_SHA" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Configure the trusted Pages deployment
+        if: steps.current.outputs.publish == 'true'
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+      - name: Publish the verified artifact
+        id: publish
+        if: steps.current.outputs.publish == 'true'
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
