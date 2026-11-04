@@ -26,7 +26,7 @@ This file tracks execution. [Product requirements](docs/PRODUCT.md), [architectu
 
 Dependency: the agreed product contract. Use a minimal browser harness; application foundation work can proceed with synthetic data while live evaluation prerequisites are pending. A real speech provider remains a gate for the speaker-aware release.
 
-- [ ] V01 — Define the candidate speech/memo provider matrix, including separate key requirements, metadata, limits, lifecycle, and pricing basis.
+- [x] V01 — Define the candidate speech/memo provider matrix, including separate key requirements, metadata, limits, lifecycle, and pricing basis.
 - [ ] V02 — Prepare a small private, consented evaluation set covering Chinese/English, Singlish, ERP terms, 2–5 speakers, noise, overlap, short replies, silence, and a long recording.
 - [ ] V03 — Verify exact production-origin CORS behavior, request headers, supported formats, response visibility, and account access for each candidate.
 - [ ] V04 — Demonstrate real speaker/time evidence from at least one durable candidate. Missing timestamps or identity remain unresolved.
