@@ -430,6 +430,43 @@ test("cancelling a submitted request records billing uncertainty", async ({
   ).toBeVisible();
 });
 
+test("a rejected HTTP request is failed with unconfirmed billing, not marked unsent", async ({
+  page,
+}) => {
+  let calls = 0;
+  await page.route("https://api.openai.com/v1/responses", async (route) => {
+    calls++;
+    await route.fulfill({
+      status: 401,
+      headers: { "Access-Control-Allow-Origin": "*" },
+      json: {},
+    });
+  });
+  await page.goto(base);
+  await create(page);
+  const hash = new URL(page.url()).hash;
+  await page.getByRole("link", { name: "Settings & API keys" }).click();
+  await page
+    .getByLabel("OpenAI API key", { exact: true })
+    .fill("synthetic-test-only");
+  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.evaluate((value) => {
+    location.hash = value;
+  }, hash);
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page
+    .getByRole("button", { name: "Generate meeting notes", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Confirm and send", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("HTTP 401");
+  await page.getByText("Processing history", { exact: false }).click();
+  await expect(page.getByText("Memo · failed", { exact: true })).toBeVisible();
+  await expect(page.getByText(/billing: possibly charged/)).toBeVisible();
+  expect(calls).toBe(1);
+});
+
 test("a completed background request cannot replace a different meeting view", async ({
   page,
 }) => {

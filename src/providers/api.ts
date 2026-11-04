@@ -13,6 +13,7 @@ export class ProviderError extends Error {
     message: string,
     public uncertain: boolean,
     public charged: boolean = false,
+    public submitted: boolean = false,
   ) {
     super(message);
   }
@@ -48,6 +49,8 @@ async function post(
     throw new ProviderError(
       `Provider returned HTTP ${response.status}. ${uncertain ? "The outcome may be billable; review your account before retrying." : "Check your key, account access, quota, and input. No automatic retry was made."}`,
       uncertain,
+      false,
+      true,
     );
   }
   try {

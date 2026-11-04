@@ -7,6 +7,25 @@ import {
 } from "../src/providers/api";
 import { sampleMeeting } from "../src/domain/model";
 afterEach(() => vi.unstubAllGlobals());
+it.each([
+  [401, false],
+  [429, false],
+  [503, true],
+] as const)(
+  "records HTTP %i as submitted, keeping rejection separate from billing",
+  async (status, uncertain) => {
+    const fetch = vi.fn().mockResolvedValue(new Response("{}", { status }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(
+      transcribe(
+        new Blob(["audio"]),
+        "synthetic-test",
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ submitted: true, uncertain });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  },
+);
 it("normalizes words into actual speaker turns without confirming identities", () => {
   const result = normalizeSpeech({
     results: {

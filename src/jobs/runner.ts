@@ -168,7 +168,9 @@ export async function runJob(
                     ? "possibly_charged"
                     : failure.charged
                       ? "provider_reported"
-                      : "not_submitted",
+                      : failure.submitted
+                        ? "possibly_charged"
+                        : "not_submitted",
                   updatedAt: new Date().toISOString(),
                   message: failure.message,
                 }
