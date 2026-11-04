@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 // A service-worker-controlled WebKit request can bypass page.route. Block workers
 // in network-mock contexts so CI cannot accidentally make a live provider call.
 test.use({ serviceWorkers: "block" });
@@ -195,9 +196,40 @@ test("uncertain requests are recorded and never automatically resubmitted", asyn
   expect(calls).toBe(1);
 });
 
-test("audio upload, diarization normalization and full-audio backup work through the browser", async ({
+test("recording, transcript, reviewed memo, exports and full backup form one workflow", async ({
   page,
 }, info) => {
+  await page.route("https://api.openai.com/v1/responses", async (route) => {
+    const input = JSON.parse(route.request().postDataJSON().input);
+    await route.fulfill({
+      headers: { "Access-Control-Allow-Origin": "*" },
+      json: {
+        status: "completed",
+        output: [
+          {
+            type: "message",
+            content: [
+              {
+                type: "output_text",
+                text: JSON.stringify({
+                  items: [
+                    {
+                      type: "summary",
+                      text: "A greeting was exchanged.",
+                      owner_speaker_id: null,
+                      due_date: null,
+                      due_original: null,
+                      source_segment_ids: [input.segments[0].id],
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
   await page.route("https://api.deepgram.com/v1/listen?**", async (route) => {
     if (route.request().method() === "OPTIONS") {
       await route.fulfill({
@@ -262,6 +294,9 @@ test("audio upload, diarization normalization and full-audio backup work through
   await page
     .getByLabel("Deepgram API key", { exact: true })
     .fill("synthetic-deepgram-only");
+  await page
+    .getByLabel("OpenAI API key", { exact: true })
+    .fill("synthetic-test-only");
   await page.getByRole("button", { name: "Save session keys" }).click();
   await page.evaluate((hash) => {
     location.hash = hash;
@@ -275,7 +310,37 @@ test("audio upload, diarization normalization and full-audio backup work through
   await expect(page.getByText("Needs a name", { exact: true })).toHaveCount(2);
   await page.getByRole("tab", { name: /Transcript/ }).click();
   await expect(page.getByText("Hello", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page
+    .getByRole("button", { name: "Generate meeting notes", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Confirm and send", exact: true })
+    .click();
+  await expect(page.getByLabel("summary note")).toHaveValue(
+    "A greeting was exchanged.",
+  );
+  await page.getByLabel("summary note").fill("Human reviewed greeting.");
+  await page.getByRole("button", { name: "✓ Accept", exact: true }).click();
   await page.getByText("Export", { exact: true }).click();
+  for (const [label, extension] of [
+    ["MD notes", "md"],
+    ["TXT notes", "txt"],
+    ["Meeting JSON (no audio)", "json"],
+  ]) {
+    const exported = page.waitForEvent("download");
+    await page.getByRole("button", { name: label, exact: true }).click();
+    const document = await exported,
+      exportedPath = info.outputPath(`reviewed.${extension}`);
+    await document.saveAs(exportedPath);
+    const text = await readFile(exportedPath, "utf8");
+    expect(text).toContain("Human reviewed greeting.");
+    expect(text).toContain("accepted");
+    expect(text).not.toContain("synthetic-test-only");
+    expect(text).not.toContain("synthetic-deepgram-only");
+    if (extension === "json")
+      expect(JSON.parse(text).audio.present).toBe(false);
+  }
   const downloaded = page.waitForEvent("download");
   await page.getByRole("button", { name: "Full backup with audio" }).click();
   const file = await downloaded,
@@ -287,7 +352,52 @@ test("audio upload, diarization normalization and full-audio backup work through
     page.getByRole("heading", { name: "ERP review (restored)", exact: true }),
   ).toBeVisible();
   await expect(page.locator("audio")).toHaveAttribute("src", /^blob:/);
+  await page.getByRole("tab", { name: /Transcript/ }).click();
   await expect(page.getByText("Hello", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await expect(page.getByLabel("summary note")).toHaveValue(
+    "Human reviewed greeting.",
+  );
+  await expect(
+    page.getByRole("button", { name: "✓ Accept", exact: true }),
+  ).toHaveClass(/selected/);
+});
+
+test("a foreground timeout remains uncertain and never resubmits on reload", async ({
+  page,
+}) => {
+  let calls = 0;
+  await page.clock.install();
+  await page.route("https://api.openai.com/v1/responses", () => {
+    calls++;
+  });
+  await page.goto(base);
+  await create(page);
+  const hash = new URL(page.url()).hash;
+  await page.getByRole("link", { name: "Settings & API keys" }).click();
+  await page
+    .getByLabel("OpenAI API key", { exact: true })
+    .fill("synthetic-test-only");
+  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.evaluate((value) => {
+    location.hash = value;
+  }, hash);
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page
+    .getByRole("button", { name: "Generate meeting notes", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Confirm and send", exact: true })
+    .click();
+  await expect.poll(() => calls).toBe(1);
+  await page.clock.fastForward(9 * 60 * 1000 + 1);
+  await expect(page.getByRole("alert")).toContainText("may have been charged");
+  await page.getByText("Processing history", { exact: false }).click();
+  await expect(
+    page.getByText("Memo · outcome unknown", { exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  expect(calls).toBe(1);
 });
 
 test("cancelling a submitted request records billing uncertainty", async ({
