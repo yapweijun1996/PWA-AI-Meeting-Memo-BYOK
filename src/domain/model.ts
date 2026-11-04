@@ -26,7 +26,7 @@ export const JobSchema = z.object({
   message: z.string().max(1000), inputRevision: z.number().int().positive(),
 }).strict()
 export const MeetingSchema = z.object({
-  schemaVersion: z.literal(1), id: key, title: z.string().min(1).max(160),
+  schemaVersion: z.literal(1), version: z.number().int().nonnegative(), id: key, title: z.string().min(1).max(160),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), timezone: z.string().min(1).max(80),
   languages: z.string().max(100), attendees: z.array(z.string().max(80)).max(30), glossary: z.string().max(2000),
   kind: z.enum(['general','erp']), createdAt: z.string(), updatedAt: z.string(), revision: z.number().int().positive(),
@@ -56,7 +56,7 @@ export function validateMeeting(value: unknown): Meeting {
 }
 export function createMeeting(values: Partial<Pick<Meeting,'title'|'date'|'timezone'|'languages'|'attendees'|'glossary'|'kind'>> = {}): Meeting {
   const now = new Date().toISOString()
-  return validateMeeting({ schemaVersion:1, id:id(), title:'Untitled meeting', date:now.slice(0,10), timezone:Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', languages:'Chinese, English', attendees:[], glossary:'', kind:'general', createdAt:now, updatedAt:now, revision:1, synthetic:false, speakers:[], segments:[], history:[], undo:[], memos:[], jobs:[], audio:null, runs:[], ...values })
+  return validateMeeting({ schemaVersion:1, version:0, id:id(), title:'Untitled meeting', date:now.slice(0,10), timezone:Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', languages:'Chinese, English', attendees:[], glossary:'', kind:'general', createdAt:now, updatedAt:now, revision:1, synthetic:false, speakers:[], segments:[], history:[], undo:[], memos:[], jobs:[], audio:null, runs:[], ...values })
 }
 export function segment(text: string, speakerIds: string[] = [], start: number|null = null, end: number|null = null): Segment {
   return {id:id(), revision:1, start, end, speakerIds, text, originalText:text, reviewed:false, parents:[]}
