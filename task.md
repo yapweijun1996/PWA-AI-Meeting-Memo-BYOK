@@ -41,7 +41,7 @@ Acceptance: direct browser operation and usable speaker/time output are demonstr
 
 Dependency: product and architecture decisions. Synthetic UI/storage work does not depend on paid provider access.
 
-- [ ] F01 — Create the TypeScript/Vite app, choose compatible dependency versions, commit the npm lockfile, and pin the local/CI Node major.
+- [x] F01 — Create the TypeScript/Vite app, choose compatible dependency versions, commit the npm lockfile, and pin the local/CI Node major.
 - [ ] F02 — Implement project-base configuration and hash navigation for `/PWA-AI-Meeting-Memo-BYOK/`.
 - [ ] F03 — Build Meeting Library, New Meeting/Import, Processing, Speaker Review, Transcript Editor, Memo Review, and Settings screen foundations.
 - [ ] F04 — Establish accessible controls, responsive layout, compact evidence player, safe areas, opaque theme-aware system chrome, and mobile form sizing.
