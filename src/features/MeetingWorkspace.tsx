@@ -1484,7 +1484,7 @@ export function MeetingWorkspace({
             onSubmit={async (e) => {
               e.preventDefault();
               const f = new FormData(e.currentTarget),
-                boundary = String(f.get("time"));
+                boundary = String(f.get("time") ?? "");
               try {
                 await persist(
                   splitSegment(

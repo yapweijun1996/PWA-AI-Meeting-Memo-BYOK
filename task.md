@@ -62,7 +62,7 @@ Dependency: F01–F04. Begin with validated synthetic/imported evidence; preserv
 - [x] S03 — Add meeting creation/edit/delete and audio import, metadata, persistence state, playback, and object-URL cleanup.
 - [ ] S04 — Import plain text and structured transcripts with schema/resource validation; leave absent speaker/time/audio evidence explicit.
 - [ ] S05 — Build speaker samples, naming/confirmation, unknown identity, overlap indicators, and independent run/chunk label namespaces.
-- [ ] S06 — Implement transcript text edits, source playback, single/bulk reassignment with impact preview, speaker merge, segment split, and undo.
+- [x] S06 — Implement transcript text edits, source playback, single/bulk reassignment with impact preview, speaker merge, segment split, and undo.
 - [x] S07 — Preserve immutable original outputs and revision lineage; ensure historical citations survive merge/split and source changes mark memo review stale.
 - [ ] S08 — Handle quota/persistence denial, missing audio, interrupted writes, and deletion of this meeting's related records without touching unrelated origin storage.
 - [ ] S09 — Add versioned JSON/full backup export and validated restore, including ID collisions, absent audio, migrations, and exclusion of credentials.
