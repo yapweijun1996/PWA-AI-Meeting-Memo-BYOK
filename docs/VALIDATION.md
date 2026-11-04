@@ -7,8 +7,8 @@ Date: 2026-11-04. Product: browser-first BYOK beta. Host used for local checks: 
 | Check | Evidence |
 | --- | --- |
 | Lint and TypeScript | PASS on the implementation candidate |
-| Unit tests | PASS: 22 tests covering schemas, evidence revisions, undo, invalid source IDs, nullable fields, refusal, incomplete responses, request limits, storage conflicts, deletion, and backup validation |
-| Browser workflow | PASS: all 32 Chromium/WebKit cases in the clean GitHub Actions run linked below, plus focused local regressions |
+| Unit tests | PASS: 25 tests covering schemas, evidence revisions, undo, invalid source IDs, nullable fields, refusal, incomplete responses, HTTP rejection/billing separation, request limits, storage conflicts, deletion, and backup validation |
+| Browser workflow | PASS: all 34 current Chromium/WebKit cases locally; the clean GitHub Actions deployment runs linked below passed the prior 32-case baseline before the added two-engine HTTP rejection/billing regression |
 | PWA update | PASS in both engines: waiting-worker prompt, explicit activation/reload, open-editor/active-request protection, saved draft and old asset preserved, unrelated cache retained, visible activation failure and forward recovery |
 | Accessibility | PASS automated axe WCAG A/AA library/settings checks; keyboard/focus and 390px navigation exercised; not a complete assistive-technology certification |
 | Production artifact | PASS static-file/path/manifest checks and scan for known credential/test fixture patterns; no guarantee that scanning alone detects all secrets |
@@ -28,9 +28,12 @@ Live site: [Meeting Memo](https://yapweijun1996.github.io/PWA-AI-Meeting-Memo-BY
 - Successful verify and publish: [Actions run 41845407515](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41845407515).
 - Served worker cache identity: `1b1db8a1eb23af4e`, independently read from the deployed worker and matching CI build output.
 - Live browser inspection at 2026-11-04 14:20 UTC: Chromium `156.0.8078.4` and Linux WebKit `27.2` both PASS HTTPS, manifest/icons, exact source/build identity, project worker scope, direct hash refresh, synthetic meeting persistence, offline reload, static-only scoped caches, 390px overflow check, and no unexpected external requests or page errors.
-- A real deployed N-to-N+1 client check is in progress; its result is recorded separately from the local update harness.
+- Successful update-fix publication: source `6e0fcdf02833d71a32805f06e7215f21ba4738a1`, [Actions run 41847942972](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41847942972), worker cache `2832c156fa84a29e`.
+- **Live N-to-N+1 PASS**, 2026-11-04 14:35 UTC: both Chromium `156.0.8078.4` and Linux WebKit `27.2` held `4417977` open with an unsaved editor throughout the next real deployment. Neither silently refreshed. After saving and explicitly activating, both loaded `6e0fcdf`, retained the corrected meeting, fetched the previous hashed JavaScript while offline, preserved an unrelated cache, and reloaded the new build offline.
 
-Update regression found during release testing: `18cd59c → 4417977` preserved data in both engines, but Chromium offline reload still loaded the old HTML/build; WebKit loaded the new one. A local server with `Cache-Control: public, max-age=600` reproduced the Chromium failure. The fix bypasses HTTP cache during precaching, serves the activated release's index for navigation, and includes worker source in cache identity. The regression now passes locally in both engines, including distinct HTML release markers after offline reload and forward recovery. The fix still requires the next live-deployment check before R09 is complete.
+These are recorded verification snapshots. Later task/documentation commits use the same pipeline; find the current complete source SHA under Settings and compare it with the successful main Actions run. Do not infer a current deployment solely from an older recorded run.
+
+Update regression found and fixed during release testing: `18cd59c → 4417977` preserved data in both engines, but Chromium offline reload still loaded the old HTML/build; WebKit loaded the new one. Pages returned `Cache-Control: max-age=600`; a cacheable local server reproduced the Chromium failure. The fix bypasses HTTP cache during precaching, serves the activated release's index for navigation, and includes worker source in cache identity. It passes locally in both engines, including distinct HTML release markers after offline reload/forward recovery, and passes the live upgrade above. No data deletion was used to repair it.
 
 ## Acceptance intentionally still open
 
@@ -51,7 +54,7 @@ P1/P2 items such as microphone capture, full waveforms, encrypted backups, local
 | Hosting and build identity | PASS clean Actions checks, trusted-main publication and served build/worker identities; PR permissions and failed-check gating verified from workflow structure |
 | Privacy and keys | PASS memory-only/session clearing, destination-specific mock headers, exported credential exclusion and static artifact checks; shared-origin production acceptance NOT RUN |
 | Provider access and quality | Mock orchestration PASS; authenticated production CORS, valid account/model access, real accuracy and charges NOT RUN |
-| Recovery and billing | PASS simulated disconnect, incomplete body, timeout, cancellation and reload with no automatic resubmission; real phone suspension and provider settlement NOT RUN |
+| Recovery and billing | PASS simulated disconnect, incomplete body, timeout, cancellation, HTTP rejection and reload with no automatic resubmission; submitted/rejected requests retain unconfirmed billing separately from execution failure; real phone suspension and provider settlement NOT RUN |
 | Audio | PASS bounded synthetic upload, checksum persistence, playback Blob and restore; empty/oversized inputs and unsupported filenames rejected; malformed codec contents and measured physical-device limits NOT RUN |
 | Chunking and streaming | N/A: one original-container foreground upload; no slicing, remote queue/polling or streaming advertised |
 | Speakers and evidence | PASS synthetic speaker names/unknowns, bulk assignment, merge/split/undo and historical references; real diarization identity and overlap accuracy NOT RUN |
@@ -59,7 +62,7 @@ P1/P2 items such as microphone capture, full waveforms, encrypted backups, local
 | Storage and backup | PASS Chromium/WebKit transactions, conflicts, injected quota errors, missing-audio labeling, atomic delete, JSON/ZIP restore and malformed archive/schema rejection; OS eviction and historical production migration NOT RUN (first schema release) |
 | Manifest and install | PASS identity, scope, icons and project launch URL; physical Home Screen/installed launch NOT RUN |
 | Offline and worker scope | PASS local and live cached app shell/local meeting reload, project-only cache/worker scope and unrelated-cache retention |
-| Update lifecycle | PASS local two-engine N-to-N+1 prompt, explicit activation/progress, draft/request protection, old-client asset fallback, visible failure and forward recovery; live update in progress; destructive migration/revert NOT RUN |
+| Update lifecycle | PASS local two-engine N-to-N+1 prompt, explicit activation/progress, draft/request protection, old-client asset fallback, visible failure and forward recovery; live two-engine upgrade PASS; first-release schema v1 stayed compatible; destructive migration/revert NOT RUN and not introduced |
 | Responsive and navigation | PASS 390px layout, drawer, hash refresh, smart top bar and contextual scroll-to-top; physical landscape/keyboard and pinch gestures NOT RUN |
 | Accessibility | PASS automated library/settings axe A/AA and exercised keyboard/focus; full screen-reader certification NOT RUN |
 | iOS status bar and safe areas | CSS viewport/safe-area and opaque light theme implemented; physical Safari/standalone inspection NOT RUN |

@@ -1,8 +1,8 @@
 # GitHub Pages automatic deployment
 
-Status: deployment design and inactive example, 2026-11-04. This repository has no runnable app or active workflow yet. The example is intentionally outside `.github/workflows/` until its build and checks exist.
+Status: deployed browser beta, 2026-11-04. A runnable static app and all required scripts exist. [The active workflow](../.github/workflows/pages.yml) has completed verified publication; the reference under `docs/examples/` remains a template. See [validation](VALIDATION.md) for the exact successful run, served build and live-browser evidence.
 
-## Verified configuration
+## Initial verified configuration (before implementation)
 
 Read-only GitHub API inspection returned:
 
@@ -16,23 +16,25 @@ Read-only GitHub API inspection returned:
 }
 ```
 
-The last field summarizes the separate Actions workflows API call; it is not a Pages API field. The screenshot and live result agree that Settings > Pages > Build and deployment > Source is GitHub Actions. Configuration is ready for an Actions workflow, but deployment is not established.
+The last field summarizes the separate Actions workflows API call; it is not a Pages API field. The screenshot and live result agree that Settings > Pages > Build and deployment > Source is GitHub Actions. This initial snapshot predates the runnable app. Later publication must be established independently by a successful run and served-build checks.
 
 ## Build and release contract
 
-Use a static Vite build producing `dist/`, an npm lockfile, and the same pinned Node major locally and in CI (Node 24 is the initial proposal). The future package must define these real scripts:
+Use a static Vite build producing `dist/`, an npm lockfile, and the same pinned Node major locally and in CI (Node 22.23.3 is the tested runtime). The package defines these scripts:
 
 | Script | Expected responsibility |
 | --- | --- |
-| `npm run lint` | Source/configuration lint |
+| `npm run lint` | Application source and test lint |
 | `npm run typecheck` | Type checking without emitting |
 | `npm run test:unit` | Noninteractive domain/storage-adapter tests |
 | `npm run build` | Production static assets and generated PWA files |
 | `npm run test:e2e` | Browser smoke and critical recovery tests against the production build at its project base path |
+| `npm run test:pwa` | Two-engine lifecycle checks: request/editor protection, activation/progress/failure, saved draft, previous assets and forward recovery |
+| `npm run check:artifact` | Static-only dist contents, manifest identity/scope and known credential/fixture pattern checks |
 
-The E2E script must start a static preview server and shut it down, with Playwright configured for the same base path. Offline/update flows need dedicated tests; a dev-server run is insufficient. These scripts, Playwright dependencies, and tests are prerequisites, not files already present in the repository.
+The E2E script must start a static preview server and shut it down, with Playwright configured for the same base path. Offline/update flows need dedicated tests; a dev-server run is insufficient. These scripts and Playwright tests are present; `test:pwa` additionally checks update activation and `check:artifact` checks the release boundary.
 
-Once those prerequisites pass, copy [the workflow example](examples/github-pages.yml) to `.github/workflows/pages.yml` as part of the implementation/release change. It checks pull requests, builds on `main`, and publishes only successful trusted-main runs. Manual dispatch from other branches never deploys.
+The active workflow was copied from [the example](examples/github-pages.yml) after these prerequisites passed. It checks pull requests, builds on `main`, and publishes only successful trusted-main runs. Manual dispatch from other branches never deploys. The `github-pages` environment was rechecked through the API and permits only the `main` branch.
 
 The example uses action commit pins taken from the official Vite deployment guidance and checked for existence against their official repositories on 2026-11-04. Review pin updates and transitive dependencies normally; a resolvable commit alone is not a security audit.
 
@@ -44,7 +46,7 @@ The default deployment base is:
 /PWA-AI-Meeting-Memo-BYOK/
 ```
 
-The workflow supplies the public `VITE_BASE_PATH` setting. The future Vite config must read it as `base`; development may default to `/`. Derive app asset URLs and service-worker registration from `import.meta.env.BASE_URL`. This variable contains only a public path, never a key.
+The workflow supplies the public `VITE_BASE_PATH` setting. Vite reads it as `base`, defaulting to the repository path. Derive app asset URLs and service-worker registration from `import.meta.env.BASE_URL`. This variable contains only a public path, never a key.
 
 Use hash routing initially, such as `/PWA-AI-Meeting-Memo-BYOK/#/meetings/<id>`, so static-host navigation and refresh do not need server rewrites. A custom 404 router workaround is unnecessary for this design.
 
@@ -58,7 +60,7 @@ CI needs GitHub's scoped deployment token/OIDC permissions; it does not need an 
 
 Upload only `dist/`. Do not upload the repository root, `.env` files, recordings, backups, logs, or real transcripts. Tests use synthetic fixtures and mocked provider responses; paid integration evaluations are separate explicit runs, never every pull request.
 
-Keep build jobs at `contents: read`. Grant `pages: write` and `id-token: write` only to the deploy job, tied to the `github-pages` environment and the successful build artifact. Restrict the environment to `main` in repository settings when implementation is released. Do not use `pull_request_target` to execute contributor code with deployment permissions.
+Keep build jobs at `contents: read`. Grant `pages: write` and `id-token: write` only to the deploy job, tied to the `github-pages` environment and the successful build artifact. Preserve the verified `main` environment restriction. Do not use `pull_request_target` to execute contributor code with deployment permissions.
 
 The workflow does not cancel an already running deployment. Pending-run ordering is not a release chronology guarantee, so the deploy job also verifies that its commit is still the current `main` head before publishing. Use a normal revert/new commit for rollback rather than redeploying an old arbitrary run.
 
@@ -74,7 +76,9 @@ Bundle scripts locally and use a tested CSP appropriate to the selected provider
 
 Actions deployment and an installed PWA update are separate events. A new site artifact may be live while an open client still uses the previous worker.
 
-Embed the source commit in a public build identity; keep production assets content-hashed. Implement a waiting-worker prompt and draft-safe, user-triggered activation. A rollback also needs a new build identity and a compatible storage schema; never repair an update by deleting all origin storage.
+The source commit appears under Settings as the public build identity; production assets are content-hashed. A waiting-worker prompt offers user-triggered activation. Active requests and open editors block activation, pending local writes must finish, and local save errors prevent reload. A rollback also needs a new build identity and a compatible storage schema; never repair an update by deleting all origin storage.
+
+Precache requests use `cache: reload` to bypass the browser HTTP cache, and navigation uses the activated release's cached index. This prevents a new worker from caching an old HTML entry under Pages' observed ten-minute HTTP freshness window. The release cache identity includes worker source as well as static assets. The cacheable-server regression and a real two-engine Pages upgrade both passed; see the validation record.
 
 Retain or deliberately handle assets used by old open tabs. Test missing old lazy chunks after a deployment and show a recoverable update prompt. Avoid introducing extra lazy splits in the first version before their recovery path exists.
 

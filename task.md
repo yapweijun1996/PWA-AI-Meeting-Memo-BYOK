@@ -1,6 +1,6 @@
 # Implementation tasks
 
-Updated: 2026-11-04. Current stage: P0 implementation and browser verification in progress. Live paid API and physical-device acceptance remain separate.
+Updated: 2026-11-04. Current stage: browser beta implemented, published and verified, including a real two-engine version upgrade. Full P0 acceptance still requires the user-run live API and physical-device gates below.
 
 This file tracks execution. [Product requirements](docs/PRODUCT.md), [architecture](docs/ARCHITECTURE.md), [feasibility](docs/FEASIBILITY.md), [deployment](docs/DEPLOYMENT.md), and [the roadmap](docs/ROADMAP.md) define the detailed contracts. A checked task requires evidence, not just code or a proposed design.
 
@@ -106,7 +106,7 @@ Dependency: runnable app, passing documented checks, and authorization for publi
 - [x] R02 — Review the inactive workflow against the real package/scripts and current action/runtime compatibility, then activate `.github/workflows/pages.yml`.
 - [x] R03 — Verify that PRs only check, failed checks prevent publication, only trusted `main` publishes, stale commits are skipped, and only `dist/` is uploaded.
 - [x] R04 — Configure/recheck the `github-pages` environment branch restrictions; keep provider keys out of workflow and build inputs.
-- [ ] R05 — Complete an authorized deployment and record the source commit, successful Actions run, deployment URL, and deployed asset/build identity.
+- [x] R05 — Complete an authorized deployment and record the source commit, successful Actions run, deployment URL, and deployed asset/build identity.
 - [ ] R06 — Test actual production-origin CORS, HTTPS, hash refresh, installed launch, worker scope, cache behavior, and unexpected network destinations.
 - [ ] R07 — Test physical iPhone Safari/standalone and Android Chrome/installed behavior, including phone suspension, keyboard, safe areas, touch, zoom, accessibility, and overflow.
 - [ ] R08 — Exercise the full storage, audio, billing/recovery, evidence, memo, and privacy matrix in the roadmap; establish measured supported file/device limits.
@@ -127,13 +127,27 @@ These items are outside the first P0 release and must not become hidden prerequi
 
 ## Current next action and evidence
 
-Start V01 and the minimal V03 browser harness; F01–F04 can progress independently with synthetic data. Live sample availability, provider access, and charge authorization are prerequisites for paid evaluations, not for writing the scaffold.
+The browser application and automatic Pages publication are implemented. The user chose to enter BYOK credentials in the finished website for live acceptance; development creates no provider key. Use a private, consented recording for that acceptance and keep recordings/keys out of Git and CI.
 
 | Evidence | Current result |
 | --- | --- |
-| Design package on `main` | Completed in commit `48b706a` |
-| Pages configuration inspection | Recorded in the deployment document; configuration is not a successful deployment |
-| Application checks and provider evaluation | NOT RUN; application not implemented |
-| Active auto-deployment and deployed PWA | Not implemented/verified |
+| Design and implementation on `main` | Each completed task has its own committed/pushed checkpoint in [implementation evidence](docs/IMPLEMENTATION-LOG.md) and Git history |
+| Local checks | Lint, typecheck, build, 25 unit tests, all 34 current browser cases, two-engine update tests and artifact checks PASS; deployment CI passed its prior 32-case browser baseline |
+| Active auto-deployment | [Trusted-main workflow](.github/workflows/pages.yml) checks before publishing only `dist/`; no provider keys are used |
+| Successful publication | [Run 41845407515](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41845407515), build `18cd59c`; served identity, HTTPS, scoped worker, hash refresh, synthetic storage and offline reload PASS in both engines |
+| Update hardening | Stale-HTTP-cache regression fixed; [run 41847942972](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41847942972) published `6e0fcdf`; actual Chromium/WebKit upgrade, saved editor, old assets and new-build offline reload PASS |
+| Live provider/device evaluation | NOT RUN as recorded in [validation](docs/VALIDATION.md); no model-quality or physical-phone claim |
+
+Remaining acceptance gates are deliberate and stay unchecked:
+
+| Tasks | Required external evidence |
+| --- | --- |
+| V02–V06, I08 | Consented recordings, valid provider keys/accounts, quality/cost/review-time measurements and real device/resource limits |
+| R01 | Dedicated production hostname or explicit acceptance of the shared owner-hostname trust boundary; the beta uses the requested Pages address |
+| R06 | Hosting/static/offline checks PASS; authenticated production-origin provider CORS and installed launch still NOT RUN |
+| R07 | Physical iPhone/Android Safari/Chrome and installed-mode tests |
+| R08 | Complete release matrix, including the outstanding real provider and physical-device evidence |
+
+B01–B05 remain later work outside the first P0 scope. A deployed beta and passing mocked tests do not replace real speaker-aware product acceptance.
 
 When starting work, confirm current repository state. When finishing a task, add the relevant commit or sanitized verification reference, update the checkbox, and identify any failed or unrun acceptance check. Keep detailed verification procedures in the linked documents rather than duplicating them here.
