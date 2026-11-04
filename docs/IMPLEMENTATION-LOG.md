@@ -24,3 +24,4 @@ Each entry records a task checkpoint. Full commits are available in Git history.
 - **M05** — Both browser engines verify that source edits mark notes stale, one-click acceptance saves the edited text atomically, human re-review clears stale status without another AI call, and regeneration preserves the prior human version.
 - **M01** — Provider tests cover refusal, invalid evidence, schema errors and pre-send rejection above the serialized input limit. Requests use structured output, no tools, store=false, and one explicit submission.
 - **M02** — The response schema restricts six note categories and validates every source ID against the captured meeting. Unknown references reject the new result while existing notes remain intact.
+- **M03** — Unit tests leave unconfirmed owner IDs and impossible dates null while retaining original relative-date wording. Meeting date/timezone are validated and supplied as generation context.
