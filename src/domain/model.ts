@@ -160,7 +160,12 @@ export type Job = z.infer<typeof JobSchema>;
 export const ref = (s: { id: string; revision: number }) =>
   `${s.id}:${s.revision}`;
 export function validateMeeting(value: unknown): Meeting {
-  const m = MeetingSchema.parse(value);
+  const parsed = MeetingSchema.safeParse(value);
+  if (!parsed.success)
+    throw new Error(
+      "Meeting data is invalid or uses an unsupported format. Check the title, date, time ranges, and import file.",
+    );
+  const m = parsed.data;
   new Intl.DateTimeFormat("en", { timeZone: m.timezone }).format();
   if (new Date(`${m.date}T12:00:00Z`).toISOString().slice(0, 10) !== m.date)
     throw new Error("Invalid meeting date");

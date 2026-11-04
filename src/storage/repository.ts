@@ -2,7 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import { validateMeeting, type Meeting } from "../domain/model";
 interface Store extends DBSchema {
   meetings: { key: string; value: Meeting };
-  audio: { key: string; value: Blob };
+  audio: { key: string; value: { bytes: ArrayBuffer; type: string } | Blob };
 }
 let pending: Promise<IDBPDatabase<Store>> | undefined;
 function db() {
@@ -37,15 +37,39 @@ export async function getMeeting(id: string) {
   const m = await (await db()).get("meetings", id);
   return m ? validateMeeting(m) : undefined;
 }
-export async function saveMeeting(
-  m: Meeting,
-  audio?: Blob | null,
-): Promise<Meeting> {
+const writes = new Set<Promise<Meeting>>();
+const failedMeetings = new Set<string>();
+export function saveMeeting(m: Meeting, audio?: Blob | null): Promise<Meeting> {
+  const write = writeMeeting(m, audio);
+  writes.add(write);
+  void write.then(
+    () => {
+      writes.delete(write);
+      failedMeetings.delete(m.id);
+    },
+    () => {
+      writes.delete(write);
+      failedMeetings.add(m.id);
+    },
+  );
+  return write;
+}
+export async function flushWrites() {
+  await Promise.all([...writes]);
+  if (failedMeetings.size)
+    throw new Error(
+      "Resolve the local save error before updating. Your unsaved changes are still in this page.",
+    );
+}
+async function writeMeeting(m: Meeting, audio?: Blob | null): Promise<Meeting> {
   const value = validateMeeting({
     ...m,
     version: m.version + 1,
     updatedAt: new Date().toISOString(),
   });
+  const encoded = audio
+    ? { bytes: await audio.arrayBuffer(), type: audio.type }
+    : undefined;
   const tx = (await db()).transaction(["meetings", "audio"], "readwrite");
   const previous = await tx.objectStore("meetings").get(m.id);
   if ((previous?.version ?? 0) !== m.version) {
@@ -55,13 +79,19 @@ export async function saveMeeting(
   }
   await tx.objectStore("meetings").put(value);
   if (audio === null) await tx.objectStore("audio").delete(m.id);
-  else if (audio !== undefined) await tx.objectStore("audio").put(audio, m.id);
+  else if (encoded !== undefined)
+    await tx.objectStore("audio").put(encoded, m.id);
   await tx.done;
   channel?.postMessage(m.id);
   return value;
 }
 export async function getAudio(id: string) {
-  return (await db()).get("audio", id);
+  const stored = await (await db()).get("audio", id);
+  return !stored
+    ? undefined
+    : stored instanceof Blob
+      ? stored
+      : new Blob([stored.bytes], { type: stored.type });
 }
 export async function deleteMeeting(id: string) {
   const tx = (await db()).transaction(["meetings", "audio"], "readwrite");

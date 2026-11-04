@@ -14,3 +14,4 @@ Each entry records a task checkpoint. Full commits are available in Git history.
 - **F06** — Chromium and WebKit reload saved meetings offline; cached URLs remain under the app path and exclude all provider traffic. Cache names and cleanup are project-specific.
 - **F07** — node scripts/test-update.mjs passes in Chromium and WebKit: waiting-worker prompt, user confirmation, activation/reload, meeting persistence and unrelated-cache preservation.
 - **F09** — The production build, repository-base navigation, manifest/icons, offline reload and two-engine N-to-N+1 lifecycle checks pass; physical iOS remains a separate gate.
+- **S03** — Chromium/WebKit upload and full-audio backup/restore checks pass with a synthetic WAV. Encoded bytes and MIME are saved atomically after conversion outside IDB transactions, avoiding WebKit File/Blob storage failures. Original recording hashes prevent evidence rebinding.

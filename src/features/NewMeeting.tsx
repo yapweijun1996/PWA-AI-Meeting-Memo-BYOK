@@ -41,12 +41,38 @@ export function NewMeeting({
         glossary: String(form.get("glossary")),
       });
       if (transcript.trim()) {
-        const imported = transcript.trim().startsWith("{")
-          ? validateMeeting(JSON.parse(transcript))
-          : importTranscript(transcript);
-        m = { ...m, speakers: imported.speakers, segments: imported.segments };
+        if (transcript.trim().startsWith("{")) {
+          const imported = validateMeeting(JSON.parse(transcript));
+          m = {
+            ...m,
+            speakers: imported.speakers,
+            segments: imported.segments,
+            history: imported.history,
+            runs: imported.runs,
+            audio: imported.audio
+              ? { ...imported.audio, present: false }
+              : null,
+          };
+        } else {
+          m = { ...m, ...importTranscript(transcript) };
+        }
       }
-      if (file) m.audio = await inspectAudio(file);
+      if (file) {
+        const info = await inspectAudio(file);
+        if (m.audio && m.audio.hash !== info.hash)
+          throw new Error(
+            "This recording does not match the imported transcript's source. Use its original recording or create a separate meeting.",
+          );
+        if (
+          !m.audio &&
+          m.segments.some((s) => s.start !== null) &&
+          !confirm(
+            "Confirm this is the original recording for the imported timestamps. Verify playback before relying on them.",
+          )
+        )
+          return;
+        m.audio = info;
+      }
       const saved = await saveMeeting(m, file);
       onCreated(saved);
     } catch (err) {
@@ -158,8 +184,9 @@ export function NewMeeting({
             />
           </label>
           <p className="small muted">
-            Names are unconfirmed. Plain text has no audio timing; playback
-            links are only created for real timed evidence.
+            JSON imports transcript evidence only; use Restore backup to retain
+            notes. Names are unconfirmed. Plain text has no audio timing;
+            playback links are only created for real timed evidence.
           </p>
         </details>
         <details>
