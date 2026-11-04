@@ -212,3 +212,39 @@ test("quota failure is visible and preserves an unsaved correction", async ({
     "Keep this unsaved correction",
   );
 });
+
+test("bulk reassignment, merge and split expose their scope and support undo", async ({
+  page,
+}) => {
+  await page.goto(base);
+  await create(page, "Speaker correction flow");
+  page.on("dialog", (d) => void d.accept());
+  await page.getByLabel("Select passage 1", { exact: true }).check();
+  await page
+    .getByLabel("Assign selected passages", { exact: true })
+    .selectOption({ label: "Alex" });
+  await page.getByRole("button", { name: "Preview & assign" }).click();
+  await expect(
+    page.locator(".passage").first().locator(".passage-meta strong"),
+  ).toHaveText("Alex");
+  await page.getByRole("tab", { name: /Speakers/ }).click();
+  await page
+    .getByRole("button", { name: "Merge…", exact: true })
+    .first()
+    .click();
+  await page
+    .getByRole("button", { name: "Confirm merge", exact: true })
+    .click();
+  await expect(page.locator(".speaker-card")).toHaveCount(1);
+  await page.getByRole("tab", { name: /Transcript/ }).click();
+  await page
+    .getByRole("button", { name: "Split", exact: true })
+    .first()
+    .click();
+  await page
+    .getByRole("button", { name: "Split passage", exact: true })
+    .click();
+  await expect(page.locator(".passage")).toHaveCount(3);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(page.locator(".passage")).toHaveCount(2);
+});

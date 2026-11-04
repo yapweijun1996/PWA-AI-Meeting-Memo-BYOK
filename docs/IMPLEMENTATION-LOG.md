@@ -16,3 +16,4 @@ Each entry records a task checkpoint. Full commits are available in Git history.
 - **F09** — The production build, repository-base navigation, manifest/icons, offline reload and two-engine N-to-N+1 lifecycle checks pass; physical iOS remains a separate gate.
 - **S03** — Chromium/WebKit upload and full-audio backup/restore checks pass with a synthetic WAV. Encoded bytes and MIME are saved atomically after conversion outside IDB transactions, avoiding WebKit File/Blob storage failures. Original recording hashes prevent evidence rebinding.
 - **S06** — Focused Chromium/WebKit flow passes bulk assignment preview, speaker merge, untimed split and undo. Missing split-time fields remain null; historical revisions cannot be reused after undo.
+- **S09** — Unit tests reject unexpected archive paths and give restored JSON a new identity; real-browser tests round-trip transcript-only and checksummed full-audio backups without replacing originals.

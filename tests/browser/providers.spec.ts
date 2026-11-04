@@ -173,3 +173,130 @@ test("uncertain requests are recorded and never automatically resubmitted", asyn
   await page.waitForTimeout(400);
   expect(calls).toBe(1);
 });
+
+test("audio upload, diarization normalization and full-audio backup work through the browser", async ({
+  page,
+}, info) => {
+  await page.route("https://api.deepgram.com/v1/listen?**", async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Headers": "authorization,content-type",
+          "Access-Control-Allow-Methods": "POST,OPTIONS",
+        },
+      });
+      return;
+    }
+    expect(route.request().headers().authorization).toBe(
+      "Token synthetic-deepgram-only",
+    );
+    await route.fulfill({
+      headers: { "Access-Control-Allow-Origin": "*" },
+      json: {
+        metadata: { duration: 1, request_id: "synthetic-request" },
+        results: {
+          channels: [
+            {
+              alternatives: [
+                {
+                  words: [
+                    { word: "Hello", start: 0.1, end: 0.4, speaker: 0 },
+                    { word: "Yes", start: 0.5, end: 0.9, speaker: 1 },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+  });
+  await page.goto(base);
+  await create(page);
+  const wav = Buffer.alloc(32044);
+  wav.write("RIFF");
+  wav.writeUInt32LE(32036, 4);
+  wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(16000, 24);
+  wav.writeUInt32LE(32000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(32000, 40);
+  await page
+    .getByLabel("Attach audio", { exact: true })
+    .setInputFiles({
+      name: "synthetic-silence.wav",
+      mimeType: "audio/wav",
+      buffer: wav,
+    });
+  await expect(
+    page.getByText("synthetic-silence.wav", { exact: true }).first(),
+  ).toBeVisible();
+  const hash = new URL(page.url()).hash;
+  await page.getByRole("link", { name: "Settings & API keys" }).click();
+  await page
+    .getByLabel("Deepgram API key", { exact: true })
+    .fill("synthetic-deepgram-only");
+  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.evaluate((hash) => {
+    location.hash = hash;
+  }, hash);
+  await page.getByRole("button", { name: "Transcribe", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Confirm and send", exact: true })
+    .click();
+  await expect(page.getByLabel("Name for speaker 1")).toHaveValue("Speaker 1");
+  await expect(page.getByLabel("Name for speaker 2")).toHaveValue("Speaker 2");
+  await expect(page.getByText("Needs a name", { exact: true })).toHaveCount(2);
+  await page.getByRole("tab", { name: /Transcript/ }).click();
+  await expect(page.getByText("Hello", { exact: true })).toBeVisible();
+  await page.getByText("Export", { exact: true }).click();
+  const downloaded = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Full backup with audio" }).click();
+  const file = await downloaded,
+    path = info.outputPath("audio-backup.zip");
+  await file.saveAs(path);
+  page.on("dialog", (d) => void d.accept());
+  await page.locator(".nav-file input").setInputFiles(path);
+  await expect(
+    page.getByRole("heading", { name: "ERP review (restored)", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator("audio")).toHaveAttribute("src", /^blob:/);
+  await expect(page.getByText("Hello", { exact: true })).toBeVisible();
+});
+
+test("cancelling a submitted request records billing uncertainty", async ({
+  page,
+}) => {
+  await page.route("https://api.openai.com/v1/responses", () => {});
+  await page.goto(base);
+  await create(page);
+  const hash = new URL(page.url()).hash;
+  await page.getByRole("link", { name: "Settings & API keys" }).click();
+  await page
+    .getByLabel("OpenAI API key", { exact: true })
+    .fill("synthetic-test-only");
+  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.evaluate((hash) => {
+    location.hash = hash;
+  }, hash);
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page
+    .getByRole("button", { name: "Generate meeting notes", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Confirm and send", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Stop waiting", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("may have been charged");
+  await page.getByText("Processing history", { exact: false }).click();
+  await expect(
+    page.getByText("Memo · outcome unknown", { exact: true }),
+  ).toBeVisible();
+});
