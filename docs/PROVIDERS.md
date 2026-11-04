@@ -14,6 +14,8 @@ Speech limits are intentionally conservative application limits, not vendor clai
 
 Cost: show an optional user-entered speech rate per minute and mark the total unknown if that rate or duration is missing. OpenAI memo cost is unknown before actual usage/rates are established; never display an invented zero. Estimates are not billing caps.
 
-Live release gates: production-origin CORS, paid authorized sample quality, actual costs, interrupted requests, and physical devices. No live requests have been made when this matrix is introduced.
+Live release gates: production-origin authenticated CORS, paid authorized sample quality, actual costs, interrupted real requests, and physical devices. No valid-key paid evaluation is recorded. The user will enter keys in the finished website; development creates no key. Provider browser tests block workers and unhandled external requests while intercepting both selected endpoints.
+
+Observed test support: Chromium and Linux WebKit exercise explicit confirmation, normalized speaker/time evidence, human correction, notes and backups using synthetic responses. Offline review, local IndexedDB, multi-tab conflict protection, and user-triggered worker updates run against real browser APIs. Physical iPhone/Android and vendor access remain unverified. Exact endpoint/account failures are surfaced without provider response bodies or credentials; ambiguous results never automatically retry.
 
 Official sources checked during selection: [Deepgram pre-recorded API](https://developers.deepgram.com/docs/pre-recorded-audio), [diarization and versioning](https://developers.deepgram.com/docs/diarization), [multilingual support](https://developers.deepgram.com/docs/nova-3-language-prompting), [OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs), [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data).
