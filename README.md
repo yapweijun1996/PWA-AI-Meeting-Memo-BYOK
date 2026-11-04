@@ -45,6 +45,7 @@ Speaker review is core functionality. A transcript-only path is useful but does 
 
 | Document | Purpose |
 | --- | --- |
+| [Implementation tasks](task.md) | Execution checklist, dependencies, acceptance gates, and current next action |
 | [Product requirements](docs/PRODUCT.md) | Scope, user flows, UI, and acceptance requirements |
 | [Browser architecture](docs/ARCHITECTURE.md) | Modules, data ownership, jobs, storage, and PWA lifecycle |
 | [Feasibility and evidence](docs/FEASIBILITY.md) | Official sources, provider options, risks, and unresolved questions |
