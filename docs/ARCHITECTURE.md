@@ -1,6 +1,6 @@
 # Browser architecture
 
-Status: proposed implementation contract, 2026-11-04. No modules described here exist yet. Read [feasibility](FEASIBILITY.md) for evidence and unresolved provider support.
+Status: browser implementation exists, 2026-11-04. The contracts below include original design intent; this implementation uses a versioned meeting aggregate plus a separate audio store. Read [feasibility](FEASIBILITY.md) for evidence and unresolved provider support.
 
 ## Execution and ownership
 
@@ -22,9 +22,9 @@ flowchart LR
 
 Keep source recordings and meeting data out of Pages artifacts, Git, telemetry, and service-worker response caches. Storing user-approved meeting data in IndexedDB is a deliberate product function; it is different from indiscriminately caching network responses.
 
-## Proposed stack and modules
+## Stack and modules
 
-Use TypeScript with Vite and React as the initial tooling proposal, npm with a committed lockfile, IndexedDB behind a small repository layer, and a prompt-based PWA service-worker integration. Select and lock compatible package versions at scaffold time. No framework is needed on a server.
+The implementation uses React/TypeScript/Vite, npm with a locked dependency tree, Zod validation, idb repositories, and a custom prompt-based app-shell worker. No application server is required. The original feature folders below map to the current `src/features/*.tsx` screens; domain, storage, providers, jobs, audio and PWA responsibilities are separate modules.
 
 | Proposed module | Responsibility |
 | --- | --- |
@@ -57,7 +57,7 @@ Support importing an evidence-bearing transcript as a separate route. A text-onl
 
 ## Data contract
 
-Use UUIDs, explicit schema versions, integer millisecond times, and validated imports. These records are a schema proposal, not an existing database.
+Use UUIDs, explicit schema/source/storage versions, finite second-based audio times, and validated imports. `src/domain/model.ts` is the authoritative shipped schema; the record table below explains logical responsibilities rather than separate database tables.
 
 | Record | Core fields and invariants |
 | --- | --- |
@@ -79,7 +79,7 @@ Source IDs establish traceability, not semantic correctness. Independently valid
 
 ## Storage and transaction rules
 
-IndexedDB is the P0 source of truth for structured records and locally saved audio blobs. Keep provider responses outside Cache Storage. Add OPFS only if measurements justify its extra coordination and recovery costs.
+IndexedDB is the P0 source of truth. Structured records are stored as one versioned meeting aggregate, while encoded audio bytes and media type are stored separately by meeting ID. File-to-buffer conversion happens before database transactions, avoiding a reproduced WebKit File/Blob persistence failure. Playback reconstructs a Blob. One original audio hash is retained per meeting; rebinding a different recording is rejected. Keep provider responses outside Cache Storage. Add OPFS only if measurements justify its extra coordination and recovery costs.
 
 - Save a completed chunk and its job checkpoint in one transaction before scheduling the next chunk.
 - Save an edit and its undo operation together. Use expected revisions and a writer lease to prevent stale multi-tab writes.
@@ -118,7 +118,7 @@ On reload, keys are missing by design. Re-entry and file re-selection are recove
 
 Keep encoded source audio for playback with object URLs and revoke URLs on release. Do not decode an entire long recording merely to show duration or draw a waveform.
 
-Valid chunking requires container-aware processing or bounded decode/re-encode. `Blob.slice()` over arbitrary MP3/M4A/WebM bytes is not an independent playable file. Preserve source offsets, encoder delay where relevant, and boundary provenance. Handle overlapping transcription windows with a documented boundary reconciliation algorithm; text similarity alone must not delete genuinely repeated speech.
+The beta uploads one original recording up to 50 MB and computes its checksum in a worker; conversion and multi-chunk transcription are deferred. Valid future chunking requires container-aware processing or bounded decode/re-encode. `Blob.slice()` over arbitrary MP3/M4A/WebM bytes is not an independent playable file. Preserve source offsets, encoder delay where relevant, and boundary provenance. Handle overlapping transcription windows with a documented boundary reconciliation algorithm; text similarity alone must not delete genuinely repeated speech.
 
 Prefer one provider request for the whole recording when its verified limits permit it, preserving global speaker clustering. Otherwise scope labels by run/chunk and require evidence-based mapping. Preserve isolated channels before any downmix; multiple people can still share one channel.
 
@@ -128,7 +128,7 @@ Use a single-thread browser processing fallback. WASM, WebCodecs, and supported 
 
 Send the reviewed transcript and only needed metadata. Treat transcript content as data, including any embedded instructions. The memo generator has no tools that send messages, write ERP records, or follow links.
 
-Validate structured responses, handle refusal and truncation, and require nullable unknown fields. For long inputs, use evidence-preserving bounded extraction then synthesis: carry original segment IDs through every stage and recheck contradictions against source text. Count all stages in the estimate.
+Validate structured responses, handle refusal and truncation, and require nullable unknown fields. The beta rejects serialized memo input above 80,000 characters before transmission. Future long-input support must use evidence-preserving bounded extraction then synthesis: carry original segment IDs through every stage and recheck contradictions against source text. Count all stages in the estimate.
 
 ## Keys and network destinations
 
