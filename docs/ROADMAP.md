@@ -1,6 +1,6 @@
 # Implementation roadmap and verification
 
-Status: planned work, 2026-11-04. Documentation and hosting configuration inspection are complete; application phases below have not started. Do not report completion percentages without a defined implementation scope.
+Status: implementation and release contract, 2026-11-04. The browser beta is implemented and the task checklist records completed code/test checkpoints. Live paid evaluation and physical-device acceptance remain open. Do not report completion percentages without a defined implementation scope.
 
 ## Phase 0 — prove the browser audio path
 
@@ -48,7 +48,7 @@ Mic capture, waveform improvements, new engines, local models, and external inte
 
 ## Verification matrix
 
-All application checks below are currently **NOT RUN**. Change a result only when there is reproducible evidence, including app commit, browser/device, fixture, procedure, and outcome.
+Current results are recorded in [validation](VALIDATION.md) and per-task Git commits. The matrix below remains the release contract; do not infer live provider or physical-device success from a mocked browser run.
 
 | Area | Required checks |
 | --- | --- |

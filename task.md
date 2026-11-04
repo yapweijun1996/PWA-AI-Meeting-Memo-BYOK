@@ -111,7 +111,7 @@ Dependency: runnable app, passing documented checks, and authorization for publi
 - [ ] R07 — Test physical iPhone Safari/standalone and Android Chrome/installed behavior, including phone suspension, keyboard, safe areas, touch, zoom, accessibility, and overflow.
 - [ ] R08 — Exercise the full storage, audio, billing/recovery, evidence, memo, and privacy matrix in the roadmap; establish measured supported file/device limits.
 - [x] R09 — Verify deployed N-to-N+1 update behavior, active-draft/request protection, old-client assets, migration compatibility, and revert/forward-fix recovery.
-- [ ] R10 — Update README and provider/support documentation to match shipped behavior and report PASS/FAIL/NOT RUN/N/A with evidence for every applicable release gate.
+- [x] R10 — Update README and provider/support documentation to match shipped behavior and report PASS/FAIL/NOT RUN/N/A with evidence for every applicable release gate.
 
 Acceptance: a verified deployed version completes the real speaker-aware workflow on its declared browser/device set. Unsupported cases remain visible, and a successful deployment is distinguished from an installed client's update.
 
