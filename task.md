@@ -60,7 +60,7 @@ Dependency: F01–F04. Begin with validated synthetic/imported evidence; preserv
 - [x] S01 — Define versioned schemas and stable IDs for meetings, audio, runs, speakers, segment revisions, review operations, memo versions, and jobs.
 - [x] S02 — Implement short IndexedDB transactions and revision-checked multi-tab writes with a supported writer-lock/lease strategy.
 - [x] S03 — Add meeting creation/edit/delete and audio import, metadata, persistence state, playback, and object-URL cleanup.
-- [ ] S04 — Import plain text and structured transcripts with schema/resource validation; leave absent speaker/time/audio evidence explicit.
+- [x] S04 — Import plain text and structured transcripts with schema/resource validation; leave absent speaker/time/audio evidence explicit.
 - [ ] S05 — Build speaker samples, naming/confirmation, unknown identity, overlap indicators, and independent run/chunk label namespaces.
 - [x] S06 — Implement transcript text edits, source playback, single/bulk reassignment with impact preview, speaker merge, segment split, and undo.
 - [x] S07 — Preserve immutable original outputs and revision lineage; ensure historical citations survive merge/split and source changes mark memo review stale.
