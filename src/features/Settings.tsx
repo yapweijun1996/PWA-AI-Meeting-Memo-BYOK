@@ -14,10 +14,17 @@ import {
   setKey,
   getSpeechRate,
   setSpeechRate,
+  getSelection,
+  setSelection,
+  defaultModel,
+  type Provider,
+  type Stage,
 } from "../providers/credentials";
 export function Settings() {
   const [openai, setOpenai] = useState(getKey("openai")),
-    [deepgram, setDeepgram] = useState(getKey("deepgram")),
+    [openrouter, setOpenrouter] = useState(getKey("openrouter")),
+    [speech, setSpeech] = useState(getSelection("speech")),
+    [memo, setMemo] = useState(getSelection("memo")),
     [saved, setSaved] = useState(false),
     [notice, setNotice] = useState(""),
     [usage, setUsage] = useState("Calculating…");
@@ -61,7 +68,10 @@ export function Settings() {
           </span>
           <div>
             <h2>Your API connections</h2>
-            <p>Separate providers, separate keys. Only this page session.</p>
+            <p>
+              Choose a provider and model for each step. Keys and selections
+              last for this page session.
+            </p>
           </div>
         </div>
         <div className="notice">
@@ -76,37 +86,39 @@ export function Settings() {
           onSubmit={(e) => {
             e.preventDefault();
             setKey("openai", openai);
-            setKey("deepgram", deepgram);
+            setKey("openrouter", openrouter);
+            setSelection("speech", speech);
+            setSelection("memo", memo);
             setSaved(true);
             setTimeout(() => setSaved(false), 3000);
           }}
         >
           <div className="connection">
             <div className="connection-heading">
-              <span className="provider-icon">D</span>
+              <span className="provider-icon">R</span>
               <div>
-                <h3>Deepgram</h3>
-                <p>Speaker-aware transcription · Nova-3 multilingual</p>
+                <h3>OpenRouter (optional)</h3>
+                <p>Access multiple transcription and language models</p>
               </div>
               <a
-                href="https://console.deepgram.com"
+                href="https://openrouter.ai/settings/keys"
                 target="_blank"
                 rel="noreferrer"
-                aria-label="Open Deepgram console"
+                aria-label="Open OpenRouter API keys"
               >
                 <ExternalLink size={16} />
               </a>
             </div>
             <label>
-              Deepgram API key
+              OpenRouter API key
               <input
                 type="password"
                 autoComplete="off"
                 spellCheck={false}
-                value={deepgram}
-                onChange={(e) => setDeepgram(e.target.value)}
-                placeholder="Enter your Deepgram key"
-                aria-label="Deepgram API key"
+                value={openrouter}
+                onChange={(e) => setOpenrouter(e.target.value)}
+                placeholder="Enter your OpenRouter key"
+                aria-label="OpenRouter API key"
               />
             </label>
           </div>
@@ -115,7 +127,7 @@ export function Settings() {
               <span className="provider-icon mint">O</span>
               <div>
                 <h3>OpenAI</h3>
-                <p>Evidence-linked meeting notes · GPT-6 Luna</p>
+                <p>Default provider for transcription and meeting notes</p>
               </div>
               <a
                 href="https://platform.openai.com/api-keys"
@@ -139,6 +151,69 @@ export function Settings() {
               />
             </label>
           </div>
+          {(["speech", "memo"] as Stage[]).map((stage) => {
+            const choice = stage === "speech" ? speech : memo;
+            const update = stage === "speech" ? setSpeech : setMemo;
+            const label = stage === "speech" ? "Transcription" : "Memo";
+            return (
+              <div className="connection" key={stage}>
+                <h3>{label} model</h3>
+                <label>
+                  {label} provider
+                  <select
+                    aria-label={`${label} provider`}
+                    value={choice.provider}
+                    onChange={(e) => {
+                      const provider = e.target.value as Provider;
+                      update({
+                        provider,
+                        model: defaultModel(provider, stage),
+                      });
+                    }}
+                  >
+                    <option value="openai">OpenAI</option>
+                    <option value="openrouter">OpenRouter</option>
+                  </select>
+                </label>
+                <label>
+                  {label} model ID
+                  <input
+                    aria-label={`${label} model ID`}
+                    list={`${stage}-models`}
+                    value={choice.model}
+                    maxLength={100}
+                    required
+                    onChange={(e) =>
+                      update({ ...choice, model: e.target.value })
+                    }
+                  />
+                </label>
+                <datalist id={`${stage}-models`}>
+                  <option value={defaultModel(choice.provider, stage)} />
+                  {stage === "memo" && (
+                    <option
+                      value={
+                        choice.provider === "openai"
+                          ? "gpt-6.1-sol"
+                          : "openai/gpt-6.1-sol"
+                      }
+                    />
+                  )}
+                  {stage === "speech" && choice.provider === "openai" && (
+                    <option value="gpt-4o-transcribe-diarize" />
+                  )}
+                  {stage === "speech" && choice.provider === "openrouter" && (
+                    <option value="openai/whisper-large-v3" />
+                  )}
+                </datalist>
+                <p className="small muted">
+                  {stage === "speech"
+                    ? "OpenAI gpt-transcribe returns text without speaker labels or timestamps. OpenRouter Scribe v2 requests speaker labels and timestamps; other models may return text only. OpenAI diarize is scheduled to shut down 2027-02-26."
+                    : "Enter a model ID that supports structured JSON output. Model availability and pricing depend on your provider account."}
+                </p>
+              </div>
+            );
+          })}
           <div className="settings-actions">
             <button type="submit" className="button primary">
               {saved ? <Check size={16} /> : <KeyRound size={16} />}{" "}
@@ -150,7 +225,7 @@ export function Settings() {
               onClick={() => {
                 forgetKeys();
                 setOpenai("");
-                setDeepgram("");
+                setOpenrouter("");
                 setNotice("Session keys forgotten.");
               }}
             >
@@ -186,8 +261,9 @@ export function Settings() {
             <h2>Cost estimates</h2>
           </div>
           <p className="muted">
-            Optionally enter your Deepgram rate from your plan. Rates and
-            features differ. Memo cost is shown as unknown before actual usage.
+            Optionally enter your selected speech model rate from your plan.
+            Rates and features differ. Memo cost is shown as unknown before
+            actual usage.
           </p>
           <label>
             Speech rate · USD per minute
@@ -220,9 +296,9 @@ export function Settings() {
         <p className="muted">
           Browser-first, offline review, and bring-your-own keys. Cloud
           processing needs a connection and an open page. Supported uploads are
-          limited to 50 MB; long recordings may need an externally prepared
-          transcript. Live provider quality and physical-phone validation are
-          tracked separately.
+          stored up to 50 MiB; cloud uploads are limited to 25 MB. Longer
+          recordings may need an externally prepared transcript. Live provider
+          quality and physical-phone validation are tracked separately.
         </p>
         <a
           className="text-button"

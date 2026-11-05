@@ -8,6 +8,7 @@ import {
   type Speaker,
   type Segment,
 } from "../domain/model";
+import { getSelection, type Selection } from "./credentials";
 export class ProviderError extends Error {
   constructor(
     message: string,
@@ -63,42 +64,40 @@ async function post(
     );
   }
 }
-const Word = z.object({
-  word: z.string(),
-  punctuated_word: z.string().optional(),
-  start: z.number().nonnegative(),
-  end: z.number().nonnegative(),
-  speaker: z.number().int().nonnegative().optional(),
-});
-const SpeechResponse = z.object({
-  metadata: z
-    .object({
-      duration: z.number().nonnegative().optional(),
-      request_id: z.string().optional(),
-    })
+const TimedSpeech = z.object({
+  text: z.string().optional(),
+  duration: z.number().finite().nonnegative().optional(),
+  usage: z
+    .object({ seconds: z.number().finite().nonnegative().optional() })
     .optional(),
-  results: z.object({
-    channels: z
-      .array(
-        z.object({
-          alternatives: z
-            .array(z.object({ words: z.array(Word).max(40000) }))
-            .min(1),
-        }),
-      )
-      .min(1),
-    utterances: z
-      .array(
-        z.object({
-          start: z.number().nonnegative(),
-          end: z.number().nonnegative(),
-          transcript: z.string(),
-          speaker: z.number().int().nonnegative().optional(),
-          words: z.array(Word).optional(),
-        }),
-      )
-      .optional(),
-  }),
+  segments: z
+    .array(
+      z.object({
+        text: z.string(),
+        start: z.number().finite().nonnegative(),
+        end: z.number().finite().nonnegative(),
+        speaker: z
+          .union([z.number().int().nonnegative(), z.string().max(80)])
+          .nullable()
+          .optional(),
+      }),
+    )
+    .max(20000)
+    .optional(),
+  words: z
+    .array(
+      z.object({
+        word: z.string(),
+        start: z.number().finite().nonnegative(),
+        end: z.number().finite().nonnegative(),
+        speaker: z
+          .union([z.number().int().nonnegative(), z.string().max(80)])
+          .nullable()
+          .optional(),
+      }),
+    )
+    .max(40000)
+    .optional(),
 });
 export function normalizeSpeech(value: unknown): {
   speakers: Speaker[];
@@ -106,7 +105,7 @@ export function normalizeSpeech(value: unknown): {
   duration: number | null;
   requestId: string | null;
 } {
-  const parsed = SpeechResponse.safeParse(value);
+  const parsed = TimedSpeech.safeParse(value);
   if (!parsed.success)
     throw new ProviderError(
       "The speech response did not match the supported contract. No transcript was overwritten.",
@@ -115,105 +114,113 @@ export function normalizeSpeech(value: unknown): {
     );
   const d = parsed.data,
     run = id(),
-    labels = new Map<number, string>();
-  const speaker = (n: number | undefined): string[] => {
-    if (n === undefined) return [];
-    if (!labels.has(n)) labels.set(n, id());
-    return [labels.get(n)!];
+    labels = new Map<string, string>();
+  const speaker = (n: string | number | null | undefined) => {
+    if (n === null || n === undefined || n === "") return [];
+    const label = String(n);
+    if (!labels.has(label)) labels.set(label, id());
+    return [labels.get(label)!];
   };
-  const words = d.results.channels[0].alternatives[0].words;
-  const segments: Segment[] = [];
-  if (d.results.utterances?.length) {
-    for (const turn of d.results.utterances) {
-      // Split at actual word-level speaker changes instead of assigning an entire mixed turn to one person.
-      if (turn.words?.length) {
-        let group: typeof words = [];
-        const flush = () => {
-          if (group.length)
-            segments.push(
-              segment(
-                group.map((w) => w.punctuated_word || w.word).join(" "),
-                speaker(group[0].speaker),
-                group[0].start,
-                group.at(-1)!.end,
-              ),
-            );
-          group = [];
-        };
-        for (const w of turn.words) {
-          if (group.length && group[0].speaker !== w.speaker) flush();
-          group.push(w);
-        }
-        flush();
-      } else if (turn.transcript.trim() && turn.end > turn.start)
-        segments.push(
-          segment(turn.transcript, speaker(turn.speaker), turn.start, turn.end),
-        );
-    }
-  } else {
-    let group: typeof words = [];
-    const flush = () => {
-      if (group.length)
-        segments.push(
-          segment(
-            group.map((w) => w.punctuated_word || w.word).join(" "),
-            speaker(group[0].speaker),
-            group[0].start,
-            group.at(-1)!.end,
-          ),
-        );
-      group = [];
-    };
-    for (const w of words) {
-      if (
-        group.length &&
-        (group[0].speaker !== w.speaker || w.start - group[0].start > 20)
-      )
-        flush();
-      group.push(w);
-    }
-    flush();
+  let segments: Segment[] = [];
+  if (
+    d.segments?.length &&
+    (d.segments.some((s) => s.speaker !== undefined && s.speaker !== null) ||
+      !d.words?.some((w) => w.speaker !== undefined && w.speaker !== null))
+  ) {
+    segments = d.segments.map((s) =>
+      segment(s.text, speaker(s.speaker), s.start, s.end),
+    );
+  } else if (d.words?.length) {
+    // Preserve only provider-supplied times and speaker labels, never interpolate.
+    segments = d.words.map((w) =>
+      segment(w.word, speaker(w.speaker), w.start, w.end),
+    );
+  } else if (d.text?.trim()) {
+    // Untimed transcripts have no speaker attribution or invented boundaries.
+    const chunks = d.text.trim().match(/[\s\S]{1,20000}/g) ?? [];
+    segments = chunks.map((text) => segment(text));
   }
   if (
     !segments.length ||
-    segments.some((s) => s.start === null || s.end === null || s.end <= s.start)
+    segments.length > 20000 ||
+    segments.some(
+      (s) =>
+        !s.text.trim() ||
+        s.text.length > 20000 ||
+        (s.start !== null && (s.end === null || s.end <= s.start)),
+    )
   )
     throw new ProviderError(
-      "No valid timed speech was returned. The recording may contain silence or unsupported audio.",
+      "No valid transcript was returned. No transcript was overwritten.",
       false,
       true,
     );
   return {
-    speakers: [...labels].map(([n, key]) => ({
+    speakers: [...labels].map(([label, key], index) => ({
       id: key,
-      name: `Speaker ${n + 1}`,
+      name: `Speaker ${index + 1}`,
       confirmed: false,
-      sourceLabels: [`${run}:${n}`],
+      sourceLabels: [`${run}:${label}`],
     })),
     segments,
-    duration: d.metadata?.duration ?? null,
-    requestId: d.metadata?.request_id ?? null,
+    duration: d.duration ?? d.usage?.seconds ?? null,
+    requestId: null,
   };
 }
 export async function transcribe(
   audio: Blob,
   key: string,
   signal: AbortSignal,
+  selection: Selection = getSelection("speech"),
+  filename = "recording.wav",
 ) {
   if (!key.trim())
-    throw new ProviderError("Enter a Deepgram key in Settings.", false);
-  if (!audio.size || audio.size > 50 * 1024 * 1024)
-    throw new ProviderError("Audio must be between 1 byte and 50 MB.", false);
+    throw new ProviderError(
+      `Enter your ${selection.provider === "openai" ? "OpenAI" : "OpenRouter"} key in Settings.`,
+      false,
+    );
+  if (!selection.model || selection.model.length > 100)
+    throw new ProviderError("Choose a valid speech model in Settings.", false);
+  if (!audio.size || audio.size > 25 * 1000 * 1000)
+    throw new ProviderError(
+      "Selected speech provider accepts recordings up to 25 MB. Keep the original or import a transcript.",
+      false,
+    );
+  if (
+    selection.provider === "openai" &&
+    !/\.(mp3|mp4|mpeg|mpga|m4a|wav|webm)$/i.test(filename)
+  )
+    throw new ProviderError(
+      "OpenAI file transcription supports MP3, MP4, MPEG, MPGA, M4A, WAV and WebM. Choose a supported file or import a transcript.",
+      false,
+    );
+  const form = new FormData();
+  form.append("file", audio, filename);
+  form.append("model", selection.model);
+  if (
+    selection.provider === "openai" &&
+    selection.model === "gpt-4o-transcribe-diarize"
+  ) {
+    form.append("response_format", "diarized_json");
+    form.append("chunking_strategy", "auto");
+  }
+  if (
+    selection.provider === "openrouter" &&
+    selection.model === "elevenlabs/scribe-v2"
+  ) {
+    form.append("response_format", "verbose_json");
+    form.append("timestamp_granularities[]", "word");
+    form.append(
+      "provider",
+      JSON.stringify({ options: { elevenlabs: { diarize: true } } }),
+    );
+  }
   const url =
-    "https://api.deepgram.com/v1/listen?model=nova-3&language=multi&diarize_model=v2&utterances=true&smart_format=true";
+    selection.provider === "openai"
+      ? "https://api.openai.com/v1/audio/transcriptions"
+      : "https://openrouter.ai/api/v1/audio/transcriptions";
   return normalizeSpeech(
-    await post(
-      url,
-      `Token ${key.trim()}`,
-      audio,
-      { "Content-Type": audio.type || "application/octet-stream" },
-      signal,
-    ),
+    await post(url, `Bearer ${key.trim()}`, form, {}, signal),
   );
 }
 const GeneratedItem = z
@@ -324,9 +331,15 @@ export async function generateMemo(
     usage: NonNullable<Job["usage"]>,
     requestId: string | null,
   ) => void,
+  selection: Selection = getSelection("memo"),
 ) {
   if (!key.trim())
-    throw new ProviderError("Enter an OpenAI key in Settings.", false);
+    throw new ProviderError(
+      "Enter the selected provider key in Settings.",
+      false,
+    );
+  if (!selection.model || selection.model.length > 100)
+    throw new ProviderError("Choose a valid memo model in Settings.", false);
   const input = JSON.stringify({
     meeting: {
       title: m.title,
@@ -353,10 +366,15 @@ export async function generateMemo(
       false,
     );
   const value = await post(
-    "https://api.openai.com/v1/responses",
+    selection.provider === "openai"
+      ? "https://api.openai.com/v1/responses"
+      : "https://openrouter.ai/api/v1/responses",
     `Bearer ${key.trim()}`,
     JSON.stringify({
-      model: "gpt-6-luna",
+      model: selection.model,
+      ...(selection.provider === "openrouter"
+        ? { provider: { allow_fallbacks: false } }
+        : {}),
       store: false,
       max_output_tokens: 8000,
       instructions:

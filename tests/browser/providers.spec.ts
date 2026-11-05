@@ -236,42 +236,35 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
       },
     });
   });
-  await page.route("https://api.deepgram.com/v1/listen?**", async (route) => {
-    if (route.request().method() === "OPTIONS") {
+  await page.route(
+    "https://openrouter.ai/api/v1/audio/transcriptions",
+    async (route) => {
+      if (route.request().method() === "OPTIONS") {
+        await route.fulfill({
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "authorization,content-type",
+            "Access-Control-Allow-Methods": "POST,OPTIONS",
+          },
+        });
+        return;
+      }
+      expect(route.request().headers().authorization).toBe(
+        "Bearer synthetic-router-only",
+      );
       await route.fulfill({
-        status: 204,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Headers": "authorization,content-type",
-          "Access-Control-Allow-Methods": "POST,OPTIONS",
-        },
-      });
-      return;
-    }
-    expect(route.request().headers().authorization).toBe(
-      "Token synthetic-deepgram-only",
-    );
-    await route.fulfill({
-      headers: { "Access-Control-Allow-Origin": "*" },
-      json: {
-        metadata: { duration: 1, request_id: "synthetic-request" },
-        results: {
-          channels: [
-            {
-              alternatives: [
-                {
-                  words: [
-                    { word: "Hello", start: 0.1, end: 0.4, speaker: 0 },
-                    { word: "Yes", start: 0.5, end: 0.9, speaker: 1 },
-                  ],
-                },
-              ],
-            },
+        headers: { "Access-Control-Allow-Origin": "*" },
+        json: {
+          duration: 1,
+          words: [
+            { word: "Hello", start: 0.1, end: 0.4, speaker: 0 },
+            { word: "Yes", start: 0.5, end: 0.9, speaker: 1 },
           ],
         },
-      },
-    });
-  });
+      });
+    },
+  );
   await page.goto(base);
   await create(page);
   const wav = Buffer.alloc(32044);
@@ -298,8 +291,9 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
   const hash = new URL(page.url()).hash;
   await page.getByRole("link", { name: "Settings & API keys" }).click();
   await page
-    .getByLabel("Deepgram API key", { exact: true })
-    .fill("synthetic-deepgram-only");
+    .getByLabel("OpenRouter API key", { exact: true })
+    .fill("synthetic-router-only");
+  await page.getByLabel("Transcription provider").selectOption("openrouter");
   await page
     .getByLabel("OpenAI API key", { exact: true })
     .fill("synthetic-test-only");
@@ -343,7 +337,7 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
     expect(text).toContain("Human reviewed greeting.");
     expect(text).toContain("accepted");
     expect(text).not.toContain("synthetic-test-only");
-    expect(text).not.toContain("synthetic-deepgram-only");
+    expect(text).not.toContain("synthetic-router-only");
     if (extension === "json") {
       const document = JSON.parse(text);
       expect(document.audio.present).toBe(false);
@@ -574,4 +568,116 @@ test("a completed background request cannot replace a different meeting view", a
     page.getByRole("heading", { name: "Different meeting", exact: true }),
   ).toBeVisible();
   expect(new URL(page.url()).hash).not.toBe(hash);
+});
+
+test("default OpenAI speech and selected OpenRouter memo use their own model and key", async ({
+  page,
+}) => {
+  let speechCalls = 0,
+    memoCalls = 0;
+  await page.route(
+    "https://api.openai.com/v1/audio/transcriptions",
+    async (route) => {
+      speechCalls++;
+      expect(route.request().headers().authorization).toBe(
+        "Bearer synthetic-openai-only",
+      );
+      expect(route.request().postData()).toContain("gpt-transcribe");
+      await route.fulfill({
+        headers: { "Access-Control-Allow-Origin": "*" },
+        json: { text: "A plain transcript." },
+      });
+    },
+  );
+  await page.route("https://openrouter.ai/api/v1/responses", async (route) => {
+    memoCalls++;
+    expect(route.request().headers().authorization).toBe(
+      "Bearer synthetic-router-only",
+    );
+    const body = route.request().postDataJSON();
+    expect(body.model).toBe("openai/gpt-6-luna");
+    expect(body.provider.allow_fallbacks).toBe(false);
+    const input = JSON.parse(body.input);
+    await route.fulfill({
+      headers: { "Access-Control-Allow-Origin": "*" },
+      json: {
+        status: "completed",
+        output: [
+          {
+            type: "message",
+            content: [
+              {
+                type: "output_text",
+                text: JSON.stringify({
+                  items: [
+                    {
+                      type: "summary",
+                      text: "A summary.",
+                      owner_speaker_id: null,
+                      due_date: null,
+                      due_original: null,
+                      source_segment_ids: [input.segments[0].id],
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+  await page.goto(base);
+  await create(page);
+  const wav = Buffer.alloc(32044);
+  wav.write("RIFF");
+  wav.writeUInt32LE(32036, 4);
+  wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(16000, 24);
+  wav.writeUInt32LE(32000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(32000, 40);
+  await page
+    .getByLabel("Attach audio", { exact: true })
+    .setInputFiles({ name: "test.wav", mimeType: "audio/wav", buffer: wav });
+  const hash = new URL(page.url()).hash;
+  await page.getByRole("link", { name: "Settings & API keys" }).click();
+  await expect(page.getByLabel("Transcription provider")).toHaveValue("openai");
+  await expect(page.getByLabel("Memo provider")).toHaveValue("openai");
+  await page
+    .getByLabel("OpenAI API key", { exact: true })
+    .fill("synthetic-openai-only");
+  await page
+    .getByLabel("OpenRouter API key", { exact: true })
+    .fill("synthetic-router-only");
+  await page.getByLabel("Memo provider").selectOption("openrouter");
+  await page.getByRole("button", { name: "Save session keys" }).click();
+  expect(speechCalls + memoCalls).toBe(0);
+  await page.evaluate((value) => {
+    location.hash = value;
+  }, hash);
+  await page.getByRole("button", { name: "Transcribe", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("api.openai.com");
+  await expect(page.getByRole("dialog")).toContainText("gpt-transcribe");
+  expect(speechCalls).toBe(0);
+  await page.getByRole("button", { name: "Confirm and send" }).click();
+  await expect(
+    page.getByText("A plain transcript.", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page
+    .getByRole("button", { name: "Generate meeting notes", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("OpenRouter");
+  await expect(page.getByRole("dialog")).toContainText("openai/gpt-6-luna");
+  expect(memoCalls).toBe(0);
+  await page.getByRole("button", { name: "Confirm and send" }).click();
+  await expect(page.getByLabel("summary note")).toHaveValue("A summary.");
+  expect(speechCalls).toBe(1);
+  expect(memoCalls).toBe(1);
 });

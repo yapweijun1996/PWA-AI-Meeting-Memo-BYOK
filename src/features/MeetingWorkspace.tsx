@@ -36,7 +36,7 @@ import {
 import { getAudio, getMeeting, saveMeeting } from "../storage/repository";
 import { backupMeeting, download, safeFilename } from "../storage/backup";
 import { inspectAudio } from "../audio/files";
-import { getKey, getSpeechRate } from "../providers/credentials";
+import { getKey, getSelection, getSpeechRate } from "../providers/credentials";
 import { cancelProcessing, runJob, isProcessingMeeting } from "../jobs/runner";
 import { Empty, Modal, Pill } from "../components/ui";
 export function MeetingWorkspace({
@@ -199,14 +199,21 @@ export function MeetingWorkspace({
     setProcessing(true);
     setNotice("Request submitted. Keep this page open.");
     try {
-      onUpdate(await runJob(m, stage));
+      const completed = await runJob(m, stage);
+      onUpdate(completed);
       setViewVersion(undefined);
       setNotice(
         stage === "speech"
           ? "Transcript ready. Review speakers and passages before making notes."
           : "New memo version ready for review.",
       );
-      setTab(stage === "speech" ? "speakers" : "memo");
+      setTab(
+        stage === "speech"
+          ? completed.speakers.length
+            ? "speakers"
+            : "transcript"
+          : "memo",
+      );
     } catch (e) {
       onError(e instanceof Error ? e.message : "Processing did not complete.");
       const latest = await getMeeting(m.id);
@@ -1056,7 +1063,7 @@ export function MeetingWorkspace({
           ) : (
             <Empty title="Your next steps, with context">
               <p>
-                Review the transcript, then generate a draft with your OpenAI
+                Review the transcript, then generate a draft with your selected
                 key. Decisions and actions link back to what was actually said.
               </p>
               <a href="#/settings" className="text-button">
@@ -1107,32 +1114,32 @@ export function MeetingWorkspace({
                 {j.requestId && <code>Provider request: {j.requestId}</code>}
               </div>
             ))}
-          {m.runs
-            .filter((r) => r.provider === "Deepgram")
-            .map((run) => (
-              <div className="job-entry" key={run.id}>
-                <strong>{run.model} · saved original result</strong>
-                <button
-                  className="button secondary compact"
-                  disabled={locked}
-                  onClick={() => {
-                    if (
-                      confirm(
-                        "Apply this saved transcription? Current edits will remain in revision history; generated notes will need review.",
-                      )
+          {m.runs.map((run) => (
+            <div className="job-entry" key={run.id}>
+              <strong>
+                {run.provider} · {run.model} · saved original result
+              </strong>
+              <button
+                className="button secondary compact"
+                disabled={locked}
+                onClick={() => {
+                  if (
+                    confirm(
+                      "Apply this saved transcription? Current edits will remain in revision history; generated notes will need review.",
                     )
-                      void change((x) =>
-                        editMeeting(x, (d) => {
-                          d.speakers = structuredClone(run.speakers);
-                          d.segments = structuredClone(run.originalSegments);
-                        }),
-                      );
-                  }}
-                >
-                  Use this transcription
-                </button>
-              </div>
-            ))}
+                  )
+                    void change((x) =>
+                      editMeeting(x, (d) => {
+                        d.speakers = structuredClone(run.speakers);
+                        d.segments = structuredClone(run.originalSegments);
+                      }),
+                    );
+                }}
+              >
+                Use this transcription
+              </button>
+            </div>
+          ))}
         </details>
       )}
       {url && (
@@ -1241,9 +1248,9 @@ export function MeetingWorkspace({
             <dl className="confirmation-list">
               <dt>Destination</dt>
               <dd>
-                {confirmStage === "speech"
-                  ? "Deepgram · api.deepgram.com"
-                  : "OpenAI · api.openai.com"}
+                {getSelection(confirmStage).provider === "openai"
+                  ? "OpenAI · api.openai.com"
+                  : "OpenRouter · openrouter.ai (routes to a model provider)"}
               </dd>
               <dt>Data sent</dt>
               <dd>
@@ -1252,11 +1259,7 @@ export function MeetingWorkspace({
                   : "Transcript, speaker names and meeting context (title, date, timezone, languages, type and glossary)"}
               </dd>
               <dt>Model</dt>
-              <dd>
-                {confirmStage === "speech"
-                  ? "Nova-3 multilingual + diarizer v2"
-                  : "GPT-6 Luna"}
-              </dd>
+              <dd>{getSelection(confirmStage).model}</dd>
               <dt>Estimated charge</dt>
               <dd>
                 {confirmStage === "speech" &&
@@ -1268,7 +1271,7 @@ export function MeetingWorkspace({
             </dl>
             <p className="muted">
               Keep this page open. Cancellation does not guarantee remote
-              processing or billing stops. There are no automatic retries.
+              processing or billing stops. The app does not automatically retry.
               Review the provider's retention policy for your account.
             </p>
             {confirmStage === "memo" && (unknown || pending) > 0 && (
@@ -1276,6 +1279,13 @@ export function MeetingWorkspace({
                 {unknown} speakers are unconfirmed and {pending} passages are
                 unreviewed. Unknown fields remain subject to review.
               </div>
+            )}
+            {confirmStage === "speech" && (
+              <p className="small muted">
+                Audio uploads are limited to 25 MB. Speaker labels and
+                timestamps depend on the chosen model and returned result;
+                missing evidence stays unknown.
+              </p>
             )}
             {confirmStage === "speech" && m.segments.length > 0 && (
               <div className="notice sand">
@@ -1293,15 +1303,13 @@ export function MeetingWorkspace({
               </button>
               <button
                 className="button primary"
-                disabled={
-                  !getKey(confirmStage === "speech" ? "deepgram" : "openai")
-                }
+                disabled={!getKey(getSelection(confirmStage).provider)}
                 onClick={() => void process()}
               >
                 Confirm and send
               </button>
             </div>
-            {!getKey(confirmStage === "speech" ? "deepgram" : "openai") && (
+            {!getKey(getSelection(confirmStage).provider) && (
               <a
                 href="#/settings"
                 className="text-button"

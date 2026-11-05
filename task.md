@@ -13,6 +13,12 @@ This file tracks execution. [Product requirements](docs/PRODUCT.md), [architectu
 - Persist completed work and distinguish provider polling from resubmitting a paid request. Never automatically retry an unknown paid outcome.
 - Record app commit, environment, test procedure, and result when completing a validation task. Real-browser, physical-device, and mocked tests establish different things.
 
+## Provider/model change — 2026-11-05
+
+- [x] Select OpenAI or OpenRouter independently for speech and memo, with editable model IDs and OpenAI defaults.
+- [x] Remove direct Deepgram requests while retaining historical provider runs and backups.
+- [ ] Validate real OpenAI and OpenRouter requests, selected models, browser CORS, costs and speaker quality using the user’s own keys on the finished site.
+
 ## Completed foundation
 
 - [x] D01 — Retrieve the original KB product design and record the user's browser-first direction.

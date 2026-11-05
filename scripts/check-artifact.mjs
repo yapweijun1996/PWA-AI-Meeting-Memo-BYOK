@@ -39,7 +39,9 @@ assert(manifest.icons.some((i) => i.purpose === "maskable"));
 const worker = await readFile("dist/sw.js", "utf8");
 assert(worker.includes(base));
 assert(
-  !worker.includes("api.openai.com") && !worker.includes("api.deepgram.com"),
+  !worker.includes("api.openai.com") &&
+    !worker.includes("api.deepgram.com") &&
+    !worker.includes("openrouter.ai"),
 );
 console.log(
   "PASS: static-only artifact, no known credential/test fixtures, correct manifest identity and scoped worker",

@@ -2,7 +2,7 @@ import { id, type Meeting, type Job } from "../domain/model";
 import { replaceTranscript } from "../domain/operations";
 import { getMeeting, saveMeeting, getAudio } from "../storage/repository";
 import { generateMemo, transcribe, ProviderError } from "../providers/api";
-import { getKey, getSpeechRate } from "../providers/credentials";
+import { getKey, getSelection, getSpeechRate } from "../providers/credentials";
 let controller: AbortController | undefined;
 let activeMeetingId: string | undefined;
 export const isProcessingMeeting = (id: string) =>
@@ -23,11 +23,10 @@ export async function runJob(
     throw new Error(
       "Meeting history limit reached. Back up this meeting and create a new one before further processing.",
     );
-  const key = getKey(stage === "speech" ? "deepgram" : "openai");
-  if (!key)
-    throw new Error(
-      `Add your ${stage === "speech" ? "Deepgram" : "OpenAI"} key in Settings first.`,
-    );
+  const selection = getSelection(stage);
+  const provider = selection.provider === "openai" ? "OpenAI" : "OpenRouter";
+  const key = getKey(selection.provider);
+  if (!key) throw new Error(`Add your ${provider} key in Settings first.`);
   const audio = stage === "speech" ? await getAudio(m.id) : undefined;
   if (stage === "speech" && !audio)
     throw new Error("Attach the original recording before transcription.");
@@ -69,7 +68,13 @@ export async function runJob(
     try {
       const result =
         stage === "speech"
-          ? await transcribe(audio!, key, controller.signal)
+          ? await transcribe(
+              audio!,
+              key,
+              controller.signal,
+              selection,
+              m.audio?.name,
+            )
           : await generateMemo(
               m,
               key,
@@ -78,6 +83,7 @@ export async function runJob(
                 reportedUsage = usage;
                 memoRequestId = requestId;
               },
+              selection,
             );
       let latest = await getMeeting(m.id);
       if (!latest) throw new Error("The meeting was removed while processing.");
@@ -94,8 +100,8 @@ export async function runJob(
             latest,
             result.speakers,
             result.segments,
-            "Deepgram",
-            "nova-3 / diarizer v2",
+            provider,
+            selection.model,
           );
         else
           latest = {
@@ -104,15 +110,15 @@ export async function runJob(
               ...latest.runs,
               {
                 id: id(),
-                provider: "Deepgram",
-                model: "nova-3 / diarizer v2",
+                provider,
+                model: selection.model,
                 createdAt: new Date().toISOString(),
                 speakers: result.speakers,
                 originalSegments: result.segments,
               },
             ],
           };
-        if (latest.audio)
+        if (latest.audio && result.duration !== null)
           latest.audio = { ...latest.audio, duration: result.duration };
       } else if (Array.isArray(result))
         latest = {
@@ -121,7 +127,7 @@ export async function runJob(
             ...latest.memos,
             {
               id: id(),
-              model: "gpt-6-luna",
+              model: `${provider}: ${selection.model}`.slice(0, 100),
               createdAt: new Date().toISOString(),
               sourceRevision: m.revision,
               items: result,

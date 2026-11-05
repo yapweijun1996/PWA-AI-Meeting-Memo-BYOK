@@ -1,5 +1,7 @@
 # Implementation evidence
 
+2026-11-05: OpenAI is now the default for both stages, OpenRouter is optional, and direct Deepgram requests were removed while older runs remain accessible. Earlier entries describe historical checkpoints; see PROVIDERS.md for the current contract.
+
 Each entry records a task checkpoint. Full commits are available in Git history. Live API and physical-device checks remain separate from mocks.
 
 - **V01** — Reviewed official Deepgram and OpenAI contracts; docs/PROVIDERS.md records separate credentials, metadata, limits, billing and live validation gates.

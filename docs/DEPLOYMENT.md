@@ -56,7 +56,7 @@ Test the built app with the trailing-slash project URL, direct hash links, reloa
 
 ## Credential and artifact rules
 
-CI needs GitHub's scoped deployment token/OIDC permissions; it does not need an OpenAI, Deepgram, or user key. Never inject provider credentials through `VITE_*`, other build substitutions, an HTML file, or a bundled configuration.
+CI needs GitHub's scoped deployment token/OIDC permissions; it does not need an OpenAI, OpenRouter, or user key. Never inject provider credentials through `VITE_*`, other build substitutions, an HTML file, or a bundled configuration.
 
 Upload only `dist/`. Do not upload the repository root, `.env` files, recordings, backups, logs, or real transcripts. Tests use synthetic fixtures and mocked provider responses; paid integration evaluations are separate explicit runs, never every pull request.
 

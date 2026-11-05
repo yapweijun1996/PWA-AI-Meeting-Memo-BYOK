@@ -28,26 +28,22 @@ it.each([
 );
 it("normalizes words into actual speaker turns without confirming identities", () => {
   const result = normalizeSpeech({
-    results: {
-      channels: [
-        {
-          alternatives: [
-            {
-              words: [
-                { word: "hi", start: 0, end: 1, speaker: 0 },
-                { word: "yes", start: 1, end: 2, speaker: 1 },
-              ],
-            },
-          ],
-        },
-      ],
-    },
+    words: [
+      { word: "hi", start: 0, end: 1, speaker: 0 },
+      { word: "yes", start: 1, end: 2, speaker: 1 },
+    ],
   });
   expect(result.segments).toHaveLength(2);
   expect(result.speakers.every((s) => !s.confirmed)).toBe(true);
 });
-it("never invents time for unsupported output", () => {
-  expect(() => normalizeSpeech({ text: "No timing" })).toThrow("contract");
+it("never invents time or speakers for text-only output", () => {
+  const result = normalizeSpeech({ text: "No timing" });
+  expect(result.speakers).toEqual([]);
+  expect(result.segments[0]).toMatchObject({
+    start: null,
+    end: null,
+    speakerIds: [],
+  });
 });
 it("rejects invented evidence IDs in a memo", () => {
   expect(() =>
@@ -114,11 +110,7 @@ it("keeps owner and invalid dates unknown even when a model fills them", () => {
 });
 it("keeps missing speaker metadata anonymous", () => {
   const result = normalizeSpeech({
-    results: {
-      channels: [
-        { alternatives: [{ words: [{ word: "Hello", start: 0, end: 1 }] }] },
-      ],
-    },
+    words: [{ word: "Hello", start: 0, end: 1 }],
   });
   expect(result.speakers).toEqual([]);
   expect(result.segments[0].speakerIds).toEqual([]);
@@ -158,4 +150,64 @@ it("rejects unsupported long memo inputs before making a request", async () => {
     generateMemo(m, "synthetic-test", new AbortController().signal),
   ).rejects.toThrow("80,000");
   expect(fetch).not.toHaveBeenCalled();
+});
+
+it("sends an OpenRouter Scribe request with diarization and a provider-specific key", async () => {
+  const fetch = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        text: "Hello",
+        words: [{ word: "Hello", start: 0, end: 1, speaker: 2 }],
+      }),
+      { status: 200 },
+    ),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const result = await transcribe(
+    new Blob(["audio"]),
+    "router-key",
+    new AbortController().signal,
+    { provider: "openrouter", model: "elevenlabs/scribe-v2" },
+    "sample.wav",
+  );
+  expect(fetch).toHaveBeenCalledTimes(1);
+  const [url, options] = fetch.mock.calls[0];
+  expect(url).toBe("https://openrouter.ai/api/v1/audio/transcriptions");
+  expect(options.headers.Authorization).toBe("Bearer router-key");
+  expect(JSON.parse(options.body.get("provider"))).toEqual({
+    options: { elevenlabs: { diarize: true } },
+  });
+  expect(result.segments[0]).toMatchObject({ start: 0, end: 1 });
+  expect(result.speakers).toHaveLength(1);
+});
+it("rejects oversized audio before submission", async () => {
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  await expect(
+    transcribe(
+      new Blob([new Uint8Array(25000001)]),
+      "test",
+      new AbortController().signal,
+    ),
+  ).rejects.toThrow("25 MB");
+  expect(fetch).not.toHaveBeenCalled();
+});
+it("rejects malformed timestamps instead of inventing evidence", () => {
+  expect(() =>
+    normalizeSpeech({
+      segments: [{ text: "Hello", start: 2, end: 1, speaker: 0 }],
+    }),
+  ).toThrow("No valid transcript");
+});
+it("keeps word speaker evidence when a provider also returns unlabelled segments", () => {
+  const result = normalizeSpeech({
+    text: "Hello yes",
+    segments: [{ text: "Hello yes", start: 0, end: 2 }],
+    words: [
+      { word: "Hello", start: 0, end: 1, speaker: 0 },
+      { word: "yes", start: 1, end: 2, speaker: 1 },
+    ],
+  });
+  expect(result.speakers).toHaveLength(2);
+  expect(result.segments).toHaveLength(2);
 });

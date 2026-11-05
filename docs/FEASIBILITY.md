@@ -4,13 +4,13 @@ Research date: 2026-11-04. Official documentation describes available contracts;
 
 ## Decision
 
-A browser-first, static-hosted BYOK meeting memo application is feasible and implemented as a browser beta. Deepgram Nova-3 multilingual with diarizer v2 is the selected speech adapter; OpenAI Responses with GPT-6 Luna generates notes. The remaining release-critical uncertainty is live production-origin access and usable speaker/time output for real Chinese/English meetings. Keep a companion optional and verify that integration before claiming the full P0 acceptance criteria.
+A browser-first, static-hosted BYOK meeting memo application is feasible and implemented as a browser beta. The current default is OpenAI `gpt-transcribe` and Responses with GPT-6 Luna; OpenRouter is an optional selectable provider. Default transcription does not establish speaker or timing evidence. The remaining release-critical uncertainty is live production-origin access and usable speaker/time output for real Chinese/English meetings. Keep a companion optional and verify that integration before claiming the full P0 acceptance criteria.
 
 ## Implemented compatibility boundary
 
 Automated workflows pass in Playwright Chromium and Linux WebKit on Ubuntu ARM64. This verifies UI, local transactions, request orchestration with mocks, and PWA lifecycle; it does not certify physical iOS/Android, a vendor account, or model accuracy. WebKit required encoded audio bytes rather than directly persisting a File/Blob; the repository now reconstructs playback Blobs from atomically stored bytes.
 
-The selected speech route uses one foreground upload of the original container, capped at 50 MB. It has no application-level chunking or remote polling contract. A nine-minute local timeout or cancellation leaves an ambiguous request possibly charged, and never schedules another submission. Cross-chunk mapping is N/A for this implementation. The 50 MB bound is a conservative rejection rule, not a measured phone capacity. Unknown memo/speech rates remain unknown; reported usage is not an invoice. See [provider support](PROVIDERS.md) and [validation](VALIDATION.md).
+The selected speech route uses one foreground upload of the original container, capped at 25 MB; up to 50 MiB can be stored locally. It has no application-level chunking or remote polling contract. A nine-minute local timeout or cancellation leaves an ambiguous request possibly charged, and never schedules another submission. Cross-chunk mapping is N/A for this implementation. The 25 MB upload bound is a conservative rejection rule, not a measured phone capacity. Unknown memo/speech rates remain unknown; reported usage is not an invoice. See [provider support](PROVIDERS.md) and [validation](VALIDATION.md).
 
 ## Hosting and browser findings
 
@@ -35,7 +35,8 @@ Memory calculation, not a benchmark: one hour decoded at 48 kHz, stereo, float32
 | --- | --- | --- |
 | OpenAI current file transcription | `gpt-transcribe` is the recommended file route; text and detected-language output are documented | Do not assume speaker labels or word timestamps; verify a separate evidence path |
 | OpenAI legacy combined diarization | `gpt-4o-transcribe-diarize` returns speaker/time segments; announced shutdown 2027-02-26 | Transitional comparison only, not the long-term sole dependency |
-| Integrated cloud speech candidate | Deepgram documents multilingual Nova-3 and diarization with per-word speaker/time output | Verify production-origin CORS, Chinese/English quality, pricing, retention, and account access |
+| Historical cloud speech candidate | Deepgram documents multilingual Nova-3 and diarization with per-word speaker/time output; direct integration was removed by user choice | Historical comparison only |
+| Optional routed speech candidate | OpenRouter Scribe v2 documents speaker labels and word timestamps | Verify production-origin CORS, Chinese/English quality, pricing, retention, and account access |
 | Local pyannote | Local diarization is available after model setup | Optional future extension; does not run as Python inside a static PWA |
 | Imported transcript | Product can accept structured evidence or plain text | Validate input; plain text does not establish audio timing or automatic speaker capability |
 
@@ -43,7 +44,7 @@ Sources: [OpenAI transcription overview](https://developers.openai.com/api/docs/
 
 The file guide currently specifies an OpenAI upload limit of 25 MB. Limits are provider-specific and must be rechecked at implementation. Do not split all providers' inputs simply because one provider has that limit.
 
-Recommendation: evaluate one integrated cloud speech candidate and OpenAI memo generation first. Keep speech and memo key fields separate. If only a single OpenAI key is acceptable, the durable speaker/time route remains unresolved; do not silently remove diarization or force a companion.
+Recommendation: evaluate OpenRouter Scribe v2 for speaker/time evidence and OpenAI for the default text-only path. Keep keys separate by provider and make the capability limitation visible; do not silently manufacture diarization or force a companion.
 
 ## Why alignment remains an independent problem
 
@@ -71,7 +72,7 @@ Store the rate date, unit, stage, and estimated quantity. Unknown rates stay unk
 
 | Question | Current state | Required evidence |
 | --- | --- | --- |
-| Which speech provider meets the full P0 contract? | Deepgram adapter selected and mock-tested; live acceptance open | Production-origin browser test with a consented recording and normalized evidence |
+| Which speech provider meets the full P0 contract? | OpenRouter Scribe v2 selected as an optional candidate and mock-tested; live acceptance open | Production-origin browser test with a consented recording and normalized evidence |
 | Does mixed Chinese/English preserve voice identity? | Unknown | Manually labeled samples with code switching, short responses, noise, and overlap |
 | What formats and duration are reliable on phones? | Unknown | Real Safari/iOS standalone and Android runs; memory, quota, and recovery observations |
 | Can async jobs be recovered directly? | N/A for the selected synchronous route; ambiguous submissions require account review | A later asynchronous provider must establish status/result access before adding polling |

@@ -150,7 +150,12 @@ test("scoped worker supports offline reload without caching API data", async ({
     cached.every((url) => url.startsWith("http://127.0.0.1:4180" + base)),
   ).toBe(true);
   expect(
-    cached.some((url) => url.includes("openai") || url.includes("deepgram")),
+    cached.some(
+      (url) =>
+        url.includes("openai") ||
+        url.includes("deepgram") ||
+        url.includes("openrouter"),
+    ),
   ).toBe(false);
   await context.setOffline(false);
 });

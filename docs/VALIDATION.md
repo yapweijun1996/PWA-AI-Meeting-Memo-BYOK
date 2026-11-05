@@ -1,6 +1,10 @@
 # Validation record
 
-Date: 2026-11-04. Product: browser-first BYOK beta. Host used for local checks: Ubuntu 24.04 ARM64, Node 22.23.3, Playwright Chromium and WebKit. WebKit on Linux is not a physical iPhone.
+Prior baseline date: 2026-11-04. Product: browser-first BYOK beta. Host used for local checks: Ubuntu 24.04 ARM64, Node 22.23.3, Playwright Chromium and WebKit. WebKit on Linux is not a physical iPhone.
+
+## Provider selection change (2026-11-05)
+
+The OpenAI-default/OpenRouter-optional change passed lint, TypeScript, 30 unit tests, 36 Chromium/WebKit browser tests, static artifact checks, and the two-engine PWA update test locally. Provider responses were synthetic. The published commit must be read from the latest GitHub Actions run; prior counts and live deployment details below describe the earlier baseline. Authenticated provider access, Scribe speaker accuracy, actual charges, and device testing remain NOT RUN.
 
 ## Local checks
 
@@ -74,7 +78,7 @@ No failed check is being waived. Pending acceptance items are not promoted to PA
 
 ## Limits and safeguards
 
-- Maximum new recording: 50 MB; supported formats still depend on the browser/provider.
+- Maximum local recording: 50 MiB; transcription upload: 25 MB; supported formats still depend on the browser/provider.
 - Maximum JSON restore: 12 MB; ZIP input/expanded size capped at 120 MB and restricted to known entries; audio checksums are verified.
 - Memo input/output and history limits are enforced before further requests; all unknown costs stay unknown.
 - Human acceptance is recorded against the current source revision. Original generated source references and prior human memo versions remain intact.
