@@ -179,7 +179,7 @@ const TimedSpeech = z.object({
     .optional(),
 });
 // Read only validated accounting fields, independently of result validation.
-function accounting(value: unknown, provider: Selection["provider"], speech = false) {
+function accounting(value: unknown, provider: Selection["provider"]) {
   const parsed = z.object({ usage: z.unknown().optional(), id: z.unknown().optional() }).safeParse(value);
   const data = parsed.success ? parsed.data : undefined;
   const usage = z.record(z.string(), z.unknown()).safeParse(data?.usage);
@@ -192,9 +192,12 @@ function accounting(value: unknown, provider: Selection["provider"], speech = fa
   };
   const requestId = z.string().max(200).safeParse(data?.id);
   return {
-    usage: { inputTokens: number(fields.input_tokens, true), outputTokens: number(fields.output_tokens, true), seconds: number(fields.seconds), cachedInputTokens: number(details.cached_tokens, true), totalTokens: number(fields.total_tokens, true) },
+    usage: { inputTokens: number(fields.input_tokens, true), outputTokens: number(fields.output_tokens, true), seconds: number(fields.seconds), cachedInputTokens: number(details.cached_tokens, true), cacheWriteTokens: number(details.cache_write_tokens, true), totalTokens: number(fields.total_tokens, true) },
     requestId: requestId.success ? requestId.data : null,
-    cost: provider === "openrouter" && speech ? number(fields.cost) : null,
+    // OpenRouter reports request cost in USD for both speech and Responses.
+    // OpenAI usage is still retained, but its response does not establish a
+    // provider-reported dollar amount for this client.
+    cost: provider === "openrouter" ? number(fields.cost) : null,
   };
 }
 export function normalizeSpeech(value: unknown): {
@@ -326,7 +329,7 @@ export async function transcribe(
       ? "https://api.openai.com/v1/audio/transcriptions"
       : "https://openrouter.ai/api/v1/audio/transcriptions";
   const value = await post(url, `Bearer ${key.trim()}`, form, {}, signal);
-  onAccounting?.(accounting(value, selection.provider, true));
+  onAccounting?.(accounting(value, selection.provider));
   return normalizeSpeech(value);
 }
 const generatedItem = (maxSourceIds: 5 | 100) =>

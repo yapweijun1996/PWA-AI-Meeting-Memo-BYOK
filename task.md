@@ -1,6 +1,6 @@
 # Implementation tasks
 
-Updated: 2026-11-04. Current stage: browser beta implemented, published and verified, including a real two-engine version upgrade. Full P0 acceptance still requires the user-run live API and physical-device gates below.
+Updated: 2026-11-05. Current stage: browser beta implementation and local verification are complete for the current accounting and speaker-listening/source-video patch: 70 unit tests, 74 browser cases, two-engine PWA lifecycle checks, lint, typecheck, production build and artifact checks pass locally. Current local build is `93c325cceb45b7d3`; CI will rerun the full gates before publication. Full P0 acceptance still requires the user-run live API, annotated quality and physical-device gates below.
 
 This file tracks execution. [Product requirements](docs/PRODUCT.md), [architecture](docs/ARCHITECTURE.md), [feasibility](docs/FEASIBILITY.md), [deployment](docs/DEPLOYMENT.md), and [the roadmap](docs/ROADMAP.md) define the detailed contracts. A checked task requires evidence, not just code or a proposed design.
 
@@ -13,15 +13,30 @@ This file tracks execution. [Product requirements](docs/PRODUCT.md), [architectu
 - Persist completed work and distinguish provider polling from resubmitting a paid request. Never automatically retry an unknown paid outcome.
 - Record app commit, environment, test procedure, and result when completing a validation task. Real-browser, physical-device, and mocked tests establish different things.
 
-## Speaker listening and bilingual UX — proposed 2026-11-05
+## Meeting workspace UI review — screenshot observations 2026-11-05
 
-See the [product requirements](docs/PRODUCT.md#4-review-speakers) and [interactive concept](docs/design/speaker-review-prototype.html). The concept is illustrative, not an implemented app feature or proof of diarization accuracy.
+These are preliminary observations from a user-provided desktop screenshot of a populated meeting workspace. They are not verified defects or evidence of mobile, keyboard, screen-reader, contrast, or runtime behavior. Reproduce with synthetic data before choosing changes; coordinate with the bilingual UX and preset/cost tasks below.
 
-- [ ] Investigate sample selection on word-level and sentence-level provider responses; specify longer adjustable context windows, distinct example turns, timing bounds, overlap and missing-audio behavior.
-- [ ] Implement a playback-synchronized, dynamically sized speaker stage using supported transcript timestamps and current assignments; display simultaneous speakers, unknown gaps, untimed data and unconfirmed identity without inventing attribution.
-- [ ] Connect seek and contextual listening to existing speaker correction, revision invalidation and undo; retain original model output and evidence. Avoid implying all context audio belongs to the selected speaker.
-- [ ] Add complete English and Simplified Chinese UI localization, including accessible names, errors and dialogs; persist the UI language separately from meeting language and preserve user data on switching.
-- [ ] Validate synthetic word-level, long-turn, overlap, missing-timing and corrected-assignment cases; test desktop, mobile and iOS standalone, keyboard, screen reader, reduced motion and both UI languages. Verify playback synchronization with a user-authorized real recording and document diarization limitations.
+- [ ] Review the vertical space used by the workspace header, audio card, and navigation; make more meeting-note content visible initially without hiding important context or actions.
+- [x] Check the readability and actual contrast of secondary text and status information, including meeting details, audio metadata, version, model, and local-save status; representative English desktop and Simplified Chinese 390px QA at CSS zoom 2× passed with a minimum measured contrast of 5.32:1. Physical-device zoom remains open.
+- [x] Review the stale-notes warning and make the available next steps understandable while preserving accepted human edits and source revision history; browser checks cover the warning, current-transcript/generate-another actions and preserved revisions.
+- [x] Clarify that generating a new memo creates a new version and may incur a charge; retain the existing explicit confirmation of recipient, data, and estimated or unknown cost. The fee notice and confirmation boundary are browser-tested.
+- [x] When a transcript already exists, clarify what the transcription action will do to existing evidence and corrections; browser checks cover source-unchanged replacement/history behavior and preservation of prior evidence.
+- [x] Explain the units behind transcript, speaker, and meeting-note counts, including accessible names where needed; recording, history and tab labels are covered by browser assertions.
+- [x] Check the discoverability and accessible names of icon-only meeting settings and delete actions; title/name, confirmation and keyboard interaction paths are covered by browser checks. Physical screen-reader certification remains open.
+- [x] Review privacy and local-save wording so users can distinguish local storage from data sent to a provider after authorization, including the documented shared-origin boundary; settings/workspace copy and destination confirmation are covered, while physical-device behavior remains open.
+- [ ] Complete the combined follow-up across representative desktop and narrow layouts, keyboard and screen-reader access, English and Simplified Chinese, and synthetic states; physical screen-reader and installed-device validation remain separate release gates below.
+
+## Speaker listening and bilingual UX — implemented/local validation 2026-11-05
+
+See the [product requirements](docs/PRODUCT.md#4-review-speakers) and [interactive concept](docs/design/speaker-review-prototype.html). The application path is implemented and locally tested; the concept remains illustrative and neither is proof of diarization accuracy.
+
+- [x] Investigate and implement sample selection on word-level and sentence-level provider responses: 10/20/30-second bounded context windows, distinct example turns, recording-end limits, overlap context and explicit missing-audio/timing states.
+- [x] Implement a playback-synchronized, dynamically sized speaker stage using supported transcript timestamps and current assignments; display simultaneous speakers, unknown gaps, untimed data and unconfirmed identity without inventing attribution.
+- [x] Connect seek and contextual listening to existing speaker correction, revision invalidation and undo; retain original model output and evidence. Context is labelled as potentially containing other voices.
+- [x] Add English and Simplified Chinese controls, translated labels/errors/dialogs and automated accessible-name coverage for the implemented speaker/video review path; UI language remains separate from meeting language and data survives switching. Full screen-reader/device acceptance remains open.
+- [x] Validate synthetic word-level, long-turn, overlap, missing-timing and corrected-assignment cases on desktop, narrow layouts, keyboard and both UI languages; the global reduced-motion processing regression is covered separately. Validate the real recording path in Chrome and document limitations.
+- [ ] Validate iOS standalone, physical screen-reader behavior and Android installed mode; these require user devices and are retained as release gates.
 
 ## Settings persistence amendment — 2026-11-05
 
@@ -36,19 +51,20 @@ The user selected unencrypted storage in this browser for API keys, provider/mod
 
 - [x] Select OpenAI or OpenRouter independently for speech and memo, with editable model IDs and OpenAI defaults.
 - [x] Remove direct Deepgram requests while retaining historical provider runs and backups.
-- [ ] Validate real OpenAI and OpenRouter requests, selected models, browser CORS, costs and speaker quality using the user’s own keys on the finished site.
+- [ ] Complete the remaining live acceptance matrix: production-origin authenticated CORS/account access, current model availability, reconciled provider billing and annotated speaker quality. Exact authorized browser calls and their limitations are recorded in [validation](docs/VALIDATION.md).
 
-## Requested preset and cost usage — 2026-11-05 (implementation and validation in progress)
+## Requested preset and cost usage — 2026-11-05 (implementation and validation)
 
-Requirements: [product](docs/PRODUCT.md#requested-preset-and-cost-visibility-planned-2026-11-05) and [provider contracts](docs/PROVIDERS.md#planned-preset-and-usage-evidence--2026-11-05). The requested preset selects OpenRouter `elevenlabs/scribe-v2` for transcription and OpenAI `gpt-6-luna` for notes. One long recording completed the local browser workflow after bounded input compaction; see [validation](docs/VALIDATION.md) for its scope and limitations. The input cap, semantic review and remaining acceptance checks still apply.
+Requirements: [product](docs/PRODUCT.md#requested-preset-and-cost-visibility-planned-2026-11-05) and [provider contracts](docs/PROVIDERS.md#planned-preset-and-usage-evidence--2026-11-05). The requested preset selects OpenRouter `elevenlabs/scribe-v2` for transcription and OpenAI `gpt-6-luna` for notes. Local/offline checks exercise bounded compaction on one long recording; the paid long-recording memo request predates the current fragment-array transport and does not validate it. See [validation](docs/VALIDATION.md) for scope and limitations. The input cap, semantic review and remaining acceptance checks still apply.
 
-- [ ] Add the requested pair as the recommended preset/default for fresh settings. Keep provider/model customization and independent keys; preserve existing selections, keys and user-entered rates on upgrade, including stale-tab protection and recovery. Changing a preset never sends a request; no silent fallback.
-- [ ] Show each stage's provider, model, recipient and estimated cost or unknown before the existing send confirmation. Provide a dated rate source, unit and assumptions for any estimate; no invented token usage, fixed price or account cap.
-- [ ] Normalize, validate and persist per-attempt, allowlisted non-secret usage/cost fields from responses independently of transcript/memo validation, including provider, model, currency, reported versus estimated source, rate provenance and request/billing state. Never store raw provider bodies or keys. Preserve existing jobs and old backups with missing fields as unknown; keep invalid results and possibly billed requests distinguishable.
-- [ ] Show per-stage usage/cost and a meeting-level summary in processing history. Separate provider-reported request amounts from computed estimates and currencies; clearly flag missing or potentially charged attempts and incomplete totals. Avoid double-counting retries, restored copies and cached usage; never imply invoice or account-wide coverage. Provider billing remains authoritative.
-- [ ] Provide English and Simplified Chinese for preset, usage, cost, errors, unknown and accessible status text, in coordination with the bilingual UX task above. Check narrow layouts and screen readers.
-- [ ] Add focused synthetic tests for fresh and upgraded settings, custom models, missing keys, no paid call on preset selection, independent credentials, complete/zero/missing/malformed usage and costs, currency and rate provenance, cache-token handling, partial totals, old backups, failed/cancelled/timeout and rejected-result billing, reload and no duplicate submission. Verify estimates against current official pricing without hard-coding stale rates. Real paid/account validation requires separate authorization.
-- [ ] Resolve the long speaker-aware transcript limit through a separately designed evidence-preserving workflow, then validate the full recording-to-notes flow with authorized data; preserve citation IDs, edits and billing consent. Do not bypass or silently truncate the current limit.
+- [x] Add the requested pair as the recommended preset/default for fresh settings. Provider/model customization, independent keys, stale-tab protection and recovery remain preserved; selecting a preset sends no request and has no silent fallback.
+- [x] Show each stage’s provider, model, recipient and estimated cost or unknown before the existing send confirmation, with dated rate source, unit and assumptions where available.
+- [x] Normalize, validate and persist allowlisted per-attempt usage/cost fields independently of transcript/memo validation, including provider/model, USD reported versus estimate, rate provenance, cache counts and request/billing state. Invalid or absent fields remain distinguishable as unknown; old jobs/backups remain readable.
+- [x] Show per-stage usage/cost and meeting-level summaries in processing history. Reported amounts and estimates remain separate; unknown or possibly charged attempts make totals incomplete; restored copies and duplicate attempts are not silently combined.
+- [x] Provide English and Simplified Chinese for the implemented preset, usage, cost, errors, unknown and accessible status text; narrow-layout and browser accessibility checks are recorded.
+- [x] Add focused synthetic coverage for fresh/upgraded settings, custom models, missing keys, no paid call on preset selection, independent credentials, zero/missing/malformed usage, cache counts, partial totals, old backups, failure/cancellation/timeout and no duplicate submission. Current official pricing remains documentation evidence, not a hard-coded account cap.
+- [ ] Validate provider billing reconciliation and current account/model behavior with the user’s keys on the finished deployed site; no automatic retry is permitted.
+- [ ] Continue the evidence-preserving long-recording path for recordings above the serialized input limit; current bounded compaction is validated, but arbitrary-length support is not claimed.
 
 ## Completed foundation
 
@@ -64,9 +80,9 @@ Requirements: [product](docs/PRODUCT.md#requested-preset-and-cost-visibility-pla
 Dependency: the agreed product contract. Use a minimal browser harness; application foundation work can proceed with synthetic data while live evaluation prerequisites are pending. A real speech provider remains a gate for the speaker-aware release.
 
 - [x] V01 — Define the candidate speech/memo provider matrix, including separate key requirements, metadata, limits, lifecycle, and pricing basis.
-- [ ] V02 — Prepare a small private, consented evaluation set covering Chinese/English, Singlish, ERP terms, 2–5 speakers, noise, overlap, short replies, silence, and a long recording.
-- [ ] V03 — Verify exact production-origin CORS behavior, request headers, supported formats, response visibility, and account access for each candidate.
-- [ ] V04 — Demonstrate real speaker/time evidence from at least one durable candidate. Missing timestamps or identity remain unresolved.
+- [ ] V02 — Prepare and annotate a small private, consented evaluation set covering Chinese/English, Singlish, ERP terms, 2–5 speakers, noise, overlap, short replies, silence and a long recording.
+- [ ] V03 — Complete authenticated production-origin CORS, request-header, supported-format, response-visibility and account-access verification for each candidate. Unauthenticated preflight probes are recorded as partial evidence only.
+- [x] V04 — Demonstrate real speaker/time evidence from the durable Scribe candidate in the user’s MP3: five anonymous labels and preserved word timing were delivered and reviewed in Chrome. Independent identity/accuracy remains unresolved.
 - [ ] V05 — Measure transcription errors, speaker confusion, unknown coverage, number/date errors, human correction time, runtime, and actual cost against an annotated subset.
 - [ ] V06 — Measure device memory and practical input limits; verify valid audio chunks, source offsets, and cross-chunk speaker mapping when needed.
 - [x] V07 — Test timeout, disconnect, broken stream, cancellation, and provider-job recovery without hidden resubmission or SDK retries.
@@ -118,7 +134,7 @@ Dependency: Phase 0 provider decision and Phase 2 storage/evidence contracts.
 - [x] I05 — Persist job intent, per-chunk results, provisional stream state, and separate execution/billing status.
 - [x] I06 — Implement pause/cancel/reload recovery, key re-entry, verified file re-selection, and polling of recorded provider job IDs where supported.
 - [x] I07 — Handle ambiguous paid outcomes through review; prevent automatic resubmission from the scheduler, SDK, worker, or connectivity event.
-- [ ] I08 — Run authorized browser integration and failure tests; record provider/model, fixture, browser, source commit, usage, and outcome without storing private recordings in Git.
+- [x] I08 — Run authorized browser integration and failure tests for the recorded OpenRouter Scribe and OpenAI/OpenRouter memo calls; provider/model, browser, usage and outcomes are recorded without storing private recordings or keys in Git. Production-origin and account-wide reconciliation remain separate gates.
 
 Acceptance: a real supported recording produces usable local evidence, completed results survive interruption, and uncertain requests are never silently resubmitted.
 
@@ -139,12 +155,12 @@ Acceptance: users can inspect the evidence behind every supported memo claim, co
 
 Dependency: runnable app, passing documented checks, and authorization for publication. An initial synthetic-data scaffold can be published after Phase 1; a speaker-aware product release requires all applicable P0 gates above.
 
-- [ ] R01 — Choose a dedicated production hostname or explicitly document acceptance of the shared owner-hostname trust boundary for a personal prototype.
+- [x] R01 — Documented acceptance of the shared owner-hostname trust boundary for this personal GitHub Pages Beta; a dedicated hostname remains recommended before sensitive production use.
 - [x] R02 — Review the inactive workflow against the real package/scripts and current action/runtime compatibility, then activate `.github/workflows/pages.yml`.
 - [x] R03 — Verify that PRs only check, failed checks prevent publication, only trusted `main` publishes, stale commits are skipped, and only `dist/` is uploaded.
 - [x] R04 — Configure/recheck the `github-pages` environment branch restrictions; keep provider keys out of workflow and build inputs.
 - [x] R05 — Complete an authorized deployment and record the source commit, successful Actions run, deployment URL, and deployed asset/build identity.
-- [ ] R06 — Test actual production-origin CORS, HTTPS, hash refresh, installed launch, worker scope, cache behavior, and unexpected network destinations.
+- [ ] R06 — Complete authenticated production-origin CORS/account access and installed-launch checks; HTTPS, hash refresh, worker scope, cache behavior and static unexpected-network checks are already recorded as PASS.
 - [ ] R07 — Test physical iPhone Safari/standalone and Android Chrome/installed behavior, including phone suspension, keyboard, safe areas, touch, zoom, accessibility, and overflow.
 - [ ] R08 — Exercise the full storage, audio, billing/recovery, evidence, memo, and privacy matrix in the roadmap; establish measured supported file/device limits.
 - [x] R09 — Verify deployed N-to-N+1 update behavior, active-draft/request protection, old-client assets, migration compatibility, and revert/forward-fix recovery.
@@ -169,18 +185,19 @@ The browser application and automatic Pages publication are implemented. The use
 | Evidence | Current result |
 | --- | --- |
 | Design and implementation on `main` | Each completed task has its own committed/pushed checkpoint in [implementation evidence](docs/IMPLEMENTATION-LOG.md) and Git history |
-| Local checks | Lint, typecheck, build, all 26 unit tests, all 34 browser cases, two-engine update tests and artifact checks PASS; detailed verified checkpoints are recorded in [validation](docs/VALIDATION.md) |
+| Local checks | Current patch evidence: 70 unit tests, 74 browser cases, lint, typecheck, production build, two-engine PWA checks and artifact checks PASS locally. Build `93c325cceb45b7d3`; CI will rerun the full gates before publication. Exact scope and limitations are recorded in [validation](docs/VALIDATION.md) |
 | Active auto-deployment | [Trusted-main workflow](.github/workflows/pages.yml) checks before publishing only `dist/`; no provider keys are used |
-| Successful publication | [Run 41845407515](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41845407515), build `18cd59c`; served identity, HTTPS, scoped worker, hash refresh, synthetic storage and offline reload PASS in both engines |
-| Update hardening | Stale-HTTP-cache regression fixed; [run 41847942972](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41847942972) published `6e0fcdf`; actual Chromium/WebKit upgrade, saved editor, old assets and new-build offline reload PASS |
-| Live provider/device evaluation | NOT RUN as recorded in [validation](docs/VALIDATION.md); no model-quality or physical-phone claim |
+| Historical successful publication | [Run 41845407515](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41845407515), build `18cd59c`; served identity, HTTPS, scoped worker, hash refresh, synthetic storage and offline reload PASS in both engines. This is not the current patch. |
+| Historical update hardening | Stale-HTTP-cache regression fixed; [run 41847942972](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41847942972) published `6e0fcdf`; actual Chromium/WebKit upgrade, saved editor, old assets and new-build offline reload PASS. Current patch still needs publication. |
+| Live provider/device evaluation | Exact authorized browser calls and Chrome speaker/time delivery are recorded; annotated model quality, production account/CORS reconciliation and physical-phone acceptance remain NOT RUN |
 
 Remaining acceptance gates are deliberate and stay unchecked:
 
 | Tasks | Required external evidence |
 | --- | --- |
-| V02–V06, I08 | Consented recordings, valid provider keys/accounts, quality/cost/review-time measurements and real device/resource limits |
-| R01 | Dedicated production hostname or explicit acceptance of the shared owner-hostname trust boundary; the beta uses the requested Pages address |
+| V02–V03, V05–V06 | Consented annotated recordings, authenticated provider/account checks, quality/cost/review-time measurements and real device/resource limits |
+| I08 | Authorized browser integration is recorded; future provider/account changes still require a fresh run |
+| R01 | The personal Beta accepts the shared owner-hostname trust boundary; a dedicated hostname remains an optional hardening step before sensitive production use |
 | R06 | Hosting/static/offline checks PASS; authenticated production-origin provider CORS and installed launch still NOT RUN |
 | R07 | Physical iPhone/Android Safari/Chrome and installed-mode tests |
 | R08 | Complete release matrix, including the outstanding real provider and physical-device evidence |

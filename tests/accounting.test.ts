@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { generateMemo, transcribe } from "../src/providers/api";
 import { JobSchema, sampleMeeting } from "../src/domain/model";
+import { summarizeMeetingAccounting } from "../src/domain/accounting";
 import { calculateSpeechEstimate } from "../src/providers/credentials";
 import type { SettingsRecord } from "../src/storage/settings";
 
@@ -29,7 +30,7 @@ it("captures validated speech accounting even when the transcript is rejected", 
   const callback = vi.fn();
   await expect(transcribe(new Blob(["x"]), "test", new AbortController().signal,
     { provider: "openrouter", model: "elevenlabs/scribe-v2" }, "a.wav", callback)).rejects.toThrow();
-  expect(callback).toHaveBeenCalledWith({ usage: { inputTokens: 0, outputTokens: null, seconds: 2, cachedInputTokens: null, totalTokens: null }, requestId: null, cost: 0 });
+  expect(callback).toHaveBeenCalledWith({ usage: { inputTokens: 0, outputTokens: null, seconds: 2, cachedInputTokens: null, cacheWriteTokens: null, totalTokens: null }, requestId: null, cost: 0 });
 });
 
 it("captures memo usage independently of malformed output and never treats OpenAI cost as reported", async () => {
@@ -39,5 +40,63 @@ it("captures memo usage independently of malformed output and never treats OpenA
   const callback = vi.fn();
   await expect(generateMemo(sampleMeeting(), "test", new AbortController().signal, callback,
     { provider: "openai", model: "gpt-6-luna" })).rejects.toThrow();
-  expect(callback).toHaveBeenCalledWith({ inputTokens: 12, outputTokens: null, seconds: null, cachedInputTokens: null, totalTokens: null }, null, null);
+  expect(callback).toHaveBeenCalledWith({ inputTokens: 12, outputTokens: null, seconds: null, cachedInputTokens: null, cacheWriteTokens: null, totalTokens: null }, null, null);
+});
+
+it("captures Responses usage cost and cache-write tokens for OpenRouter", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+    status: "incomplete",
+    id: "resp_123",
+    usage: {
+      input_tokens: 12,
+      output_tokens: 4,
+      total_tokens: 16,
+      input_tokens_details: { cached_tokens: 3, cache_write_tokens: 5 },
+      cost: 0.0042,
+    },
+    output: [],
+  }), { status: 200 })));
+  const callback = vi.fn();
+  await expect(generateMemo(sampleMeeting(), "test", new AbortController().signal, callback,
+    { provider: "openrouter", model: "openai/gpt-6-luna" })).rejects.toThrow();
+  expect(callback).toHaveBeenCalledWith({
+    inputTokens: 12,
+    outputTokens: 4,
+    seconds: null,
+    cachedInputTokens: 3,
+    cacheWriteTokens: 5,
+    totalTokens: 16,
+  }, "resp_123", 0.0042);
+});
+
+it("summarizes unique submitted jobs and marks unknown or conflicting totals incomplete", () => {
+  const base = {
+    id: crypto.randomUUID(),
+    stage: "memo" as const,
+    state: "completed" as const,
+    billing: "provider_reported" as const,
+    createdAt: "2026-01-01",
+    updatedAt: "2026-01-01",
+    requestId: "req-1",
+    usage: { inputTokens: 10, outputTokens: 2, seconds: null, cachedInputTokens: 0, cacheWriteTokens: 0, totalTokens: 12 },
+    estimateUsd: 0.02,
+    estimateDetails: { rate: 1, seconds: 1, source: "https://example.com/rate", date: "2026-01-01" as const },
+    provider: "openrouter" as const,
+    model: "notes",
+    reportedCostUsd: 0.01,
+    message: "done",
+    inputRevision: 1,
+  };
+  const duplicate = { ...base };
+  const unknown = { ...base, id: crypto.randomUUID(), billing: "possibly_charged" as const, reportedCostUsd: null, estimateUsd: null, estimateDetails: null };
+  const notSubmitted = { ...base, id: crypto.randomUUID(), billing: "not_submitted" as const, reportedCostUsd: 0.5 };
+  const conflicting = { ...base, id: base.id, reportedCostUsd: 0.99 };
+  const result = summarizeMeetingAccounting([base, duplicate, unknown, notSubmitted, conflicting]);
+  expect(result.reportedUsd).toBeNull();
+  expect(result.estimateUsd).toBeNull();
+  expect(result.submittedAttempts).toBe(2);
+  expect(result.reportedAttempts).toBe(0);
+  expect(result.unknownAttempts).toBe(2);
+  expect(result.incomplete).toBe(true);
+  expect(result.conflictJobIds).toEqual([base.id]);
 });

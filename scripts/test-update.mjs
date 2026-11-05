@@ -180,6 +180,17 @@ try {
       await page.evaluate((value) => {
         location.hash = value;
       }, hash);
+      await page.getByRole("tab", { name: /Speakers/ }).click();
+      const speakerDraft = page.getByLabel("Name for speaker 1", { exact: true });
+      await speakerDraft.fill("Jamie pending save");
+      await page.locator(".update button").evaluate((button) => button.click());
+      await expect(
+        page.getByText("Save or close the open editor before updating.", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "Save name", exact: true }).click();
+      await expect(speakerDraft).toHaveValue("Jamie pending save");
       await page.getByRole("tab", { name: /Transcript/ }).click();
       await page
         .getByRole("button", { name: "Edit passage", exact: true })

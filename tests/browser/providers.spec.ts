@@ -403,7 +403,12 @@ test("long speaker-aware memos compact transport input and restore original evid
   const last = fixture.segments.at(-1)!;
   let requests = 0;
   let capturedInput: {
-    segments: Array<{ id: string }>;
+    speakers: Array<{ id: string; name: string; confirmed: boolean }>;
+    segments: Array<{
+      id: string;
+      text: string[];
+      speakers: (number | string)[];
+    }>;
   } | null = null;
   await page.route("https://api.openai.com/v1/responses", async (route) => {
     if (route.request().method() === "OPTIONS") {
@@ -431,15 +436,35 @@ test("long speaker-aware memos compact transport input and restore original evid
       expect(body.input).toContain(speaker.name);
     }
     const input = JSON.parse(body.input) as {
+      speakers: Array<{ id: string; name: string; confirmed: boolean }>;
       segments: Array<{ id: string; text: string[]; speakers: (number | string)[] }>;
     };
     capturedInput = input;
+    expect(input.speakers).toEqual(
+      fixture.speakers.map(({ id, name, confirmed }) => ({
+        id,
+        name,
+        confirmed,
+      })),
+    );
     expect(input.segments).toHaveLength(18);
     expect(input.segments[0].id).toBe("g0");
     expect(input.segments.at(-1)?.id).toBe("g17");
+    expect(input.segments.every((group) => Array.isArray(group.text))).toBe(true);
     expect(input.segments.flatMap((group) => group.text)).toEqual(
       fixture.segments.map((source) => source.text),
     );
+    for (const group of input.segments) {
+      expect(group.speakers.every((speaker) => typeof speaker === "number")).toBe(true);
+      const firstSource = fixture.segments.find(
+        (source) => source.text === group.text[0],
+      );
+      expect(firstSource).toBeDefined();
+      const speakerIndices = group.speakers as number[];
+      expect(
+        speakerIndices.map((index) => input.speakers[index]?.id),
+      ).toEqual(firstSource!.speakerIds);
+    }
     await route.fulfill({
       headers: { "Access-Control-Allow-Origin": "*" },
       json: {

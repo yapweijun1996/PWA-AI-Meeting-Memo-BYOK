@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ReferenceVideoSchema, type ReferenceVideo } from "./reference-video";
 export const id = () => crypto.randomUUID();
 export const localDate = (now = new Date()) =>
   `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -92,6 +93,7 @@ export const JobSchema = z
         outputTokens: z.number().int().nonnegative().nullable(),
         seconds: z.number().nonnegative().nullable(),
         cachedInputTokens: z.number().int().nonnegative().nullable().optional(),
+        cacheWriteTokens: z.number().int().nonnegative().nullable().optional(),
         totalTokens: z.number().int().nonnegative().nullable().optional(),
       })
       .strict()
@@ -122,6 +124,7 @@ export const MeetingSchema = z
     updatedAt: z.string(),
     revision: z.number().int().positive(),
     synthetic: z.boolean(),
+    referenceVideo: ReferenceVideoSchema.nullable().optional(),
     speakers: z.array(SpeakerSchema).max(100),
     segments: z.array(SegmentSchema).max(20000),
     history: z.array(SegmentSchema).max(100000),
@@ -177,6 +180,7 @@ export type Segment = z.infer<typeof SegmentSchema>;
 export type Speaker = z.infer<typeof SpeakerSchema>;
 export type MemoItem = z.infer<typeof MemoItemSchema>;
 export type Job = z.infer<typeof JobSchema>;
+export type { ReferenceVideo };
 export const ref = (s: { id: string; revision: number }) =>
   `${s.id}:${s.revision}`;
 export function validateMeeting(value: unknown): Meeting {
@@ -245,6 +249,7 @@ export function createMeeting(
     updatedAt: now,
     revision: 1,
     synthetic: false,
+    referenceVideo: null,
     speakers: [],
     segments: [],
     history: [],

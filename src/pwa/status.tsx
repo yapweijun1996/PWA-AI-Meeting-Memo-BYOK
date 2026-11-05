@@ -95,6 +95,15 @@ export function PwaStatus() {
       setError("Finish the active provider request before updating.");
       return;
     }
+    if (document.querySelector('[data-unsaved-edit="true"]')) {
+      setError(
+        t(
+          "Save or close the open editor before updating.",
+          "更新前请保存或关闭打开的编辑器。",
+        ),
+      );
+      return;
+    }
     if (!confirm(t("Apply the update now? Save any open text edits first.", "现在应用更新吗？请先保存正在编辑的文字。")))
       return;
     try {

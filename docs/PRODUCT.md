@@ -44,7 +44,7 @@ Offer a clearly labeled recommended starting preset: OpenRouter `elevenlabs/scri
 
 Show cost and usage before and after each request and in meeting processing history. Before sending, label a cost as an estimate only when the needed duration/usage and a clearly dated, applicable rate are available; otherwise show unknown. After completion, show the provider-reported usage and, if actually returned, provider-reported request cost, with its currency and source. If calculating a cost from token usage and rates, label it as an estimate and expose its rate, date and assumptions; do not treat it as a bill. Failed, cancelled and interrupted submissions may be billable and can have unknown cost. Historical missing usage must remain unknown, not zero. Meeting totals must disclose incomplete entries and separate currencies and estimate versus provider-reported amounts; account-wide billing remains with each provider.
 
-All preset, cost and usage states, explanations and accessible labels must support English and Simplified Chinese. Local validation records include one complete English MP3 processed through speaker-aware transcription and memo generation after bounded input compaction. This does not establish diarization accuracy or arbitrary-length meeting support; see [validation](VALIDATION.md) for the tested scope and remaining review limitations. This section describes requirements, not a claim that all cost and localization acceptance criteria are complete.
+All preset, cost and usage states, explanations and accessible labels must support English and Simplified Chinese. Local validation records include one complete English MP3 exercised through speaker-aware transcription and memo generation after bounded input compaction; the paid long-recording memo request predates the current fragment-array transport, while current compaction is covered offline and synthetically. This does not establish diarization accuracy or arbitrary-length meeting support; see [validation](VALIDATION.md) for the tested scope and remaining review limitations. This section describes requirements, not a claim that all cost and localization acceptance criteria are complete.
 
 ### 3. Process and recover
 
@@ -60,15 +60,19 @@ Support single-segment reassignment, selected-segment bulk reassignment with an 
 
 Preserve overlap or multiple possible speakers. Provider labels from separate runs/chunks are independent until mapped. Never merge speakers because labels or display names match. Do not retain cross-meeting voiceprints by default.
 
-#### Proposed listening and identification workspace (not implemented)
+#### Listening and identification workspace
 
-The current sample controls select the first three timed segments per speaker. When the provider returns word-level segments, these can be too short to recognize a voice. Provide longer, user-adjustable listening windows with surrounding context and selectable examples from distinct turns. Show the actual time range and transcript, allow replay and seek, and make clear that surrounding audio may contain other voices. Never generate timestamps or imply that the entire window belongs to one speaker.
+Word-level segments can be too short to recognize a voice. The listening workspace offers longer, adjustable listening windows with transcript context and examples from distinct turns. It shows the actual range and makes clear that surrounding audio may contain other voices. Sample windows do not add or change source timestamps or imply that every voice in a window belongs to the selected speaker.
 
 During full-recording playback, present a responsive visual stage with one labeled participant per detected or manually added speaker; five participants are an example, not a limit. Highlight every speaker whose supported time interval contains the current playback position. The display represents the current transcript attribution, not proof of a person's identity or an independent voice detector. Show overlap, gaps, untimed passages and unconfirmed identities explicitly; do not animate a guessed speaker when evidence is absent. Seeking, playback, correction and the stage must remain synchronized, including after edits and reload. Users can inspect the relevant transcript and correct attribution through existing review and undo flows, without altering original provider output.
 
 Provide English and Simplified Chinese throughout the application, including controls, guidance, errors, dialogs, accessible names and status announcements. UI language is independent of the recording's language. Preserve user content and stable IDs when switching; retain the selection locally, handle missing translations without exposing keys, and verify long text, mobile layout and screen readers in both languages. The saved language selection covers the main controls and known application messages. Unrecognized messages retain their original text; full message coverage and physical-device and screen-reader acceptance remain open.
 
 The [interactive concept](design/speaker-review-prototype.html) uses invented timing data to demonstrate the layout. It does not analyze uploaded recordings or connect to meeting data.
+
+An optional original YouTube reference lets users see people while checking a voice manually. A video ID in an audio filename is only a suggestion; it is not proof of the source or synchronization. The user explicitly saves a validated YouTube link and can adjust the time offset (video time = recording time + offset). The reference is auxiliary meeting metadata, included in backups but excluded from AI input; changing it does not revise transcript evidence or confirm an identity. Older meetings without this field remain valid.
+
+The player connects to YouTube only after an explicit load/watch action, uses privacy-enhanced embedding, and provides a timestamped external link when embedding is unavailable. Local recording playback and the embedded video are mutually exclusive. The reference requires a network connection and does not upload the local recording. See [YouTube embedding guidance](https://support.google.com/youtube/answer/171780?hl=en) and [player timing parameters](https://developers.google.com/youtube/player_parameters). People remain anonymous until a user confirms a name; the app does not recognize faces or voices as real identities.
 
 ### 5. Review the transcript
 
@@ -96,7 +100,7 @@ Deleting a meeting removes its local audio, chunks, revisions, and jobs accordin
 
 Meeting Library, New Meeting/Import, Processing, Speaker Review, Transcript Editor, Memo Review, and Settings are the primary screens. Use consistent navigation and a persistent compact player when reviewing evidence.
 
-Desktop can show a speaker list, transcript, and review panel side by side. Mobile uses a single column with filters and an accessible bottom sheet or full-screen editor. Keep controls usable with touch, keyboard, and screen readers.
+Desktop can show a speaker list, transcript, and review panel side by side. The speaker review stage provides adjustable listening samples and an optional explicit-load public-video reference beside the samples. Mobile uses a single column with filters and an accessible bottom sheet or full-screen editor. Keep controls usable with touch, keyboard, and screen readers.
 
 Apply iPhone standalone safe areas, opaque theme-aware top surfaces, at least 16px mobile form text, visible focus, approximately 44px primary touch targets, pinch zoom, and reduced-motion support. Long screens can use a non-jittering hide/reveal top bar and contextual scroll-to-top; omit them where they add no value.
 

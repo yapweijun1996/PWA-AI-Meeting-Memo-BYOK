@@ -116,7 +116,7 @@ The separate [offline citation evaluation](EVIDENCE-EVALUATION.md) contains 17 s
 
 An isolated copy excluding `.env`, recordings and private fixtures was verified on Windows with checksum-verified Node 22.23.3. TypeScript, ESLint, 60 unit tests, the production build and static artifact checks passed. The PWA N-to-N+1 lifecycle checks passed in Chromium and WebKit. The initial browser suite passed 60 of 62 tests; the two WebKit failures required synthetic WAV duration metadata. An independent media probe on the same host obtained the one-second WAV duration in Chromium but WebKit reported media error 4. Both affected tests were subsequently rerun successfully in WebKit with explicitly simulated metadata events; this verifies the estimate and advisory logic, not WebKit WAV decoding. The other 60 tests were not rerun after that test-only change. Physical devices, real media decoding and screen-reader acceptance remain open.
 
-After the fragment-boundary repair, the 61 unit tests, TypeScript, ESLint, production build and static artifact checks passed. The full browser suite then passed all 62 tests across Chromium and WebKit, including exact fragment-array transport and original citation expansion. The duration tests still simulate metadata and do not establish actual WebKit WAV decoding. The updated transport has not been submitted to a real model; its output quality and the size of the previous real meeting under the new representation are unverified.
+After the fragment-boundary repair, the 61 unit tests, TypeScript, ESLint, production build and static artifact checks passed. The full browser suite then passed all 62 tests across Chromium and WebKit, including exact fragment-array transport and original citation expansion. The duration tests still simulate metadata and do not establish actual WebKit WAV decoding. An additional offline replay of the actual downloaded meeting retained all 7,217 original fragments and speaker assignments in 434 groups, totaling 70,881 serialized characters; replaying the captured provider response reproduced all 27 original citation expansions without changing the meeting or networking. Private evidence is in `private-fixtures/spike/abc-newformat-report.json`. The updated transport has not been submitted to a real model; no new paid-model semantic result is claimed for fragment-array input, and future generated claims still require source-text review.
 
 The one new memo request had a US$0.10 protective reservation. Cumulative protective reservations are US$4.75 under the authorized US$10 ceiling; this is not actual spend. OpenAI did not return a dollar charge, and the earlier failed requests still have unknown billing. No commit, push or deployment occurred.
 
@@ -138,13 +138,34 @@ The earlier WebKit edit/accept failures are resolved for the tested mouse, keybo
 
 Final verification used pinned Node 22.23.3 on Windows. A fixed source snapshot and separate private test-output directory removed interference from simultaneous workspace edits and test-output cleanup. Source hashes matched the main workspace. Tests retain the source-change, original-item, billing-uncertainty, export, reload and storage-conflict assertions. Environment-specific test corrections derive origins from the page, wait for completed creation/attachment, select OpenAI explicitly in OpenAI-specific cases, and send React's proper pointerout transition to another element.
 
-- PASS: 60 unit tests, ESLint, TypeScript, production build, artifact check and diff whitespace check.
+- PASS: 61 unit tests, ESLint, TypeScript, production build, artifact check and diff whitespace check.
 - PASS: all 62 distinct Chromium/WebKit browser cases covered by the full run plus focused reruns after fixture corrections. This includes real touchscreen taps, text/date acceptance, current reviewed revision, no spurious CAS warning, pending edits, immutable originals, export/reload, original source revisions, long memo transport, offline storage, settings, Chinese UI and accessibility checks. The intermediate full run was not green; its failed fixtures were corrected and every affected case rerun. Passing unaffected cases were not unnecessarily repeated.
 - PASS: both engines' complete N-to-N+1 PWA lifecycle tests against the final main-workspace artifact, including active request/editor protection, draft recovery, unrelated caches, visible activation failure and forward recovery.
 - PASS: actual Chrome updated to the final local build and retained the real recording, source revisions, five unconfirmed speakers, both corrected memo versions and all generated originals. A review save with an active edited field completed without the former spurious conflict.
 - LIMIT: this Windows WebKit run did not decode the synthetic WAV fixture (`readyState=0`, media error 4). The estimate/advisory tests explicitly simulate known duration and loadedmetadata to test those contracts. They do not prove native WAV decoding. Physical iPhone/iOS standalone, independently annotated voice separation, real-person identity and transcription accuracy remain unverified.
 
 The local Chrome data and verification captures remain under Git-ignored `private-fixtures/spike/abc-*`. No additional paid request was made for these repairs or reruns, and there was no commit, push or deployment.
+
+## Speaker listening and source-video workspace baseline (2026-11-05)
+
+This section records the pre-accounting/current-workspace local UI baseline. The current patch verification status is recorded in the Local checks section below; the counts and build identity here are historical evidence for the speaker/video behavior only.
+
+The local workspace now offers 10/20/30-second speaker examples, transcript context and an attribution stage driven by the saved local-audio position. Windows are bounded by the selected length and known recording duration; intervening speaker assignments remain separate. Multiple active labels, gaps, untimed passages and unconfirmed identities stay explicit. Name changes clear confirmation unless the user explicitly confirms; a whitespace-only save normalizes the draft without revising evidence.
+
+An optional validated YouTube reference is saved separately from transcript evidence. Filename suggestions require an explicit choice, and saving metadata makes no video request. Watching loads the privacy-enhanced iframe with the selected sample and offset. Starting local audio unloads the video; watching pauses local audio. The video is an online visual reference for manual identity review, not a real-person recognition result. The stage follows local audio timing, not the video's live playback clock.
+
+Verification with Node 22.23.3 on Windows:
+
+- PASS: 68 unit tests, TypeScript, ESLint, production build and artifact checks.
+- PASS: the 70-case broad browser suite in Chromium and Windows WebKit. After the final whitespace-only save adjustment, all 10 speaker/video/Chinese browser cases passed again on the final build. These comprise 72 distinct browser cases across the broad and supplemental runs.
+- PASS: long sample bounds and cue-stop behavior; overlap/gap highlighting; listening leaves saved source data unchanged; atomic normalized name confirmation, stale memo review, preserved generated originals and Undo; video consent, offset parameters, mutual exclusion, JSON export/reload and sticky desktop visibility; narrow-screen keyboard, overflow and Axe checks; Chinese controls and invalid-link feedback.
+- PASS: final Chromium and WebKit N-to-N+1 update checks, including blocking updates while a real inline speaker-name draft is unsaved, then saving and continuing activation. Existing request/editor protection, offline behavior and unrelated-cache retention remain covered.
+- PASS: actual Chrome playback of the existing 36:29 MP3, including Speaker 4's 383.176-second cue and its active label. The public original video loaded and played at the selected range with local audio paused. After scrolling, the final desktop iframe remained fully visible in the 1554-by-888 viewport. The updated app is open in the existing local Chrome meeting.
+- PASS: the actual meeting remains at source revision 2 with five unconfirmed labels, five saved jobs and both memo versions (12 and 27 pending items). Segment, speaker, normalized-run, history and both generated-original hashes match the pre-change baseline. Only the optional video reference was added to meeting metadata.
+
+That historical local build was `37e0b2fdd4f06add`. Browser fixture media methods/metadata are simulated for deterministic playback-state checks, especially Windows WebKit; these tests do not establish real WebKit WAV or YouTube decoding. Actual MP3/video playback was verified in Chrome. Diarization accuracy, real-person name mappings, physical iOS/Android installed behavior, other videos' embedding permissions and synchronization offsets remain unverified.
+
+No paid AI request, commit, push or deployment occurred in this UI task. Existing US$4.85 protective reservations are unchanged and remain separate from unknown actual provider billing.
 
 ## Provider selection change (2026-11-05)
 
@@ -159,12 +180,14 @@ Provider keys, provider/model selections and speech rate are saved locally by ex
 | Check | Evidence |
 | --- | --- |
 | Lint and TypeScript | PASS on the implementation candidate |
-| Unit tests | PASS: 26 tests covering schemas, separate generated memo originals, evidence revisions, undo, invalid source IDs, nullable fields, refusal, incomplete responses, HTTP rejection/billing separation, request limits, storage conflicts, deletion, and backup validation |
-| Browser workflow | PASS: all 34 current Chromium/WebKit cases locally; the clean GitHub Actions deployment runs linked below passed the prior 32-case baseline before the added two-engine HTTP rejection/billing regression |
+| Unit tests | PASS: the current patch run covers 70 tests, including schemas, separate generated memo originals, evidence revisions, undo, invalid source IDs, nullable fields, refusal/incomplete responses, HTTP rejection and billing separation, request limits, storage conflicts, deletion, backup validation, accounting summaries, speaker listening windows and YouTube reference parsing. |
+| Browser workflow | PASS: the current patch run covers 74 browser cases across Chromium and Windows WebKit, including real IndexedDB, correction, memo, export, recovery, settings, accounting, accessibility, speaker-stage and source-video flows. |
 | PWA update | PASS in both engines: waiting-worker prompt, explicit activation/reload, open-editor/active-request protection, saved draft and old asset preserved, unrelated cache retained, visible activation failure and forward recovery |
-| Accessibility | PASS automated axe WCAG A/AA library/settings checks; keyboard/focus and 390px navigation exercised; not a complete assistive-technology certification |
+| Accessibility | PASS automated axe WCAG A/AA library/settings/speaker checks; keyboard/focus and 390px navigation exercised; representative English desktop and Simplified Chinese 390px CSS-zoom QA passed with minimum measured contrast 5.32:1. This is not physical-device or assistive-technology certification |
 | Production artifact | PASS static-file/path/manifest checks and scan for known credential/test fixture patterns; no guarantee that scanning alone detects all secrets |
 | Dependency audit | PASS: zero reported production or development vulnerabilities in the checked lockfile |
+
+Current patch note (2026-11-05): the 70-unit run, 74 browser cases, lint, TypeScript, production build, two-engine PWA lifecycle checks and artifact checks passed locally. Build `93c325cceb45b7d3` includes the cache-write usage span. CI will rerun the full gates before publication; this local evidence still does not close the physical-device, screen-reader, authenticated production-origin or annotated-quality gates.
 
 Browser cases use synthetic text/audio. The earlier baseline covered upload/checksum, speaker normalization, confirmation, correction, bulk assignment, merge/split/undo, historical source inspection, session-key clearing, explicit send confirmation, unknown billing, cancellation, backup/restore, offline reload, multi-tab conflicts, and injected quota failures. Injected quota failure tests error handling, not a measured device storage ceiling.
 

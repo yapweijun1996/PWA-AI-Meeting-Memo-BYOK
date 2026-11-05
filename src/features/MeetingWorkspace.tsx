@@ -20,6 +20,8 @@ import {
   Users,
 } from "lucide-react";
 import type { Meeting, MemoItem, Segment } from "../domain/model";
+import type { ReferenceVideo as ReferenceVideoValue } from "../domain/reference-video";
+import { summarizeMeetingAccounting } from "../domain/accounting";
 import { id, importTranscript } from "../domain/model";
 import {
   assignSegments,
@@ -41,6 +43,8 @@ import { getKey, getSelection, getSpeechEstimate, getUiLanguage } from "../provi
 import { cancelProcessing, runJob, isProcessingMeeting } from "../jobs/runner";
 import { Empty, Modal, Pill } from "../components/ui";
 import { CitedEvidence } from "./CitedEvidence";
+import { SpeakerReview } from "./SpeakerReview";
+import { ReferenceVideo } from "./ReferenceVideo";
 import { useUiLanguage } from "../ui-language";
 import { translateMessage } from "../ui-messages";
 export function MeetingWorkspace({
@@ -73,7 +77,9 @@ export function MeetingWorkspace({
     [playing, setPlaying] = useState(false),
     [position, setPosition] = useState(0),
     [duration, setDuration] = useState(m.audio?.duration || 0),
-    [audioMissing, setAudioMissing] = useState(false);
+    [audioMissing, setAudioMissing] = useState(false),
+    [sampleRange, setSampleRange] = useState<{ start: number; end: number } | null>(null),
+    [audioStopToken, setAudioStopToken] = useState(0);
   const player = useRef<HTMLAudioElement>(null),
     playUntil = useRef<number | null>(null);
   // A save can disable the focused editor; guard only that item's blur until review commits.
@@ -202,13 +208,15 @@ export function MeetingWorkspace({
       /* feedback is displayed without clearing the editor */
     }
   }
-  function cue(s: Segment) {
-    if (s.start === null || !player.current) {
+  function cueRange(start: number, end: number | null) {
+    if (!player.current) {
       setNotice("This source has no playable local audio range.");
       return;
     }
-    playUntil.current = s.end;
-    player.current.currentTime = s.start;
+    setSampleRange({ start, end: end ?? Math.min(duration || start + 20, start + 20) });
+    setAudioStopToken((value) => value + 1);
+    playUntil.current = end;
+    player.current.currentTime = start;
     void player.current
       .play()
       .catch(() =>
@@ -216,6 +224,13 @@ export function MeetingWorkspace({
           "Playback could not start. Check this browser supports the recording format.",
         ),
       );
+  }
+  function cue(s: Segment) {
+    if (s.start === null) {
+      setNotice("This source has no playable local audio range.");
+      return;
+    }
+    cueRange(s.start, s.end);
   }
   async function process() {
     if (!confirmStage) return;
@@ -332,7 +347,8 @@ export function MeetingWorkspace({
   const [viewVersion, setViewVersion] = useState<string>();
   const memo = m.memos.find((v) => v.id === viewVersion) || m.memos.at(-1),
     unknown = m.speakers.filter((s) => !s.confirmed).length,
-    pending = m.segments.filter((s) => !s.reviewed).length;
+    pending = m.segments.filter((s) => !s.reviewed).length,
+    accounting = summarizeMeetingAccounting(m.jobs);
   const segments = pendingOnly
     ? m.segments.filter((s) => !s.reviewed)
     : m.segments;
@@ -358,6 +374,7 @@ export function MeetingWorkspace({
           <button
             className="icon-button"
             aria-label={t("Edit meeting details", "编辑会议资料")}
+            title={t("Edit meeting details", "编辑会议资料")}
             onClick={() => setMetadata(true)}
             disabled={locked}
           >
@@ -384,6 +401,7 @@ export function MeetingWorkspace({
           <button
             className="icon-button danger-text"
             aria-label={t("Delete meeting", "删除会议")}
+            title={t("Delete meeting and local recording", "删除会议及本地录音")}
             disabled={locked}
             onClick={async () => {
               if (
@@ -404,7 +422,11 @@ export function MeetingWorkspace({
         </div>
       </section>
       <div className="workspace-toolbar">
-        <div className="recording-info">
+        <div
+          className="recording-info"
+          role="group"
+          aria-label={t("Recording details", "录音详情")}
+        >
           <span className="round-icon">
             <AudioLines size={21} />
           </span>
@@ -417,6 +439,14 @@ export function MeetingWorkspace({
             </small>
           </div>
         </div>
+        {m.segments.length > 0 && (
+          <p className="workspace-toolbar-note">
+            {t(
+              "Re-transcription may replace the current transcript only when the source is unchanged. Otherwise the result is saved in transcription history for review; previous text, corrections and evidence remain available.",
+              "只有来源未更改时，重新转录才可能替换当前转录。否则结果会保存到转录历史供审阅；之前的文字、修正和证据仍可用。",
+            )}
+          </p>
+        )}
         <div className="toolbar-actions">
           <label className="button secondary compact">
             <Upload size={15} />
@@ -495,16 +525,25 @@ export function MeetingWorkspace({
           ["memo", t("Meeting notes", "会议笔记"), Sparkles, memo?.items.length || 0],
         ].map(([value, label, Icon, count]) => {
           const Glyph = Icon as typeof FileText;
+          const unit =
+            value === "transcript"
+              ? t("passages", "段落")
+              : value === "speakers"
+                ? t("speakers", "位说话人")
+                : t("items", "项");
+          const accessibleLabel = `${String(label)}, ${String(count)} ${unit}`;
           return (
             <button
               key={String(value)}
               role="tab"
               aria-selected={tab === value}
+              aria-label={accessibleLabel}
+              title={accessibleLabel}
               onClick={() => setTab(String(value))}
             >
               <Glyph size={17} />
               {String(label)}
-              <span>{String(count)}</span>
+              <span aria-hidden="true">{String(count)}</span>
             </button>
           );
         })}
@@ -706,139 +745,64 @@ export function MeetingWorkspace({
         </section>
       )}
       {tab === "speakers" && (
-        <section className="workspace-panel">
+        <section className="workspace-panel speaker-review-panel">
           <header className="panel-toolbar">
             <div>
               <h2>{t("Put a name to the voice", "为声音确认姓名")}</h2>
               <p>
-                {t("Listen first. A speaker label is a suggestion until you confirm it.", "请先试听。说话人标签在您确认前只是建议。")}
+                {t("Listen to longer samples and watch the reference video before confirming a name.", "先试听较长样本并查看参考视频，再确认姓名。")}
               </p>
             </div>
-            <button
-              className="button secondary compact"
-              disabled={locked}
-              onClick={async () => {
-                const name = prompt(t("Name for the new speaker (unconfirmed):", "新说话人的姓名（未确认）："));
-                if (name?.trim())
-                  await change((x) =>
-                    editMeeting(x, (d) => {
-                      d.speakers.push({
-                        id: id(),
-                        name: name.trim().slice(0, 80),
-                        confirmed: false,
-                        sourceLabels: ["manual"],
-                      });
-                    }),
-                  );
-              }}
-            >
-              <Plus size={15} />
-              {t("Add speaker", "添加说话人")}
-            </button>
           </header>
-          {m.speakers.length ? (
-            <div className="speaker-grid">
-              {m.speakers.map((s, i) => {
-                const turns = m.segments.filter((t) =>
-                    t.speakerIds.includes(s.id),
-                  ),
-                  timed = turns.reduce(
-                    (sum, t) =>
-                      sum +
-                      (t.end !== null && t.start !== null
-                        ? t.end - t.start
-                        : 0),
-                    0,
-                  );
-                return (
-                  <article key={s.id} className="speaker-card">
-                    <div className="speaker-card-top">
-                      <span className="speaker-avatar large">
-                        {s.name.charAt(0)}
-                      </span>
-                      <Pill tone={s.confirmed ? "green" : "sand"}>
-                        {s.confirmed ? t("Confirmed", "已确认") : t("Needs a name", "需要确认姓名")}
-                      </Pill>
-                    </div>
-                    <label>
-                      {t("Display name", "显示名称")}
-                      <input
-                        aria-label={t(`Name for speaker ${i + 1}`, `第 ${i + 1} 位说话人的姓名`)}
-                        defaultValue={s.name}
-                        maxLength={80}
-                        disabled={locked}
-                        onBlur={(e) => {
-                          const name = e.target.value.trim();
-                          if (name && name !== s.name)
-                            void change((x) =>
-                              editMeeting(x, (d) => {
-                                const sp = d.speakers.find(
-                                  (p) => p.id === s.id,
-                                )!;
-                                sp.name = name;
-                                sp.confirmed = false;
-                              }),
-                            );
-                        }}
-                      />
-                    </label>
-                    <p className="small muted">
-                      {turns.length} {t("passages", "段转录")} ·{" "}
-                      {timed
-                        ? `${formatTime(timed)} ${t("timed speech", "有时间记录的发言")}`
-                        : t("Timing unavailable", "没有时间记录")}
-                    </p>
-                    <div className="speaker-samples">
-                      {turns
-                        .filter((t) => t.start !== null)
-                        .slice(0, 3)
-                        .map((turn, n) => (
-                          <button
-                            key={turn.id}
-                            className="button secondary compact"
-                            disabled={!url}
-                            onClick={() => cue(turn)}
-                          >
-                            <Play size={12} />
-                            {t("Sample", "样本")} {n + 1}
-                          </button>
-                        ))}
-                    </div>
-                    <div className="speaker-card-actions">
-                      <button
-                        className="button primary compact"
-                        disabled={locked}
-                        onClick={() =>
-                          void change((x) =>
-                            editMeeting(x, (d) => {
-                              const sp = d.speakers.find((p) => p.id === s.id)!;
-                              sp.confirmed = !sp.confirmed;
-                            }),
-                          )
-                        }
-                      >
-                        <Check size={15} />
-                        {s.confirmed ? t("Leave unconfirmed", "取消姓名确认") : t("Confirm name", "确认姓名")}
-                      </button>
-                      <button
-                        className="text-button"
-                        onClick={() => setMerge(s.id)}
-                        disabled={locked || m.speakers.length < 2}
-                      >
-                        {t("Merge…", "合并…")}
-                      </button>
-                    </div>
-                  </article>
+          <SpeakerReview
+            meeting={m}
+            audioAvailable={!!url}
+            duration={duration}
+            position={position}
+            playing={playing}
+            locked={locked}
+            onCue={cueRange}
+            onPause={() => player.current?.pause()}
+            onChange={async (fn) => {
+              // Speaker edits must propagate CAS/storage failures so the
+              // editor can keep its draft and expose a retryable error.
+              await persist(fn(m));
+            }}
+            onMerge={setMerge}
+            onAdd={() => {
+              const name = prompt(
+                t(
+                  "Name for the new speaker (unconfirmed):",
+                  "新说话人的姓名（未确认）：",
+                ),
+              );
+              if (name?.trim())
+                void change((x) =>
+                  editMeeting(x, (d) => {
+                    d.speakers.push({
+                      id: id(),
+                      name: name.trim().slice(0, 80),
+                      confirmed: false,
+                      sourceLabels: ["manual"],
+                    });
+                  }),
                 );
-              })}
-            </div>
-          ) : (
-            <Empty title={t("Meet the voices in your meeting", "识别会议中的声音")}>
-              <p>
-                {t("Speaker-aware transcription will suggest anonymous voices. You can also add speakers and manually assign imported passages.", "支持说话人识别的转录会建议匿名声音。您也可以添加说话人并手动分配导入的段落。")}
-              </p>
-            </Empty>
-          )}
+            }}
+            t={t}
+            referenceVideo={
+              <ReferenceVideo
+                value={m.referenceVideo}
+                audioName={m.audio?.name}
+                range={sampleRange}
+                disabled={locked}
+                stopToken={audioStopToken}
+                onSave={async (value: ReferenceVideoValue | null) => {
+                  await persist({ ...m, referenceVideo: value });
+                }}
+                onBeforeWatch={() => player.current?.pause()}
+              />
+            }
+          />
         </section>
       )}
       {tab === "memo" && (
@@ -850,6 +814,12 @@ export function MeetingWorkspace({
                 {memo
                   ? t(`${m.memos.length} saved version${m.memos.length === 1 ? "" : "s"} · every item starts with review`, `已保存 ${m.memos.length} 个版本 · 每一项都需要审阅`)
                   : t("A first draft, grounded in your transcript.", "根据转录生成的初稿。")}
+              </p>
+              <p className="panel-note">
+                {t(
+                  "Generating a new memo version creates a separate version and may incur a provider charge. Previous versions and human edits stay saved.",
+                  "生成新的会议笔记会创建独立版本，可能产生服务商费用。之前的版本和人工修改都会保留。",
+                )}
               </p>
             </div>
             <button
@@ -886,8 +856,25 @@ export function MeetingWorkspace({
               </div>
               {memo.sourceRevision !== m.revision &&
                 memo.items.some((i) => i.reviewedRevision !== m.revision) && (
-                  <div className="notice sand">
-                    {t("Source details changed after these notes were generated. Review every item against the current transcript; accepted items from the old source remain stale.", "生成笔记后来源资料已改变。请对照当前转录重新审阅每一项；旧来源中已接受的项目仍标记为过期。")}
+                  <div className="notice sand stale-notes-warning" role="alert">
+                    <span>
+                      {t("Source details changed after these notes were generated. Review every item against the current transcript; accepted items from the old source remain stale.", "生成笔记后来源资料已改变。请对照当前转录重新审阅每一项；旧来源中已接受的项目仍标记为过期。")}
+                    </span>
+                    <div className="notice-actions">
+                      <button
+                        className="text-button"
+                        onClick={() => setTab("transcript")}
+                      >
+                        {t("View current transcript", "查看当前转录")}
+                      </button>
+                      <button
+                        className="button secondary compact"
+                        disabled={locked || !m.segments.length}
+                        onClick={() => setConfirmStage("memo")}
+                      >
+                        {t("Generate another version", "生成另一个版本")}
+                      </button>
+                    </div>
                   </div>
                 )}
               <div className="memo-list">
@@ -1151,10 +1138,10 @@ export function MeetingWorkspace({
             {t("Processing history", "处理记录")} <span>{m.jobs.length} {t("requests", "次请求")}</span>
           </summary>
           <p className="small muted">
-            {t("Provider-reported total", "服务商报告费用合计")}: {m.jobs.some((job) => job.reportedCostUsd != null) ? `US$${m.jobs.reduce((sum, job) => sum + (job.reportedCostUsd ?? 0), 0).toFixed(6)}` : t("unknown", "未知")}.
-            {m.jobs.some((job) => job.billing !== "not_submitted" && job.reportedCostUsd == null) ? t(" Incomplete: some request costs are unknown or may still be charged.", " 合计不完整：部分请求的费用未知或仍可能收费。") : ""} {t("This is not an invoice; restored copies are separate meetings.", "这不是账单；恢复的副本视为独立会议。")}
+            {t("Provider-reported total", "服务商报告费用合计")} ({accounting.reportedAttempts} {t("reported attempts", "次已报告请求")}): {accounting.reportedUsd == null ? t("unknown", "未知") : `US$${accounting.reportedUsd.toFixed(6)}`}.
+            {accounting.incomplete ? t(" Incomplete: some request costs are unknown, conflicting, or may still be charged.", " 合计不完整：部分请求费用未知、记录冲突或仍可能收费。") : ""} {t("This is not an invoice; restored copies are separate meetings.", "这不是账单；恢复的副本视为独立会议。")}
           </p>
-          <p className="small muted">{t("Pre-request estimates, separately (not added to reported charges)", "发送前估算合计（与报告费用分开，不相加）")}: {m.jobs.some((job) => job.estimateDetails && job.estimateUsd != null) ? `US$${m.jobs.reduce((sum, job) => sum + (job.estimateDetails ? job.estimateUsd ?? 0 : 0), 0).toFixed(6)}` : t("unknown", "未知")}. {t("Incomplete when estimates are missing; each submitted attempt is counted separately.", "缺少估算时合计不完整；每次提交分别计算。")}</p>
+          <p className="small muted">{t("Pre-request estimates, separately (not added to reported charges)", "发送前估算合计（与报告费用分开，不相加）")} ({accounting.estimatedAttempts} {t("estimated attempts", "次已估算请求")}): {accounting.estimateUsd == null ? t("unknown", "未知") : `US$${accounting.estimateUsd.toFixed(6)}`}. {t("Incomplete when estimates are missing; each submitted attempt is counted separately.", "缺少估算时合计不完整；每次提交分别计算。")}</p>
           {m.jobs
             .slice()
             .reverse()
@@ -1179,6 +1166,7 @@ export function MeetingWorkspace({
                         : t("Provider usage not reported", "服务商未报告用量")}
                     . {t("Usage is not an invoice.", "用量记录不是账单。")}
                     {j.usage.cachedInputTokens != null ? ` ${t("Cached input tokens (included in input)", "缓存输入词元（已计入输入）")}: ${j.usage.cachedInputTokens}.` : ""}
+                    {j.usage.cacheWriteTokens != null ? ` ${t("Cache-write tokens", "缓存写入词元")}: ${j.usage.cacheWriteTokens}.` : ""}
                     {j.usage.totalTokens != null ? ` ${t("Total tokens reported", "报告的总词元")}: ${j.usage.totalTokens}.` : ""}
                   </p>
                 )}
@@ -1262,6 +1250,7 @@ export function MeetingWorkspace({
             onClick={() => {
               if (playing) player.current?.pause();
               else {
+                setAudioStopToken((value) => value + 1);
                 playUntil.current = null;
                 void player.current
                   ?.play()

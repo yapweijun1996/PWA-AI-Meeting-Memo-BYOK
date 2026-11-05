@@ -2,7 +2,7 @@
 
 A browser-first workspace for recordings, speaker corrections, evidence-linked meeting notes, and local backups. Bring your own OpenAI or OpenRouter keys; no companion or application server is required.
 
-**Status:** implemented browser beta. Local automated checks cover the review and recovery workflow. Real recording accuracy, paid account access, and physical-phone acceptance remain user-run gates; this is not a claim of validated diarization quality.
+**Status:** implemented browser beta. Local automated checks cover the review, recovery, speaker-listening and source-video workflows. Real recording accuracy, paid account access, and physical-phone acceptance remain user-run gates; this is not a claim of validated diarization quality.
 
 Live app: **https://yapweijun1996.github.io/PWA-AI-Meeting-Memo-BYOK/**. GitHub Actions checks each main commit before publishing. Successful deployment and live-browser evidence are recorded in [validation](docs/VALIDATION.md).
 
@@ -11,7 +11,7 @@ Live app: **https://yapweijun1996.github.io/PWA-AI-Meeting-Memo-BYOK/**. GitHub 
 1. Create a meeting and attach a recording up to 50 MB, paste a transcript, or import a Meeting Memo JSON transcript.
 2. In **Settings & API keys**, enter your provider keys. New settings use **OpenRouter / `elevenlabs/scribe-v2`** for transcription and OpenAI for notes; existing saved selections remain unchanged. Choose the providers and models separately. Click **Save settings** to keep keys, selections and the speech rate in this browser across reloads. Saving settings makes no API request.
 3. Choose **Transcribe** and review the provider, recording, and estimated/unknown charge before confirming. Keep the page open.
-4. Listen to speaker samples, confirm names, correct text and assignments, merge voices, split passages, and undo changes. Unknown timing or identity stays explicit.
+4. Open **Speakers** to listen to longer examples with transcript context and see the current speaker attribution during playback. Optionally link the original YouTube video to see people while manually checking a voice. Confirm names, correct text and assignments, merge voices, split passages, and undo changes. Unknown timing or identity stays explicit.
 5. Choose **Generate meeting notes**, review the selected destination and what is sent, then inspect, edit, accept, or reject each cited item. **Original generated item** shows its separately saved generated snapshot. Source changes require re-review; new generations preserve older human versions.
 6. Export Markdown/TXT for the selected notes version, JSON for all meeting data without audio, or ZIP for a full backup with audio. **Restore backup** creates a separate copy.
 
@@ -19,9 +19,11 @@ Use **How it works → Explore a synthetic example** to try local review without
 
 ## What stays local
 
-The meeting library, recordings, revisions, review history, and jobs live in this browser's IndexedDB. Encoded audio bytes and media type are stored atomically with metadata; playback reconstructs a Blob. Settings, including provider keys, are stored in a separate local IndexedDB database. **Keys are unencrypted** and accessible to scripts sharing this website origin and anyone with access to this browser profile. They are excluded from meeting exports, logs, service-worker caches and GitHub builds. Use **Forget keys** to remove saved keys; clearing site data also removes them and local meetings.
+The meeting library, recordings, revisions, review history, and jobs live in this browser's IndexedDB. Encoded audio bytes and media type are stored atomically with metadata; playback reconstructs a Blob. Settings, including provider keys, are stored in a separate local IndexedDB database. **Keys are unencrypted** and accessible to scripts sharing this website origin and anyone with access to this browser profile. They are excluded from meeting exports, logs, service-worker caches and GitHub builds. Use **Forget keys** to remove saved keys; clearing site data also removes them and local meetings. `localhost` and the GitHub Pages address have different origins and do not automatically share or migrate keys; saving a key on either origin stores it only in that browser origin.
 
 Offline use includes saved meetings, local playback, editing, review, and export after the app shell has been cached. Cloud AI requires a working connection. Browser background execution is not guaranteed; interrupted requests remain visible and never automatically resubmit. An unknown outcome or local cancellation may still be billable.
+
+Optional source videos require a connection. Saving a YouTube reference does not load it; **Watch this sample** connects to YouTube's privacy-enhanced player. The local recording is not uploaded, and video references are excluded from AI input.
 
 Browser storage is not backup or synchronization. Export a full backup regularly. The default Pages address shares its storage origin with other projects on `yapweijun1996.github.io`; namespacing prevents accidental collisions, not same-origin access. A dedicated hostname is recommended before sensitive production use.
 
