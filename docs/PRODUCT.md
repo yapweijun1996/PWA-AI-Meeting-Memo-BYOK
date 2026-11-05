@@ -36,6 +36,14 @@ The user chose to persist provider keys, provider/model selections, and speech r
 
 Before sending, show a clear confirmation of the selected data and recipient. Estimates include known stages and identify missing rates; an estimate is neither an invoice nor an account-level spending cap.
 
+#### Requested preset and cost visibility (planned 2026-11-05)
+
+Offer a clearly labeled recommended starting preset: OpenRouter `elevenlabs/scribe-v2` for transcription and OpenAI `gpt-6-luna` for memo generation. New installations may start with this combination; preserve existing users' saved selections, keys and custom model IDs through upgrades. Allow users to select and edit alternatives. Explain that the preset needs separate OpenRouter and OpenAI keys, and choosing it does not validate keys, send audio or guarantee model availability. Preserve explicit consent before paid requests and never silently fall back to a different provider or model.
+
+Show cost and usage before and after each request and in meeting processing history. Before sending, label a cost as an estimate only when the needed duration/usage and a clearly dated, applicable rate are available; otherwise show unknown. After completion, show the provider-reported usage and, if actually returned, provider-reported request cost, with its currency and source. If calculating a cost from token usage and rates, label it as an estimate and expose its rate, date and assumptions; do not treat it as a bill. Failed, cancelled and interrupted submissions may be billable and can have unknown cost. Historical missing usage must remain unknown, not zero. Meeting totals must disclose incomplete entries and separate currencies and estimate versus provider-reported amounts; account-wide billing remains with each provider.
+
+All preset, cost and usage states, explanations and accessible labels must support English and Simplified Chinese. Local validation notes report a real Scribe browser result and a separate Luna memo test; the long speaker-aware transcript in that test exceeds the memo input limit, so the full flow has not been validated. Those detailed notes may not be present in every checkout. This section is a requirement, not a statement that the preset or cost UI has shipped.
+
 ### 3. Process and recover
 
 Display meaningful stages and completed input chunks, not a fabricated overall percentage. Persist completed results and local job metadata. Warn that the app needs to remain open for reliable foreground processing.
@@ -49,6 +57,16 @@ Each anonymous speaker has a stable local ID, speaking duration where supported,
 Support single-segment reassignment, selected-segment bulk reassignment with an impact preview, speaker merge, time-based segment split, and undo. A segment split with insufficient timing evidence becomes a text split with unresolved time boundaries; it cannot create precise timestamps.
 
 Preserve overlap or multiple possible speakers. Provider labels from separate runs/chunks are independent until mapped. Never merge speakers because labels or display names match. Do not retain cross-meeting voiceprints by default.
+
+#### Proposed listening and identification workspace (not implemented)
+
+The current sample controls select the first three timed segments per speaker. When the provider returns word-level segments, these can be too short to recognize a voice. Provide longer, user-adjustable listening windows with surrounding context and selectable examples from distinct turns. Show the actual time range and transcript, allow replay and seek, and make clear that surrounding audio may contain other voices. Never generate timestamps or imply that the entire window belongs to one speaker.
+
+During full-recording playback, present a responsive visual stage with one labeled participant per detected or manually added speaker; five participants are an example, not a limit. Highlight every speaker whose supported time interval contains the current playback position. The display represents the current transcript attribution, not proof of a person's identity or an independent voice detector. Show overlap, gaps, untimed passages and unconfirmed identities explicitly; do not animate a guessed speaker when evidence is absent. Seeking, playback, correction and the stage must remain synchronized, including after edits and reload. Users can inspect the relevant transcript and correct attribution through existing review and undo flows, without altering original provider output.
+
+Provide English and Simplified Chinese throughout the application, including controls, guidance, errors, dialogs, accessible names and status announcements. UI language is independent of the recording's language. Preserve user content and stable IDs when switching; retain the selection locally, handle missing translations without exposing keys, and verify long text, mobile layout and screen readers in both languages. No translations or language selector are currently implied to be shipped by this requirement.
+
+The [interactive concept](design/speaker-review-prototype.html) uses invented timing data to demonstrate the layout. It does not analyze uploaded recordings or connect to meeting data.
 
 ### 5. Review the transcript
 

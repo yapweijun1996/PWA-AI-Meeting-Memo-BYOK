@@ -13,6 +13,16 @@ This file tracks execution. [Product requirements](docs/PRODUCT.md), [architectu
 - Persist completed work and distinguish provider polling from resubmitting a paid request. Never automatically retry an unknown paid outcome.
 - Record app commit, environment, test procedure, and result when completing a validation task. Real-browser, physical-device, and mocked tests establish different things.
 
+## Speaker listening and bilingual UX — proposed 2026-11-05
+
+See the [product requirements](docs/PRODUCT.md#4-review-speakers) and [interactive concept](docs/design/speaker-review-prototype.html). The concept is illustrative, not an implemented app feature or proof of diarization accuracy.
+
+- [ ] Investigate sample selection on word-level and sentence-level provider responses; specify longer adjustable context windows, distinct example turns, timing bounds, overlap and missing-audio behavior.
+- [ ] Implement a playback-synchronized, dynamically sized speaker stage using supported transcript timestamps and current assignments; display simultaneous speakers, unknown gaps, untimed data and unconfirmed identity without inventing attribution.
+- [ ] Connect seek and contextual listening to existing speaker correction, revision invalidation and undo; retain original model output and evidence. Avoid implying all context audio belongs to the selected speaker.
+- [ ] Add complete English and Simplified Chinese UI localization, including accessible names, errors and dialogs; persist the UI language separately from meeting language and preserve user data on switching.
+- [ ] Validate synthetic word-level, long-turn, overlap, missing-timing and corrected-assignment cases; test desktop, mobile and iOS standalone, keyboard, screen reader, reduced motion and both UI languages. Verify playback synchronization with a user-authorized real recording and document diarization limitations.
+
 ## Settings persistence amendment — 2026-11-05
 
 The user selected unencrypted storage in this browser for API keys, provider/model selections, and the speech rate. Settings are kept separately from meeting backups; see [provider support](docs/PROVIDERS.md) and [architecture](docs/ARCHITECTURE.md).
@@ -27,6 +37,18 @@ The user selected unencrypted storage in this browser for API keys, provider/mod
 - [x] Select OpenAI or OpenRouter independently for speech and memo, with editable model IDs and OpenAI defaults.
 - [x] Remove direct Deepgram requests while retaining historical provider runs and backups.
 - [ ] Validate real OpenAI and OpenRouter requests, selected models, browser CORS, costs and speaker quality using the user’s own keys on the finished site.
+
+## Requested preset and cost usage — 2026-11-05 (implementation pending)
+
+Requirements: [product](docs/PRODUCT.md#requested-preset-and-cost-visibility-planned-2026-11-05) and [provider contracts](docs/PROVIDERS.md#planned-preset-and-usage-evidence--2026-11-05). The screenshots select OpenRouter `elevenlabs/scribe-v2` for transcription and OpenAI `gpt-6-luna` for notes. Local validation notes report a successful browser Scribe request and a separate OpenAI memo request, but the tested long speaker-aware transcript exceeds the memo input limit; no end-to-end claim is justified. The detailed validation notes may not be present in every checkout.
+
+- [ ] Add the requested pair as the recommended preset/default for fresh settings. Keep provider/model customization and independent keys; preserve existing selections, keys and user-entered rates on upgrade, including stale-tab protection and recovery. Changing a preset never sends a request; no silent fallback.
+- [ ] Show each stage's provider, model, recipient and estimated cost or unknown before the existing send confirmation. Provide a dated rate source, unit and assumptions for any estimate; no invented token usage, fixed price or account cap.
+- [ ] Normalize, validate and persist per-attempt, allowlisted non-secret usage/cost fields from responses independently of transcript/memo validation, including provider, model, currency, reported versus estimated source, rate provenance and request/billing state. Never store raw provider bodies or keys. Preserve existing jobs and old backups with missing fields as unknown; keep invalid results and possibly billed requests distinguishable.
+- [ ] Show per-stage usage/cost and a meeting-level summary in processing history. Separate provider-reported request amounts from computed estimates and currencies; clearly flag missing or potentially charged attempts and incomplete totals. Avoid double-counting retries, restored copies and cached usage; never imply invoice or account-wide coverage. Provider billing remains authoritative.
+- [ ] Provide English and Simplified Chinese for preset, usage, cost, errors, unknown and accessible status text, in coordination with the bilingual UX task above. Check narrow layouts and screen readers.
+- [ ] Add focused synthetic tests for fresh and upgraded settings, custom models, missing keys, no paid call on preset selection, independent credentials, complete/zero/missing/malformed usage and costs, currency and rate provenance, cache-token handling, partial totals, old backups, failed/cancelled/timeout and rejected-result billing, reload and no duplicate submission. Verify estimates against current official pricing without hard-coding stale rates. Real paid/account validation requires separate authorization.
+- [ ] Resolve the long speaker-aware transcript limit through a separately designed evidence-preserving workflow, then validate the full recording-to-notes flow with authorized data; preserve citation IDs, edits and billing consent. Do not bypass or silently truncate the current limit.
 
 ## Completed foundation
 
