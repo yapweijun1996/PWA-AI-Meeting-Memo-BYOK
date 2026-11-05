@@ -81,6 +81,7 @@ Provider browser tests block service workers and unhandled external requests whi
 | [Deployment](docs/DEPLOYMENT.md) | Pages path, CI/CD, updates, and rollback |
 | [Roadmap](docs/ROADMAP.md) | Release verification matrix |
 | [Validation](docs/VALIDATION.md) | Actual test/deployment results and limits |
+| [Offline evidence evaluation](docs/EVIDENCE-EVALUATION.md) | Synthetic citation-review examples, annotation rubric and metric limits |
 | [Implementation log](docs/IMPLEMENTATION-LOG.md) | Per-task verification notes; commits in Git history |
 
 The original KB design supplied the meeting-review requirements. The user's later browser-first/GitHub Pages direction supersedes a mandatory-companion proposal. Optional features remain tracked separately and are not prerequisites for using this beta.
