@@ -9,7 +9,7 @@ Live app: **https://yapweijun1996.github.io/PWA-AI-Meeting-Memo-BYOK/**. GitHub 
 ## Use the workspace
 
 1. Create a meeting and attach a recording up to 50 MB, paste a transcript, or import a Meeting Memo JSON transcript.
-2. In **Settings & API keys**, enter your OpenAI key and optionally an OpenRouter key. Choose a provider and model separately for transcription and notes. Keys and selections last only for this page session; reload requires re-entry. Saving settings makes no API request.
+2. In **Settings & API keys**, enter your OpenAI key and optionally an OpenRouter key. Choose a provider and model separately for transcription and notes. Click **Save settings** to keep keys, provider/model selections and the speech rate in this browser across reloads. Saving settings makes no API request.
 3. Choose **Transcribe** and review the provider, recording, and estimated/unknown charge before confirming. Keep the page open.
 4. Listen to speaker samples, confirm names, correct text and assignments, merge voices, split passages, and undo changes. Unknown timing or identity stays explicit.
 5. Choose **Generate meeting notes**, review the selected destination and what is sent, then inspect, edit, accept, or reject each cited item. **Original generated item** shows its separately saved generated snapshot. Source changes require re-review; new generations preserve older human versions.
@@ -19,7 +19,7 @@ Use **How it works → Explore a synthetic example** to try local review without
 
 ## What stays local
 
-The meeting library, recordings, revisions, review history, and jobs live in this browser's IndexedDB. Encoded audio bytes and media type are stored atomically with metadata; playback reconstructs a Blob. Keys are not stored in that database, exports, logs, service-worker caches, or GitHub builds.
+The meeting library, recordings, revisions, review history, and jobs live in this browser's IndexedDB. Encoded audio bytes and media type are stored atomically with metadata; playback reconstructs a Blob. Settings, including provider keys, are stored in a separate local IndexedDB database. **Keys are unencrypted** and accessible to scripts sharing this website origin and anyone with access to this browser profile. They are excluded from meeting exports, logs, service-worker caches and GitHub builds. Use **Forget keys** to remove saved keys; clearing site data also removes them and local meetings.
 
 Offline use includes saved meetings, local playback, editing, review, and export after the app shell has been cached. Cloud AI requires a working connection. Browser background execution is not guaranteed; interrupted requests remain visible and never automatically resubmit. An unknown outcome or local cancellation may still be billable.
 
@@ -29,7 +29,7 @@ Browser storage is not backup or synchronization. Export a full backup regularly
 
 - Speech defaults to OpenAI `gpt-transcribe`, which provides text without established speaker/time evidence. OpenRouter `elevenlabs/scribe-v2` requests speaker labels and word timestamps; account access, CORS and real quality remain unverified. OpenAI `gpt-4o-transcribe-diarize` is deprecated and scheduled to stop on 2027-02-26.
 - Notes default to OpenAI Responses with GPT-6 Luna. Both providers offer selectable model IDs; notes require structured-output support and are validated against source IDs. OpenRouter routes data to an upstream provider and their retention policies apply.
-- Provider-specific keys and selections stay in memory for the page session. OpenRouter models and access vary by account. No provider call occurs until confirmation.
+- Provider-specific keys, selections and the speech rate persist in this browser after saving. The first update from an older version cannot recover keys that existed only in its page memory; enter and save them once. OpenRouter models and access vary by account. No provider call occurs until confirmation.
 - Local audio import is capped at 50 MiB; single-request transcription is capped at 25 MB and sent as the original container. No arbitrary byte chunking, full-file PCM conversion, or local model inference is advertised.
 - Memo input is capped at 80,000 serialized characters and output at 8,000 tokens. Unsupported inputs are rejected before submission rather than silently truncated.
 - Requests time out after nine minutes; this stops waiting, not necessarily remote processing or billing.

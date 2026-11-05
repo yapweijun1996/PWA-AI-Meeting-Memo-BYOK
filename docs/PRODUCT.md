@@ -32,7 +32,7 @@ For text-only imports, keep audio timestamps and speaker identity absent unless 
 
 Show transcription provider/model, memo provider/model, which key each needs, transmitted data, expected stages, and a dated estimate. More than one provider can require more than one key. BYOK does not imply one universal key.
 
-The default key lifetime is the current page session in memory. Explain that a reload requires re-entry. No paid validation request occurs just because the user typed a key. Any test that sends data is explicit and describes its potential charge.
+The user chose to persist provider keys, provider/model selections, and speech rate in this browser. Keys are unencrypted in a separate IndexedDB database; describe the shared-origin/browser-profile trust boundary, provide explicit forgetting, and exclude keys from meeting backups. The first update from an older memory-only version requires one re-entry. No paid validation request occurs just because the user typed a key. Any test that sends data is explicit and describes its potential charge.
 
 Before sending, show a clear confirmation of the selected data and recipient. Estimates include known stages and identify missing rates; an estimate is neither an invoice nor an account-level spending cap.
 

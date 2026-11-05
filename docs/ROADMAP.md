@@ -4,7 +4,7 @@ Status: implementation and release contract, 2026-11-04. The browser beta is imp
 
 ## Phase 0 — prove the browser audio path
 
-Build only the smallest test harness needed to validate the selected speech provider from a browser at the intended production origin. Keep credentials ephemeral and use explicitly authorized, consented samples.
+Build only the smallest test harness needed to validate the selected speech provider from a browser at the intended production origin. Keep test credentials synthetic and use explicitly authorized, consented samples. The user later chose unencrypted local persistence for their own browser keys.
 
 Compare an integrated speech candidate with the available OpenAI route if it meets the intended metadata requirements. Measure speaker errors, unknown coverage, text errors, number/date errors, runtime, actual charges, and human correction time. Do not substitute vendor benchmarks for these results.
 
@@ -53,7 +53,7 @@ Current results are recorded in [validation](VALIDATION.md) and per-task Git com
 | Area | Required checks |
 | --- | --- |
 | Hosting | `main`-only deploy, failed checks block publish, PR cannot deploy, only `dist/` uploaded, commit/build identity, base path and hash refresh |
-| Secret handling | Keys absent from artifacts, storage, logs, exports, analytics and caches; correct key/destination pairing; no automatic paid validation |
+| Secret handling | User-selected unencrypted local key persistence; keys absent from meeting exports, logs, artifacts, analytics and caches; correct key/destination pairing; no automatic paid validation |
 | Provider access | Production-origin preflight and response; 401/403/429/5xx; network loss; stream truncation; request-ID exposure when available |
 | Recovery/billing | Close/reload before submission, after submission, mid-stream, and after result; completed chunks retained; uncertain outcome never auto-resubmits; cancel semantics explicit |
 | Audio | Supported formats, corrupt/empty files, size limits, bounded memory, valid container-aware chunks, source offsets, boundary repeats, channel preservation |

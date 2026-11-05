@@ -101,7 +101,10 @@ try {
       await page
         .getByLabel("OpenAI API key", { exact: true })
         .fill("synthetic-update-only");
-      await page.getByRole("button", { name: "Save session keys" }).click();
+      await page.getByRole("button", { name: "Save settings" }).click();
+      await expect(
+        page.getByRole("button", { name: "Saved on this device" }),
+      ).toBeVisible();
       await page.evaluate((value) => {
         const original = window.fetch.bind(window);
         window.fetch = (input, init) => {
@@ -159,6 +162,21 @@ try {
       await expect(page.getByRole("alert")).toContainText(
         "may have been charged",
       );
+      await page.getByRole("link", { name: "Settings & API keys" }).click();
+      await page.getByLabel("Memo model ID").fill("gpt-6.1-sol");
+      await page
+        .getByRole("button", { name: "Update now", exact: true })
+        .click();
+      await expect(
+        page.getByText("Save your settings before updating."),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "Save settings" }).click();
+      await expect(
+        page.getByRole("button", { name: "Saved on this device" }),
+      ).toBeVisible();
+      await page.evaluate((value) => {
+        location.hash = value;
+      }, hash);
       await page.getByRole("tab", { name: /Transcript/ }).click();
       await page
         .getByRole("button", { name: "Edit passage", exact: true })
@@ -194,6 +212,17 @@ try {
       await expect(
         page.getByText("Saved draft survives activation.", { exact: true }),
       ).toBeVisible();
+      await page.getByRole("link", { name: "Settings & API keys" }).click();
+      await expect(
+        page.getByLabel("OpenAI API key", { exact: true }),
+      ).toHaveValue("synthetic-update-only");
+      await expect(page.getByLabel("Memo model ID")).toHaveValue("gpt-6.1-sol");
+      await page.evaluate((value) => {
+        location.hash = value;
+      }, hash);
+      await page
+        .getByText("Saved draft survives activation.", { exact: true })
+        .waitFor();
       await browser.contexts()[0].setOffline(true);
       await page.reload();
       await expect(
@@ -272,6 +301,17 @@ try {
       await expect(
         page.getByText("Saved draft survives activation.", { exact: true }),
       ).toBeVisible();
+      await page.getByRole("link", { name: "Settings & API keys" }).click();
+      await expect(
+        page.getByLabel("OpenAI API key", { exact: true }),
+      ).toHaveValue("synthetic-update-only");
+      await expect(page.getByLabel("Memo model ID")).toHaveValue("gpt-6.1-sol");
+      await page.evaluate((value) => {
+        location.hash = value;
+      }, hash);
+      await page
+        .getByText("Saved draft survives activation.", { exact: true })
+        .waitFor();
       await browser.contexts()[0].setOffline(true);
       await page.reload();
       await expect(

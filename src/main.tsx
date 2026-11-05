@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { initializeSettings } from "./providers/credentials";
 import "./style.css";
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -25,10 +26,19 @@ class ErrorBoundary extends React.Component<
     );
   }
 }
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </React.StrictMode>,
+const root = ReactDOM.createRoot(document.getElementById("root")!);
+root.render(
+  <main className="empty" role="status">
+    <h1>Opening your workspace…</h1>
+    <p>Loading settings saved on this device.</p>
+  </main>,
+);
+void initializeSettings().then(() =>
+  root.render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    </React.StrictMode>,
+  ),
 );

@@ -13,7 +13,7 @@ flowchart LR
     H --> U[Browser UI]
     U <--> D[IndexedDB: meetings, audio, revisions, jobs]
     U --> W[Web Worker: bounded local processing]
-    U --> K[Memory-only key store]
+    U --> K[Local settings database: unencrypted keys]
     U --> P[Explicitly selected cloud provider]
     P --> U
     U --> E[User-requested export]
@@ -114,7 +114,7 @@ Billing state is separate: `not_submitted`, `possibly_charged`, `provider_report
 
 Disable SDK automatic retries for paid submissions, then implement explicit error policy. Safe status polling can retry with bounded backoff. A documented refusal before execution can be offered for retry; ambiguous timeouts/disconnects need user review. Do not treat a client-generated idempotency key as provider-supported exactly-once execution.
 
-On reload, keys are missing by design. Re-entry and file re-selection are recovery states, not lost-work errors. Partial streamed text stays provisional until final completion and validation; never mark it complete after a broken stream.
+Saved keys and settings are restored from the separate local settings database before the app renders. Re-entry is needed after the first upgrade from a memory-only build or after forgetting/clearing site data. File re-selection remains a recovery state, not a lost-work error. Partial streamed text stays provisional until final completion and validation; never mark it complete after a broken stream.
 
 ## Audio handling
 
@@ -134,7 +134,7 @@ Validate structured responses, handle refusal and truncation, and require nullab
 
 ## Keys and network destinations
 
-Keep keys in a non-persisted memory store; exclude them from state snapshots, URLs, logs, exports, and error reports. Clear on explicit forget and page termination as far as the browser allows; do not claim forensic memory erasure. Persistence is deferred from P0.
+The user explicitly selected unencrypted local IndexedDB persistence for provider keys. Store settings separately from meeting records and restore them before requests; expose the shared-origin/browser-profile risk in Settings. Use atomic revision-checked writes to reject stale-tab saves, propagate changes to other tabs, and keep keys out of meeting snapshots, URLs, logs, exports, error reports, static artifacts and worker caches. Forgetting keys updates the stored record while preserving other preferences. Protect in-flight settings saves and unsaved settings when updating the PWA. Do not claim encryption or forensic memory erasure.
 
 Provider selection controls the allowed HTTPS destination, key namespace, and `connect-src` policy. Never reuse one provider's key against another endpoint or auto-follow an unexpected credential-bearing redirect. Custom endpoints are a separately reviewed capability, not a default free-text URL.
 

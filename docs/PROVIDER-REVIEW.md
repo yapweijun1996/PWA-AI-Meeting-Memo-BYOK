@@ -1,6 +1,6 @@
 # Five-perspective review of the provider change
 
-Reviewed 2026-11-05 against the repository and current provider documentation. These are role-based engineering reviews, not independent user interviews or a substitute for live provider tests.
+Reviewed 2026-11-05 against the repository and current provider documentation. The user subsequently chose unencrypted local key persistence; the memory-only recommendation below is historical. These are role-based engineering reviews, not independent user interviews or a substitute for live provider tests.
 
 | Perspective | Finding and resulting decision |
 | --- | --- |

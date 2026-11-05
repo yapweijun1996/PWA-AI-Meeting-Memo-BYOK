@@ -54,18 +54,148 @@ test("local review, corrections, undo, speaker confirmation and reload", async (
   await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
-test("keys stay in session memory and clear on reload", async ({ page }) => {
+test("settings and keys survive reload and forgetting removes keys only", async ({
+  page,
+}) => {
+  let providerCalls = 0;
+  page.on("request", (request) => {
+    if (
+      request.url().startsWith("https://api.openai.com/") ||
+      request.url().startsWith("https://openrouter.ai/")
+    )
+      providerCalls++;
+  });
   await page.goto(`${base}#/settings`);
   await page
     .getByLabel("OpenAI API key", { exact: true })
-    .fill("fixture-secret-do-not-persist");
-  await page.getByRole("button", { name: "Save session keys" }).click();
+    .fill("synthetic-openai-only");
+  await page
+    .getByLabel("OpenRouter API key", { exact: true })
+    .fill("synthetic-router-only");
+  await page.getByLabel("Transcription provider").selectOption("openrouter");
+  await page.getByLabel("Memo provider").selectOption("openrouter");
+  await page.getByLabel("Memo model ID").fill("openai/gpt-6.1-sol");
+  await page.getByLabel("Speech rate · USD per minute").fill("0.0123");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved on this device" }),
+  ).toBeVisible();
+  expect(providerCalls).toBe(0);
   expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain(
-    "fixture-secret",
+    "synthetic-openai-only",
   );
   await page.reload();
   await expect(page.getByLabel("OpenAI API key", { exact: true })).toHaveValue(
+    "synthetic-openai-only",
+  );
+  await expect(
+    page.getByLabel("OpenRouter API key", { exact: true }),
+  ).toHaveValue("synthetic-router-only");
+  await expect(page.getByLabel("Transcription provider")).toHaveValue(
+    "openrouter",
+  );
+  await expect(page.getByLabel("Transcription model ID")).toHaveValue(
+    "elevenlabs/scribe-v2",
+  );
+  await expect(page.getByLabel("Memo model ID")).toHaveValue(
+    "openai/gpt-6.1-sol",
+  );
+  await expect(page.getByLabel("Speech rate · USD per minute")).toHaveValue(
+    "0.0123",
+  );
+  await page.getByRole("button", { name: "Forget keys" }).click();
+  await expect(
+    page.getByText("Stored keys forgotten on this device."),
+  ).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("OpenAI API key", { exact: true })).toHaveValue(
     "",
+  );
+  await expect(
+    page.getByLabel("OpenRouter API key", { exact: true }),
+  ).toHaveValue("");
+  await expect(page.getByLabel("Memo model ID")).toHaveValue(
+    "openai/gpt-6.1-sol",
+  );
+  expect(providerCalls).toBe(0);
+});
+
+test("settings saved in another tab do not overwrite unsaved entries", async ({
+  page,
+  context,
+}) => {
+  await page.goto(`${base}#/settings`);
+  const other = await context.newPage();
+  await other.goto(`${base}#/settings`);
+  await other
+    .getByLabel("OpenAI API key", { exact: true })
+    .fill("unsaved-local-test");
+  await page.getByLabel("OpenAI API key", { exact: true }).fill("winner-test");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved on this device" }),
+  ).toBeVisible();
+  await expect(other.getByRole("alert")).toContainText(
+    "Settings changed in another tab",
+  );
+  await other.getByRole("button", { name: "Save settings" }).click();
+  await expect(other.getByRole("alert")).toContainText(
+    "Settings changed in another tab",
+  );
+  await expect(other.getByLabel("OpenAI API key", { exact: true })).toHaveValue(
+    "unsaved-local-test",
+  );
+  await expect(page.getByLabel("OpenAI API key", { exact: true })).toHaveValue(
+    "winner-test",
+  );
+  other.on("dialog", (dialog) => void dialog.accept());
+  await other.reload();
+  await expect(other.getByLabel("OpenAI API key", { exact: true })).toHaveValue(
+    "winner-test",
+  );
+  await page.getByRole("button", { name: "Forget keys" }).click();
+  await expect(
+    page.getByText("Stored keys forgotten on this device."),
+  ).toBeVisible();
+  await expect(other.getByLabel("OpenAI API key", { exact: true })).toHaveValue(
+    "",
+  );
+  await other.close();
+});
+
+test("failed settings writes keep unsaved values visible and preserve the last saved values", async ({
+  page,
+}) => {
+  await page.goto(`${base}#/settings`);
+  await page
+    .getByLabel("OpenAI API key", { exact: true })
+    .fill("saved-key-test");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved on this device" }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const original = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (...args) {
+      if (this.name === "settings")
+        throw new DOMException("Injected quota failure", "QuotaExceededError");
+      return original.apply(this, args);
+    };
+  });
+  await page
+    .getByLabel("OpenAI API key", { exact: true })
+    .fill("unsaved-key-test");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Could not save settings",
+  );
+  await expect(page.getByLabel("OpenAI API key", { exact: true })).toHaveValue(
+    "unsaved-key-test",
+  );
+  page.on("dialog", (dialog) => void dialog.accept());
+  await page.reload();
+  await expect(page.getByLabel("OpenAI API key", { exact: true })).toHaveValue(
+    "saved-key-test",
   );
 });
 test("responsive navigation and dialogs do not overflow on a phone-sized viewport", async ({

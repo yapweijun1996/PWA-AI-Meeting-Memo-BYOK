@@ -4,18 +4,17 @@ import {
   ExternalLink,
   KeyRound,
   LockKeyhole,
-  ShieldCheck,
   Trash2,
   HardDrive,
 } from "lucide-react";
 import {
-  forgetKeys,
   getKey,
-  setKey,
   getSpeechRate,
-  setSpeechRate,
   getSelection,
-  setSelection,
+  getSettingsRevision,
+  getSettingsStorageError,
+  saveSettings,
+  setSettingsDirty,
   defaultModel,
   type Provider,
   type Stage,
@@ -25,9 +24,34 @@ export function Settings() {
     [openrouter, setOpenrouter] = useState(getKey("openrouter")),
     [speech, setSpeech] = useState(getSelection("speech")),
     [memo, setMemo] = useState(getSelection("memo")),
+    [speechRate, setSpeechRate] = useState(
+      () => getSpeechRate()?.toString() ?? "",
+    ),
+    [revision, setRevision] = useState(getSettingsRevision()),
+    [saving, setSaving] = useState(false),
+    [saveError, setSaveError] = useState(getSettingsStorageError()),
     [saved, setSaved] = useState(false),
     [notice, setNotice] = useState(""),
+    [baseline, setBaseline] = useState(() =>
+      JSON.stringify({
+        keys: { openai: getKey("openai"), openrouter: getKey("openrouter") },
+        speech: getSelection("speech"),
+        memo: getSelection("memo"),
+        speechRate: getSpeechRate()?.toString() ?? "",
+      }),
+    ),
     [usage, setUsage] = useState("Calculating…");
+  const formDirty =
+    JSON.stringify({
+      keys: { openai, openrouter },
+      speech,
+      memo,
+      speechRate,
+    }) !== baseline;
+  useEffect(() => {
+    setSettingsDirty(formDirty);
+    return () => setSettingsDirty(false);
+  }, [formDirty]);
   useEffect(() => {
     void navigator.storage
       ?.estimate()
@@ -38,6 +62,103 @@ export function Settings() {
       )
       .catch(() => setUsage("Usage estimate is unavailable."));
   }, []);
+  useEffect(() => {
+    const changed = () => {
+      const prior = JSON.parse(baseline) as {
+        keys: { openai: string; openrouter: string };
+      };
+      if (!getKey("openai"))
+        setOpenai((value) => (value === prior.keys.openai ? "" : value));
+      if (!getKey("openrouter"))
+        setOpenrouter((value) =>
+          value === prior.keys.openrouter ? "" : value,
+        );
+      setSaveError(
+        "Settings changed in another tab. Copy any unsaved changes, then reload before saving.",
+      );
+    };
+    window.addEventListener("memo-settings-external", changed);
+    return () => window.removeEventListener("memo-settings-external", changed);
+  }, [baseline]);
+  async function save() {
+    setSaving(true);
+    setSaveError("");
+    setSaved(false);
+    try {
+      if (!speech.model.trim() || !memo.model.trim())
+        throw new Error("Choose a model ID for transcription and notes.");
+      await saveSettings(
+        {
+          keys: { openai: openai.trim(), openrouter: openrouter.trim() },
+          speech: { ...speech, model: speech.model.trim() },
+          memo: { ...memo, model: memo.model.trim() },
+          speechRate: speechRate === "" ? null : Number(speechRate),
+        },
+        revision,
+      );
+      setRevision(getSettingsRevision());
+      setBaseline(
+        JSON.stringify({
+          keys: { openai: openai.trim(), openrouter: openrouter.trim() },
+          speech: { ...speech, model: speech.model.trim() },
+          memo: { ...memo, model: memo.model.trim() },
+          speechRate,
+        }),
+      );
+      setOpenai(openai.trim());
+      setOpenrouter(openrouter.trim());
+      setSpeech({ ...speech, model: speech.model.trim() });
+      setMemo({ ...memo, model: memo.model.trim() });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (error) {
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : "Could not save settings on this device.",
+      );
+      window.dispatchEvent(new Event("memo-settings-save-failed"));
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function forget() {
+    setSaving(true);
+    setSaveError("");
+    setSaved(false);
+    try {
+      await saveSettings(
+        {
+          keys: { openai: "", openrouter: "" },
+          speech: getSelection("speech"),
+          memo: getSelection("memo"),
+          speechRate: getSpeechRate(),
+        },
+        revision,
+      );
+      setRevision(getSettingsRevision());
+      setBaseline(
+        JSON.stringify({
+          keys: { openai: "", openrouter: "" },
+          speech: getSelection("speech"),
+          memo: getSelection("memo"),
+          speechRate: getSpeechRate()?.toString() ?? "",
+        }),
+      );
+      setOpenai("");
+      setOpenrouter("");
+      setNotice("Stored keys forgotten on this device.");
+    } catch (error) {
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : "Could not remove stored keys.",
+      );
+      window.dispatchEvent(new Event("memo-settings-save-failed"));
+    } finally {
+      setSaving(false);
+    }
+  }
   async function persist() {
     try {
       const result = await navigator.storage?.persist();
@@ -69,28 +190,24 @@ export function Settings() {
           <div>
             <h2>Your API connections</h2>
             <p>
-              Choose a provider and model for each step. Keys and selections
-              last for this page session.
+              Choose a provider and model for each step. Save settings to keep
+              them on this device.
             </p>
           </div>
         </div>
         <div className="notice">
           <LockKeyhole size={18} />
           <span>
-            Keys stay in memory and are cleared on reload. They are never
-            included in meeting backups or sent to GitHub. Page code can access
-            keys while you use the app.
+            Keys are stored unencrypted in this browser's IndexedDB. Other
+            scripts on this shared website origin and anyone with access to this
+            browser profile may be able to read them. Keys are not included in
+            meeting backups or sent to GitHub.
           </span>
         </div>
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            setKey("openai", openai);
-            setKey("openrouter", openrouter);
-            setSelection("speech", speech);
-            setSelection("memo", memo);
-            setSaved(true);
-            setTimeout(() => setSaved(false), 3000);
+            void save();
           }}
         >
           <div className="connection">
@@ -113,6 +230,8 @@ export function Settings() {
               OpenRouter API key
               <input
                 type="password"
+                maxLength={4096}
+                disabled={saving}
                 autoComplete="off"
                 spellCheck={false}
                 value={openrouter}
@@ -142,6 +261,8 @@ export function Settings() {
               OpenAI API key
               <input
                 type="password"
+                maxLength={4096}
+                disabled={saving}
                 autoComplete="off"
                 spellCheck={false}
                 value={openai}
@@ -162,6 +283,7 @@ export function Settings() {
                   {label} provider
                   <select
                     aria-label={`${label} provider`}
+                    disabled={saving}
                     value={choice.provider}
                     onChange={(e) => {
                       const provider = e.target.value as Provider;
@@ -179,6 +301,7 @@ export function Settings() {
                   {label} model ID
                   <input
                     aria-label={`${label} model ID`}
+                    disabled={saving}
                     list={`${stage}-models`}
                     value={choice.model}
                     maxLength={100}
@@ -214,28 +337,53 @@ export function Settings() {
               </div>
             );
           })}
+          <div className="connection">
+            <h3>Cost estimates</h3>
+            <p className="muted">
+              Optionally enter the selected speech model rate from your plan.
+              Estimates are not a billing cap.
+            </p>
+            <label>
+              Speech rate · USD per minute
+              <input
+                type="number"
+                disabled={saving}
+                step="0.0001"
+                min="0"
+                max="10"
+                value={speechRate}
+                placeholder="Unknown"
+                onChange={(e) => setSpeechRate(e.target.value)}
+              />
+            </label>
+          </div>
+          {saveError && (
+            <div className="notice danger" role="alert">
+              {saveError}
+            </div>
+          )}
           <div className="settings-actions">
-            <button type="submit" className="button primary">
-              {saved ? <Check size={16} /> : <KeyRound size={16} />}{" "}
-              {saved ? "Saved for this session" : "Save session keys"}
+            <button type="submit" className="button primary" disabled={saving}>
+              {saved && !formDirty ? (
+                <Check size={16} />
+              ) : (
+                <KeyRound size={16} />
+              )}{" "}
+              {saved && !formDirty ? "Saved on this device" : "Save settings"}
             </button>
             <button
               type="button"
               className="button ghost"
-              onClick={() => {
-                forgetKeys();
-                setOpenai("");
-                setOpenrouter("");
-                setNotice("Session keys forgotten.");
-              }}
+              onClick={() => void forget()}
+              disabled={saving}
             >
               <Trash2 size={16} />
               Forget keys
             </button>
           </div>
           <p className="small muted">
-            Saving keys does not test them or incur a charge. Requests are made
-            only after you confirm a meeting operation.
+            Saving settings does not test keys or incur a charge. Cloud requests
+            are made only after you confirm a meeting operation.
           </p>
         </form>
       </section>
@@ -254,36 +402,6 @@ export function Settings() {
           <button className="button secondary" onClick={() => void persist()}>
             Request persistent storage
           </button>
-        </section>
-        <section className="settings-panel">
-          <div className="panel-title">
-            <ShieldCheck size={20} />
-            <h2>Cost estimates</h2>
-          </div>
-          <p className="muted">
-            Optionally enter your selected speech model rate from your plan.
-            Rates and features differ. Memo cost is shown as unknown before
-            actual usage.
-          </p>
-          <label>
-            Speech rate · USD per minute
-            <input
-              type="number"
-              step="0.0001"
-              min="0"
-              max="10"
-              defaultValue={getSpeechRate() ?? ""}
-              placeholder="Unknown"
-              onChange={(e) =>
-                setSpeechRate(
-                  e.target.value === "" ? null : Number(e.target.value),
-                )
-              }
-            />
-          </label>
-          <p className="small muted">
-            Estimates are not a billing cap. Rate is kept for this session.
-          </p>
         </section>
       </div>
       {notice && (

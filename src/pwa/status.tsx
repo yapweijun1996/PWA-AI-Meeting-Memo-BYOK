@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Download, RefreshCw, WifiOff } from "lucide-react";
 import { isProcessing } from "../jobs/runner";
 import { flushWrites } from "../storage/repository";
+import { flushSettingsWrites, isSettingsDirty } from "../providers/credentials";
 export function PwaStatus() {
   const [refreshReady, setRefreshReady] = useState(false);
   const [waiting, setWaiting] = useState<ServiceWorker>(),
@@ -82,6 +83,10 @@ export function PwaStatus() {
       setError("Save or close the open editor before updating.");
       return;
     }
+    if (isSettingsDirty()) {
+      setError("Save your settings before updating.");
+      return;
+    }
     if (isProcessing()) {
       setError("Finish the active provider request before updating.");
       return;
@@ -90,6 +95,7 @@ export function PwaStatus() {
       return;
     try {
       await flushWrites();
+      await flushSettingsWrites();
     } catch (e) {
       setError(
         e instanceof Error ? e.message : "Save your changes before updating.",

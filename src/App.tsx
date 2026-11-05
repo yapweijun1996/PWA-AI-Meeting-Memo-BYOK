@@ -33,6 +33,10 @@ import { NewMeeting } from "./features/NewMeeting";
 import { MeetingWorkspace } from "./features/MeetingWorkspace";
 import { Settings } from "./features/Settings";
 import { isProcessing } from "./jobs/runner";
+import {
+  getSettingsStorageError,
+  isSettingsDirty,
+} from "./providers/credentials";
 import { PwaStatus } from "./pwa/status";
 export const navigate = (route: string) => {
   location.hash = route;
@@ -42,7 +46,7 @@ export default function App() {
     [meetings, setMeetings] = useState<Meeting[]>([]),
     [current, setCurrent] = useState<Meeting>(),
     [loading, setLoading] = useState(true);
-  const [error, setError] = useState(""),
+  const [error, setError] = useState(getSettingsStorageError()),
     [search, setSearch] = useState(""),
     [filter, setFilter] = useState("all"),
     [newOpen, setNewOpen] = useState(false),
@@ -94,6 +98,16 @@ export default function App() {
       .finally(() => setLoading(false));
   }, [refresh]);
   useEffect(() => {
+    const failed = () => {
+      if (location.hash !== "#/settings")
+        setError(
+          "Settings could not be saved. Return to Settings and enter them again.",
+        );
+    };
+    addEventListener("memo-settings-save-failed", failed);
+    return () => removeEventListener("memo-settings-save-failed", failed);
+  }, []);
+  useEffect(() => {
     const on = () => setOnline(navigator.onLine);
     addEventListener("online", on);
     addEventListener("offline", on);
@@ -134,7 +148,7 @@ export default function App() {
   }, [route]);
   useEffect(() => {
     const guard = (e: BeforeUnloadEvent) => {
-      if (isProcessing()) {
+      if (isProcessing() || isSettingsDirty()) {
         e.preventDefault();
         e.returnValue = "";
       }

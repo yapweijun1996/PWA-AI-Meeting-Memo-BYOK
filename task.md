@@ -8,10 +8,19 @@ This file tracks execution. [Product requirements](docs/PRODUCT.md), [architectu
 
 - Keep the core browser-first, with runtime BYOK and static GitHub Pages hosting. A companion and backend remain optional future modes.
 - Preserve speaker correction, original results, source references, and human edits throughout the workflow.
-- Keep keys in memory by default and out of Git, browser persistence, build artifacts, logs, and exports.
+- The user selected unencrypted local browser persistence for keys; keep them out of Git, meeting exports, build artifacts, logs, and caches, and disclose the shared-origin trust boundary.
 - Use synthetic fixtures in CI. Live API tests require explicit authorization for the data and potential charges.
 - Persist completed work and distinguish provider polling from resubmitting a paid request. Never automatically retry an unknown paid outcome.
 - Record app commit, environment, test procedure, and result when completing a validation task. Real-browser, physical-device, and mocked tests establish different things.
+
+## Settings persistence amendment — 2026-11-05
+
+The user selected unencrypted storage in this browser for API keys, provider/model selections, and the speech rate. Settings are kept separately from meeting backups; see [provider support](docs/PROVIDERS.md) and [architecture](docs/ARCHITECTURE.md).
+
+- [x] Persist and restore provider keys, model selections and rate in a separate local IndexedDB database.
+- [x] Provide persistent key removal and disclose the unencrypted shared-origin trust boundary.
+- [x] Detect stale-tab writes and storage failures without silently overwriting saved settings.
+- [x] Verify reload, backup exclusion, provider pairing and PWA update protections with synthetic data.
 
 ## Provider/model change — 2026-11-05
 
@@ -80,7 +89,7 @@ Acceptance: meeting data and corrections survive reload and backup/restore. Orig
 
 Dependency: Phase 0 provider decision and Phase 2 storage/evidence contracts.
 
-- [x] I01 — Implement a memory-only credential store, provider-specific key selection, explicit forget, safe rendering, and redacted errors.
+- [x] I01 — Implement provider-specific key selection, explicit forget, safe rendering, and redacted errors. The original memory-only store was later replaced by user-requested local IndexedDB persistence.
 - [x] I02 — Implement the selected speech adapter with verified capability checks, normalized output, sanitized provenance, and explicit SDK retry settings.
 - [x] I03 — Add data-destination confirmation, dated stage estimates, unknown-rate handling, and explicit authorization before submission.
 - [x] I04 — Implement supported audio preparation in bounded workers; preserve independent channels and source offsets and reject unsupported inputs gracefully.

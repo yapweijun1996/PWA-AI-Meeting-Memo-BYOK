@@ -1,5 +1,7 @@
 # Implementation evidence
 
+Later amendment: The user chose unencrypted local key and settings persistence in IndexedDB. Earlier entries describe the prior memory-only implementation. See the current architecture and provider documentation.
+
 2026-11-05: OpenAI is now the default for both stages, OpenRouter is optional, and direct Deepgram requests were removed while older runs remain accessible. Earlier entries describe historical checkpoints; see PROVIDERS.md for the current contract.
 
 Each entry records a task checkpoint. Full commits are available in Git history. Live API and physical-device checks remain separate from mocks.

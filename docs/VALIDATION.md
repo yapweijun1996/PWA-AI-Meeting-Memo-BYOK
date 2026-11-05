@@ -6,6 +6,10 @@ Prior baseline date: 2026-11-04. Product: browser-first BYOK beta. Host used for
 
 The OpenAI-default/OpenRouter-optional change passed lint, TypeScript, 30 unit tests, 36 Chromium/WebKit browser tests, static artifact checks, and the two-engine PWA update test locally. Provider responses were synthetic. The published commit must be read from the latest GitHub Actions run; prior counts and live deployment details below describe the earlier baseline. Authenticated provider access, Scribe speaker accuracy, actual charges, and device testing remain NOT RUN.
 
+## Settings persistence amendment
+
+Provider keys, provider/model selections and speech rate are saved locally by explicit user choice. Existing memory-only keys require one re-entry after updating. Local verification passed 34 unit tests, 46 Chromium/WebKit browser tests, and both engines’ PWA update checks. Synthetic tests cover reload, separate settings storage, forgetting keys, stale-tab conflict, injected storage failure and PWA update protection. These tests do not establish protection against same-origin scripts or device/profile access.
+
 ## Local checks
 
 | Check | Evidence |
@@ -18,7 +22,7 @@ The OpenAI-default/OpenRouter-optional change passed lint, TypeScript, 30 unit t
 | Production artifact | PASS static-file/path/manifest checks and scan for known credential/test fixture patterns; no guarantee that scanning alone detects all secrets |
 | Dependency audit | PASS: zero reported production or development vulnerabilities in the checked lockfile |
 
-Browser cases use synthetic text/audio. They cover upload/checksum, speaker normalization, confirmation, correction, bulk assignment, merge/split/undo, historical source inspection, session-key clearing, explicit send confirmation, unknown billing, cancellation, backup/restore, offline reload, multi-tab conflicts, and injected quota failures. Injected quota failure tests error handling, not a measured device storage ceiling.
+Browser cases use synthetic text/audio. The earlier baseline covered upload/checksum, speaker normalization, confirmation, correction, bulk assignment, merge/split/undo, historical source inspection, session-key clearing, explicit send confirmation, unknown billing, cancellation, backup/restore, offline reload, multi-tab conflicts, and injected quota failures. Injected quota failure tests error handling, not a measured device storage ceiling.
 
 The continuous workflow uses a generated one-second silent WAV and mocked speech/notes. It exports MD, TXT and JSON after human acceptance, checks credential exclusion, restores a checksummed audio ZIP into a separate meeting, and verifies both transcript and human review survived. The timeout case advances the browser clock past nine minutes and verifies one submission, possibly-charged status, and no resubmission after reload.
 
@@ -58,7 +62,7 @@ P1/P2 items such as microphone capture, full waveforms, encrypted backups, local
 | Area | Result and scope |
 | --- | --- |
 | Hosting and build identity | PASS clean Actions checks, trusted-main publication and served build/worker identities; PR permissions and failed-check gating verified from workflow structure |
-| Privacy and keys | PASS memory-only/session clearing, destination-specific mock headers, exported credential exclusion and static artifact checks; shared-origin production acceptance NOT RUN |
+| Privacy and keys | Earlier baseline: memory-only/session clearing; the user subsequently selected unencrypted local key persistence. Destination-specific mock headers, exported credential exclusion and static artifact checks remain applicable; shared-origin production acceptance NOT RUN |
 | Provider access and quality | Mock orchestration PASS; authenticated production CORS, valid account/model access, real accuracy and charges NOT RUN |
 | Recovery and billing | PASS simulated disconnect, incomplete body, timeout, cancellation, HTTP rejection and reload with no automatic resubmission; submitted/rejected requests retain unconfirmed billing separately from execution failure; real phone suspension and provider settlement NOT RUN |
 | Audio | PASS bounded synthetic upload, checksum persistence, playback Blob and restore; empty/oversized inputs and unsupported filenames rejected; malformed codec contents and measured physical-device limits NOT RUN |
@@ -82,7 +86,7 @@ No failed check is being waived. Pending acceptance items are not promoted to PA
 - Maximum JSON restore: 12 MB; ZIP input/expanded size capped at 120 MB and restricted to known entries; audio checksums are verified.
 - Memo input/output and history limits are enforced before further requests; all unknown costs stay unknown.
 - Human acceptance is recorded against the current source revision. Original generated source references and prior human memo versions remain intact.
-- Keys stay in memory. Browser code and all scripts on the hosting origin remain part of the trust boundary.
+- Keys are now persisted unencrypted in a separate local IndexedDB database by user choice. Browser code, all scripts on the hosting origin, and access to the browser profile remain part of the trust boundary.
 - Processing is foreground and conservatively recoverable, with no automatic retry of ambiguous paid outcomes.
 
 ## Reproduce

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { unzipSync, strFromU8 } from "fflate";
 // A service-worker-controlled WebKit request can bypass page.route. Block workers
 // in network-mock contexts so CI cannot accidentally make a live provider call.
 test.use({ serviceWorkers: "block" });
@@ -83,7 +84,10 @@ test("memo submissions require confirmation, preserve evidence and mark source c
   await page
     .getByLabel("OpenAI API key", { exact: true })
     .fill("synthetic-test-only");
-  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved on this device" }),
+  ).toBeVisible();
   await page.evaluate((hash) => {
     location.hash = hash;
   }, hash);
@@ -181,7 +185,10 @@ test("uncertain requests are recorded and never automatically resubmitted", asyn
   await page
     .getByLabel("OpenAI API key", { exact: true })
     .fill("synthetic-test-only");
-  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved on this device" }),
+  ).toBeVisible();
   await page.evaluate((hash) => {
     location.hash = hash;
   }, hash);
@@ -297,7 +304,10 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
   await page
     .getByLabel("OpenAI API key", { exact: true })
     .fill("synthetic-test-only");
-  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved on this device" }),
+  ).toBeVisible();
   await page.evaluate((hash) => {
     location.hash = hash;
   }, hash);
@@ -352,6 +362,10 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
   const file = await downloaded,
     path = info.outputPath("audio-backup.zip");
   await file.saveAs(path);
+  const backupFiles = unzipSync(await readFile(path));
+  const backupDocument = strFromU8(backupFiles["meeting.json"]);
+  expect(backupDocument).not.toContain("synthetic-test-only");
+  expect(backupDocument).not.toContain("synthetic-router-only");
   page.on("dialog", (d) => void d.accept());
   await page.locator(".nav-file input").setInputFiles(path);
   await expect(
@@ -390,7 +404,10 @@ test("a foreground timeout remains uncertain and never resubmits on reload", asy
   await page
     .getByLabel("OpenAI API key", { exact: true })
     .fill("synthetic-test-only");
-  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved on this device" }),
+  ).toBeVisible();
   await page.evaluate((value) => {
     location.hash = value;
   }, hash);
@@ -423,7 +440,10 @@ test("cancelling a submitted request records billing uncertainty", async ({
   await page
     .getByLabel("OpenAI API key", { exact: true })
     .fill("synthetic-test-only");
-  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved on this device" }),
+  ).toBeVisible();
   await page.evaluate((hash) => {
     location.hash = hash;
   }, hash);
@@ -461,7 +481,10 @@ test("a rejected HTTP request is failed with unconfirmed billing, not marked uns
   await page
     .getByLabel("OpenAI API key", { exact: true })
     .fill("synthetic-test-only");
-  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved on this device" }),
+  ).toBeVisible();
   await page.evaluate((value) => {
     location.hash = value;
   }, hash);
@@ -525,7 +548,10 @@ test("a completed background request cannot replace a different meeting view", a
   await page
     .getByLabel("OpenAI API key", { exact: true })
     .fill("synthetic-test-only");
-  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved on this device" }),
+  ).toBeVisible();
   await page.evaluate((hash) => {
     location.hash = hash;
   }, hash);
@@ -656,8 +682,16 @@ test("default OpenAI speech and selected OpenRouter memo use their own model and
     .getByLabel("OpenRouter API key", { exact: true })
     .fill("synthetic-router-only");
   await page.getByLabel("Memo provider").selectOption("openrouter");
-  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved on this device" }),
+  ).toBeVisible();
   expect(speechCalls + memoCalls).toBe(0);
+  await page.reload();
+  await expect(
+    page.getByLabel("OpenRouter API key", { exact: true }),
+  ).toHaveValue("synthetic-router-only");
+  await expect(page.getByLabel("Memo provider")).toHaveValue("openrouter");
   await page.evaluate((value) => {
     location.hash = value;
   }, hash);
@@ -702,7 +736,10 @@ test("processing indicator stays bounded on desktop and mobile and supports redu
   await page
     .getByLabel("OpenAI API key", { exact: true })
     .fill("synthetic-test-only");
-  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved on this device" }),
+  ).toBeVisible();
   await page.evaluate((value) => {
     location.hash = value;
   }, hash);
@@ -783,7 +820,10 @@ test("safe error guidance explains a provider duration rejection without exposin
   await page
     .getByLabel("Transcription model ID")
     .fill("gpt-4o-transcribe-diarize");
-  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved on this device" }),
+  ).toBeVisible();
   await page.evaluate((value) => {
     location.hash = value;
   }, hash);
@@ -846,7 +886,10 @@ test("long OpenAI diarization shows an advisory before a paid submission", async
   await page
     .getByLabel("Transcription model ID")
     .fill("gpt-4o-transcribe-diarize");
-  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved on this device" }),
+  ).toBeVisible();
   await page.evaluate((value) => {
     location.hash = value;
   }, hash);
