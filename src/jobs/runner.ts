@@ -2,7 +2,8 @@ import { id, type Meeting, type Job } from "../domain/model";
 import { replaceTranscript } from "../domain/operations";
 import { getMeeting, saveMeeting, getAudio } from "../storage/repository";
 import { generateMemo, transcribe, ProviderError } from "../providers/api";
-import { getKey, getSelection, getSpeechRate } from "../providers/credentials";
+import { getKey, getSelection, getSpeechEstimate } from "../providers/credentials";
+import { buildMemoInput } from "../providers/memo-input";
 let controller: AbortController | undefined;
 let activeMeetingId: string | undefined;
 export const isProcessingMeeting = (id: string) =>
@@ -30,19 +31,14 @@ export async function runJob(
   const audio = stage === "speech" ? await getAudio(m.id) : undefined;
   if (stage === "speech" && !audio)
     throw new Error("Attach the original recording before transcription.");
-  if (
-    stage === "memo" &&
-    (!m.segments.length || JSON.stringify(m.segments).length > 120000)
-  )
-    throw new Error(
-      "Add a supported transcript first; this meeting exceeds the supported memo limit if its text is too long.",
-    );
+  if (stage === "memo") buildMemoInput(m);
   const execute = async () => {
     const current = await getMeeting(m.id);
     if (!current || current.version !== m.version)
       throw new Error(
         "This meeting changed. Reload before starting a request.",
       );
+    const estimate = stage === "speech" ? getSpeechEstimate(m.audio?.duration) : null;
     const job: Job = {
       id: id(),
       stage,
@@ -53,10 +49,10 @@ export async function runJob(
       requestId: null,
       message: "Request submitted. Keep this window open.",
       inputRevision: m.revision,
-      estimateUsd:
-        stage === "speech" && getSpeechRate() !== null && m.audio?.duration
-          ? (getSpeechRate()! * m.audio.duration) / 60
-          : null,
+      provider: selection.provider,
+      model: selection.model,
+      estimateUsd: estimate?.amount ?? null,
+      estimateDetails: estimate ? { rate: estimate.rate, seconds: estimate.seconds, source: estimate.source, date: estimate.date } : null,
     };
     await saveMeeting({ ...m, jobs: [...m.jobs, job] });
     controller = new AbortController();
@@ -65,6 +61,7 @@ export async function runJob(
     const timer = setTimeout(() => controller?.abort(), 9 * 60 * 1000);
     let reportedUsage: Job["usage"] = null;
     let memoRequestId: string | null = null;
+    let reportedCostUsd: number | null = null;
     try {
       const result =
         stage === "speech"
@@ -74,14 +71,20 @@ export async function runJob(
               controller.signal,
               selection,
               m.audio?.name,
+              (account) => {
+                reportedUsage = account.usage;
+                memoRequestId = account.requestId;
+                reportedCostUsd = account.cost;
+              },
             )
           : await generateMemo(
               m,
               key,
               controller.signal,
-              (usage, requestId) => {
+              (usage, requestId, cost) => {
                 reportedUsage = usage;
                 memoRequestId = requestId;
+                reportedCostUsd = cost;
               },
               selection,
             );
@@ -89,12 +92,7 @@ export async function runJob(
       if (!latest) throw new Error("The meeting was removed while processing.");
       let requestId: string | null = memoRequestId;
       if (stage === "speech" && !Array.isArray(result)) {
-        requestId = result.requestId;
-        reportedUsage = {
-          inputTokens: null,
-          outputTokens: null,
-          seconds: result.duration,
-        };
+        requestId = memoRequestId ?? result.requestId;
         if (latest.revision === m.revision)
           latest = replaceTranscript(
             latest,
@@ -140,9 +138,10 @@ export async function runJob(
           ? {
               ...j,
               state: "completed",
-              billing: "provider_reported",
+              billing: reportedCostUsd === null ? "possibly_charged" : "provider_reported",
               requestId,
               usage: reportedUsage,
+              reportedCostUsd,
               updatedAt: new Date().toISOString(),
               message:
                 latest!.revision !== m.revision && stage === "speech"
@@ -169,12 +168,13 @@ export async function runJob(
               ? {
                   ...j,
                   usage: reportedUsage,
+                  reportedCostUsd,
                   requestId: memoRequestId,
                   state: failure.uncertain ? "outcome_unknown" : "failed",
-                  billing: failure.uncertain
-                    ? "possibly_charged"
-                    : failure.charged
-                      ? "provider_reported"
+                  billing: reportedCostUsd !== null
+                    ? "provider_reported"
+                    : failure.uncertain || failure.charged
+                      ? "possibly_charged"
                       : failure.submitted
                         ? "possibly_charged"
                         : "not_submitted",

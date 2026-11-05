@@ -77,6 +77,8 @@ Each new memo version clones the normalized generated items into `originalItems`
 
 Start with a conservative invalidation rule: text, assignment, speaker identity, date, or timezone changes increment the meeting source revision and mark generated memo items for re-review. More selective invalidation can follow with tests. New generations never overwrite an accepted human version.
 
+Memo review actions commit the displayed text, owner, due date, review state and reviewed source revision together. An item-scoped interaction guard suppresses competing blur saves until that review commit finishes; repository version checks remain authoritative for real stale-tab conflicts. Mouse focus prevention and touch default-click behavior differ. Touch interaction completion at Window/null must not be confused with explicit cancellation or departure to another element. Generated originals are never changed by a review commit.
+
 Source IDs establish traceability, not semantic correctness. Independently validate that references exist, belong to the meeting, and use the expected revisions; users still review whether a claim follows from them.
 
 ## Storage and transaction rules
@@ -130,7 +132,11 @@ Use a single-thread browser processing fallback. WASM, WebCodecs, and supported 
 
 Send the reviewed transcript and only needed metadata. Treat transcript content as data, including any embedded instructions. The memo generator has no tools that send messages, write ERP records, or follow links.
 
-Validate structured responses, handle refusal and truncation, and require nullable unknown fields. The beta rejects serialized memo input above 80,000 characters before transmission. Future long-input support must use evidence-preserving bounded extraction then synthesis: carry original segment IDs through every stage and recheck contradictions against source text. Count all stages in the estimate.
+Generation instructions request independently checkable claims whose numbers, conditions, entities and qualifiers are completely supported by their selected passages. Claims that need different evidence must be split; unsupported details must be omitted, and uncertainty must come from the transcript. These are generation instructions, not a semantic proof: actual model output can still cite incomplete evidence. Keep new items pending and compare every clause with the selected source text before accepting it. Human corrections change editable items while retaining generated originals.
+
+Validate structured responses, handle refusal and truncation, and require nullable unknown fields. `src/providers/memo-input.ts` owns the 80,000-character serialized input limit used by both job preflight and the provider request. Inputs that already fit retain their original segment IDs. Larger inputs group consecutive segments only when their ordered speaker assignments match, with at most 20 original segments per transport group. The builder retains all text and a request-local map from compact IDs to original IDs and revisions; it does not modify stored segments, timestamps, speakers, history or normalized runs. A compact response may cite at most five groups per item, which are expanded, revision-validated and deduplicated before persistence within the existing 100-source limit. Unknown groups or invalid references reject the result. Compact IDs are never persisted as evidence references.
+
+Compact group text is an ordered array of the original fragments, preserving each fragment's exact content and boundaries without claiming what whitespace belongs between them. Speaker entries use zero-based indices into the accompanying speaker list, falling back to the original ID if it is absent. The request instructs the model not to infer exact values from ambiguous boundaries and to return actual speaker IDs for owners. The complete serialized input must still fit 80,000 characters after grouping; otherwise preflight rejects it without a request. This is metadata compaction, not transcript truncation or a multistage summarization pipeline. Output remains capped at 8,000 tokens. Any future extraction/synthesis pipeline must preserve original evidence through every stage, recheck contradictions and include every paid stage in the estimate.
 
 ## Keys and network destinations
 

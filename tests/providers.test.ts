@@ -5,7 +5,7 @@ import {
   transcribe,
   generateMemo,
 } from "../src/providers/api";
-import { sampleMeeting } from "../src/domain/model";
+import { sampleMeeting, SegmentSchema } from "../src/domain/model";
 afterEach(() => vi.unstubAllGlobals());
 it.each([
   [401, false],
@@ -210,6 +210,121 @@ it("keeps word speaker evidence when a provider also returns unlabelled segments
   });
   expect(result.speakers).toHaveLength(2);
   expect(result.segments).toHaveLength(2);
+});
+
+it("preserves zero-duration words with unknown timing and valid neighboring times", () => {
+  const result = normalizeSpeech({
+    words: [
+      { word: "before", start: 0, end: 1, speaker: 0 },
+      { word: "instant", start: 1, end: 1, speaker: 1 },
+      { word: "after", start: 1, end: 2, speaker: 0 },
+    ],
+  });
+  expect(result.segments.map((s) => s.text)).toEqual([
+    "before",
+    "instant",
+    "after",
+  ]);
+  expect(result.segments.map((s) => s.originalText)).toEqual([
+    "before",
+    "instant",
+    "after",
+  ]);
+  expect(result.segments).toMatchObject([
+    { start: 0, end: 1 },
+    { start: null, end: null },
+    { start: 1, end: 2 },
+  ]);
+  expect(result.speakers).toHaveLength(2);
+  expect(result.speakers.map((s) => s.sourceLabels[0].split(":").at(-1))).toEqual([
+    "0",
+    "1",
+  ]);
+  expect(result.speakers.every((s) => !s.confirmed)).toBe(true);
+  expect(result.segments.every((s) => SegmentSchema.safeParse(s).success)).toBe(
+    true,
+  );
+});
+
+it("keeps labelled words when a provider also returns an unlabelled aggregate segment", () => {
+  const result = normalizeSpeech({
+    text: "before instant after",
+    segments: [{ text: "before instant after", start: 0, end: 2 }],
+    words: [
+      { word: "before", start: 0, end: 1, speaker: 0 },
+      { word: "instant", start: 1, end: 1, speaker: 1 },
+      { word: "after", start: 1, end: 2, speaker: 0 },
+    ],
+  });
+  expect(result.segments.map((s) => s.text)).toEqual([
+    "before",
+    "instant",
+    "after",
+  ]);
+  expect(result.segments.map((s) => s.originalText)).toEqual([
+    "before",
+    "instant",
+    "after",
+  ]);
+  expect(result.segments[1]).toMatchObject({ start: null, end: null });
+  expect(result.speakers).toHaveLength(2);
+  expect(result.speakers.map((s) => s.sourceLabels[0].split(":").at(-1))).toEqual([
+    "0",
+    "1",
+  ]);
+  expect(result.segments.every((s) => SegmentSchema.safeParse(s).success)).toBe(
+    true,
+  );
+});
+
+it("keeps zero-duration segment text and marks its timing unknown", () => {
+  const result = normalizeSpeech({
+    segments: [{ text: "instant", start: 2, end: 2, speaker: "A" }],
+  });
+  expect(result.segments).toHaveLength(1);
+  expect(result.segments[0]).toMatchObject({
+    text: "instant",
+    originalText: "instant",
+    start: null,
+    end: null,
+  });
+  expect(result.speakers).toHaveLength(1);
+  expect(SegmentSchema.safeParse(result.segments[0]).success).toBe(true);
+});
+
+it.each([
+  [
+    "reversed segment",
+    { segments: [{ text: "bad", start: 2, end: 1, speaker: 0 }] },
+    "No valid transcript",
+  ],
+  [
+    "negative segment",
+    { segments: [{ text: "bad", start: -1, end: 1, speaker: 0 }] },
+    "supported contract",
+  ],
+  [
+    "nonfinite segment",
+    { segments: [{ text: "bad", start: Number.NaN, end: 1, speaker: 0 }] },
+    "supported contract",
+  ],
+  [
+    "reversed word",
+    { words: [{ word: "bad", start: 2, end: 1, speaker: 0 }] },
+    "No valid transcript",
+  ],
+  [
+    "negative word",
+    { words: [{ word: "bad", start: -1, end: 1, speaker: 0 }] },
+    "supported contract",
+  ],
+  [
+    "nonfinite word",
+    { words: [{ word: "bad", start: Number.POSITIVE_INFINITY, end: 1, speaker: 0 }] },
+    "supported contract",
+  ],
+] as const)("still rejects %s evidence", (_name, value, message) => {
+  expect(() => normalizeSpeech(value)).toThrow(message);
 });
 
 it("sends OpenAI diarization with the documented response format and automatic chunking", async () => {

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { X, FileAudio, MessageSquareText } from "lucide-react";
+import { useUiLanguage } from "../ui-language";
+import { translateMessage } from "../ui-messages";
 export function Modal({
   title,
   onClose,
@@ -10,6 +12,7 @@ export function Modal({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const language = useUiLanguage();
   const [error, setError] = useState("");
   useEffect(() => {
     const listener = (event: Event) =>
@@ -29,14 +32,14 @@ export function Modal({
         <button
           className="icon-button"
           onClick={onClose}
-          aria-label="Close dialog"
+          aria-label={language === "zh-CN" ? "关闭对话框" : "Close dialog"}
         >
           <X size={20} />
         </button>
       </header>
       {error && (
         <div className="notice danger modal-error" role="alert">
-          {error}
+          {translateMessage(error, language)}
         </div>
       )}
       {children}
@@ -44,6 +47,7 @@ export function Modal({
   );
 }
 export function Brand({ small = false }: { small?: boolean }) {
+  const language = useUiLanguage();
   return (
     <div className={`brand ${small ? "brand-small" : ""}`}>
       <span className="brand-mark">
@@ -51,7 +55,7 @@ export function Brand({ small = false }: { small?: boolean }) {
       </span>
       <span>
         Meeting<span className="brand-light">Memo</span>
-        {!small && <small>YOUR MEETING WORKSPACE</small>}
+        {!small && <small>{language === "zh-CN" ? "您的会议工作空间" : "YOUR MEETING WORKSPACE"}</small>}
       </span>
     </div>
   );

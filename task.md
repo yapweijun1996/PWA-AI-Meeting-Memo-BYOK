@@ -38,9 +38,9 @@ The user selected unencrypted storage in this browser for API keys, provider/mod
 - [x] Remove direct Deepgram requests while retaining historical provider runs and backups.
 - [ ] Validate real OpenAI and OpenRouter requests, selected models, browser CORS, costs and speaker quality using the user’s own keys on the finished site.
 
-## Requested preset and cost usage — 2026-11-05 (implementation pending)
+## Requested preset and cost usage — 2026-11-05 (implementation and validation in progress)
 
-Requirements: [product](docs/PRODUCT.md#requested-preset-and-cost-visibility-planned-2026-11-05) and [provider contracts](docs/PROVIDERS.md#planned-preset-and-usage-evidence--2026-11-05). The screenshots select OpenRouter `elevenlabs/scribe-v2` for transcription and OpenAI `gpt-6-luna` for notes. Local validation notes report a successful browser Scribe request and a separate OpenAI memo request, but the tested long speaker-aware transcript exceeds the memo input limit; no end-to-end claim is justified. The detailed validation notes may not be present in every checkout.
+Requirements: [product](docs/PRODUCT.md#requested-preset-and-cost-visibility-planned-2026-11-05) and [provider contracts](docs/PROVIDERS.md#planned-preset-and-usage-evidence--2026-11-05). The requested preset selects OpenRouter `elevenlabs/scribe-v2` for transcription and OpenAI `gpt-6-luna` for notes. One long recording completed the local browser workflow after bounded input compaction; see [validation](docs/VALIDATION.md) for its scope and limitations. The input cap, semantic review and remaining acceptance checks still apply.
 
 - [ ] Add the requested pair as the recommended preset/default for fresh settings. Keep provider/model customization and independent keys; preserve existing selections, keys and user-entered rates on upgrade, including stale-tab protection and recovery. Changing a preset never sends a request; no silent fallback.
 - [ ] Show each stage's provider, model, recipient and estimated cost or unknown before the existing send confirmation. Provide a dated rate source, unit and assumptions for any estimate; no invented token usage, fixed price or account cap.

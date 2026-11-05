@@ -20,6 +20,8 @@ const StoredSettings = z
     speech: Selection,
     memo: Selection,
     speechRate: z.number().finite().min(0).max(10).nullable(),
+    uiLanguage: z.enum(["en", "zh-CN"]).optional(),
+    speechRateContext: z.object({ source: z.string().min(1).max(300), date: z.iso.date(), provider: Selection.shape.provider, model: Selection.shape.model }).strict().nullable().optional(),
   })
   .strict();
 export type SettingsRecord = z.infer<typeof StoredSettings>;

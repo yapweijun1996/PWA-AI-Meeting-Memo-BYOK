@@ -276,8 +276,9 @@ test("scoped worker supports offline reload without caching API data", async ({
     }
     return result;
   });
+  const appOrigin = new URL(page.url()).origin;
   expect(
-    cached.every((url) => url.startsWith("http://127.0.0.1:4180" + base)),
+    cached.every((url) => url.startsWith(appOrigin + base)),
   ).toBe(true);
   expect(
     cached.some(

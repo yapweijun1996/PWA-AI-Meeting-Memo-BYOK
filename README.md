@@ -9,7 +9,7 @@ Live app: **https://yapweijun1996.github.io/PWA-AI-Meeting-Memo-BYOK/**. GitHub 
 ## Use the workspace
 
 1. Create a meeting and attach a recording up to 50 MB, paste a transcript, or import a Meeting Memo JSON transcript.
-2. In **Settings & API keys**, enter your OpenAI key and optionally an OpenRouter key. Choose a provider and model separately for transcription and notes. Click **Save settings** to keep keys, provider/model selections and the speech rate in this browser across reloads. Saving settings makes no API request.
+2. In **Settings & API keys**, enter your provider keys. New settings use **OpenRouter / `elevenlabs/scribe-v2`** for transcription and OpenAI for notes; existing saved selections remain unchanged. Choose the providers and models separately. Click **Save settings** to keep keys, selections and the speech rate in this browser across reloads. Saving settings makes no API request.
 3. Choose **Transcribe** and review the provider, recording, and estimated/unknown charge before confirming. Keep the page open.
 4. Listen to speaker samples, confirm names, correct text and assignments, merge voices, split passages, and undo changes. Unknown timing or identity stays explicit.
 5. Choose **Generate meeting notes**, review the selected destination and what is sent, then inspect, edit, accept, or reject each cited item. **Original generated item** shows its separately saved generated snapshot. Source changes require re-review; new generations preserve older human versions.
@@ -27,14 +27,14 @@ Browser storage is not backup or synchronization. Export a full backup regularly
 
 ## Processing boundaries
 
-- Speech defaults to OpenAI `gpt-transcribe`, which provides text without established speaker/time evidence. OpenRouter `elevenlabs/scribe-v2` requests speaker labels and word timestamps; account access, CORS and real quality remain unverified. OpenAI `gpt-4o-transcribe-diarize` is deprecated and scheduled to stop on 2027-02-26.
+- Speech defaults to OpenRouter `elevenlabs/scribe-v2`, which requests speaker labels and word timestamps; one complete recording passed the local authenticated Chrome workflow with five anonymous labels, but diarization accuracy remains unscored (see [validation](docs/VALIDATION.md)). OpenAI `gpt-transcribe` provides text without established speaker/time evidence. OpenAI `gpt-4o-transcribe-diarize` is deprecated and scheduled to stop on 2027-02-26.
 - Notes default to OpenAI Responses with GPT-6 Luna. Both providers offer selectable model IDs; notes require structured-output support and are validated against source IDs. OpenRouter routes data to an upstream provider and their retention policies apply.
 - Provider-specific keys, selections and the speech rate persist in this browser after saving. The first update from an older version cannot recover keys that existed only in its page memory; enter and save them once. OpenRouter models and access vary by account. No provider call occurs until confirmation.
 - Local audio import is capped at 50 MiB; single-request transcription is capped at 25 MB and sent as the original container. No arbitrary byte chunking, full-file PCM conversion, or local model inference is advertised.
-- Memo input is capped at 80,000 serialized characters and output at 8,000 tokens. Unsupported inputs are rejected before submission rather than silently truncated.
+- Memo input is capped at 80,000 serialized characters and output at 8,000 tokens. When needed, consecutive passages with the same ordered speaker assignments are grouped for transport, up to 20 passages per group. All text is retained and citations resolve back to original passage revisions; stored transcripts and timestamps stay intact. Inputs still above the limit are rejected before submission.
 - Requests time out after nine minutes; this stops waiting, not necessarily remote processing or billing.
 - New memo versions preserve normalized generated items separately from human edits. Older backups without that snapshot still load, with the original explicitly unavailable. Update all open tabs before reviewing newly created memo data.
-- Charges use your provider account. Speech estimates require an entered plan rate and known duration; unknown rates and memo cost stay unknown. Reported token/duration usage is not an invoice.
+- Charges use your provider account. Speech estimates require a known duration and a user-entered rate bound to the model, with a public pricing URL and checked date; otherwise cost is unknown. OpenRouter transcription costs returned in the response are shown as provider-reported amounts; missing amounts remain unknown. Usage and totals are not an invoice.
 - No automatic email, ERP writes, KB writes, team sync, live meeting joining, PDF generation, or cross-meeting voiceprints.
 
 ## Development

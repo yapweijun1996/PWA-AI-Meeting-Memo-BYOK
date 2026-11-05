@@ -3,7 +3,11 @@ import { Download, RefreshCw, WifiOff } from "lucide-react";
 import { isProcessing } from "../jobs/runner";
 import { flushWrites } from "../storage/repository";
 import { flushSettingsWrites, isSettingsDirty } from "../providers/credentials";
+import { useUiLanguage } from "../ui-language";
+import { translateMessage } from "../ui-messages";
 export function PwaStatus() {
+  const language = useUiLanguage();
+  const t = (en: string, zh: string) => language === "zh-CN" ? zh : en;
   const [refreshReady, setRefreshReady] = useState(false);
   const [waiting, setWaiting] = useState<ServiceWorker>(),
     [updating, setUpdating] = useState(false),
@@ -91,7 +95,7 @@ export function PwaStatus() {
       setError("Finish the active provider request before updating.");
       return;
     }
-    if (!confirm("Apply the update now? Save any open text edits first."))
+    if (!confirm(t("Apply the update now? Save any open text edits first.", "现在应用更新吗？请先保存正在编辑的文字。")))
       return;
     try {
       await flushWrites();
@@ -126,27 +130,26 @@ export function PwaStatus() {
       {offline && (
         <div className="notice">
           <WifiOff size={17} />
-          Browser reports offline · review, edit, and export saved meetings.
-          Cloud AI needs a connection.
+          {t("Browser reports offline · review, edit, and export saved meetings. Cloud AI needs a connection.", "浏览器显示离线 · 您仍可查看、编辑和导出已保存的会议。云端 AI 需要网络连接。")}
         </div>
       )}
       {(waiting || refreshReady) && (
         <div className="notice update" role="status">
           <RefreshCw size={17} />
-          <span>A new version is ready. Save your work before updating.</span>
+          <span>{t("A new version is ready. Save your work before updating.", "新版本已准备好。更新前请先保存工作。")}</span>
           <button
             className="button secondary compact"
             onClick={() => void update()}
             disabled={updating}
           >
-            {updating ? "Updating…" : "Update now"}
+            {updating ? t("Updating…", "正在更新…") : t("Update now", "立即更新")}
           </button>
         </div>
       )}
       {install && (
         <div className="notice install">
           <Download size={17} />
-          <span>Make this workspace feel at home on your device.</span>
+          <span>{t("Make this workspace feel at home on your device.", "将此工作空间安装到您的设备。")}</span>
           <button
             className="button secondary compact"
             onClick={async () => {
@@ -155,16 +158,23 @@ export function PwaStatus() {
               setInstall(undefined);
             }}
           >
-            Install app
+            {t("Install app", "安装应用")}
           </button>
           <button className="text-button" onClick={() => setInstall(undefined)}>
-            Later
+            {t("Later", "稍后")}
           </button>
         </div>
       )}
       {error && (
         <div className="notice" role="status">
-          {error}
+          {language === "zh-CN" ? ({
+            "Offline installation is unavailable. Your local meetings can still be backed up.": "离线安装不可用。您仍可备份本地会议。",
+            "Save or close the open editor before updating.": "更新前请保存或关闭打开的编辑器。",
+            "Save your settings before updating.": "更新前请先保存设置。",
+            "Finish the active provider request before updating.": "更新前请等待当前服务商请求完成。",
+            "Save your changes before updating.": "更新前请先保存更改。",
+            "Update did not activate. Try again when connected.": "更新未能激活。请联网后重试。",
+          } as Record<string, string>)[error] ?? translateMessage(error, language) : error}
         </div>
       )}
     </>

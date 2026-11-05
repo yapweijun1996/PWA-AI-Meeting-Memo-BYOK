@@ -1,6 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { unzipSync, strFromU8 } from "fflate";
+import {
+  createMeeting,
+  segment,
+  validateMeeting,
+  type Meeting,
+} from "../../src/domain/model";
 // A service-worker-controlled WebKit request can bypass page.route. Block workers
 // in network-mock contexts so CI cannot accidentally make a live provider call.
 test.use({ serviceWorkers: "block" });
@@ -28,6 +34,90 @@ async function create(page: Page, title = "ERP review") {
     page.getByRole("heading", { name: title, exact: true }),
   ).toBeVisible();
 }
+
+function longStructuredMeeting(): Meeting {
+  const speakerIds = Array.from({ length: 5 }, () => crypto.randomUUID());
+  const speakers = speakerIds.map((id, index) => ({
+    id,
+    name: `Long speaker ${index + 1}`,
+    confirmed: false,
+    sourceLabels: ["synthetic-long-transcript"],
+  }));
+  const segments = Array.from({ length: 360 }, (_, index) => {
+    const speakerIndex = Math.floor(index / 20) % speakerIds.length;
+    const marker =
+      index === 0
+        ? "FIRST_LONG_TRANSCRIPT_MARKER"
+        : index === 359
+          ? "LAST_LONG_TRANSCRIPT_MARKER"
+          : `segment-${index}`;
+    const text = `${marker} speaker-${speakerIndex + 1} ${"context for evidence ".repeat(
+      4,
+    )}segment-${index}`;
+    const start = index % 41 === 0 ? null : index * 1.5;
+    return segment(
+      text,
+      [speakerIds[speakerIndex]],
+      start,
+      start === null ? null : start + 1,
+    );
+  });
+  return {
+    ...createMeeting({
+      title: "Long compact memo",
+      languages: "English",
+      attendees: speakers.map((speaker) => speaker.name),
+    }),
+    speakers,
+    segments,
+  };
+}
+
+function touchReviewMeeting(): Meeting {
+  const speakerId = crypto.randomUUID();
+  const source = segment("Touch source evidence.", [speakerId], 12, 14);
+  const meeting = createMeeting({
+    title: "Touch review source",
+    date: "2026-11-05",
+    timezone: "UTC",
+    languages: "English",
+    attendees: ["Touch speaker"],
+  });
+  const originalItem = {
+    id: crypto.randomUUID(),
+    type: "action" as const,
+    text: "Original touch action.",
+    ownerId: null,
+    dueDate: "2026-11-20",
+    dueOriginal: "by Friday",
+    sources: [{ id: source.id, revision: source.revision }],
+    review: "pending" as const,
+  };
+  return validateMeeting({
+    ...meeting,
+    synthetic: true,
+    speakers: [
+      {
+        id: speakerId,
+        name: "Touch speaker",
+        confirmed: false,
+        sourceLabels: ["synthetic-touch"],
+      },
+    ],
+    segments: [source],
+    memos: [
+      {
+        id: crypto.randomUUID(),
+        createdAt: meeting.createdAt,
+        sourceRevision: meeting.revision,
+        model: "synthetic-touch",
+        items: [originalItem],
+        originalItems: [{ ...originalItem, sources: [...originalItem.sources] }],
+      },
+    ],
+  });
+}
+
 test("memo submissions require confirmation, preserve evidence and mark source changes stale", async ({
   page,
 }) => {
@@ -103,7 +193,52 @@ test("memo submissions require confirmation, preserve evidence and mark source c
     "Review inventory with finance.",
   );
   expect(requests).toBe(1);
-  await page.getByRole("button", { name: "✓ Accept", exact: true }).click();
+  const accept = page.getByRole("button", { name: /Accept/ }).first();
+  await page.getByLabel("action note").fill("Blur-only draft.");
+  await accept.dispatchEvent("pointerdown", {
+    bubbles: true,
+    pointerId: 1,
+    pointerType: "touch",
+  });
+  await accept.dispatchEvent("pointercancel", {
+    bubbles: true,
+    pointerId: 1,
+    pointerType: "touch",
+  });
+  await page.getByRole("tab", { name: /Transcript/ }).click();
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await expect(page.getByLabel("action note")).toHaveValue("Blur-only draft.");
+  await page.getByLabel("action note").fill("Pointer-leave draft.");
+  await accept.dispatchEvent("pointerdown", {
+    bubbles: true,
+    pointerId: 2,
+    pointerType: "touch",
+  });
+  // React synthesizes onPointerLeave from pointerout; a body target models leaving the button.
+  const outside = await page
+    .getByRole("tab", { name: /Transcript/ })
+    .elementHandle();
+  expect(outside).not.toBeNull();
+  await accept.dispatchEvent("pointerout", {
+    bubbles: true,
+    pointerId: 2,
+    pointerType: "touch",
+    relatedTarget: outside!,
+  });
+  await page.getByRole("tab", { name: /Transcript/ }).click();
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await expect(page.getByLabel("action note")).toHaveValue(
+    "Pointer-leave draft.",
+  );
+  await page.getByLabel("action note").fill("Human pointer review.");
+  await accept.click();
+  await expect(page.getByLabel("action note")).toHaveValue(
+    "Human pointer review.",
+  );
+  await expect(accept).toHaveClass(/selected/);
+  await expect(
+    page.getByRole("alert").filter({ hasText: /another tab/i }),
+  ).toHaveCount(0);
   await page.getByRole("tab", { name: /Transcript/ }).click();
   await page
     .getByRole("button", { name: "Edit passage", exact: true })
@@ -114,7 +249,7 @@ test("memo submissions require confirmation, preserve evidence and mark source c
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
   await expect(page.getByText(/Source details changed/)).toBeVisible();
   await expect(page.getByLabel("action note")).toHaveValue(
-    "Review inventory with finance.",
+    "Human pointer review.",
   );
   await page
     .getByRole("button", { name: "Passage 1 · r1", exact: true })
@@ -132,7 +267,24 @@ test("memo submissions require confirmation, preserve evidence and mark source c
   ).toBeVisible();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
   await page.getByLabel("action note").fill("Human amended follow-up.");
-  await page.getByRole("button", { name: "✓ Accept", exact: true }).click();
+  const keyboardAccept = page.getByRole("button", { name: /Accept/ }).first();
+  await page.getByLabel("action note").focus();
+  let keyboardAcceptFocused = false;
+  for (let i = 0; i < 10; i++) {
+    await page.keyboard.press("Tab");
+    if (
+      await keyboardAccept.evaluate(
+        (element) => element === document.activeElement,
+      )
+    ) {
+      keyboardAcceptFocused = true;
+      break;
+    }
+  }
+  expect(keyboardAcceptFocused).toBe(true);
+  await expect(keyboardAccept).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(keyboardAccept).toHaveClass(/selected/);
   await expect(page.getByText(/Source details changed/)).toHaveCount(0);
   await page
     .getByRole("button", { name: "Generate new version", exact: true })
@@ -157,6 +309,272 @@ test("memo submissions require confirmation, preserve evidence and mark source c
       .getByText("Review inventory with finance.", { exact: true }),
   ).toBeVisible();
   expect(requests).toBe(2);
+});
+
+test.describe("touch review persistence", () => {
+  test.use({ hasTouch: true });
+
+  test("touch Accept preserves edited text, due date, revision and original item", async ({
+    page,
+  }, info) => {
+    const fixture = touchReviewMeeting();
+    const originalItem = fixture.memos[0].originalItems![0];
+    await page.goto(base);
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.locator(".nav-file input").setInputFiles({
+      name: "touch-review.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify(fixture)),
+    });
+    await expect(
+      page.getByRole("heading", {
+        name: "Touch review source (restored)",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page.getByRole("tab", { name: /Meeting notes/ }).click();
+
+    const note = page.getByLabel("action note");
+    const due = page.getByLabel("Action due date");
+    const accept = page.getByRole("button", { name: /Accept/ }).first();
+    await expect(note).toHaveValue(originalItem.text);
+    await expect(due).toHaveValue(originalItem.dueDate!);
+    await note.fill("Touch human action.");
+    await page.getByRole("tab", { name: /Transcript/ }).click();
+    await page.getByRole("tab", { name: /Meeting notes/ }).click();
+    await expect(note).toHaveValue("Touch human action.");
+    await due.fill("2026-12-01");
+    await expect(due).toHaveValue("2026-12-01");
+    await expect(accept).toBeEnabled();
+    await accept.scrollIntoViewIfNeeded();
+    const box = await accept.boundingBox();
+    expect(box).not.toBeNull();
+    await page.touchscreen.tap(
+      box!.x + box!.width / 2,
+      box!.y + box!.height / 2,
+    );
+    await expect(accept).toHaveClass(/selected/);
+    await expect(note).toHaveValue("Touch human action.");
+    await expect(due).toHaveValue("2026-12-01");
+    await expect(
+      page.getByRole("alert").filter({ hasText: /another tab/i }),
+    ).toHaveCount(0);
+
+    await page.reload();
+    await page.getByRole("tab", { name: /Meeting notes/ }).click();
+    await expect(page.getByLabel("action note")).toHaveValue(
+      "Touch human action.",
+    );
+    await expect(page.getByLabel("Action due date")).toHaveValue(
+      "2026-12-01",
+    );
+    await expect(
+      page.getByRole("button", { name: /Accept/ }).first(),
+    ).toHaveClass(/selected/);
+
+    await page.getByText("Export", { exact: true }).click();
+    const exported = page.waitForEvent("download");
+    await page
+      .getByRole("button", { name: "Meeting JSON (no audio)", exact: true })
+      .click();
+    const download = await exported;
+    const exportedPath = info.outputPath("touch-review.json");
+    await download.saveAs(exportedPath);
+    const document = JSON.parse(await readFile(exportedPath, "utf8"));
+    const exportedMemo = document.memos[0];
+    expect(exportedMemo.originalItems).toEqual([originalItem]);
+    expect(exportedMemo.items[0]).toMatchObject({
+      id: originalItem.id,
+      text: "Touch human action.",
+      dueDate: "2026-12-01",
+      review: "accepted",
+      reviewedRevision: document.revision,
+    });
+  });
+});
+
+test("long speaker-aware memos compact transport input and restore original evidence", async ({
+  page,
+}, info) => {
+  const fixture = longStructuredMeeting();
+  const rawJson = JSON.stringify(fixture);
+  expect(rawJson.length).toBeGreaterThan(120000);
+  const first = fixture.segments[0];
+  const last = fixture.segments.at(-1)!;
+  let requests = 0;
+  let capturedInput: {
+    segments: Array<{ id: string }>;
+  } | null = null;
+  await page.route("https://api.openai.com/v1/responses", async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "authorization, content-type",
+        },
+      });
+      return;
+    }
+    requests++;
+    const body = route.request().postDataJSON() as {
+      input: string;
+      store: boolean;
+    };
+    expect(body.store).toBe(false);
+    expect(body.input.length).toBeLessThanOrEqual(80000);
+    expect(body.input).toContain("FIRST_LONG_TRANSCRIPT_MARKER");
+    expect(body.input).toContain("LAST_LONG_TRANSCRIPT_MARKER");
+    for (const speaker of fixture.speakers) {
+      expect(body.input).toContain(speaker.id);
+      expect(body.input).toContain(speaker.name);
+    }
+    const input = JSON.parse(body.input) as {
+      segments: Array<{ id: string; text: string[]; speakers: (number | string)[] }>;
+    };
+    capturedInput = input;
+    expect(input.segments).toHaveLength(18);
+    expect(input.segments[0].id).toBe("g0");
+    expect(input.segments.at(-1)?.id).toBe("g17");
+    expect(input.segments.flatMap((group) => group.text)).toEqual(
+      fixture.segments.map((source) => source.text),
+    );
+    await route.fulfill({
+      headers: { "Access-Control-Allow-Origin": "*" },
+      json: {
+        status: "completed",
+        output: [
+          {
+            type: "message",
+            content: [
+              {
+                type: "output_text",
+                text: JSON.stringify({
+                  items: [
+                    {
+                      type: "summary",
+                      text: "Long transcript summary with first and last evidence.",
+                      owner_speaker_id: null,
+                      due_date: null,
+                      due_original: null,
+                      source_segment_ids: [
+                        input.segments[0].id,
+                        input.segments.at(-1)!.id,
+                      ],
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+  await page.goto(base);
+  await page
+    .getByRole("button", { name: "New meeting", exact: true })
+    .last()
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Meeting title").fill(fixture.title);
+  await dialog.getByText("Start from a transcript instead").click();
+  await dialog.getByLabel("Transcript", { exact: true }).fill(rawJson);
+  await dialog
+    .getByRole("button", { name: "Create meeting", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: fixture.title, exact: true }),
+  ).toBeVisible();
+  const hash = new URL(page.url()).hash;
+  await page.getByRole("link", { name: "Settings & API keys" }).click();
+  await page
+    .getByLabel("OpenAI API key", { exact: true })
+    .fill("synthetic-long-memo-only");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved on this device" }),
+  ).toBeVisible();
+  await page.evaluate((value) => {
+    location.hash = value;
+  }, hash);
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page
+    .getByRole("button", { name: "Generate meeting notes", exact: true })
+    .click();
+  expect(requests).toBe(0);
+  await page
+    .getByRole("button", { name: "Confirm and send", exact: true })
+    .click();
+  await expect(page.getByLabel("summary note")).toHaveValue(
+    "Long transcript summary with first and last evidence.",
+  );
+  await expect(page.locator(".memo-item")).toContainText("pending");
+  await expect(
+    page.getByRole("button", { name: "Needs review", exact: true }),
+  ).toBeVisible();
+  expect(requests).toBe(1);
+  expect(capturedInput).not.toBeNull();
+
+  const tailSource = page
+    .locator("button.source-link")
+    .filter({ hasText: "Passage 360" });
+  await expect(tailSource).toHaveCount(1);
+  await tailSource.click();
+  const evidence = page.getByRole("dialog");
+  await expect(evidence.locator(".evidence-text")).toHaveText(last.text);
+  const evidenceMetadata = evidence
+    .locator("p.muted.small")
+    .filter({ hasText: "08:58" });
+  await expect(evidenceMetadata).toHaveCount(1);
+  await expect(evidenceMetadata).toContainText("08:58");
+  await expect(evidenceMetadata).toContainText("Long speaker 3");
+  await evidence.getByRole("button", { name: "Close dialog" }).click();
+
+  await page.getByText("Export", { exact: true }).click();
+  const exported = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Meeting JSON (no audio)", exact: true })
+    .click();
+  const download = await exported;
+  const exportedPath = info.outputPath("long-compact-memo.json");
+  await download.saveAs(exportedPath);
+  const document = JSON.parse(await readFile(exportedPath, "utf8"));
+  expect(document.speakers).toEqual(fixture.speakers);
+  expect(document.segments).toEqual(fixture.segments);
+  expect(document.history).toEqual([]);
+  expect(document.runs).toEqual([]);
+  const memo = document.memos[0];
+  expect(memo.originalItems).toEqual(memo.items);
+  const sources = memo.items[0].sources;
+  expect(sources[0]).toEqual({ id: first.id, revision: first.revision });
+  expect(sources).toEqual([
+    ...fixture.segments
+      .slice(0, 20)
+      .map(({ id, revision }) => ({ id, revision })),
+    ...fixture.segments
+      .slice(-20)
+      .map(({ id, revision }) => ({ id, revision })),
+  ]);
+  const originalIds = new Set(fixture.segments.map((s) => s.id));
+  expect(
+    sources.every((source: { id: string }) => originalIds.has(source.id)),
+  ).toBe(true);
+  expect(
+    sources.some((source: { id: string }) => source.id.startsWith("g")),
+  ).toBe(false);
+  expect(JSON.stringify(document)).not.toContain('"g0"');
+
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: fixture.title, exact: true }),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await expect(page.getByLabel("summary note")).toHaveValue(
+    "Long transcript summary with first and last evidence.",
+  );
+  expect(requests).toBe(1);
 });
 
 test("uncertain requests are recorded and never automatically resubmitted", async ({
@@ -389,6 +807,93 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
   ).toBeVisible();
 });
 
+test("preserves zero-width speech evidence across reload without resubmitting", async ({
+  page,
+}) => {
+  let speechRequests = 0;
+  await page.route(
+    "https://openrouter.ai/api/v1/audio/transcriptions",
+    async (route) => {
+      if (route.request().method() === "OPTIONS") {
+        await route.fulfill({
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "authorization,content-type",
+            "Access-Control-Allow-Methods": "POST,OPTIONS",
+          },
+        });
+        return;
+      }
+      speechRequests++;
+      await route.fulfill({
+        headers: { "Access-Control-Allow-Origin": "*" },
+        json: {
+          duration: 1,
+          words: [
+            { word: "Before", start: 0.1, end: 0.4, speaker: 0 },
+            { word: "Instant", start: 0.4, end: 0.4, speaker: 0 },
+            { word: "After", start: 0.5, end: 0.9, speaker: 1 },
+          ],
+        },
+      });
+    },
+  );
+  await page.goto(base);
+  await create(page, "Zero-width timing");
+  const wav = Buffer.alloc(32044);
+  wav.write("RIFF");
+  wav.writeUInt32LE(32036, 4);
+  wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(16000, 24);
+  wav.writeUInt32LE(32000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(32000, 40);
+  await page.getByLabel("Attach audio", { exact: true }).setInputFiles({
+    name: "synthetic-zero-width.wav",
+    mimeType: "audio/wav",
+    buffer: wav,
+  });
+  const hash = new URL(page.url()).hash;
+  await page.getByRole("link", { name: "Settings & API keys" }).click();
+  await page
+    .getByLabel("OpenRouter API key", { exact: true })
+    .fill("synthetic-router-only");
+  await page.getByLabel("Transcription provider").selectOption("openrouter");
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Saved on this device" }),
+  ).toBeVisible();
+  await page.evaluate((value) => {
+    location.hash = value;
+  }, hash);
+  await page.getByRole("button", { name: "Transcribe", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Confirm and send", exact: true })
+    .click();
+  await page.getByRole("tab", { name: /Transcript/ }).click();
+  await expect(page.getByText("Before", { exact: true })).toBeVisible();
+  await expect(page.getByText("Instant", { exact: true })).toBeVisible();
+  await expect(page.getByText("After", { exact: true })).toBeVisible();
+  const timeLinks = page.locator("button.time-link");
+  await expect(timeLinks).toHaveCount(3);
+  await expect(timeLinks.nth(0)).toBeEnabled();
+  await expect(timeLinks.nth(1)).toBeDisabled();
+  await expect(timeLinks.nth(2)).toBeEnabled();
+  expect(speechRequests).toBe(1);
+  await page.reload();
+  await page.getByRole("tab", { name: /Transcript/ }).click();
+  await expect(page.getByText("Instant", { exact: true })).toBeVisible();
+  await expect(page.locator("button.time-link")).toHaveCount(3);
+  await expect(page.locator("button.time-link").nth(1)).toBeDisabled();
+  expect(speechRequests).toBe(1);
+});
+
 test("a foreground timeout remains uncertain and never resubmits on reload", async ({
   page,
 }) => {
@@ -498,7 +1003,7 @@ test("a rejected HTTP request is failed with unconfirmed billing, not marked uns
   await expect(page.getByRole("alert")).toContainText("HTTP 401");
   await page.getByText("Processing history", { exact: false }).click();
   await expect(page.getByText("Memo · failed", { exact: true })).toBeVisible();
-  await expect(page.getByText(/billing: possibly charged/)).toBeVisible();
+  await expect(page.getByText(/possibly charged|可能已收费/)).toBeVisible();
   expect(calls).toBe(1);
 });
 
@@ -673,7 +1178,9 @@ test("default OpenAI speech and selected OpenRouter memo use their own model and
     .setInputFiles({ name: "test.wav", mimeType: "audio/wav", buffer: wav });
   const hash = new URL(page.url()).hash;
   await page.getByRole("link", { name: "Settings & API keys" }).click();
-  await expect(page.getByLabel("Transcription provider")).toHaveValue("openai");
+  await expect(page.getByLabel("Transcription provider")).toHaveValue(
+    "openrouter",
+  );
   await expect(page.getByLabel("Memo provider")).toHaveValue("openai");
   await page
     .getByLabel("OpenAI API key", { exact: true })
@@ -682,6 +1189,7 @@ test("default OpenAI speech and selected OpenRouter memo use their own model and
     .getByLabel("OpenRouter API key", { exact: true })
     .fill("synthetic-router-only");
   await page.getByLabel("Memo provider").selectOption("openrouter");
+  await page.getByLabel("Transcription provider").selectOption("openai");
   await page.getByRole("button", { name: "Save settings" }).click();
   await expect(
     page.getByRole("button", { name: "Saved on this device" }),
@@ -731,11 +1239,13 @@ test("processing indicator stays bounded on desktop and mobile and supports redu
     mimeType: "audio/wav",
     buffer: Buffer.from("synthetic audio"),
   });
+  await expect(page.getByText("test.wav", { exact: true }).first()).toBeVisible();
   const hash = new URL(page.url()).hash;
   await page.getByRole("link", { name: "Settings & API keys" }).click();
   await page
     .getByLabel("OpenAI API key", { exact: true })
     .fill("synthetic-test-only");
+  await page.getByLabel("Transcription provider").selectOption("openai");
   await page.getByRole("button", { name: "Save settings" }).click();
   await expect(
     page.getByRole("button", { name: "Saved on this device" }),
@@ -812,11 +1322,13 @@ test("safe error guidance explains a provider duration rejection without exposin
     mimeType: "audio/wav",
     buffer: Buffer.from("synthetic audio"),
   });
+  await expect(page.getByText("test.wav", { exact: true }).first()).toBeVisible();
   const hash = new URL(page.url()).hash;
   await page.getByRole("link", { name: "Settings & API keys" }).click();
   await page
     .getByLabel("OpenAI API key", { exact: true })
     .fill("synthetic-test-only");
+  await page.getByLabel("Transcription provider").selectOption("openai");
   await page
     .getByLabel("Transcription model ID")
     .fill("gpt-4o-transcribe-diarize");
@@ -836,7 +1348,7 @@ test("safe error guidance explains a provider duration rejection without exposin
     "private-provider-detail",
   );
   await page.getByText("Processing history", { exact: false }).click();
-  await expect(page.getByText(/billing: possibly charged/)).toBeVisible();
+  await expect(page.getByText(/possibly charged|可能已收费/)).toBeVisible();
   await page.reload();
   await page.getByText("Processing history", { exact: false }).click();
   await expect(page.getByText(/duration or length limit/)).toBeVisible();
@@ -877,12 +1389,20 @@ test("long OpenAI diarization shows an advisory before a paid submission", async
   await page
     .getByLabel("Attach audio", { exact: true })
     .setInputFiles({ name: "test.wav", mimeType: "audio/wav", buffer: wav });
+  await expect(page.getByText("test.wav", { exact: true }).first()).toBeVisible();
+  const player = page.locator("audio");
+  await expect(player).toBeAttached();
+  // WebKit may not decode this minimal synthetic WAV; dispatch the stubbed metadata event for the advisory test.
+  await player.evaluate((element) =>
+    element.dispatchEvent(new Event("loadedmetadata")),
+  );
   await expect(page.locator(".recording-info")).toContainText("25:00");
   const hash = new URL(page.url()).hash;
   await page.getByRole("link", { name: "Settings & API keys" }).click();
   await page
     .getByLabel("OpenAI API key", { exact: true })
     .fill("synthetic-test-only");
+  await page.getByLabel("Transcription provider").selectOption("openai");
   await page
     .getByLabel("Transcription model ID")
     .fill("gpt-4o-transcribe-diarize");

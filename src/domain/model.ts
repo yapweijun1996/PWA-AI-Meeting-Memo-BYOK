@@ -91,11 +91,17 @@ export const JobSchema = z
         inputTokens: z.number().int().nonnegative().nullable(),
         outputTokens: z.number().int().nonnegative().nullable(),
         seconds: z.number().nonnegative().nullable(),
+        cachedInputTokens: z.number().int().nonnegative().nullable().optional(),
+        totalTokens: z.number().int().nonnegative().nullable().optional(),
       })
       .strict()
       .nullable()
       .optional(),
     estimateUsd: z.number().nonnegative().nullable().optional(),
+    estimateDetails: z.object({ rate: z.number().finite().nonnegative(), seconds: z.number().finite().nonnegative(), source: z.string().min(1).max(300), date: z.iso.date() }).strict().nullable().optional(),
+    provider: z.enum(["openai", "openrouter"]).optional(),
+    model: z.string().min(1).max(100).optional(),
+    reportedCostUsd: z.number().finite().nonnegative().nullable().optional(),
     message: z.string().max(1000),
     inputRevision: z.number().int().positive(),
   })

@@ -49,5 +49,5 @@ test("manifest and worker use the project path", async ({ page, request }) => {
   const scope = await page.evaluate(
     async () => (await navigator.serviceWorker.ready).scope,
   );
-  expect(scope).toBe("http://127.0.0.1:4180/PWA-AI-Meeting-Memo-BYOK/");
+  expect(scope).toBe(new URL("/PWA-AI-Meeting-Memo-BYOK/", page.url()).href);
 });

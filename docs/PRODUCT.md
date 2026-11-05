@@ -8,6 +8,8 @@ Deliver an installable web application hosted on GitHub Pages. Users bring their
 
 The core use case is reviewing ERP customer meetings, including Chinese/English mixed discussions. The product turns recordings into auditable notes while giving users control over speaker identity, corrections, transmission, and export.
 
+Owner acceptance clarification, 2026-11-05: speaker detection is mandatory for the normal recording workflow. A text-only transcription is an explicitly limited recovery path and cannot satisfy this requirement. Anonymous labels must remain unconfirmed until reviewed; successful metadata delivery does not by itself establish accurate voice separation or real-person identity.
+
 ## Scope
 
 | Priority | Capability |
@@ -42,7 +44,7 @@ Offer a clearly labeled recommended starting preset: OpenRouter `elevenlabs/scri
 
 Show cost and usage before and after each request and in meeting processing history. Before sending, label a cost as an estimate only when the needed duration/usage and a clearly dated, applicable rate are available; otherwise show unknown. After completion, show the provider-reported usage and, if actually returned, provider-reported request cost, with its currency and source. If calculating a cost from token usage and rates, label it as an estimate and expose its rate, date and assumptions; do not treat it as a bill. Failed, cancelled and interrupted submissions may be billable and can have unknown cost. Historical missing usage must remain unknown, not zero. Meeting totals must disclose incomplete entries and separate currencies and estimate versus provider-reported amounts; account-wide billing remains with each provider.
 
-All preset, cost and usage states, explanations and accessible labels must support English and Simplified Chinese. Local validation notes report a real Scribe browser result and a separate Luna memo test; the long speaker-aware transcript in that test exceeds the memo input limit, so the full flow has not been validated. Those detailed notes may not be present in every checkout. This section is a requirement, not a statement that the preset or cost UI has shipped.
+All preset, cost and usage states, explanations and accessible labels must support English and Simplified Chinese. Local validation records include one complete English MP3 processed through speaker-aware transcription and memo generation after bounded input compaction. This does not establish diarization accuracy or arbitrary-length meeting support; see [validation](VALIDATION.md) for the tested scope and remaining review limitations. This section describes requirements, not a claim that all cost and localization acceptance criteria are complete.
 
 ### 3. Process and recover
 
@@ -64,7 +66,7 @@ The current sample controls select the first three timed segments per speaker. W
 
 During full-recording playback, present a responsive visual stage with one labeled participant per detected or manually added speaker; five participants are an example, not a limit. Highlight every speaker whose supported time interval contains the current playback position. The display represents the current transcript attribution, not proof of a person's identity or an independent voice detector. Show overlap, gaps, untimed passages and unconfirmed identities explicitly; do not animate a guessed speaker when evidence is absent. Seeking, playback, correction and the stage must remain synchronized, including after edits and reload. Users can inspect the relevant transcript and correct attribution through existing review and undo flows, without altering original provider output.
 
-Provide English and Simplified Chinese throughout the application, including controls, guidance, errors, dialogs, accessible names and status announcements. UI language is independent of the recording's language. Preserve user content and stable IDs when switching; retain the selection locally, handle missing translations without exposing keys, and verify long text, mobile layout and screen readers in both languages. No translations or language selector are currently implied to be shipped by this requirement.
+Provide English and Simplified Chinese throughout the application, including controls, guidance, errors, dialogs, accessible names and status announcements. UI language is independent of the recording's language. Preserve user content and stable IDs when switching; retain the selection locally, handle missing translations without exposing keys, and verify long text, mobile layout and screen readers in both languages. The saved language selection covers the main controls and known application messages. Unrecognized messages retain their original text; full message coverage and physical-device and screen-reader acceptance remain open.
 
 The [interactive concept](design/speaker-review-prototype.html) uses invented timing data to demonstrate the layout. It does not analyze uploaded recordings or connect to meeting data.
 
@@ -81,6 +83,8 @@ Produce summary, discussion, decisions, action items, open questions, and risks 
 Store original relative dates as well as any resolved date. Resolve only when meeting date, timezone, and wording support it. Speaker confirmation does not by itself prove that the speaker owns an action.
 
 Users accept, edit, or reject individual items and jump to transcript/audio evidence. Changed transcript text, speaker attribution, meeting date, or timezone marks affected items stale. Regeneration creates a new version and preserves human edits.
+
+The review screen can expand the cited revisions together in citation order and open each revision in the source inspector. Check the full claim against those passages: matching citation identifiers do not establish that the claim is supported. This view does not perform semantic fact-checking.
 
 ### 7. Export, back up, and delete
 

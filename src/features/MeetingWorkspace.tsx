@@ -37,9 +37,12 @@ import {
 import { getAudio, getMeeting, saveMeeting } from "../storage/repository";
 import { backupMeeting, download, safeFilename } from "../storage/backup";
 import { inspectAudio } from "../audio/files";
-import { getKey, getSelection, getSpeechRate } from "../providers/credentials";
+import { getKey, getSelection, getSpeechEstimate, getUiLanguage } from "../providers/credentials";
 import { cancelProcessing, runJob, isProcessingMeeting } from "../jobs/runner";
 import { Empty, Modal, Pill } from "../components/ui";
+import { CitedEvidence } from "./CitedEvidence";
+import { useUiLanguage } from "../ui-language";
+import { translateMessage } from "../ui-messages";
 export function MeetingWorkspace({
   meeting: m,
   onUpdate,
@@ -73,7 +76,18 @@ export function MeetingWorkspace({
     [audioMissing, setAudioMissing] = useState(false);
   const player = useRef<HTMLAudioElement>(null),
     playUntil = useRef<number | null>(null);
+  // A save can disable the focused editor; guard only that item's blur until review commits.
+  const reviewInteraction = useRef<
+    { key: string; phase: "pending" | "committing" } | undefined
+  >(undefined);
   const [evidence, setEvidence] = useState<Segment>();
+  const [uiLanguage, setUiLanguage] = useState(getUiLanguage());
+  const t = (en: string, zh: string) => uiLanguage === "zh-CN" ? zh : en;
+  useEffect(() => {
+    const changed = () => setUiLanguage(getUiLanguage());
+    window.addEventListener("memo-keys-changed", changed);
+    return () => window.removeEventListener("memo-keys-changed", changed);
+  }, []);
   const locked = saving || processing;
   useEffect(() => {
     const changed = () => setProcessing(isProcessingMeeting(m.id));
@@ -131,21 +145,25 @@ export function MeetingWorkspace({
     state: "accepted" | "pending" | "rejected",
     article: Element | null,
   ) {
+    const interactionKey = `${versionId}:${itemId}`;
     const text = article?.querySelector("textarea")?.value;
     const owner = (
       article?.querySelector(
-        'select[aria-label="Action owner"]',
+        'select[data-action-owner]',
       ) as HTMLSelectElement | null
     )?.value;
     const due = (
       article?.querySelector(
-        'input[aria-label="Action due date"]',
+        'input[data-action-due]',
       ) as HTMLInputElement | null
     )?.value;
     if (state !== "rejected" && !text?.trim()) {
+      if (reviewInteraction.current?.key === interactionKey)
+        reviewInteraction.current = undefined;
       onError("Add note text before accepting or reviewing it.");
       return;
     }
+    reviewInteraction.current = { key: interactionKey, phase: "committing" };
     void persistQuietly({
       ...m,
       memos: m.memos.map((v) =>
@@ -169,6 +187,12 @@ export function MeetingWorkspace({
             }
           : v,
       ),
+    }).finally(() => {
+      if (
+        reviewInteraction.current?.key === interactionKey &&
+        reviewInteraction.current.phase === "committing"
+      )
+        reviewInteraction.current = undefined;
     });
   }
   async function change(fn: (m: Meeting) => Meeting) {
@@ -236,7 +260,7 @@ export function MeetingWorkspace({
         !m.audio &&
         m.segments.some((s) => s.start !== null) &&
         !confirm(
-          "Confirm this is the original recording for the imported timestamps. Verify playback before relying on the evidence.",
+            t("Confirm this is the original recording for the imported timestamps. Verify playback before relying on the evidence.", "请确认这是导入时间戳对应的原始录音。依赖此证据前请验证播放。"),
         )
       )
         return;
@@ -283,7 +307,7 @@ export function MeetingWorkspace({
       }
       if (
         !confirm(
-          "Mark the unfinished request as outcome unknown? This does not cancel remote processing or make a retry free. Check your provider account before submitting again.",
+          t("Mark the unfinished request as outcome unknown? This does not cancel remote processing or make a retry free. Check your provider account before submitting again.", "将未完成的请求标记为结果未知吗？这不会取消远端处理，也不保证重试免费。再次提交前请检查服务商账户。"),
         )
       )
         return;
@@ -316,24 +340,24 @@ export function MeetingWorkspace({
     <div className={url ? "workspace has-player" : "workspace"}>
       <a href="#/" className="back-link">
         <ArrowLeft size={15} />
-        All meetings
+        {t("All meetings", "所有会议")}
       </a>
       <section className="page-heading meeting-heading">
         <div>
           <div className="eyebrow">
-            {m.kind === "erp" ? "ERP DISCOVERY" : "MEETING WORKSPACE"}{" "}
-            {m.synthetic && <Pill tone="sand">Synthetic example</Pill>}
+            {m.kind === "erp" ? t("ERP DISCOVERY", "ERP 需求讨论") : t("MEETING WORKSPACE", "会议工作空间")}{" "}
+            {m.synthetic && <Pill tone="sand">{t("Synthetic example", "模拟示例")}</Pill>}
           </div>
           <h1>{m.title}</h1>
           <p>
             {m.date} <span>·</span> {m.timezone} <span>·</span>{" "}
-            {m.languages || "Languages not specified"}
+            {m.languages || t("Languages not specified", "未指定会议语言")}
           </p>
         </div>
         <div className="heading-actions">
           <button
             className="icon-button"
-            aria-label="Edit meeting details"
+            aria-label={t("Edit meeting details", "编辑会议资料")}
             onClick={() => setMetadata(true)}
             disabled={locked}
           >
@@ -342,29 +366,29 @@ export function MeetingWorkspace({
           <details className="export-menu">
             <summary className="button secondary">
               <Download size={16} />
-              Export
+              {t("Export", "导出")}
               <ChevronDown size={14} />
             </summary>
             <div>
               {(["md", "txt", "json", "zip"] as const).map((f) => (
                 <button key={f} onClick={() => void exportFile(f)}>
                   {f === "zip"
-                    ? "Full backup with audio"
+                    ? t("Full backup with audio", "完整备份（含录音）")
                     : f === "json"
-                      ? "Meeting JSON (no audio)"
-                      : `${f.toUpperCase()} notes`}
+                      ? t("Meeting JSON (no audio)", "会议 JSON（不含录音）")
+                      : `${f.toUpperCase()} ${t("notes", "笔记")}`}
                 </button>
               ))}
             </div>
           </details>
           <button
             className="icon-button danger-text"
-            aria-label="Delete meeting"
+            aria-label={t("Delete meeting", "删除会议")}
             disabled={locked}
             onClick={async () => {
               if (
                 confirm(
-                  `Delete “${m.title}” and its local recording? Export a backup first if needed.`,
+                  t(`Delete “${m.title}” and its local recording? Export a backup first if needed.`, `删除“${m.title}”及其本地录音吗？如有需要，请先导出备份。`),
                 )
               ) {
                 try {
@@ -385,20 +409,20 @@ export function MeetingWorkspace({
             <AudioLines size={21} />
           </span>
           <div>
-            <strong>{m.audio?.name || "No recording attached"}</strong>
+            <strong>{m.audio?.name || t("No recording attached", "尚未附加录音")}</strong>
             <small>
               {m.audio
-                ? `${(m.audio.size / 1024 / 1024).toFixed(1)} MB${duration ? ` · ${formatTime(duration)}` : ""}${audioMissing ? " · audio missing on this device" : ""}`
-                : "Import audio to transcribe, or work from a transcript."}
+                ? `${(m.audio.size / 1024 / 1024).toFixed(1)} MB${duration ? ` · ${formatTime(duration)}` : ""}${audioMissing ? ` · ${t("audio missing on this device", "此设备缺少录音")}` : ""}`
+                : t("Import audio to transcribe, or work from a transcript.", "导入录音进行转录，或使用已有转录。")}
             </small>
           </div>
         </div>
         <div className="toolbar-actions">
           <label className="button secondary compact">
             <Upload size={15} />
-            {m.audio ? "Reattach source" : "Attach audio"}
+            {m.audio ? t("Reattach source", "重新附加原录音") : t("Attach audio", "附加录音")}
             <input
-              aria-label="Attach audio"
+              aria-label={t("Attach audio", "附加录音")}
               type="file"
               accept="audio/*,.m4a,.mp4,.webm,.flac"
               disabled={locked}
@@ -411,26 +435,25 @@ export function MeetingWorkspace({
             disabled={locked || !url}
           >
             <AudioLines size={15} />
-            Transcribe
+            {t("Transcribe", "转录")}
           </button>
         </div>
       </div>
       {notice && !processing && (
         <div className="notice" role="status">
-          {notice}
+          {translateMessage(notice, uiLanguage)}
         </div>
       )}
       {m.jobs.some((j) => j.state === "in_flight") && !processing && (
         <div className="notice sand">
           <span>
-            An unfinished request is recorded. It may be active in another tab
-            or already billable.
+            {t("An unfinished request is recorded. It may be active in another tab or already billable.", "存在未完成的请求。请求可能仍在其他标签页运行或已经产生费用。")}
           </span>
           <button
             className="button secondary compact"
             onClick={() => void markInterrupted()}
           >
-            Review interruption
+            {t("Review interruption", "检查中断")}
           </button>
           <button
             className="text-button"
@@ -439,37 +462,37 @@ export function MeetingWorkspace({
               if (latest) onUpdate(latest);
             }}
           >
-            Reload state
+            {t("Reload state", "重新加载状态")}
           </button>
         </div>
       )}
       {processing && (
-        <section className="processing-card" aria-label="Processing request">
+        <section className="processing-card" aria-label={t("Processing request", "正在处理请求")}>
           <span className="processing-indicator" aria-hidden="true">
             <LoaderCircle size={22} strokeWidth={2} />
           </span>
           <div className="processing-copy" role="status" aria-live="polite">
-            <strong>Processing your request</strong>
+            <strong>{t("Processing your request", "正在处理请求")}</strong>
             <span>
-              Keep this page open. Completed results are saved to this device.
+              {t("Keep this page open. Completed results are saved to this device.", "请保持此页面打开。完成的结果会保存在此设备。")}
             </span>
             <span className="processing-detail">
-              Sending or waiting for your provider · Time depends on the request
+              {t("Sending or waiting for your provider · Time depends on the request", "正在发送或等待服务商 · 所需时间取决于请求")}
             </span>
           </div>
           <button
             className="button secondary compact"
             onClick={cancelProcessing}
           >
-            Stop waiting
+            {t("Stop waiting", "停止等待")}
           </button>
         </section>
       )}
-      <div className="workspace-tabs" role="tablist" aria-label="Meeting views">
+      <div className="workspace-tabs" role="tablist" aria-label={t("Meeting views", "会议视图")}>
         {[
-          ["transcript", "Transcript", FileText, m.segments.length],
-          ["speakers", "Speakers", Users, m.speakers.length],
-          ["memo", "Meeting notes", Sparkles, memo?.items.length || 0],
+          ["transcript", t("Transcript", "转录"), FileText, m.segments.length],
+          ["speakers", t("Speakers", "说话人"), Users, m.speakers.length],
+          ["memo", t("Meeting notes", "会议笔记"), Sparkles, memo?.items.length || 0],
         ].map(([value, label, Icon, count]) => {
           const Glyph = Icon as typeof FileText;
           return (
@@ -487,16 +510,16 @@ export function MeetingWorkspace({
         })}
         <span className="save-state">
           <span className="status-dot" />
-          {saving ? "Saving…" : "Saved locally"}
+          {saving ? t("Saving…", "正在保存…") : t("Saved locally", "已保存在本地")}
         </span>
       </div>
       {tab === "transcript" && (
         <section className="workspace-panel">
           <header className="panel-toolbar">
             <div>
-              <h2>The conversation</h2>
+              <h2>{t("The conversation", "会议对话")}</h2>
               <p>
-                {pending} passages to review · {unknown} unconfirmed speakers
+                {pending} {t("passages to review", "段待审阅")} · {unknown} {t("unconfirmed speakers", "位说话人未确认")}
               </p>
             </div>
             <div className="toolbar-actions">
@@ -506,7 +529,7 @@ export function MeetingWorkspace({
                   checked={pendingOnly}
                   onChange={(e) => setPendingOnly(e.target.checked)}
                 />
-                Needs review
+                {t("Needs review", "需要审阅")}
               </label>
               <button
                 className="button secondary compact"
@@ -514,7 +537,7 @@ export function MeetingWorkspace({
                 onClick={() => void change(undoEdit)}
               >
                 <Undo2 size={15} />
-                Undo
+                {t("Undo", "撤销")}
               </button>
               <button
                 className="button secondary compact"
@@ -522,20 +545,20 @@ export function MeetingWorkspace({
                 disabled={locked}
               >
                 <Plus size={15} />
-                Add transcript
+                {t("Add transcript", "添加转录")}
               </button>
             </div>
           </header>
           {selected.length > 0 && (
             <div className="bulk-bar">
-              <span>{selected.length} passages selected</span>
+              <span>{selected.length} {t("passages selected", "段已选择")}</span>
               <select
-                aria-label="Assign selected passages"
+                aria-label={t("Assign selected passages", "分配所选段落")}
                 value={assignment}
                 onChange={(e) => setAssignment(e.target.value)}
               >
-                <option value="">Choose speaker…</option>
-                <option value="unknown">Unknown speaker</option>
+                <option value="">{t("Choose speaker…", "选择说话人…")}</option>
+                <option value="unknown">{t("Unknown speaker", "未知说话人")}</option>
                 {m.speakers.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -548,7 +571,7 @@ export function MeetingWorkspace({
                 onClick={async () => {
                   if (
                     confirm(
-                      `Reassign ${selected.length} selected passages to ${assignment === "unknown" ? "Unknown" : speakerName(m, [assignment])}? This invalidates associated notes and can be undone.`,
+                      t(`Reassign ${selected.length} selected passages to ${assignment === "unknown" ? "Unknown" : speakerName(m, [assignment])}? This invalidates associated notes and can be undone.`, `将选中的 ${selected.length} 个段落重新分配给${assignment === "unknown" ? "未知说话人" : speakerName(m, [assignment])}吗？相关笔记将需要重新审阅，此操作可以撤销。`),
                     )
                   ) {
                     await change((x) =>
@@ -562,10 +585,10 @@ export function MeetingWorkspace({
                   }
                 }}
               >
-                Preview & assign
+                {t("Preview & assign", "预览并分配")}
               </button>
               <button className="text-button" onClick={() => setSelected([])}>
-                Clear
+                {t("Clear", "清除")}
               </button>
             </div>
           )}
@@ -580,7 +603,7 @@ export function MeetingWorkspace({
                   <div className="passage-select">
                     <input
                       type="checkbox"
-                      aria-label={`Select passage ${m.segments.indexOf(s) + 1}`}
+                      aria-label={t(`Select passage ${m.segments.indexOf(s) + 1}`, `选择第 ${m.segments.indexOf(s) + 1} 段`)}
                       checked={selected.includes(s.id)}
                       disabled={locked}
                       onChange={(e) =>
@@ -605,25 +628,25 @@ export function MeetingWorkspace({
                       ],
                     }}
                   >
-                    {speakerName(m, s.speakerIds).slice(0, 1)}
+                    {(s.speakerIds.length ? speakerName(m, s.speakerIds) : t("Unknown speaker", "未知说话人")).slice(0, 1)}
                   </div>
                   <div className="passage-content">
                     <div className="passage-meta">
-                      <strong>{speakerName(m, s.speakerIds)}</strong>
+                      <strong>{s.speakerIds.length ? speakerName(m, s.speakerIds) : t("Unknown speaker", "未知说话人")}</strong>
                       {s.speakerIds.length > 1 && (
-                        <Pill>Overlap / multiple</Pill>
+                        <Pill>{t("Overlap / multiple", "重叠／多人")}</Pill>
                       )}
                       {s.speakerIds.some(
                         (id) =>
                           !m.speakers.find((sp) => sp.id === id)?.confirmed,
-                      ) && <span className="small muted">Unconfirmed</span>}
+                      ) && <span className="small muted">{t("Unconfirmed", "未确认")}</span>}
                       <button
                         className="time-link"
                         disabled={s.start === null || !url}
                         onClick={() => cue(s)}
                       >
                         {s.start === null
-                          ? "Time unknown"
+                          ? t("Time unknown", "时间未知")
                           : `${formatTime(s.start)} – ${formatTime(s.end!)}`}
                       </button>
                       {s.reviewed && <Check size={14} className="green-text" />}
@@ -631,7 +654,7 @@ export function MeetingWorkspace({
                     <p>{s.text}</p>
                     {s.text !== s.originalText && (
                       <details className="original-text">
-                        <summary>Original text</summary>
+                        <summary>{t("Original text", "原始文字")}</summary>
                         <p>{s.originalText}</p>
                       </details>
                     )}
@@ -641,14 +664,14 @@ export function MeetingWorkspace({
                         onClick={() => setEditing(s)}
                         disabled={locked}
                       >
-                        Edit passage
+                        {t("Edit passage", "编辑段落")}
                       </button>
                       <button
                         className="text-button"
                         onClick={() => setSplitting(s)}
                         disabled={locked}
                       >
-                        Split
+                        {t("Split", "拆分")}
                       </button>
                       <button
                         className="text-button"
@@ -659,7 +682,7 @@ export function MeetingWorkspace({
                         }
                         disabled={locked}
                       >
-                        {s.reviewed ? "Mark unreviewed" : "Mark reviewed"}
+                        {s.reviewed ? t("Mark unreviewed", "标记为未审阅") : t("Mark reviewed", "标记为已审阅")}
                       </button>
                     </div>
                   </div>
@@ -667,17 +690,16 @@ export function MeetingWorkspace({
               ))}
             </div>
           ) : (
-            <Empty title="The conversation belongs here">
+            <Empty title={t("The conversation belongs here", "会议对话将显示在这里")}>
               <p>
-                Transcribe a recording with your own key, or add an existing
-                transcript. Original results and your edits are kept separately.
+                {t("Transcribe a recording with your own key, or add an existing transcript. Original results and your edits are kept separately.", "使用自己的密钥转录录音，或添加已有转录。原始结果和您的修改会分别保存。")}
               </p>
               <button
                 className="button secondary"
                 onClick={() => setAddText(true)}
               >
                 <Plus size={16} />
-                Add transcript
+                {t("Add transcript", "添加转录")}
               </button>
             </Empty>
           )}
@@ -687,17 +709,16 @@ export function MeetingWorkspace({
         <section className="workspace-panel">
           <header className="panel-toolbar">
             <div>
-              <h2>Put a name to the voice</h2>
+              <h2>{t("Put a name to the voice", "为声音确认姓名")}</h2>
               <p>
-                Listen first. A speaker label is a suggestion until you confirm
-                it.
+                {t("Listen first. A speaker label is a suggestion until you confirm it.", "请先试听。说话人标签在您确认前只是建议。")}
               </p>
             </div>
             <button
               className="button secondary compact"
               disabled={locked}
               onClick={async () => {
-                const name = prompt("Name for the new speaker (unconfirmed):");
+                const name = prompt(t("Name for the new speaker (unconfirmed):", "新说话人的姓名（未确认）："));
                 if (name?.trim())
                   await change((x) =>
                     editMeeting(x, (d) => {
@@ -712,7 +733,7 @@ export function MeetingWorkspace({
               }}
             >
               <Plus size={15} />
-              Add speaker
+              {t("Add speaker", "添加说话人")}
             </button>
           </header>
           {m.speakers.length ? (
@@ -736,13 +757,13 @@ export function MeetingWorkspace({
                         {s.name.charAt(0)}
                       </span>
                       <Pill tone={s.confirmed ? "green" : "sand"}>
-                        {s.confirmed ? "Confirmed" : "Needs a name"}
+                        {s.confirmed ? t("Confirmed", "已确认") : t("Needs a name", "需要确认姓名")}
                       </Pill>
                     </div>
                     <label>
-                      Display name
+                      {t("Display name", "显示名称")}
                       <input
-                        aria-label={`Name for speaker ${i + 1}`}
+                        aria-label={t(`Name for speaker ${i + 1}`, `第 ${i + 1} 位说话人的姓名`)}
                         defaultValue={s.name}
                         maxLength={80}
                         disabled={locked}
@@ -762,24 +783,24 @@ export function MeetingWorkspace({
                       />
                     </label>
                     <p className="small muted">
-                      {turns.length} passages ·{" "}
+                      {turns.length} {t("passages", "段转录")} ·{" "}
                       {timed
-                        ? `${formatTime(timed)} timed speech`
-                        : "Timing unavailable"}
+                        ? `${formatTime(timed)} ${t("timed speech", "有时间记录的发言")}`
+                        : t("Timing unavailable", "没有时间记录")}
                     </p>
                     <div className="speaker-samples">
                       {turns
                         .filter((t) => t.start !== null)
                         .slice(0, 3)
-                        .map((t, n) => (
+                        .map((turn, n) => (
                           <button
-                            key={t.id}
+                            key={turn.id}
                             className="button secondary compact"
                             disabled={!url}
-                            onClick={() => cue(t)}
+                            onClick={() => cue(turn)}
                           >
                             <Play size={12} />
-                            Sample {n + 1}
+                            {t("Sample", "样本")} {n + 1}
                           </button>
                         ))}
                     </div>
@@ -797,14 +818,14 @@ export function MeetingWorkspace({
                         }
                       >
                         <Check size={15} />
-                        {s.confirmed ? "Leave unconfirmed" : "Confirm name"}
+                        {s.confirmed ? t("Leave unconfirmed", "取消姓名确认") : t("Confirm name", "确认姓名")}
                       </button>
                       <button
                         className="text-button"
                         onClick={() => setMerge(s.id)}
                         disabled={locked || m.speakers.length < 2}
                       >
-                        Merge…
+                        {t("Merge…", "合并…")}
                       </button>
                     </div>
                   </article>
@@ -812,10 +833,9 @@ export function MeetingWorkspace({
               })}
             </div>
           ) : (
-            <Empty title="Meet the voices in your meeting">
+            <Empty title={t("Meet the voices in your meeting", "识别会议中的声音")}>
               <p>
-                Speaker-aware transcription will suggest anonymous voices. You
-                can also add speakers and manually assign imported passages.
+                {t("Speaker-aware transcription will suggest anonymous voices. You can also add speakers and manually assign imported passages.", "支持说话人识别的转录会建议匿名声音。您也可以添加说话人并手动分配导入的段落。")}
               </p>
             </Empty>
           )}
@@ -825,11 +845,11 @@ export function MeetingWorkspace({
         <section className="workspace-panel">
           <header className="panel-toolbar">
             <div>
-              <h2>From discussion to direction</h2>
+              <h2>{t("From discussion to direction", "从讨论到行动")}</h2>
               <p>
                 {memo
-                  ? `${m.memos.length} saved version${m.memos.length === 1 ? "" : "s"} · every item starts with review`
-                  : "A first draft, grounded in your transcript."}
+                  ? t(`${m.memos.length} saved version${m.memos.length === 1 ? "" : "s"} · every item starts with review`, `已保存 ${m.memos.length} 个版本 · 每一项都需要审阅`)
+                  : t("A first draft, grounded in your transcript.", "根据转录生成的初稿。")}
               </p>
             </div>
             <button
@@ -838,7 +858,7 @@ export function MeetingWorkspace({
               onClick={() => setConfirmStage("memo")}
             >
               <Sparkles size={15} />
-              {memo ? "Generate new version" : "Generate meeting notes"}
+              {memo ? t("Generate new version", "生成新版本") : t("Generate meeting notes", "生成会议笔记")}
             </button>
           </header>
           {memo ? (
@@ -846,9 +866,9 @@ export function MeetingWorkspace({
               <div className="memo-version">
                 <History size={15} />
                 <label>
-                  Version
+                  {t("Version", "版本")}
                   <select
-                    aria-label="Memo version"
+                    aria-label={t("Memo version", "笔记版本")}
                     value={memo.id}
                     onChange={(e) => {
                       setViewVersion(e.target.value);
@@ -856,7 +876,7 @@ export function MeetingWorkspace({
                   >
                     {m.memos.map((v, i) => (
                       <option key={v.id} value={v.id}>
-                        Version {i + 1} ·{" "}
+                        {t("Version", "版本")} {i + 1} ·{" "}
                         {new Date(v.createdAt).toLocaleString()}
                       </option>
                     ))}
@@ -867,9 +887,7 @@ export function MeetingWorkspace({
               {memo.sourceRevision !== m.revision &&
                 memo.items.some((i) => i.reviewedRevision !== m.revision) && (
                   <div className="notice sand">
-                    Source details changed after these notes were generated.
-                    Review every item against the current transcript; accepted
-                    items from the old source remain stale.
+                    {t("Source details changed after these notes were generated. Review every item against the current transcript; accepted items from the old source remain stale.", "生成笔记后来源资料已改变。请对照当前转录重新审阅每一项；旧来源中已接受的项目仍标记为过期。")}
                   </div>
                 )}
               <div className="memo-list">
@@ -888,12 +906,12 @@ export function MeetingWorkspace({
                               : "neutral"
                         }
                       >
-                        {item.type}
+                        {uiLanguage === "zh-CN" ? ({ summary: "摘要", discussion: "讨论", decision: "决定", action: "行动", question: "问题", risk: "风险" } as const)[item.type] : item.type}
                       </Pill>
-                      <span className="small muted">{item.review}</span>
+                      <span className="small muted">{uiLanguage === "zh-CN" ? ({ pending: "待审阅", accepted: "已接受", rejected: "已拒绝", edited: "已编辑" } as const)[item.review] : item.review}</span>
                     </div>
                     <textarea
-                      aria-label={`${item.type} note`}
+                      aria-label={uiLanguage === "zh-CN" ? `${({ summary: "摘要", discussion: "讨论", decision: "决定", action: "行动", question: "问题", risk: "风险" } as const)[item.type]}笔记` : `${item.type} note`}
                       defaultValue={item.text}
                       rows={Math.max(
                         2,
@@ -901,6 +919,11 @@ export function MeetingWorkspace({
                       )}
                       disabled={locked}
                       onBlur={(e) => {
+                        if (
+                          reviewInteraction.current?.key ===
+                          `${memo.id}:${item.id}`
+                        )
+                          return;
                         if (
                           e.relatedTarget instanceof Element &&
                           e.relatedTarget.closest("[data-review-button]")
@@ -938,9 +961,10 @@ export function MeetingWorkspace({
                     {item.type === "action" && (
                       <div className="action-fields">
                         <label>
-                          Owner
+                          {t("Owner", "负责人")}
                           <select
-                            aria-label="Action owner"
+                            aria-label={t("Action owner", "行动负责人")}
+                            data-action-owner="true"
                             value={item.ownerId || ""}
                             disabled={locked}
                             onChange={(e) =>
@@ -965,23 +989,29 @@ export function MeetingWorkspace({
                               })
                             }
                           >
-                            <option value="">To confirm</option>
+                            <option value="">{t("To confirm", "待确认")}</option>
                             {m.speakers.map((s) => (
                               <option value={s.id} key={s.id}>
                                 {s.name}
-                                {!s.confirmed ? " (unconfirmed)" : ""}
+                                {!s.confirmed ? t(" (unconfirmed)", "（未确认）") : ""}
                               </option>
                             ))}
                           </select>
                         </label>
                         <label>
-                          Due date
+                          {t("Due date", "截止日期")}
                           <input
-                            aria-label="Action due date"
+                            aria-label={t("Action due date", "行动截止日期")}
+                            data-action-due="true"
                             type="date"
                             defaultValue={item.dueDate || ""}
                             disabled={locked}
                             onBlur={(e) => {
+                              if (
+                                reviewInteraction.current?.key ===
+                                `${memo.id}:${item.id}`
+                              )
+                                return;
                               if (
                                 e.relatedTarget instanceof Element &&
                                 e.relatedTarget.closest("[data-review-button]")
@@ -1013,13 +1043,13 @@ export function MeetingWorkspace({
                         </label>
                         {item.dueOriginal && (
                           <span className="small muted">
-                            Said: {item.dueOriginal}
+                            {t("Said", "原文")}: {item.dueOriginal}
                           </span>
                         )}
                       </div>
                     )}
                     <div className="source-links">
-                      <span>Source</span>
+                      <span>{t("Source", "来源")}</span>
                       {item.sources.map((source, n) => {
                         const s = resolveSource(m, source);
                         return (
@@ -1030,14 +1060,15 @@ export function MeetingWorkspace({
                               if (s) setEvidence(s);
                             }}
                           >
-                            Passage{" "}
+                            {t("Passage", "段落")}{" "}
                             {m.segments.findIndex((s) => s.id === source.id) +
-                              1 || `${n + 1} (historical)`}{" "}
+                              1 || `${n + 1} ${t("(historical)", "（历史）")}`}{" "}
                             · r{source.revision}
                           </button>
                         );
                       })}
                     </div>
+                    <CitedEvidence meeting={m} item={item} onSelect={setEvidence} />
                     <div className="memo-actions">
                       {(["accepted", "pending", "rejected"] as const).map(
                         (state) => (
@@ -1046,6 +1077,38 @@ export function MeetingWorkspace({
                             className={`text-button ${item.review === state ? "selected" : ""}`}
                             disabled={locked}
                             data-review-button="true"
+                            onPointerDown={(event) => {
+                              const interactionKey = `${memo.id}:${item.id}`;
+                              // Mouse needs focus preserved; WebKit touch needs its default click.
+                              if (event.pointerType === "mouse")
+                                event.preventDefault();
+                              else
+                                reviewInteraction.current = {
+                                  key: interactionKey,
+                                  phase: "pending",
+                                };
+                            }}
+                            onPointerLeave={(event) => {
+                              const interactionKey = `${memo.id}:${item.id}`;
+                              // WebKit emits a null-target leave at touch release before compatibility click.
+                              if (!event.relatedTarget || event.relatedTarget === window)
+                                return;
+                              if (
+                                reviewInteraction.current?.key ===
+                                  interactionKey &&
+                                reviewInteraction.current.phase === "pending"
+                              )
+                                reviewInteraction.current = undefined;
+                            }}
+                            onPointerCancel={() => {
+                              const interactionKey = `${memo.id}:${item.id}`;
+                              if (
+                                reviewInteraction.current?.key ===
+                                  interactionKey &&
+                                reviewInteraction.current.phase === "pending"
+                              )
+                                reviewInteraction.current = undefined;
+                            }}
                             onClick={(event) =>
                               reviewMemoItem(
                                 memo.id,
@@ -1056,10 +1119,10 @@ export function MeetingWorkspace({
                             }
                           >
                             {state === "accepted"
-                              ? "✓ Accept"
+                              ? t("✓ Accept", "✓ 接受")
                               : state === "rejected"
-                                ? "Reject"
-                                : "Needs review"}
+                                ? t("Reject", "拒绝")
+                                : t("Needs review", "需要审阅")}
                           </button>
                         ),
                       )}
@@ -1069,13 +1132,12 @@ export function MeetingWorkspace({
               </div>
             </>
           ) : (
-            <Empty title="Your next steps, with context">
+            <Empty title={t("Your next steps, with context", "有据可查的下一步")}>
               <p>
-                Review the transcript, then generate a draft with your selected
-                key. Decisions and actions link back to what was actually said.
+                {t("Review the transcript, then generate a draft with your selected key. Decisions and actions link back to what was actually said.", "审阅转录后，使用所选密钥生成草稿。决定和行动会链接到实际发言。")}
               </p>
               <a href="#/settings" className="text-button">
-                Connect your API key
+                {t("Connect your API key", "连接 API 密钥")}
                 <ArrowLeft size={15} />
               </a>
             </Empty>
@@ -1086,46 +1148,55 @@ export function MeetingWorkspace({
         <details className="history-panel">
           <summary>
             <History size={16} />
-            Processing history <span>{m.jobs.length} requests</span>
+            {t("Processing history", "处理记录")} <span>{m.jobs.length} {t("requests", "次请求")}</span>
           </summary>
+          <p className="small muted">
+            {t("Provider-reported total", "服务商报告费用合计")}: {m.jobs.some((job) => job.reportedCostUsd != null) ? `US$${m.jobs.reduce((sum, job) => sum + (job.reportedCostUsd ?? 0), 0).toFixed(6)}` : t("unknown", "未知")}.
+            {m.jobs.some((job) => job.billing !== "not_submitted" && job.reportedCostUsd == null) ? t(" Incomplete: some request costs are unknown or may still be charged.", " 合计不完整：部分请求的费用未知或仍可能收费。") : ""} {t("This is not an invoice; restored copies are separate meetings.", "这不是账单；恢复的副本视为独立会议。")}
+          </p>
+          <p className="small muted">{t("Pre-request estimates, separately (not added to reported charges)", "发送前估算合计（与报告费用分开，不相加）")}: {m.jobs.some((job) => job.estimateDetails && job.estimateUsd != null) ? `US$${m.jobs.reduce((sum, job) => sum + (job.estimateDetails ? job.estimateUsd ?? 0 : 0), 0).toFixed(6)}` : t("unknown", "未知")}. {t("Incomplete when estimates are missing; each submitted attempt is counted separately.", "缺少估算时合计不完整；每次提交分别计算。")}</p>
           {m.jobs
             .slice()
             .reverse()
             .map((j) => (
               <div className="job-entry" key={j.id}>
                 <strong>
-                  {j.stage === "speech" ? "Transcription" : "Memo"} ·{" "}
-                  {j.state.replaceAll("_", " ")}
+                  {j.stage === "speech" ? t("Transcription", "转录") : t("Memo", "笔记")} ·{" "}
+                  {uiLanguage === "zh-CN" ? ({ in_flight: "进行中", completed: "已完成", outcome_unknown: "结果未知", failed_before_send: "发送前失败", failed: "失败" } as const)[j.state] : j.state.replaceAll("_", " ")}
                 </strong>
                 <span>
-                  {new Date(j.createdAt).toLocaleString()} · billing:{" "}
-                  {j.billing.replaceAll("_", " ")}
+                  {new Date(j.createdAt).toLocaleString()} · {t("billing", "计费状态")}: {" "}
+                  {uiLanguage === "zh-CN" ? ({ not_submitted: "未提交", possibly_charged: "可能已收费", provider_reported: "服务商已报告", unknown: "未知" } as const)[j.billing] : j.billing.replaceAll("_", " ")}
                 </span>
-                <p>{j.message}</p>
+                <p>{translateMessage(j.message, uiLanguage)}</p>
+                <p className="small muted">{j.provider && j.model ? `${j.provider} · ${j.model}` : t("Provider and model not recorded", "未记录服务商和模型")} · {t("Provider-reported charge", "服务商报告费用")}: {j.reportedCostUsd == null ? t("unknown", "未知") : `US$${j.reportedCostUsd.toFixed(6)}`}</p>
                 {j.usage && (
                   <p className="small muted">
                     {j.usage.inputTokens !== null
-                      ? `${j.usage.inputTokens} input tokens · ${j.usage.outputTokens ?? "unknown"} output tokens`
+                      ? `${j.usage.inputTokens} ${t("input tokens", "输入词元")} · ${j.usage.outputTokens ?? t("unknown", "未知")} ${t("output tokens", "输出词元")}`
                       : j.usage.seconds !== null
-                        ? `${j.usage.seconds.toFixed(1)} seconds reported`
-                        : "Provider usage not reported"}
-                    . Usage is not an invoice.
+                        ? `${j.usage.seconds.toFixed(1)} ${t("seconds reported", "秒（服务商报告）")}`
+                        : t("Provider usage not reported", "服务商未报告用量")}
+                    . {t("Usage is not an invoice.", "用量记录不是账单。")}
+                    {j.usage.cachedInputTokens != null ? ` ${t("Cached input tokens (included in input)", "缓存输入词元（已计入输入）")}: ${j.usage.cachedInputTokens}.` : ""}
+                    {j.usage.totalTokens != null ? ` ${t("Total tokens reported", "报告的总词元")}: ${j.usage.totalTokens}.` : ""}
                   </p>
                 )}
                 <p className="small muted">
-                  Estimate:{" "}
+                  {t("Estimate", "估算")}: {" "}
                   {j.estimateUsd != null
                     ? `US$${j.estimateUsd.toFixed(3)}`
-                    : "unknown"}{" "}
+                    : t("unknown", "未知")}{" "}
                   · {j.createdAt.slice(0, 10)}
+                  {j.estimateDetails ? ` · US$${j.estimateDetails.rate}/${t("minute", "分钟")} · ${j.estimateDetails.seconds.toFixed(1)} ${t("seconds", "秒")} · ${t("checked", "核对日期")} ${j.estimateDetails.date} · ${j.estimateDetails.source}` : ` · ${t("rate provenance unavailable", "无费率来源")}`}
                 </p>
-                {j.requestId && <code>Provider request: {j.requestId}</code>}
+                {j.requestId && <code>{t("Provider request", "服务商请求编号")}: {j.requestId}</code>}
               </div>
             ))}
           {m.runs.map((run) => (
             <div className="job-entry" key={run.id}>
               <strong>
-                {run.provider} · {run.model} · saved original result
+                {run.provider} · {run.model} · {t("saved original result", "已保存的原始结果")}
               </strong>
               <button
                 className="button secondary compact"
@@ -1133,7 +1204,7 @@ export function MeetingWorkspace({
                 onClick={() => {
                   if (
                     confirm(
-                      "Apply this saved transcription? Current edits will remain in revision history; generated notes will need review.",
+                      t("Apply this saved transcription? Current edits will remain in revision history; generated notes will need review.", "应用此保存的转录吗？当前编辑会保留在修订历史中；生成的笔记需要重新审阅。"),
                     )
                   )
                     void change((x) =>
@@ -1144,7 +1215,7 @@ export function MeetingWorkspace({
                     );
                 }}
               >
-                Use this transcription
+                {t("Use this transcription", "使用此转录")}
               </button>
             </div>
           ))}
@@ -1187,7 +1258,7 @@ export function MeetingWorkspace({
           />
           <button
             className="play-button"
-            aria-label={playing ? "Pause audio" : "Play audio"}
+            aria-label={playing ? t("Pause audio", "暂停录音") : t("Play audio", "播放录音")}
             onClick={() => {
               if (playing) player.current?.pause();
               else {
@@ -1202,11 +1273,11 @@ export function MeetingWorkspace({
           </button>
           <div className="player-title">
             <strong>{m.audio?.name}</strong>
-            <span>Original recording</span>
+            <span>{t("Original recording", "原始录音")}</span>
           </div>
           <span className="player-time">{formatTime(position)}</span>
           <input
-            aria-label="Playback position"
+            aria-label={t("Playback position", "播放位置")}
             type="range"
             min="0"
             max={duration || 1}
@@ -1221,7 +1292,7 @@ export function MeetingWorkspace({
           />
           <span className="player-time">{formatTime(duration)}</span>
           <select
-            aria-label="Playback speed"
+            aria-label={t("Playback speed", "播放速度")}
             onChange={(e) => {
               if (player.current)
                 player.current.playbackRate = Number(e.target.value);
@@ -1240,8 +1311,8 @@ export function MeetingWorkspace({
         <Modal
           title={
             confirmStage === "speech"
-              ? "Transcribe this recording?"
-              : "Generate a new memo version?"
+              ? t("Transcribe this recording?", "转录此录音吗？")
+              : t("Generate a new memo version?", "生成新版本笔记吗？")
           }
           onClose={() => setConfirmStage(undefined)}
         >
@@ -1249,50 +1320,43 @@ export function MeetingWorkspace({
             <div className="notice">
               <ShieldCheck size={18} />
               <span>
-                You choose what leaves this device. Nothing is sent until you
-                confirm.
+                {t("You choose what leaves this device. Nothing is sent until you confirm.", "您决定发送哪些数据。确认之前不会发送任何内容。")}
               </span>
             </div>
             <dl className="confirmation-list">
-              <dt>Destination</dt>
+              <dt>{t("Destination", "接收方")}</dt>
               <dd>
                 {getSelection(confirmStage).provider === "openai"
                   ? "OpenAI · api.openai.com"
-                  : "OpenRouter · openrouter.ai (routes to a model provider)"}
+                  : t("OpenRouter · openrouter.ai (routes to a model provider)", "OpenRouter · openrouter.ai（转发给模型服务商）")}
               </dd>
-              <dt>Data sent</dt>
+              <dt>{t("Data sent", "发送的数据")}</dt>
               <dd>
                 {confirmStage === "speech"
-                  ? `Your complete recording (${((m.audio?.size || 0) / 1024 / 1024).toFixed(1)} MB)`
-                  : "Transcript, speaker names and meeting context (title, date, timezone, languages, type and glossary)"}
+                  ? t(`Your complete recording (${((m.audio?.size || 0) / 1024 / 1024).toFixed(1)} MB)`, `完整录音（${((m.audio?.size || 0) / 1024 / 1024).toFixed(1)} MB）`)
+                  : t("Transcript, speaker names and meeting context (title, date, timezone, languages, type and glossary)", "转录、说话人姓名和会议背景（标题、日期、时区、语言、类型和术语）")}
               </dd>
-              <dt>Model</dt>
+              <dt>{t("Model", "模型")}</dt>
               <dd>{getSelection(confirmStage).model}</dd>
-              <dt>Estimated charge</dt>
+              <dt>{t("Estimated charge", "预计费用")}</dt>
               <dd>
-                {confirmStage === "speech" &&
-                getSpeechRate() !== null &&
-                duration
-                  ? `About US$${((getSpeechRate()! * duration) / 60).toFixed(3)} using your entered rate`
-                  : "Unknown · provider charges apply"}
+                {confirmStage === "speech" && getSpeechEstimate(m.audio?.duration) ? (() => {
+                  const estimate = getSpeechEstimate(m.audio?.duration)!;
+                  return `${t("About", "约")} US$${estimate.amount.toFixed(3)} · ${estimate.seconds.toFixed(1)} ${t("seconds at", "秒，费率")} US$${estimate.rate}/${t("minute", "分钟")} · ${t("checked", "核对日期")} ${estimate.date} · ${estimate.source}. ${t("Assumes the entire recording is billed at this rate.", "假设整个录音按此费率计费。")}`;
+                })() : t("Unknown · provider charges apply. A dated applicable rate or duration is unavailable.", "未知 · 服务商可能收费。缺少适用的带日期费率或录音时长。")}
               </dd>
             </dl>
             <p className="muted">
-              Keep this page open. Cancellation does not guarantee remote
-              processing or billing stops. The app does not automatically retry.
-              Review the provider's retention policy for your account.
+              {t("Keep this page open. Cancellation does not guarantee remote processing or billing stops. The app does not automatically retry. Review the provider's retention policy for your account.", "请保持此页面打开。取消不保证远端处理或计费停止。应用不会自动重试。请查看服务商对您账户的数据保留政策。")}
             </p>
             {confirmStage === "memo" && (unknown || pending) > 0 && (
               <div className="notice sand">
-                {unknown} speakers are unconfirmed and {pending} passages are
-                unreviewed. Unknown fields remain subject to review.
+                {t(`${unknown} speakers are unconfirmed and ${pending} passages are unreviewed. Unknown fields remain subject to review.`, `${unknown} 位说话人未确认，${pending} 段转录未审阅。未知字段仍需核对。`)}
               </div>
             )}
             {confirmStage === "speech" && (
               <p className="small muted">
-                Audio uploads are limited to 25 MB. Speaker labels and
-                timestamps depend on the chosen model and returned result;
-                missing evidence stays unknown.
+                {t("Audio uploads are limited to 25 MB. Speaker labels and timestamps depend on the chosen model and returned result; missing evidence stays unknown.", "录音上传上限为 25 MB。说话人标签和时间戳取决于所选模型及其返回结果；缺少的证据保持未知。")}
               </p>
             )}
             {confirmStage === "speech" &&
@@ -1301,16 +1365,13 @@ export function MeetingWorkspace({
               duration > 1400 && (
                 <div className="notice sand">
                   <span>
-                    Some users have reported duration limits for this model. A
-                    shorter recording may help if this request fails.
+                    {t("Some users have reported duration limits for this model. A shorter recording may help if this request fails.", "部分用户报告此模型存在时长限制。若请求失败，可尝试较短的录音。")}
                   </span>
                 </div>
               )}
             {confirmStage === "speech" && m.segments.length > 0 && (
               <div className="notice sand">
-                A new transcription replaces the current view only if its source
-                has not changed. Previous text and edits remain in revision
-                history.
+                {t("A new transcription replaces the current view only if its source has not changed. Previous text and edits remain in revision history.", "只有来源未改变时，新转录才会替换当前视图。之前的文字和编辑会保留在修订历史中。")}
               </div>
             )}
             <div className="modal-actions">
@@ -1318,14 +1379,14 @@ export function MeetingWorkspace({
                 className="button secondary"
                 onClick={() => setConfirmStage(undefined)}
               >
-                Cancel
+                {t("Cancel", "取消")}
               </button>
               <button
                 className="button primary"
                 disabled={!getKey(getSelection(confirmStage).provider)}
                 onClick={() => void process()}
               >
-                Confirm and send
+                {t("Confirm and send", "确认并发送")}
               </button>
             </div>
             {!getKey(getSelection(confirmStage).provider) && (
@@ -1334,7 +1395,7 @@ export function MeetingWorkspace({
                 className="text-button"
                 onClick={() => setConfirmStage(undefined)}
               >
-                Add your key in Settings first
+                {t("Add your key in Settings first", "请先在设置中添加密钥")}
               </a>
             )}
           </div>
@@ -1342,17 +1403,17 @@ export function MeetingWorkspace({
       )}
       {evidence && (
         <Modal
-          title={`Source passage · r${evidence.revision}`}
+          title={`${t("Source passage", "来源段落")} · r${evidence.revision}`}
           onClose={() => setEvidence(undefined)}
         >
           <div className="modal-body">
-            <Pill>Saved evidence revision</Pill>
+            <Pill>{t("Saved evidence revision", "已保存的证据版本")}</Pill>
             <p className="evidence-text">{evidence.text}</p>
             <p className="muted small">
               {evidence.start === null
-                ? "Audio time unknown"
+                ? t("Audio time unknown", "录音时间未知")
                 : `${formatTime(evidence.start)} – ${formatTime(evidence.end!)}`}{" "}
-              · {speakerName(m, evidence.speakerIds)}
+              · {evidence.speakerIds.length ? speakerName(m, evidence.speakerIds) : t("Unknown speaker", "未知说话人")}
             </p>
             <div className="toolbar-actions">
               <button
@@ -1361,7 +1422,7 @@ export function MeetingWorkspace({
                 onClick={() => cue(evidence)}
               >
                 <Play size={15} />
-                Play source audio
+                {t("Play source audio", "播放来源录音")}
               </button>
               {m.segments.some((s) => s.id === evidence.id) && (
                 <button
@@ -1380,19 +1441,18 @@ export function MeetingWorkspace({
                     );
                   }}
                 >
-                  View current passage
+                  {t("View current passage", "查看当前段落")}
                 </button>
               )}
             </div>
             <p className="small muted">
-              This is the exact revision cited by the note. Current transcript
-              wording may differ.
+              {t("This is the exact revision cited by the note. Current transcript wording may differ.", "这是笔记引用的确切修订版本。当前转录内容可能不同。")}
             </p>
           </div>
         </Modal>
       )}
       {metadata && (
-        <Modal title="Meeting details" onClose={() => setMetadata(false)}>
+        <Modal title={t("Meeting details", "会议资料")} onClose={() => setMetadata(false)}>
           <form
             className="modal-body"
             onSubmit={async (e) => {
@@ -1415,7 +1475,7 @@ export function MeetingWorkspace({
             }}
           >
             <label>
-              Title
+              {t("Title", "标题")}
               <input
                 name="title"
                 required
@@ -1425,16 +1485,16 @@ export function MeetingWorkspace({
             </label>
             <div className="form-row">
               <label>
-                Date
+                {t("Date", "日期")}
                 <input type="date" name="date" required defaultValue={m.date} />
               </label>
               <label>
-                Timezone
+                {t("Timezone", "时区")}
                 <input name="timezone" required defaultValue={m.timezone} />
               </label>
             </div>
             <label>
-              Languages
+              {t("Languages", "会议语言")}
               <input
                 name="languages"
                 maxLength={100}
@@ -1442,7 +1502,7 @@ export function MeetingWorkspace({
               />
             </label>
             <label>
-              Terms & context
+              {t("Terms & context", "术语与背景")}
               <textarea
                 name="glossary"
                 maxLength={2000}
@@ -1450,16 +1510,16 @@ export function MeetingWorkspace({
               />
             </label>
             <p className="small muted">
-              Changes mark generated notes for re-review.
+              {t("Changes mark generated notes for re-review.", "更改后，生成的笔记将标记为需要重新审阅。")}
             </p>
             <button type="submit" className="button primary" disabled={locked}>
-              Save details
+              {t("Save details", "保存资料")}
             </button>
           </form>
         </Modal>
       )}
       {addText && (
-        <Modal title="Add a transcript" onClose={() => setAddText(false)}>
+        <Modal title={t("Add a transcript", "添加转录")} onClose={() => setAddText(false)}>
           <form
             className="modal-body"
             onSubmit={async (e) => {
@@ -1469,7 +1529,7 @@ export function MeetingWorkspace({
                 if (
                   m.segments.length &&
                   !confirm(
-                    "Replace the transcript view? Original and revised text stay in history.",
+                    t("Replace the transcript view? Original and revised text stay in history.", "替换当前转录视图吗？原文及修改后的文字会保留在历史记录中。"),
                   )
                 )
                   return;
@@ -1492,11 +1552,10 @@ export function MeetingWorkspace({
             }}
           >
             <p className="muted">
-              Paste plain text, optionally one speaker per line as “Name:
-              words”. Names are unconfirmed and times remain unknown.
+              {t("Paste plain text, optionally one speaker per line as “Name: words”. Names are unconfirmed and times remain unknown.", "粘贴纯文本，可按每行“姓名：内容”输入。姓名未确认，时间保持未知。")}
             </p>
             <label>
-              Transcript
+              {t("Transcript", "转录")}
               <textarea
                 rows={9}
                 required
@@ -1506,13 +1565,13 @@ export function MeetingWorkspace({
               />
             </label>
             <button type="submit" className="button primary" disabled={locked}>
-              Save transcript locally
+              {t("Save transcript locally", "将转录保存在本地")}
             </button>
           </form>
         </Modal>
       )}
       {editing && (
-        <Modal title="Edit this passage" onClose={() => setEditing(undefined)}>
+        <Modal title={t("Edit this passage", "编辑此段落")} onClose={() => setEditing(undefined)}>
           <form
             className="modal-body"
             onSubmit={async (e) => {
@@ -1533,7 +1592,7 @@ export function MeetingWorkspace({
             }}
           >
             <label>
-              Transcript text
+              {t("Transcript text", "转录文字")}
               <textarea
                 name="text"
                 rows={6}
@@ -1544,7 +1603,7 @@ export function MeetingWorkspace({
             </label>
             <fieldset>
               <legend>
-                Speakers · leave empty for unknown; select multiple for overlap
+                {t("Speakers · leave empty for unknown; select multiple for overlap", "说话人 · 留空表示未知；声音重叠时可多选")}
               </legend>
               {m.speakers.map((s) => (
                 <label className="checkbox-label" key={s.id}>
@@ -1564,21 +1623,21 @@ export function MeetingWorkspace({
                 name="reviewed"
                 defaultChecked={editing.reviewed}
               />
-              I reviewed this passage
+              {t("I reviewed this passage", "我已审阅此段落")}
             </label>
             <details>
-              <summary>Original text</summary>
+              <summary>{t("Original text", "原始文字")}</summary>
               <p>{editing.originalText}</p>
             </details>
             <button className="button primary" disabled={locked}>
-              Save correction
+              {t("Save correction", "保存更正")}
             </button>
           </form>
         </Modal>
       )}
       {splitting && (
         <Modal
-          title="Split this passage"
+          title={t("Split this passage", "拆分此段落")}
           onClose={() => setSplitting(undefined)}
         >
           <form
@@ -1606,7 +1665,7 @@ export function MeetingWorkspace({
           >
             <p>{splitting.text}</p>
             <label>
-              Split after character
+              {t("Split after character", "在第几个字符之后拆分")}
               <input
                 name="at"
                 type="number"
@@ -1618,7 +1677,7 @@ export function MeetingWorkspace({
             </label>
             {splitting.start !== null && (
               <label>
-                Exact audio boundary in seconds · optional
+                {t("Exact audio boundary in seconds · optional", "精确录音分界时间（秒）· 可选")}
                 <input
                   name="time"
                   type="number"
@@ -1629,18 +1688,17 @@ export function MeetingWorkspace({
               </label>
             )}
             <p className="small muted">
-              Without a verified boundary, both new passages have unknown
-              timing. The original timed source remains in history.
+              {t("Without a verified boundary, both new passages have unknown timing. The original timed source remains in history.", "若没有经过核实的分界点，新段落的时间均为未知。原始带时间的来源保留在历史记录中。")}
             </p>
             <button className="button primary" disabled={locked}>
-              Split passage
+              {t("Split passage", "拆分段落")}
             </button>
           </form>
         </Modal>
       )}
       {merge && (
         <Modal
-          title="Merge this voice into another"
+          title={t("Merge this voice into another", "将此声音合并到另一说话人")}
           onClose={() => setMerge(undefined)}
         >
           <form
@@ -1659,12 +1717,10 @@ export function MeetingWorkspace({
             }}
           >
             <p>
-              All passages assigned to {speakerName(m, [merge])} will be
-              reassigned. The combined identity needs confirmation again. You
-              can undo this change.
+              {t(`All passages assigned to ${speakerName(m, [merge])} will be reassigned. The combined identity needs confirmation again. You can undo this change.`, `分配给 ${speakerName(m, [merge])} 的所有段落都将重新分配。合并后的身份需要重新确认。您可以撤销此更改。`)}
             </p>
             <label>
-              Merge into
+              {t("Merge into", "合并到")}
               <select name="target">
                 {m.speakers
                   .filter((s) => s.id !== merge)
@@ -1676,7 +1732,7 @@ export function MeetingWorkspace({
               </select>
             </label>
             <button className="button primary" disabled={locked}>
-              Confirm merge
+              {t("Confirm merge", "确认合并")}
             </button>
           </form>
         </Modal>
@@ -1692,23 +1748,24 @@ function OriginalNote({
   item?: MemoItem;
   meeting: Meeting;
 }) {
+  const language = useUiLanguage();
+  const t = (en: string, zh: string) => language === "zh-CN" ? zh : en;
   return (
     <details className="original-text">
-      <summary>Original generated item</summary>
+      <summary>{t("Original generated item", "原始生成项目")}</summary>
       {item ? (
         <>
           <p>{item.text}</p>
           <p className="small muted">
-            Owner:{" "}
-            {item.ownerId ? speakerName(meeting, [item.ownerId]) : "To confirm"}
-            {" · "}Due: {item.dueDate || "To confirm"}
-            {item.dueOriginal ? ` · Said: ${item.dueOriginal}` : ""}
+            {t("Owner", "负责人")}: {" "}
+            {item.ownerId ? speakerName(meeting, [item.ownerId]) : t("To confirm", "待确认")}
+            {" · "}{t("Due", "截止日期")}: {item.dueDate || t("To confirm", "待确认")}
+            {item.dueOriginal ? ` · ${t("Said", "原文")}: ${item.dueOriginal}` : ""}
           </p>
         </>
       ) : (
         <p>
-          This older memo version did not save a separate original. Its original
-          cannot be reconstructed from human edits.
+          {t("This older memo version did not save a separate original. Its original cannot be reconstructed from human edits.", "此旧版笔记没有单独保存原始内容，无法从人工编辑中还原原文。")}
         </p>
       )}
     </details>

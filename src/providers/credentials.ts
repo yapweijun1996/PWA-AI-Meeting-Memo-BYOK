@@ -14,7 +14,7 @@ let settings: SettingsRecord = {
   version: 1,
   revision: 0,
   keys: { openai: "", openrouter: "" },
-  speech: { provider: "openai", model: defaults.openai.speech },
+  speech: { provider: "openrouter", model: defaults.openrouter.speech },
   memo: { provider: "openai", model: defaults.openai.memo },
   speechRate: null,
 };
@@ -49,6 +49,15 @@ export const getSelection = (stage: Stage): Selection => ({
 });
 export const getKey = (provider: Provider) => settings.keys[provider];
 export const getSpeechRate = () => settings.speechRate;
+export const getUiLanguage = () => settings.uiLanguage ?? "en";
+export const getSpeechRateContext = () => settings.speechRateContext ?? null;
+export function calculateSpeechEstimate(value: SettingsRecord, seconds: number | null | undefined) {
+  const context = value.speechRateContext;
+  const rate = value.speechRate;
+  if (rate === null || !context || context.provider !== value.speech.provider || context.model !== value.speech.model || seconds == null || !Number.isFinite(seconds) || seconds < 0) return null;
+  return { amount: rate * seconds / 60, rate, seconds, ...context };
+}
+export const getSpeechEstimate = (seconds: number | null | undefined) => calculateSpeechEstimate(settings, seconds);
 let pendingWrite: Promise<void> | undefined;
 let dirty = false;
 export const setSettingsDirty = (value: boolean) => {

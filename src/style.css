@@ -1583,6 +1583,22 @@ details[open] > summary {
 .memo-item.rejected {
   background: #f8f8f4;
 }
+.cited-evidence {
+  margin: 12px 0;
+}
+.cited-evidence-text {
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.cited-evidence-text button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  padding: 2px 0;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: #82927c;
+}
 .memo-item-heading {
   display: flex;
   justify-content: space-between;

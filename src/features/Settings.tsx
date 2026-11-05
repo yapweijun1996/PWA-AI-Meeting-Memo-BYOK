@@ -10,6 +10,8 @@ import {
 import {
   getKey,
   getSpeechRate,
+  getSpeechRateContext,
+  getUiLanguage,
   getSelection,
   getSettingsRevision,
   getSettingsStorageError,
@@ -19,6 +21,7 @@ import {
   type Provider,
   type Stage,
 } from "../providers/credentials";
+import { translateMessage } from "../ui-messages";
 export function Settings() {
   const [openai, setOpenai] = useState(getKey("openai")),
     [openrouter, setOpenrouter] = useState(getKey("openrouter")),
@@ -27,6 +30,13 @@ export function Settings() {
     [speechRate, setSpeechRate] = useState(
       () => getSpeechRate()?.toString() ?? "",
     ),
+    [rateSource, setRateSource] = useState(() => getSpeechRateContext()?.source ?? ""),
+    [rateDate, setRateDate] = useState(() => getSpeechRateContext()?.date ?? ""),
+    [rateFor, setRateFor] = useState(() => {
+      const context = getSpeechRateContext();
+      return context ? { provider: context.provider, model: context.model } : null;
+    }),
+    [uiLanguage, setUiLanguage] = useState(getUiLanguage()),
     [revision, setRevision] = useState(getSettingsRevision()),
     [saving, setSaving] = useState(false),
     [saveError, setSaveError] = useState(getSettingsStorageError()),
@@ -38,6 +48,10 @@ export function Settings() {
         speech: getSelection("speech"),
         memo: getSelection("memo"),
         speechRate: getSpeechRate()?.toString() ?? "",
+        rateSource: getSpeechRateContext()?.source ?? "",
+        rateDate: getSpeechRateContext()?.date ?? "",
+        rateFor: getSpeechRateContext() ? { provider: getSpeechRateContext()!.provider, model: getSpeechRateContext()!.model } : null,
+        uiLanguage: getUiLanguage(),
       }),
     ),
     [usage, setUsage] = useState("Calculating…");
@@ -47,7 +61,12 @@ export function Settings() {
       speech,
       memo,
       speechRate,
+      rateSource,
+      rateDate,
+      rateFor,
+      uiLanguage,
     }) !== baseline;
+  const t = (en: string, zh: string) => uiLanguage === "zh-CN" ? zh : en;
   useEffect(() => {
     setSettingsDirty(formDirty);
     return () => setSettingsDirty(false);
@@ -86,13 +105,23 @@ export function Settings() {
     setSaved(false);
     try {
       if (!speech.model.trim() || !memo.model.trim())
-        throw new Error("Choose a model ID for transcription and notes.");
+        throw new Error(t("Choose a model ID for transcription and notes.", "请选择转录和笔记模型。"));
+      if (rateSource || rateDate || rateFor) {
+        if (!rateSource.trim() || !rateDate || !rateFor || speechRate === "")
+          throw new Error(t("Enter a rate, source, date and bind the rate to a model, or clear its source and date.", "请输入费率、来源和日期并绑定模型，或清除费率来源。"));
+        let url: URL;
+        try { url = new URL(rateSource.trim()); } catch { throw new Error(t("Enter a public HTTPS pricing URL without query parameters.", "请输入不含查询参数的公开 HTTPS 定价网址。")); }
+        if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash)
+          throw new Error(t("Enter a public HTTPS pricing URL without query parameters.", "请输入不含查询参数的公开 HTTPS 定价网址。"));
+      }
       await saveSettings(
         {
           keys: { openai: openai.trim(), openrouter: openrouter.trim() },
           speech: { ...speech, model: speech.model.trim() },
           memo: { ...memo, model: memo.model.trim() },
           speechRate: speechRate === "" ? null : Number(speechRate),
+          speechRateContext: rateFor && rateSource.trim() && rateDate ? { ...rateFor, source: rateSource.trim(), date: rateDate } : null,
+          uiLanguage,
         },
         revision,
       );
@@ -103,12 +132,17 @@ export function Settings() {
           speech: { ...speech, model: speech.model.trim() },
           memo: { ...memo, model: memo.model.trim() },
           speechRate,
+          rateSource: rateSource.trim(),
+          rateDate,
+          rateFor,
+          uiLanguage,
         }),
       );
       setOpenai(openai.trim());
       setOpenrouter(openrouter.trim());
       setSpeech({ ...speech, model: speech.model.trim() });
       setMemo({ ...memo, model: memo.model.trim() });
+      setRateSource(rateSource.trim());
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (error) {
@@ -133,6 +167,8 @@ export function Settings() {
           speech: getSelection("speech"),
           memo: getSelection("memo"),
           speechRate: getSpeechRate(),
+          speechRateContext: getSpeechRateContext(),
+          uiLanguage: getUiLanguage(),
         },
         revision,
       );
@@ -143,10 +179,18 @@ export function Settings() {
           speech: getSelection("speech"),
           memo: getSelection("memo"),
           speechRate: getSpeechRate()?.toString() ?? "",
+          rateSource: getSpeechRateContext()?.source ?? "",
+          rateDate: getSpeechRateContext()?.date ?? "",
+          rateFor: getSpeechRateContext() ? { provider: getSpeechRateContext()!.provider, model: getSpeechRateContext()!.model } : null,
+          uiLanguage: getUiLanguage(),
         }),
       );
       setOpenai("");
       setOpenrouter("");
+      setRateSource(getSpeechRateContext()?.source ?? "");
+      setRateDate(getSpeechRateContext()?.date ?? "");
+      setRateFor(getSpeechRateContext() ? { provider: getSpeechRateContext()!.provider, model: getSpeechRateContext()!.model } : null);
+      setUiLanguage(getUiLanguage());
       setNotice("Stored keys forgotten on this device.");
     } catch (error) {
       setSaveError(
@@ -175,11 +219,11 @@ export function Settings() {
     <>
       <section className="page-heading">
         <div>
-          <div className="eyebrow">YOUR WORKSPACE, YOUR CHOICE</div>
+          <div className="eyebrow">{t("YOUR WORKSPACE, YOUR CHOICE", "您的工作空间，由您作主")}</div>
           <h1>
-            Settings<span className="heading-dot">.</span>
+            {t("Settings", "设置")}<span className="heading-dot">.</span>
           </h1>
-          <p>Connect your own keys. Keep control of your conversations.</p>
+          <p>{t("Connect your own keys. Keep control of your conversations.", "连接您自己的密钥，掌控会议内容。")}</p>
         </div>
       </section>
       <section className="settings-panel">
@@ -188,20 +232,16 @@ export function Settings() {
             <KeyRound size={22} />
           </span>
           <div>
-            <h2>Your API connections</h2>
+            <h2>{t("Your API connections", "您的 API 连接")}</h2>
             <p>
-              Choose a provider and model for each step. Save settings to keep
-              them on this device.
+              {t("Choose a provider and model for each step. Save settings to keep them on this device.", "为每个步骤选择服务商和模型。保存设置后会保留在此设备。")}
             </p>
           </div>
         </div>
         <div className="notice">
           <LockKeyhole size={18} />
           <span>
-            Keys are stored unencrypted in this browser's IndexedDB. Other
-            scripts on this shared website origin and anyone with access to this
-            browser profile may be able to read them. Keys are not included in
-            meeting backups or sent to GitHub.
+            {t("Keys are stored unencrypted in this browser's IndexedDB. Other scripts on this shared website origin and anyone with access to this browser profile may be able to read them. Keys are not included in meeting backups or sent to GitHub.", "密钥以未加密方式存储在此浏览器的 IndexedDB 中。同一网站来源的其他脚本及能访问此浏览器配置的人可能读取密钥。密钥不会包含在会议备份中，也不会发送到 GitHub。")}
           </span>
         </div>
         <form
@@ -210,24 +250,25 @@ export function Settings() {
             void save();
           }}
         >
+          <label>Display language / 显示语言<select aria-label="Display language / 显示语言" value={uiLanguage} onChange={(e) => setUiLanguage(e.target.value as "en" | "zh-CN")} disabled={saving}><option value="en">English</option><option value="zh-CN">简体中文</option></select></label>
           <div className="connection">
             <div className="connection-heading">
               <span className="provider-icon">R</span>
               <div>
-                <h3>OpenRouter (optional)</h3>
-                <p>Access multiple transcription and language models</p>
+                <h3>OpenRouter</h3>
+                <p>{t("Access multiple transcription and language models", "访问多种转录和语言模型")}</p>
               </div>
               <a
                 href="https://openrouter.ai/settings/keys"
                 target="_blank"
                 rel="noreferrer"
-                aria-label="Open OpenRouter API keys"
+                aria-label={t("Open OpenRouter API keys", "打开 OpenRouter API 密钥页面")}
               >
                 <ExternalLink size={16} />
               </a>
             </div>
             <label>
-              OpenRouter API key
+              {t("OpenRouter API key", "OpenRouter API 密钥")}
               <input
                 type="password"
                 maxLength={4096}
@@ -236,8 +277,8 @@ export function Settings() {
                 spellCheck={false}
                 value={openrouter}
                 onChange={(e) => setOpenrouter(e.target.value)}
-                placeholder="Enter your OpenRouter key"
-                aria-label="OpenRouter API key"
+                placeholder={t("Enter your OpenRouter key", "输入 OpenRouter 密钥")}
+                aria-label={t("OpenRouter API key", "OpenRouter API 密钥")}
               />
             </label>
           </div>
@@ -246,19 +287,19 @@ export function Settings() {
               <span className="provider-icon mint">O</span>
               <div>
                 <h3>OpenAI</h3>
-                <p>Default provider for transcription and meeting notes</p>
+                <p>{t("Provider for meeting notes and optional transcription", "提供会议笔记，也可用于转录")}</p>
               </div>
               <a
                 href="https://platform.openai.com/api-keys"
                 target="_blank"
                 rel="noreferrer"
-                aria-label="Open OpenAI API keys"
+                aria-label={t("Open OpenAI API keys", "打开 OpenAI API 密钥页面")}
               >
                 <ExternalLink size={16} />
               </a>
             </div>
             <label>
-              OpenAI API key
+              {t("OpenAI API key", "OpenAI API 密钥")}
               <input
                 type="password"
                 maxLength={4096}
@@ -267,22 +308,31 @@ export function Settings() {
                 spellCheck={false}
                 value={openai}
                 onChange={(e) => setOpenai(e.target.value)}
-                placeholder="Enter your OpenAI key"
-                aria-label="OpenAI API key"
+                placeholder={t("Enter your OpenAI key", "输入 OpenAI 密钥")}
+                aria-label={t("OpenAI API key", "OpenAI API 密钥")}
               />
             </label>
+          </div>
+          <div className="connection">
+            <h3>{t("Recommended preset", "推荐预设")}</h3>
+            <p>{t("OpenRouter Scribe v2 for transcription and OpenAI GPT-6 Luna for notes. Each provider needs its own key. Model access is not guaranteed.", "使用 OpenRouter Scribe v2 转录，OpenAI GPT-6 Luna 生成笔记。两个服务各需一个密钥，不能保证模型可用。")}</p>
+            <button type="button" className="button secondary" disabled={saving} onClick={() => {
+              setSpeech({ provider: "openrouter", model: defaultModel("openrouter", "speech") });
+              setMemo({ provider: "openai", model: defaultModel("openai", "memo") });
+            }}>{t("Use recommended preset", "使用推荐预设")}</button>
+            <p className="small muted">{t("Selecting the preset does not validate keys or send a request. Save settings to keep it.", "选择预设不会验证密钥或发送请求。请保存设置。")}</p>
           </div>
           {(["speech", "memo"] as Stage[]).map((stage) => {
             const choice = stage === "speech" ? speech : memo;
             const update = stage === "speech" ? setSpeech : setMemo;
-            const label = stage === "speech" ? "Transcription" : "Memo";
+            const label = stage === "speech" ? t("Transcription", "转录") : t("Memo", "笔记");
             return (
               <div className="connection" key={stage}>
-                <h3>{label} model</h3>
+                <h3>{label} {t("model", "模型")}</h3>
                 <label>
-                  {label} provider
+                  {label} {t("provider", "服务商")}
                   <select
-                    aria-label={`${label} provider`}
+                    aria-label={`${label} ${t("provider", "服务商")}`}
                     disabled={saving}
                     value={choice.provider}
                     onChange={(e) => {
@@ -298,9 +348,9 @@ export function Settings() {
                   </select>
                 </label>
                 <label>
-                  {label} model ID
+                  {label} {t("model ID", "模型 ID")}
                   <input
-                    aria-label={`${label} model ID`}
+                    aria-label={`${label} ${t("model ID", "模型 ID")}`}
                     disabled={saving}
                     list={`${stage}-models`}
                     value={choice.model}
@@ -331,20 +381,19 @@ export function Settings() {
                 </datalist>
                 <p className="small muted">
                   {stage === "speech"
-                    ? "OpenAI gpt-transcribe returns text without speaker labels or timestamps. OpenRouter Scribe v2 requests speaker labels and timestamps; other models may return text only. OpenAI diarize is scheduled to shut down 2027-02-26."
-                    : "Enter a model ID that supports structured JSON output. Model availability and pricing depend on your provider account."}
+                    ? t("OpenAI gpt-transcribe returns text without speaker labels or timestamps. OpenRouter Scribe v2 requests speaker labels and timestamps; other models may return text only. OpenAI diarize is scheduled to shut down 2027-02-26.", "OpenAI gpt-transcribe 返回不含说话人标签或时间戳的文本。OpenRouter Scribe v2 会请求说话人标签和时间戳；其他模型可能仅返回文本。OpenAI diarize 计划于 2027-02-26 停用。")
+                    : t("Enter a model ID that supports structured JSON output. Model availability and pricing depend on your provider account.", "请输入支持结构化 JSON 输出的模型 ID。模型可用性和价格取决于您的服务商账户。")}
                 </p>
               </div>
             );
           })}
           <div className="connection">
-            <h3>Cost estimates</h3>
+            <h3>{t("Cost estimates", "费用估算")}</h3>
             <p className="muted">
-              Optionally enter the selected speech model rate from your plan.
-              Estimates are not a billing cap.
+              {t("Enter a rate, its pricing page and the date checked, then bind it to the selected speech model. Estimates are not a billing cap.", "输入费率、定价页面和核对日期，然后绑定所选语音模型。估算不是费用上限。")}
             </p>
             <label>
-              Speech rate · USD per minute
+              {t("Speech rate · USD per minute", "语音费率 · 美元／分钟")}
               <input
                 type="number"
                 disabled={saving}
@@ -352,14 +401,19 @@ export function Settings() {
                 min="0"
                 max="10"
                 value={speechRate}
-                placeholder="Unknown"
+                placeholder={t("Unknown", "未知")}
                 onChange={(e) => setSpeechRate(e.target.value)}
               />
             </label>
+            <label>{t("Pricing source URL", "定价来源网址")}<input type="url" maxLength={300} value={rateSource} disabled={saving} onChange={(e) => setRateSource(e.target.value)} placeholder="https://example.com/pricing" /></label>
+            <label>{t("Date checked", "核对日期")}<input type="date" value={rateDate} disabled={saving} onChange={(e) => setRateDate(e.target.value)} /></label>
+            <p className="small muted">{rateFor ? `${t("Rate applies to", "费率适用模型")} ${rateFor.provider} / ${rateFor.model}` : t("Rate is not bound to a model.", "费率尚未绑定模型。")}</p>
+            <button type="button" className="button secondary" disabled={saving} onClick={() => setRateFor({ ...speech, model: speech.model.trim() })}>{t("Bind rate to selected speech model", "绑定费率到所选语音模型")}</button>
+            <button type="button" className="button ghost" disabled={saving} onClick={() => { setRateSource(""); setRateDate(""); setRateFor(null); }}>{t("Clear rate provenance", "清除费率来源")}</button>
           </div>
           {saveError && (
             <div className="notice danger" role="alert">
-              {saveError}
+              {translateMessage(saveError, uiLanguage)}
             </div>
           )}
           <div className="settings-actions">
@@ -369,7 +423,7 @@ export function Settings() {
               ) : (
                 <KeyRound size={16} />
               )}{" "}
-              {saved && !formDirty ? "Saved on this device" : "Save settings"}
+              {saved && !formDirty ? t("Saved on this device", "已保存在此设备") : t("Save settings", "保存设置")}
             </button>
             <button
               type="button"
@@ -378,12 +432,11 @@ export function Settings() {
               disabled={saving}
             >
               <Trash2 size={16} />
-              Forget keys
+              {t("Forget keys", "清除密钥")}
             </button>
           </div>
           <p className="small muted">
-            Saving settings does not test keys or incur a charge. Cloud requests
-            are made only after you confirm a meeting operation.
+            {t("Saving settings does not test keys or incur a charge. Cloud requests are made only after you confirm a meeting operation.", "保存设置不会测试密钥或产生费用。只有确认会议操作后才会发送云端请求。")}
           </p>
         </form>
       </section>
@@ -391,32 +444,26 @@ export function Settings() {
         <section className="settings-panel">
           <div className="panel-title">
             <HardDrive size={20} />
-            <h2>Local storage</h2>
+            <h2>{t("Local storage", "本地存储")}</h2>
           </div>
-          <p>{usage}</p>
+          <p>{translateMessage(usage, uiLanguage)}</p>
           <p className="muted">
-            Meetings are saved in this browser, on this device. Clearing site
-            data removes them. A different device or hostname has a separate
-            library.
+            {t("Meetings are saved in this browser, on this device. Clearing site data removes them. A different device or hostname has a separate library.", "会议保存在此设备的浏览器中。清除网站数据会删除这些会议。其他设备或域名使用独立的会议库。")}
           </p>
           <button className="button secondary" onClick={() => void persist()}>
-            Request persistent storage
+            {t("Request persistent storage", "请求持久化存储")}
           </button>
         </section>
       </div>
       {notice && (
         <div className="notice" role="status">
-          {notice}
+          {translateMessage(notice, uiLanguage)}
         </div>
       )}
       <section className="settings-panel">
-        <h2>About this workspace</h2>
+        <h2>{t("About this workspace", "关于此工作空间")}</h2>
         <p className="muted">
-          Browser-first, offline review, and bring-your-own keys. Cloud
-          processing needs a connection and an open page. Supported uploads are
-          stored up to 50 MiB; cloud uploads are limited to 25 MB. Longer
-          recordings may need an externally prepared transcript. Live provider
-          quality and physical-phone validation are tracked separately.
+          {t("Browser-first, offline review, and bring-your-own keys. Cloud processing needs a connection and an open page. Supported uploads are stored up to 50 MiB; cloud uploads are limited to 25 MB. Longer recordings may need an externally prepared transcript. Live provider quality and physical-phone validation are tracked separately.", "浏览器优先，支持离线审阅并使用自己的密钥。云端处理需要网络并保持页面打开。本地录音上限为 50 MiB，云端上传上限为 25 MB。较长录音可能需要外部准备的转录。真实服务商质量与实体手机验证另行跟踪。")}
         </p>
         <a
           className="text-button"
@@ -424,10 +471,10 @@ export function Settings() {
           target="_blank"
           rel="noreferrer"
         >
-          Source & verification notes
+          {t("Source & verification notes", "源代码与验证记录")}
           <ExternalLink size={15} />
         </a>
-        <p className="small muted">Build {__BUILD_ID__}</p>
+        <p className="small muted">{t("Build", "构建版本")} {__BUILD_ID__}</p>
       </section>
     </>
   );

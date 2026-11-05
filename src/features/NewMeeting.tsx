@@ -10,6 +10,8 @@ import {
 import { saveMeeting } from "../storage/repository";
 import { inspectAudio } from "../audio/files";
 import { Modal } from "../components/ui";
+import { useUiLanguage } from "../ui-language";
+import { translateMessage } from "../ui-messages";
 export function NewMeeting({
   onClose,
   onCreated,
@@ -19,6 +21,8 @@ export function NewMeeting({
   onCreated: (m: Meeting) => void;
   onError: (s: string) => void;
 }) {
+  const language = useUiLanguage();
+  const t = (en: string, zh: string) => language === "zh-CN" ? zh : en;
   const [file, setFile] = useState<File>(),
     [transcript, setTranscript] = useState(""),
     [error, setError] = useState(""),
@@ -62,13 +66,13 @@ export function NewMeeting({
         const info = await inspectAudio(file);
         if (m.audio && m.audio.hash !== info.hash)
           throw new Error(
-            "This recording does not match the imported transcript's source. Use its original recording or create a separate meeting.",
+            t("This recording does not match the imported transcript's source. Use its original recording or create a separate meeting.", "录音与导入转录的来源不符。请使用原录音或另建会议。"),
           );
         if (
           !m.audio &&
           m.segments.some((s) => s.start !== null) &&
           !confirm(
-            "Confirm this is the original recording for the imported timestamps. Verify playback before relying on them.",
+            t("Confirm this is the original recording for the imported timestamps. Verify playback before relying on them.", "请确认这是导入时间戳对应的原始录音，并在使用前验证播放。"),
           )
         )
           return;
@@ -78,7 +82,7 @@ export function NewMeeting({
       onCreated(saved);
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "The meeting could not be saved.";
+        err instanceof Error ? err.message : t("The meeting could not be saved.", "无法保存会议。");
       setError(message);
       onError("");
     } finally {
@@ -87,33 +91,33 @@ export function NewMeeting({
   }
   return (
     <Modal
-      title="Make space for a new meeting"
+      title={t("Make space for a new meeting", "创建新会议")}
       onClose={() => {
         if (!busy) onClose();
       }}
     >
       <form onSubmit={submit} className="modal-body">
         <p className="muted">
-          A recording, a transcript, or just a title to get started.
+          {t("A recording, a transcript, or just a title to get started.", "从录音、转录或会议标题开始。")}
         </p>
         {error && (
           <div className="notice danger" role="alert">
-            {error}
+            {translateMessage(error, language)}
           </div>
         )}
         <label>
-          Meeting title
+          {t("Meeting title", "会议标题")}
           <input
             name="title"
             required
             maxLength={160}
-            placeholder="e.g. ERP workflow discovery"
+            placeholder={t("e.g. ERP workflow discovery", "例如：ERP 工作流程讨论")}
             autoFocus
           />
         </label>
         <div className="form-row">
           <label>
-            Date
+            {t("Date", "日期")}
             <input
               type="date"
               name="date"
@@ -122,7 +126,7 @@ export function NewMeeting({
             />
           </label>
           <label>
-            Timezone
+            {t("Timezone", "时区")}
             <input
               name="timezone"
               required
@@ -134,30 +138,30 @@ export function NewMeeting({
         </div>
         <label className={`upload-zone ${file ? "has-file" : ""}`}>
           <span>{file ? <Check size={25} /> : <Upload size={25} />}</span>
-          <strong>{file ? file.name : "Drop into a clearer workflow"}</strong>
+          <strong>{file ? file.name : t("Drop into a clearer workflow", "添加会议录音")}</strong>
           <small>
             {file
-              ? `${(file.size / 1024 / 1024).toFixed(1)} MB · stays on this device until you confirm`
-              : "Choose an audio recording · up to 50 MB"}
+              ? `${(file.size / 1024 / 1024).toFixed(1)} MB · ${t("stays on this device until you confirm", "确认发送前保留在本设备")}`
+              : t("Choose an audio recording · up to 50 MB", "选择录音 · 最大 50 MB")}
           </small>
           <input
-            aria-label="Audio recording"
+            aria-label={t("Audio recording", "会议录音")}
             type="file"
             accept="audio/*,.mp4,.m4a,.webm,.flac"
             onChange={(e) => setFile(e.target.files?.[0])}
           />
           <span className="button secondary compact">
             <FileAudio size={15} />
-            {file ? "Change recording" : "Browse files"}
+            {file ? t("Change recording", "更换录音") : t("Browse files", "浏览文件")}
           </span>
         </label>
         <details>
           <summary>
             <FileText size={16} />
-            Start from a transcript instead
+            {t("Start from a transcript instead", "使用已有转录")}
           </summary>
           <label className="text-file">
-            Import TXT or a Meeting Memo JSON file
+            {t("Import TXT or a Meeting Memo JSON file", "导入 TXT 或 Meeting Memo JSON 文件")}
             <input
               type="file"
               accept=".txt,.json"
@@ -165,7 +169,7 @@ export function NewMeeting({
                 const f = e.target.files?.[0];
                 if (!f) return;
                 if (f.size > 2_000_000) {
-                  setError("Transcript import is limited to 2 MB.");
+                  setError(t("Transcript import is limited to 2 MB.", "导入的转录不能超过 2 MB。"));
                   return;
                 }
                 setTranscript(await f.text());
@@ -173,30 +177,28 @@ export function NewMeeting({
             />
           </label>
           <label>
-            Transcript
+            {t("Transcript", "转录")}
             <textarea
               rows={5}
               maxLength={2_000_000}
               value={transcript}
               placeholder={
-                "Jamie: What should we review?\nAlex: The inventory workflow."
+                t("Jamie: What should we review?\nAlex: The inventory workflow.", "小明：我们需要讨论什么？\n小华：库存工作流程。")
               }
               onChange={(e) => setTranscript(e.target.value)}
             />
           </label>
           <p className="small muted">
-            JSON imports transcript evidence only; use Restore backup to retain
-            notes. Names are unconfirmed. Plain text has no audio timing;
-            playback links are only created for real timed evidence.
+            {t("JSON imports transcript evidence only; use Restore backup to retain notes. Names are unconfirmed. Plain text has no audio timing; playback links are only created for real timed evidence.", "JSON 仅导入转录证据；如需保留笔记，请使用恢复备份。姓名尚未确认。纯文本没有音频时间戳；只有真实带时间的证据才会生成播放链接。")}
           </p>
         </details>
         <details>
           <summary>
-            Meeting context <span className="small muted">optional</span>
+            {t("Meeting context", "会议背景")} <span className="small muted">{t("optional", "可选")}</span>
           </summary>
           <div className="form-row">
             <label>
-              Languages
+              {t("Languages", "会议语言")}
               <input
                 name="languages"
                 defaultValue="Chinese, English"
@@ -204,15 +206,15 @@ export function NewMeeting({
               />
             </label>
             <label>
-              Meeting type
+              {t("Meeting type", "会议类型")}
               <select name="kind">
-                <option value="general">General meeting</option>
-                <option value="erp">ERP discovery</option>
+                <option value="general">{t("General meeting", "一般会议")}</option>
+                <option value="erp">{t("ERP discovery", "ERP 需求讨论")}</option>
               </select>
             </label>
           </div>
           <label>
-            Attendees
+            {t("Attendees", "参会者")}
             <input
               name="attendees"
               placeholder="Jamie, Alex"
@@ -220,12 +222,12 @@ export function NewMeeting({
             />
           </label>
           <label>
-            Terms & context
+            {t("Terms & context", "术语与背景")}
             <textarea
               name="glossary"
               rows={2}
               maxLength={2000}
-              placeholder="Product names, ERP modules, acronyms…"
+              placeholder={t("Product names, ERP modules, acronyms…", "产品名称、ERP 模块、缩略词…")}
             />
           </label>
         </details>
@@ -236,15 +238,15 @@ export function NewMeeting({
             onClick={onClose}
             disabled={busy}
           >
-            Cancel
+            {t("Cancel", "取消")}
           </button>
           <button className="button primary" disabled={busy} type="submit">
             <Plus size={17} />
-            {busy ? "Saving locally…" : "Create meeting"}
+            {busy ? t("Saving locally…", "正在保存到本地…") : t("Create meeting", "创建会议")}
           </button>
         </div>
         <p className="small muted center">
-          No AI request is made when you create a meeting.
+          {t("No AI request is made when you create a meeting.", "创建会议不会发送 AI 请求。")}
         </p>
       </form>
     </Modal>

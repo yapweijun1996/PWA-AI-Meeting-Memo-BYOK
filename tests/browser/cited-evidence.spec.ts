@@ -1,0 +1,57 @@
+import { expect, test } from "@playwright/test";
+import { sampleMeeting } from "../../src/domain/model";
+import AxeBuilder from "@axe-core/playwright";
+
+test.use({ serviceWorkers: "block" });
+
+test("cited revisions can be read together without claiming semantic verification", async ({ page }) => {
+  const meeting = sampleMeeting();
+  const [first, second] = meeting.segments;
+  meeting.history.push(structuredClone(first));
+  meeting.segments[0] = { ...first, revision: first.revision + 1, text: "A later human correction.", parents: [`${first.id}:${first.revision}`] };
+  meeting.revision += 1;
+  const item = { id: crypto.randomUUID(), type: "summary" as const, text: "A hypothetical 30% increase.", ownerId: null, dueDate: null, dueOriginal: null, sources: [{ id: first.id, revision: first.revision }, { id: second.id, revision: second.revision }], review: "pending" as const };
+  meeting.memos.push({ id: crypto.randomUUID(), model: "synthetic", createdAt: new Date().toISOString(), sourceRevision: meeting.revision, items: [item], originalItems: [structuredClone(item)] });
+  await page.goto("/PWA-AI-Meeting-Memo-BYOK/");
+  await expect(page.getByRole("heading", { name: "Meeting library 0" })).toBeVisible();
+  await expect(page.getByText("Opening local library…")).toHaveCount(0);
+  await page.evaluate(async (value) => new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open("meeting-memo-byok-v1");
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const tx = db.transaction("meetings", "readwrite");
+      tx.objectStore("meetings").put(value);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => reject(tx.error);
+    };
+  }), meeting);
+  await page.goto(`/PWA-AI-Meeting-Memo-BYOK/#/meetings/${meeting.id}`);
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  const article = page.locator(".memo-item").first();
+  await expect(article.getByText("pending", { exact: true })).toBeVisible();
+  await article.getByText("Read cited passages together").click();
+  await expect(article.getByText(/A valid citation does not prove/)).toBeVisible();
+  const cited = article.locator(".cited-evidence-text button");
+  await expect(cited).toHaveCount(2);
+  await expect(cited.nth(0)).toHaveText(first.text);
+  await expect(cited.nth(1)).toHaveText(second.text);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze()).violations).toEqual([]);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await cited.nth(0).click();
+  await expect(page.getByRole("dialog").locator(".evidence-text")).toHaveText(first.text);
+  await page.getByRole("dialog").getByRole("button", { name: "Close dialog" }).click();
+  await expect(article.getByLabel("summary note")).toHaveValue("A hypothetical 30% increase.");
+  await expect(article.getByText("pending", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Settings & API keys" }).click();
+  await page.getByLabel("Display language / 显示语言").selectOption("zh-CN");
+  await page.getByRole("button", { name: "保存设置" }).click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+  await page.evaluate((id) => { location.hash = `#/meetings/${id}`; }, meeting.id);
+  await page.getByRole("tab", { name: /会议笔记/ }).click();
+  await page.getByText("一起查看引用段落").click();
+  await expect(page.getByText(/引用有效不代表笔记内容有证据支持/)).toBeVisible();
+  await expect(page.locator(".cited-evidence-text button").first()).toHaveText(first.text);
+});
