@@ -1764,17 +1764,68 @@ details[open] > summary {
 .has-player {
   padding-bottom: 100px;
 }
-.spinner {
-  width: 17px;
-  height: 17px;
-  border: 2px solid #d5e0cb;
-  border-top-color: #638355;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
+.processing-card {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 18px;
+  padding: 18px 20px;
+  border: 1px solid #dce8d9;
+  border-radius: 12px;
+  background: #f0f6ed;
+  box-shadow: 0 2px 8px #32482b0a;
 }
-@keyframes spin {
+.processing-indicator {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 50%;
+  background: #dfeede;
+  color: #41694f;
+}
+.processing-indicator svg {
+  animation: processing-spin 1.1s linear infinite;
+}
+.processing-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  color: #405849;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.processing-copy strong {
+  color: #243a2d;
+  font-size: 14px;
+  font-weight: 600;
+}
+.processing-detail {
+  color: #5d6b56;
+  font-size: 11px;
+}
+@keyframes processing-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+@media (max-width: 600px) {
+  .processing-card {
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 12px;
+    padding: 16px;
+    align-items: start;
+  }
+  .processing-indicator {
+    width: 40px;
+    height: 40px;
+  }
+  .processing-card > button {
+    grid-column: 2;
+    justify-self: start;
+    min-height: 44px;
   }
 }
 @media (min-width: 1600px) {

@@ -7,6 +7,7 @@ import {
   Download,
   FileText,
   History,
+  LoaderCircle,
   Pause,
   Play,
   Plus,
@@ -197,7 +198,7 @@ export function MeetingWorkspace({
     const stage = confirmStage;
     setConfirmStage(undefined);
     setProcessing(true);
-    setNotice("Request submitted. Keep this page open.");
+    setNotice("");
     try {
       const completed = await runJob(m, stage);
       onUpdate(completed);
@@ -414,7 +415,7 @@ export function MeetingWorkspace({
           </button>
         </div>
       </div>
-      {notice && (
+      {notice && !processing && (
         <div className="notice" role="status">
           {notice}
         </div>
@@ -443,19 +444,26 @@ export function MeetingWorkspace({
         </div>
       )}
       {processing && (
-        <div className="notice update" role="status">
-          <span className="spinner" />
-          <span>
-            Processing with your provider. Completed results are saved locally.
-            Keep this page open.
+        <section className="processing-card" aria-label="Processing request">
+          <span className="processing-indicator" aria-hidden="true">
+            <LoaderCircle size={22} strokeWidth={2} />
           </span>
+          <div className="processing-copy" role="status" aria-live="polite">
+            <strong>Processing your request</strong>
+            <span>
+              Keep this page open. Completed results are saved to this device.
+            </span>
+            <span className="processing-detail">
+              Sending or waiting for your provider · Time depends on the request
+            </span>
+          </div>
           <button
             className="button secondary compact"
             onClick={cancelProcessing}
           >
             Stop waiting
           </button>
-        </div>
+        </section>
       )}
       <div className="workspace-tabs" role="tablist" aria-label="Meeting views">
         {[

@@ -681,3 +681,69 @@ test("default OpenAI speech and selected OpenRouter memo use their own model and
   expect(speechCalls).toBe(1);
   expect(memoCalls).toBe(1);
 });
+
+test("processing indicator stays bounded on desktop and mobile and supports reduced motion", async ({
+  page,
+}) => {
+  let requests = 0;
+  await page.route("https://api.openai.com/v1/audio/transcriptions", () => {
+    requests++;
+  });
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  await page.goto(base);
+  await create(page);
+  await page
+    .getByLabel("Attach audio", { exact: true })
+    .setInputFiles({
+      name: "test.wav",
+      mimeType: "audio/wav",
+      buffer: Buffer.from("synthetic audio"),
+    });
+  const hash = new URL(page.url()).hash;
+  await page.getByRole("link", { name: "Settings & API keys" }).click();
+  await page
+    .getByLabel("OpenAI API key", { exact: true })
+    .fill("synthetic-test-only");
+  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.evaluate((value) => {
+    location.hash = value;
+  }, hash);
+  await page.getByRole("button", { name: "Transcribe", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm and send" }).click();
+  await expect.poll(() => requests).toBe(1);
+  const card = page.getByRole("region", { name: "Processing request" });
+  const indicator = card.locator(".processing-indicator");
+  await expect(card.getByRole("status")).toContainText(
+    "Processing your request",
+  );
+  await expect(card.getByRole("status")).toContainText("Keep this page open");
+  await expect(
+    page.getByText("Request submitted. Keep this page open."),
+  ).toHaveCount(0);
+  for (const width of [1920, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const indicatorBox = await indicator.boundingBox(),
+      cardBox = await card.boundingBox();
+    expect(indicatorBox).not.toBeNull();
+    expect(cardBox).not.toBeNull();
+    expect(indicatorBox!.width).toBeLessThanOrEqual(44);
+    expect(indicatorBox!.height).toBeLessThanOrEqual(44);
+    expect(indicatorBox!.x).toBeGreaterThanOrEqual(cardBox!.x);
+    expect(indicatorBox!.x + indicatorBox!.width).toBeLessThanOrEqual(
+      cardBox!.x + cardBox!.width,
+    );
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await expect(
+      card.getByRole("button", { name: "Stop waiting" }),
+    ).toBeVisible();
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(indicator.locator("svg")).toHaveCSS("animation-name", "none");
+  await card.getByRole("button", { name: "Stop waiting" }).click();
+  await expect(page.getByRole("alert")).toContainText("may have been charged");
+  expect(requests).toBe(1);
+});
