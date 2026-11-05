@@ -692,13 +692,11 @@ test("processing indicator stays bounded on desktop and mobile and supports redu
   await page.setViewportSize({ width: 1920, height: 1000 });
   await page.goto(base);
   await create(page);
-  await page
-    .getByLabel("Attach audio", { exact: true })
-    .setInputFiles({
-      name: "test.wav",
-      mimeType: "audio/wav",
-      buffer: Buffer.from("synthetic audio"),
-    });
+  await page.getByLabel("Attach audio", { exact: true }).setInputFiles({
+    name: "test.wav",
+    mimeType: "audio/wav",
+    buffer: Buffer.from("synthetic audio"),
+  });
   const hash = new URL(page.url()).hash;
   await page.getByRole("link", { name: "Settings & API keys" }).click();
   await page
@@ -746,4 +744,120 @@ test("processing indicator stays bounded on desktop and mobile and supports redu
   await card.getByRole("button", { name: "Stop waiting" }).click();
   await expect(page.getByRole("alert")).toContainText("may have been charged");
   expect(requests).toBe(1);
+});
+
+test("safe error guidance explains a provider duration rejection without exposing response data", async ({
+  page,
+}) => {
+  let calls = 0;
+  await page.route(
+    "https://api.openai.com/v1/audio/transcriptions",
+    async (route) => {
+      calls++;
+      await route.fulfill({
+        status: 400,
+        headers: { "Access-Control-Allow-Origin": "*" },
+        json: {
+          error: {
+            message:
+              "audio duration 1830 seconds is longer than 1400 seconds; private-provider-detail",
+            code: "invalid_value",
+            param: null,
+          },
+        },
+      });
+    },
+  );
+  await page.goto(base);
+  await create(page);
+  await page.getByLabel("Attach audio", { exact: true }).setInputFiles({
+    name: "test.wav",
+    mimeType: "audio/wav",
+    buffer: Buffer.from("synthetic audio"),
+  });
+  const hash = new URL(page.url()).hash;
+  await page.getByRole("link", { name: "Settings & API keys" }).click();
+  await page
+    .getByLabel("OpenAI API key", { exact: true })
+    .fill("synthetic-test-only");
+  await page
+    .getByLabel("Transcription model ID")
+    .fill("gpt-4o-transcribe-diarize");
+  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.evaluate((value) => {
+    location.hash = value;
+  }, hash);
+  await page.getByRole("button", { name: "Transcribe", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm and send" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "duration or length limit",
+  );
+  await expect(page.getByRole("alert")).not.toContainText(
+    "private-provider-detail",
+  );
+  await page.getByText("Processing history", { exact: false }).click();
+  await expect(page.getByText(/billing: possibly charged/)).toBeVisible();
+  await page.reload();
+  await page.getByText("Processing history", { exact: false }).click();
+  await expect(page.getByText(/duration or length limit/)).toBeVisible();
+  await expect(page.locator("body")).not.toContainText(
+    "private-provider-detail",
+  );
+  expect(calls).toBe(1);
+});
+
+test("long OpenAI diarization shows an advisory before a paid submission", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLMediaElement.prototype, "duration", {
+      configurable: true,
+      get: () => 1500,
+    });
+  });
+  let calls = 0;
+  await page.route("https://api.openai.com/v1/audio/transcriptions", () => {
+    calls++;
+  });
+  await page.goto(base);
+  await create(page);
+  const wav = Buffer.alloc(32044);
+  wav.write("RIFF");
+  wav.writeUInt32LE(32036, 4);
+  wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(16000, 24);
+  wav.writeUInt32LE(32000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(32000, 40);
+  await page
+    .getByLabel("Attach audio", { exact: true })
+    .setInputFiles({ name: "test.wav", mimeType: "audio/wav", buffer: wav });
+  await expect(page.locator(".recording-info")).toContainText("25:00");
+  const hash = new URL(page.url()).hash;
+  await page.getByRole("link", { name: "Settings & API keys" }).click();
+  await page
+    .getByLabel("OpenAI API key", { exact: true })
+    .fill("synthetic-test-only");
+  await page
+    .getByLabel("Transcription model ID")
+    .fill("gpt-4o-transcribe-diarize");
+  await page.getByRole("button", { name: "Save session keys" }).click();
+  await page.evaluate((value) => {
+    location.hash = value;
+  }, hash);
+  await expect(page.locator(".recording-info")).toContainText("25:00");
+  await page.getByRole("button", { name: "Transcribe", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText(
+    "Some users have reported duration limits",
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Confirm and send" }),
+  ).toBeEnabled();
+  expect(calls).toBe(0);
 });

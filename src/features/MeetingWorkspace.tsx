@@ -1295,6 +1295,17 @@ export function MeetingWorkspace({
                 missing evidence stays unknown.
               </p>
             )}
+            {confirmStage === "speech" &&
+              getSelection("speech").provider === "openai" &&
+              getSelection("speech").model === "gpt-4o-transcribe-diarize" &&
+              duration > 1400 && (
+                <div className="notice sand">
+                  <span>
+                    Some users have reported duration limits for this model. A
+                    shorter recording may help if this request fails.
+                  </span>
+                </div>
+              )}
             {confirmStage === "speech" && m.segments.length > 0 && (
               <div className="notice sand">
                 A new transcription replaces the current view only if its source

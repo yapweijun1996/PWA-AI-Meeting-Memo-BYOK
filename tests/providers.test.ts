@@ -211,3 +211,89 @@ it("keeps word speaker evidence when a provider also returns unlabelled segments
   expect(result.speakers).toHaveLength(2);
   expect(result.segments).toHaveLength(2);
 });
+
+it("sends OpenAI diarization with the documented response format and automatic chunking", async () => {
+  const fetch = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        text: "Hello",
+        duration: 2,
+        segments: [{ text: "Hello", start: 0, end: 2, speaker: "A" }],
+      }),
+      { status: 200 },
+    ),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const result = await transcribe(
+    new Blob(["audio"], { type: "audio/mpeg" }),
+    "synthetic-test",
+    new AbortController().signal,
+    { provider: "openai", model: "gpt-4o-transcribe-diarize" },
+    "meeting.mp3",
+  );
+  const [url, options] = fetch.mock.calls[0];
+  expect(url).toBe("https://api.openai.com/v1/audio/transcriptions");
+  expect(options.body.get("model")).toBe("gpt-4o-transcribe-diarize");
+  expect(options.body.get("response_format")).toBe("diarized_json");
+  expect(options.body.get("chunking_strategy")).toBe("auto");
+  expect(options.body.get("file").name).toBe("meeting.mp3");
+  expect(result.segments[0]).toMatchObject({ text: "Hello", start: 0, end: 2 });
+  expect(result.speakers).toHaveLength(1);
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it("reports safe duration guidance from an error without exposing response data", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "Audio recording is too long; private-test-secret",
+            code: null,
+            param: null,
+          },
+        }),
+        { status: 400 },
+      ),
+    );
+  vi.stubGlobal("fetch", fetch);
+  try {
+    await transcribe(
+      new Blob(["audio"]),
+      "synthetic-test",
+      new AbortController().signal,
+    );
+    throw new Error("Expected provider rejection");
+  } catch (error) {
+    expect(error).toMatchObject({ submitted: true, uncertain: false });
+    expect(String(error)).toContain("duration or length limit");
+    expect(String(error)).not.toContain("private-test-secret");
+  }
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it("keeps an unknown 400 reason generic without leaking the response", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: "private-test-secret",
+            code: "invalid_request_error",
+          },
+        }),
+        { status: 400 },
+      ),
+    );
+  vi.stubGlobal("fetch", fetch);
+  await expect(
+    transcribe(
+      new Blob(["audio"]),
+      "synthetic-test",
+      new AbortController().signal,
+    ),
+  ).rejects.toThrow("exact reason was not available");
+  expect(fetch).toHaveBeenCalledTimes(1);
+});

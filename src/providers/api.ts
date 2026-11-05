@@ -19,6 +19,68 @@ export class ProviderError extends Error {
     super(message);
   }
 }
+// Provider error bodies may contain sensitive user data; consume only a bounded
+// prefix and expose fixed, non-sensitive guidance, never the raw response.
+async function providerErrorHint(response: Response): Promise<string> {
+  let body = "";
+  try {
+    const reader = response.body?.getReader();
+    if (reader) {
+      const decoder = new TextDecoder();
+      let bytes = 0;
+      while (bytes <= 16384) {
+        const part = await reader.read();
+        if (part.done) break;
+        bytes += part.value.byteLength;
+        if (bytes > 16384) {
+          void reader.cancel().catch(() => {});
+          return "";
+        }
+        body += decoder.decode(part.value, { stream: true });
+      }
+      body += decoder.decode();
+    }
+    const value: unknown = JSON.parse(body);
+    const parsed = z
+      .object({
+        error: z.object({
+          code: z.string().max(100).nullable().optional(),
+          param: z.string().max(100).nullable().optional(),
+          message: z.string().max(12000).optional(),
+        }),
+      })
+      .safeParse(value);
+    if (!parsed.success) return "";
+    const error = parsed.data.error,
+      code = error.code?.toLowerCase(),
+      param = error.param?.toLowerCase();
+    const message = error.message?.toLowerCase() ?? "";
+    if (code === "insufficient_quota")
+      return "The provider reports that the account quota or credits are exhausted.";
+    if (code === "model_not_found" || param === "model")
+      return "The provider rejected the model or account access. Check the selected model ID and access.";
+    if (
+      /(audio|recording|file).{0,80}(too long|maximum duration|duration limit|exceeds.{0,30}(duration|length)|longer than)/.test(
+        message,
+      ) ||
+      /(maximum duration|duration limit).{0,80}(audio|recording|file)/.test(
+        message,
+      )
+    )
+      return "The provider reports that the recording exceeds a duration or length limit. Try a shorter recording.";
+    if (
+      /(file|audio|payload).{0,80}(too large|maximum size|size limit|exceeds.{0,30}size)/.test(
+        message,
+      )
+    )
+      return "The provider reports that the audio file is too large. Try a smaller recording.";
+    if (param === "file")
+      return "The provider rejected the audio file. Check its format, encoding, size and duration.";
+  } catch {
+    // Missing, malformed, or interrupted error details retain a generic message.
+  }
+  return "";
+}
 async function post(
   url: string,
   key: string,
@@ -47,8 +109,19 @@ async function post(
   }
   if (!response.ok) {
     const uncertain = response.status >= 500 || response.status === 408;
+    const hint = uncertain ? "" : await providerErrorHint(response);
+    const fallback =
+      response.status === 400
+        ? "The provider rejected the request. Check the model and input; the exact reason was not available."
+        : response.status === 401
+          ? "The provider rejected authentication. Check the key for this provider."
+          : response.status === 403
+            ? "The provider denied access. Check account and model permissions."
+            : response.status === 429
+              ? "The provider returned a rate or quota limit. Check your account."
+              : "Check the provider account and request settings.";
     throw new ProviderError(
-      `Provider returned HTTP ${response.status}. ${uncertain ? "The outcome may be billable; review your account before retrying." : "Check your key, account access, quota, and input. No automatic retry was made."}`,
+      `Provider returned HTTP ${response.status}. ${uncertain ? "The outcome may be billable; review your account before retrying." : `${hint || fallback} No automatic retry was made.`}`,
       uncertain,
       false,
       true,
