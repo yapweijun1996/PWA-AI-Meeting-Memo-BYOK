@@ -1,6 +1,6 @@
 # Implementation tasks
 
-Updated: 2026-11-05. Current stage: browser beta implementation and local verification are complete for the current accounting and speaker-listening/source-video patch: 70 unit tests, 74 browser cases, two-engine PWA lifecycle checks, lint, typecheck, production build and artifact checks pass locally. Current local build is `93c325cceb45b7d3`; CI will rerun the full gates before publication. Full P0 acceptance still requires the user-run live API, annotated quality and physical-device gates below.
+Updated: 2026-11-05. Work stopped at the owner's request before PC shutdown. The previous candidate passed 70 unit tests and 74 browser cases locally; CI run [42004598184](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/42004598184) failed one Linux WebKit memo CAS check and skipped publication. The re-entrant memo blur-save fix passed focused mouse/touch checks in Chromium and WebKit; the corrected first-generation button fixture also passed both engines. Latest local build `22ed15693e8e28e4` passed build, lint, both-engine PWA lifecycle and artifact checks. Full CI verification of the fix and production API validation remain pending. No new paid API request or budget reservation occurred; protective reservations remain US$4.85. Resume with the pushed main checkpoint, inspect its CI result, and only perform production requests after explicit resumption. Physical-device and annotated-quality gates remain open.
 
 This file tracks execution. [Product requirements](docs/PRODUCT.md), [architecture](docs/ARCHITECTURE.md), [feasibility](docs/FEASIBILITY.md), [deployment](docs/DEPLOYMENT.md), and [the roadmap](docs/ROADMAP.md) define the detailed contracts. A checked task requires evidence, not just code or a proposed design.
 
@@ -180,12 +180,13 @@ These items are outside the first P0 release and must not become hidden prerequi
 
 ## Current next action and evidence
 
-The browser application and automatic Pages publication are implemented. The user chose to enter BYOK credentials in the finished website for live acceptance; development creates no provider key. Use a private, consented recording for that acceptance and keep recordings/keys out of Git and CI.
+The browser application and automatic Pages publication workflow are implemented; the current patch is blocked on the failed CI release gate above and has not been published. The user chose to enter BYOK credentials in the finished website for live acceptance; development creates no provider key. Use a private, consented recording for that acceptance and keep recordings/keys out of Git and CI.
 
 | Evidence | Current result |
 | --- | --- |
 | Design and implementation on `main` | Each completed task has its own committed/pushed checkpoint in [implementation evidence](docs/IMPLEMENTATION-LOG.md) and Git history |
-| Local checks | Current patch evidence: 70 unit tests, 74 browser cases, lint, typecheck, production build, two-engine PWA checks and artifact checks PASS locally. Build `93c325cceb45b7d3`; CI will rerun the full gates before publication. Exact scope and limitations are recorded in [validation](docs/VALIDATION.md) |
+| Local candidate checks | Previous candidate `93c325cceb45b7d3`: 70 unit tests, 74 browser cases, lint, typecheck, production build, two-engine PWA checks and artifact checks PASS locally. This evidence predates the CI CAS fix. |
+| Current CI release gate | [Run 42004598184](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/42004598184) FAIL: 73/74, Linux WebKit memo CAS fixture; publication skipped and no paid request. Focused guard coverage passes; fixture repair and full rerun remain pending. Exact scope and limitations are recorded in [validation](docs/VALIDATION.md) |
 | Active auto-deployment | [Trusted-main workflow](.github/workflows/pages.yml) checks before publishing only `dist/`; no provider keys are used |
 | Historical successful publication | [Run 41845407515](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41845407515), build `18cd59c`; served identity, HTTPS, scoped worker, hash refresh, synthetic storage and offline reload PASS in both engines. This is not the current patch. |
 | Historical update hardening | Stale-HTTP-cache regression fixed; [run 41847942972](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41847942972) published `6e0fcdf`; actual Chromium/WebKit upgrade, saved editor, old assets and new-build offline reload PASS. Current patch still needs publication. |

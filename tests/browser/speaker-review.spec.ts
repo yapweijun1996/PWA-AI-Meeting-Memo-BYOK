@@ -323,11 +323,10 @@ test("workspace actions and count labels explain their units", async ({ page }) 
   await expect(page.getByRole("tab", { name: /Speakers, \d+ speakers/ })).toBeVisible();
   await expect(page.getByRole("tab", { name: /Meeting notes, \d+ items/ })).toBeVisible();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
-  await expect(
-    page.getByText("Generating a new memo version creates a separate version and may incur a provider charge.", {
-      exact: false,
-    }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Generate meeting notes", exact: true })).toHaveAttribute(
+    "title",
+    "Creates a separate version; provider charges may apply.",
+  );
 });
 
 test("filename video suggestion does not load YouTube until the user watches", async ({ page }) => {

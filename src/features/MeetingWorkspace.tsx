@@ -145,6 +145,24 @@ export function MeetingWorkspace({
       /* preserve the last saved state and show feedback */
     }
   }
+  function memoInteractionActive(versionId: string, itemId: string) {
+    const key = reviewInteraction.current?.key;
+    return !!key && (key === `${versionId}:${itemId}` || key.startsWith(`${versionId}:${itemId}:`));
+  }
+  function persistMemoDraft(interactionKey: string, next: Meeting) {
+    // Disabling a focused editor during its first save can emit a second blur.
+    // Mark the field before starting the async CAS write so that re-entrant
+    // blur handlers do not submit the same stale revision a second time.
+    if (reviewInteraction.current?.key === interactionKey) return;
+    reviewInteraction.current = { key: interactionKey, phase: "committing" };
+    void persistQuietly(next).finally(() => {
+      if (
+        reviewInteraction.current?.key === interactionKey &&
+        reviewInteraction.current.phase === "committing"
+      )
+        reviewInteraction.current = undefined;
+    });
+  }
   function reviewMemoItem(
     versionId: string,
     itemId: string,
@@ -439,14 +457,6 @@ export function MeetingWorkspace({
             </small>
           </div>
         </div>
-        {m.segments.length > 0 && (
-          <p className="workspace-toolbar-note">
-            {t(
-              "Re-transcription may replace the current transcript only when the source is unchanged. Otherwise the result is saved in transcription history for review; previous text, corrections and evidence remain available.",
-              "只有来源未更改时，重新转录才可能替换当前转录。否则结果会保存到转录历史供审阅；之前的文字、修正和证据仍可用。",
-            )}
-          </p>
-        )}
         <div className="toolbar-actions">
           <label className="button secondary compact">
             <Upload size={15} />
@@ -461,6 +471,14 @@ export function MeetingWorkspace({
           </label>
           <button
             className="button primary compact"
+            title={
+              m.segments.length > 0
+                ? t(
+                    "Re-transcription keeps previous text, corrections and evidence in history.",
+                    "重新转录会将之前的文字、修正和证据保留在历史记录中。",
+                  )
+                : undefined
+            }
             onClick={() => setConfirmStage("speech")}
             disabled={locked || !url}
           >
@@ -815,15 +833,13 @@ export function MeetingWorkspace({
                   ? t(`${m.memos.length} saved version${m.memos.length === 1 ? "" : "s"} · every item starts with review`, `已保存 ${m.memos.length} 个版本 · 每一项都需要审阅`)
                   : t("A first draft, grounded in your transcript.", "根据转录生成的初稿。")}
               </p>
-              <p className="panel-note">
-                {t(
-                  "Generating a new memo version creates a separate version and may incur a provider charge. Previous versions and human edits stay saved.",
-                  "生成新的会议笔记会创建独立版本，可能产生服务商费用。之前的版本和人工修改都会保留。",
-                )}
-              </p>
             </div>
             <button
               className="button primary compact"
+              title={t(
+                "Creates a separate version; provider charges may apply.",
+                "创建独立版本；服务商可能收取费用。",
+              )}
               disabled={locked || !m.segments.length}
               onClick={() => setConfirmStage("memo")}
             >
@@ -906,10 +922,7 @@ export function MeetingWorkspace({
                       )}
                       disabled={locked}
                       onBlur={(e) => {
-                        if (
-                          reviewInteraction.current?.key ===
-                          `${memo.id}:${item.id}`
-                        )
+                        if (memoInteractionActive(memo.id, item.id))
                           return;
                         if (
                           e.relatedTarget instanceof Element &&
@@ -920,7 +933,7 @@ export function MeetingWorkspace({
                           e.target.value.trim() &&
                           e.target.value !== item.text
                         )
-                          void persistQuietly({
+                          persistMemoDraft(`${memo.id}:${item.id}:text`, {
                             ...m,
                             memos: m.memos.map((v) =>
                               v.id === memo.id
@@ -994,10 +1007,7 @@ export function MeetingWorkspace({
                             defaultValue={item.dueDate || ""}
                             disabled={locked}
                             onBlur={(e) => {
-                              if (
-                                reviewInteraction.current?.key ===
-                                `${memo.id}:${item.id}`
-                              )
+                              if (memoInteractionActive(memo.id, item.id))
                                 return;
                               if (
                                 e.relatedTarget instanceof Element &&
@@ -1005,7 +1015,7 @@ export function MeetingWorkspace({
                               )
                                 return;
                               if (e.target.value !== (item.dueDate || ""))
-                                void persistQuietly({
+                                persistMemoDraft(`${memo.id}:${item.id}:due`, {
                                   ...m,
                                   memos: m.memos.map((v) =>
                                     v.id === memo.id

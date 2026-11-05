@@ -1,5 +1,13 @@
 # Validation record
 
+## Shutdown checkpoint — 2026-11-05
+
+Stopped further testing and paid validation at the owner's request before PC shutdown. Commit `6582cb7` contains the speaker/video workspace, compact UI and accounting changes. Its CI run [42004598184](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/42004598184) passed 73/74 browser cases, failed Linux WebKit memo review with a version-conflict alert, and skipped publication.
+
+The checkpoint adds an item/field interaction guard before memo blur saves: disabling an editor may emit another blur, and the second stale-version write must be suppressed without weakening repository CAS. Focused production-build mouse and touch review checks passed in Chromium/WebKit (4 cases); a corrected first-generation button fixture passed both engines (2 cases). The earlier full local candidate passed 70 unit tests and 74 browser cases. Latest local build `22ed15693e8e28e4`, lint, two-engine PWA lifecycle and artifact checks passed. A complete CI run of the final fix is still required; no new deployed-version success is claimed here.
+
+No production smoke harness was executed, no new paid request or reservation occurred, and the protective ledger remains US$4.85. Resume by inspecting the pushed main checkpoint's CI, then explicitly resume production validation if desired. Recordings and runtime keys remain outside Git. Physical-device and independent diarization-quality gates remain open.
+
 Prior baseline date: 2026-11-04. Product: browser-first BYOK beta. Host used for local checks: Ubuntu 24.04 ARM64, Node 22.23.3, Playwright Chromium and WebKit. WebKit on Linux is not a physical iPhone.
 
 ## Authorized live API spike (2026-11-05)
@@ -181,13 +189,13 @@ Provider keys, provider/model selections and speech rate are saved locally by ex
 | --- | --- |
 | Lint and TypeScript | PASS on the implementation candidate |
 | Unit tests | PASS: the current patch run covers 70 tests, including schemas, separate generated memo originals, evidence revisions, undo, invalid source IDs, nullable fields, refusal/incomplete responses, HTTP rejection and billing separation, request limits, storage conflicts, deletion, backup validation, accounting summaries, speaker listening windows and YouTube reference parsing. |
-| Browser workflow | PASS: the current patch run covers 74 browser cases across Chromium and Windows WebKit, including real IndexedDB, correction, memo, export, recovery, settings, accounting, accessibility, speaker-stage and source-video flows. |
+| Browser workflow | PARTIAL: the previous candidate run covered 74 cases locally across Chromium and Windows WebKit, including real IndexedDB, correction, memo, export, recovery, settings, accounting, accessibility, speaker-stage and source-video flows. Release CI run [42004598184](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/42004598184) failed 73/74 in Linux WebKit on a memo CAS fixture; this local evidence is scoped to the pre-fix candidate. |
 | PWA update | PASS in both engines: waiting-worker prompt, explicit activation/reload, open-editor/active-request protection, saved draft and old asset preserved, unrelated cache retained, visible activation failure and forward recovery |
 | Accessibility | PASS automated axe WCAG A/AA library/settings/speaker checks; keyboard/focus and 390px navigation exercised; representative English desktop and Simplified Chinese 390px CSS-zoom QA passed with minimum measured contrast 5.32:1. This is not physical-device or assistive-technology certification |
 | Production artifact | PASS static-file/path/manifest checks and scan for known credential/test fixture patterns; no guarantee that scanning alone detects all secrets |
 | Dependency audit | PASS: zero reported production or development vulnerabilities in the checked lockfile |
 
-Current patch note (2026-11-05): the 70-unit run, 74 browser cases, lint, TypeScript, production build, two-engine PWA lifecycle checks and artifact checks passed locally. Build `93c325cceb45b7d3` includes the cache-write usage span. CI will rerun the full gates before publication; this local evidence still does not close the physical-device, screen-reader, authenticated production-origin or annotated-quality gates.
+Current patch note (2026-11-05): the previous candidate build `93c325cceb45b7d3` passed the 70-unit run, 74 browser cases, lint, TypeScript, production build, two-engine PWA lifecycle checks and artifact checks locally. Release CI run [42004598184](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/42004598184) failed 73/74 in Linux WebKit on a memo CAS fixture; Pages publication was skipped and no paid request was made. The re-entrant memo-save guard passes focused Chromium/WebKit CAS checks, but fixture-locator repair and a full CI rerun are pending. This does not close the physical-device, screen-reader, authenticated production-origin or annotated-quality gates.
 
 Browser cases use synthetic text/audio. The earlier baseline covered upload/checksum, speaker normalization, confirmation, correction, bulk assignment, merge/split/undo, historical source inspection, session-key clearing, explicit send confirmation, unknown billing, cancellation, backup/restore, offline reload, multi-tab conflicts, and injected quota failures. Injected quota failure tests error handling, not a measured device storage ceiling.
 
@@ -207,6 +215,7 @@ Live site: [Meeting Memo](https://yapweijun1996.github.io/PWA-AI-Meeting-Memo-BY
 - Live browser inspection at 2026-11-04 14:20 UTC: Chromium `156.0.8078.4` and Linux WebKit `27.2` both PASS HTTPS, manifest/icons, exact source/build identity, project worker scope, direct hash refresh, synthetic meeting persistence, offline reload, static-only scoped caches, 390px overflow check, and no unexpected external requests or page errors.
 - Successful update-fix publication: source `6e0fcdf02833d71a32805f06e7215f21ba4738a1`, [Actions run 41847942972](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41847942972), worker cache `2832c156fa84a29e`.
 - **Live N-to-N+1 PASS**, 2026-11-04 14:35 UTC: both Chromium `156.0.8078.4` and Linux WebKit `27.2` held `4417977` open with an unsaved editor throughout the next real deployment. Neither silently refreshed. After saving and explicitly activating, both loaded `6e0fcdf`, retained the corrected meeting, fetched the previous hashed JavaScript while offline, preserved an unrelated cache, and reloaded the new build offline.
+- **Current candidate release gate FAIL**, [run 42004598184](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/42004598184): 73/74 cases passed; Linux WebKit failed a memo CAS fixture. Publication was skipped. The current memo-save guard has focused local coverage, but the fixture repair and replacement CI run are pending. No paid provider request was made.
 
 These are recorded verification snapshots. Later task/documentation commits use the same pipeline; find the current complete source SHA under Settings and compare it with the successful main Actions run. Do not infer a current deployment solely from an older recorded run.
 
@@ -228,7 +237,7 @@ P1/P2 items such as microphone capture, full waveforms, encrypted backups, local
 
 | Area | Result and scope |
 | --- | --- |
-| Hosting and build identity | PASS clean Actions checks, trusted-main publication and served build/worker identities; PR permissions and failed-check gating verified from workflow structure |
+| Hosting and build identity | Historical publication and workflow checks PASS; current candidate run 42004598184 FAIL (73/74 Linux WebKit memo CAS), so the current patch is not published |
 | Privacy and keys | Earlier baseline: memory-only/session clearing; the user subsequently selected unencrypted local key persistence. Destination-specific mock headers, exported credential exclusion and static artifact checks remain applicable; shared-origin production acceptance NOT RUN |
 | Provider access and quality | Mock orchestration PASS; authenticated production CORS, valid account/model access, real accuracy and charges NOT RUN |
 | Recovery and billing | PASS simulated disconnect, incomplete body, timeout, cancellation, HTTP rejection and reload with no automatic resubmission; submitted/rejected requests retain unconfirmed billing separately from execution failure; real phone suspension and provider settlement NOT RUN |
@@ -241,7 +250,7 @@ P1/P2 items such as microphone capture, full waveforms, encrypted backups, local
 | Offline and worker scope | PASS local and live cached app shell/local meeting reload, project-only cache/worker scope and unrelated-cache retention |
 | Update lifecycle | PASS local two-engine N-to-N+1 prompt, explicit activation/progress, draft/request protection, old-client asset fallback, visible failure and forward recovery; live two-engine upgrade PASS; first-release schema v1 stayed compatible; destructive migration/revert NOT RUN and not introduced |
 | Responsive and navigation | PASS 390px layout, drawer, hash refresh, smart top bar and contextual scroll-to-top; physical landscape/keyboard and pinch gestures NOT RUN |
-| Accessibility | PASS automated library/settings axe A/AA and exercised keyboard/focus; full screen-reader certification NOT RUN |
+| Accessibility | PASS automated library/settings/speaker Axe WCAG A/AA, exercised keyboard/focus, and representative CSS-zoom contrast QA; full screen-reader certification and physical-device checks NOT RUN |
 | iOS status bar and safe areas | CSS viewport/safe-area and opaque light theme implemented; physical Safari/standalone inspection NOT RUN |
 | Theme chrome | PASS automated light-theme browser layout; dark theme N/A (not offered); device system chrome NOT RUN |
 
