@@ -9,7 +9,10 @@ async function load(dir) {
   for (const item of await readdir(dir, { withFileTypes: true })) {
     const p = path.join(dir, item.name);
     if (item.isDirectory()) await load(p);
-    else files.set(base + p.replace(/^dist\//, ""), await readFile(p));
+    else {
+      const relative = path.relative("dist", p).split(path.sep).join("/");
+      files.set(base + relative, await readFile(p));
+    }
   }
 }
 await load("dist");

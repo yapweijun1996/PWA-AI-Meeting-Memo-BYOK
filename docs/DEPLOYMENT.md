@@ -52,6 +52,8 @@ Use hash routing initially, such as `/PWA-AI-Meeting-Memo-BYOK/#/meetings/<id>`,
 
 Derive manifest `id`, `start_url`, and `scope` from that base. For the default deployment they are `/PWA-AI-Meeting-Memo-BYOK/`; resolve manifest icons under the same directory. Register the worker at `<base>sw.js` with `<base>` scope. A root `/sw.js` must not be introduced.
 
+Build and lifecycle-test scripts derive public asset paths relative to `dist/` and convert native filesystem separators to `/`. Precache URLs never include the build directory itself. The canonical URL list participates in cache identity, so a path-only change produces a new release cache. The artifact checker parses the generated list as JSON and requires canonical, unique, in-scope URLs matching every actual artifact file except the worker, including the app index. This prevents a Windows build from silently caching fallback HTML at incorrect `dist\\...` URLs.
+
 Test the built app with the trailing-slash project URL, direct hash links, reload, assets, manifest, installed launch, offline launch, and worker scope. If a dedicated hostname is later used at its root, change the base and plan a storage/identity migration.
 
 ## Credential and artifact rules
