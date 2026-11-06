@@ -1,5 +1,31 @@
 import type { Segment } from "./model";
 
+export type PlaybackFragment = {
+  id: string;
+  start: number | null;
+  end: number | null;
+  speakerIds: string[];
+  text: string;
+  untimed: boolean;
+};
+
+export function playbackFragment(segment: Segment): PlaybackFragment {
+  return {
+    id: segment.id,
+    start: segment.start,
+    end: segment.end,
+    speakerIds: [...segment.speakerIds],
+    text: segment.text,
+    untimed: !timed(segment),
+  };
+}
+
+export function fragmentsAtTime(fragments: PlaybackFragment[], position: number) {
+  return fragments.filter((fragment) => !fragment.untimed &&
+    fragment.start !== null && fragment.end !== null &&
+    position >= fragment.start && position < fragment.end);
+}
+
 export type PlaybackCaption = {
   id: string;
   start: number;
@@ -8,6 +34,7 @@ export type PlaybackCaption = {
   text: string;
   sourceSegmentIds: string[];
   sourceIntervals: Array<{ start: number; end: number }>;
+  fragments: PlaybackFragment[];
 };
 
 function timed(segment: Segment): segment is Segment & { start: number; end: number } {
@@ -51,6 +78,7 @@ export function buildPlaybackCaptions(
       previous.text = `${previous.text} ${segment.text}`.trim();
       previous.sourceSegmentIds.push(segment.id);
       previous.sourceIntervals.push({ start, end });
+      previous.fragments.push(playbackFragment(segment));
     } else {
       captions.push({
         id: segment.id,
@@ -60,6 +88,7 @@ export function buildPlaybackCaptions(
         text: segment.text,
         sourceSegmentIds: [segment.id],
         sourceIntervals: [{ start, end }],
+        fragments: [playbackFragment(segment)],
       });
     }
   }
@@ -68,9 +97,7 @@ export function buildPlaybackCaptions(
 
 export function captionsAtTime(captions: PlaybackCaption[], position: number) {
   return captions.filter(
-    (caption) => caption.sourceIntervals.some(
-      (interval) => position >= interval.start && position < interval.end,
-    ),
+    (caption) => fragmentsAtTime(caption.fragments, position).length > 0,
   );
 }
 

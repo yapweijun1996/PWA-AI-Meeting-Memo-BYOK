@@ -207,6 +207,8 @@ These items are outside the first P0 release and must not become hidden prerequi
 
 ## Current next action and evidence
 
+Fragment projection checkpoint (2026-11-06): `PlaybackCaption.fragments` now retains copied source IDs, nullable times, speaker IDs, text and explicit untimed status. Exact fragment matching uses half-open intervals and does not activate merged gaps. Local verification: 88 unit tests and TypeScript checks passed. The fragment task remains open until the new playback renderer and browser verification consume this metadata; audio-reactive and group-chat tasks are not yet complete.
+
 The browser application, bounded long-memo pipeline and automatic Pages publication workflow are implemented and published. The current verified application code is `ce8bd74`; subsequent owner-fixture/documentation checkpoints use the same trusted-main gate. Real provider, annotated quality and physical-device acceptance remain separate open gates. Use [the owner test pack](docs/RELEASE-ACCEPTANCE.md), including its synthetic full-backup generator; optional B01-B05 decisions are in [the evaluation](docs/FUTURE-EVALUATION.md). The connected production Chrome profile has neither provider key configured, and the sample directory has no MP3. The owner selected BYOK entry on the finished website; development does not create or transfer keys automatically. Use a private, consented recording and keep recordings/keys out of Git and CI.
 
 | Evidence | Current result |

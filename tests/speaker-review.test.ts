@@ -6,11 +6,38 @@ import {
   buildPlaybackCaptions,
   captionsAtTime,
   captionContextAtTime,
+  fragmentsAtTime,
+  playbackFragment,
   playbackCaptionWindow,
   playbackCaptionWindowStart,
 } from "../src/domain/playback";
 
 describe("speaker listening workspace", () => {
+  it("preserves exact fragments and never highlights a merged gap or an untimed fragment", () => {
+    const words = [segment("one", ["a"], 0, 0.4), segment("two", ["a"], 0.6, 1)];
+    const before = JSON.stringify(words);
+    const captions = buildPlaybackCaptions(words);
+    expect(captions).toHaveLength(1);
+    expect(captions[0].fragments.map((item) => item.text)).toEqual(["one", "two"]);
+    expect(fragmentsAtTime(captions[0].fragments, 0).map((item) => item.id)).toEqual([words[0].id]);
+    expect(fragmentsAtTime(captions[0].fragments, 0.4)).toEqual([]);
+    expect(fragmentsAtTime(captions[0].fragments, 0.6).map((item) => item.id)).toEqual([words[1].id]);
+    expect(fragmentsAtTime(captions[0].fragments, 1)).toEqual([]);
+    captions[0].fragments[0].speakerIds.push("b");
+    expect(JSON.stringify(words)).toBe(before);
+    const unknown = playbackFragment(segment("unknown", ["a"], null, null));
+    expect(unknown.untimed).toBe(true);
+    expect(fragmentsAtTime([unknown], 0)).toEqual([]);
+  });
+
+  it("retains complete sentence fragments and concurrent sources without inventing words", () => {
+    const sentence = segment("A complete sentence.", ["a"], 0, 2);
+    const overlap = segment("Reply", ["b"], 1, 3);
+    const captions = buildPlaybackCaptions([sentence, overlap]);
+    expect(captions.every((caption) => caption.fragments.length === 1)).toBe(true);
+    expect(captionsAtTime(captions, 1.5)).toHaveLength(2);
+    expect(captions[0].fragments[0].text).toBe(sentence.text);
+  });
   it("retains only short internal caption context without activating speech or altering source", () => {
     const source = [
       segment("first word", ["a"], 0, 0.8),
