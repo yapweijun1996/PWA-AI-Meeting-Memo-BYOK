@@ -718,9 +718,14 @@ test("playback mode exposes gap jump, direct speaker rename focus, video badge, 
   const nextSpeech = playback.getByRole("button", { name: /Next speech/ });
   await expect(nextSpeech).toBeVisible();
   await nextSpeech.click();
+  await expect.poll(() => page.locator("audio").evaluate((el) => (el as HTMLMediaElement).paused)).toBe(true);
   await expect
     .poll(() => page.locator("audio").evaluate((el) => (el as HTMLMediaElement).currentTime))
     .toBeGreaterThanOrEqual(0.1);
+
+  await playback.locator(".playback-caption-row").last().click();
+  await expect.poll(() => page.locator("audio").evaluate((el) => (el as HTMLMediaElement).paused)).toBe(true);
+  await expect(playback.locator('[data-fragment-active="true"]')).not.toHaveCount(0);
 
   // Verify WCAG 2.1 AA compliance inside Playback mode
   const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();

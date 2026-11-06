@@ -828,6 +828,14 @@ export function MeetingWorkspace({
             playing={playing}
             playbackStatus={playback.status}
             locked={locked}
+            onSeek={(position) => {
+              if (!player.current || !Number.isFinite(position)) return;
+              playUntil.current = null;
+              setSampleRange(null);
+              setAudioStopToken((value) => value + 1);
+              player.current.currentTime = Math.max(0, Math.min(position, duration || position));
+              playback.refresh();
+            }}
             onCue={cueRange}
             onPause={() => player.current?.pause()}
             onChange={async (fn) => {

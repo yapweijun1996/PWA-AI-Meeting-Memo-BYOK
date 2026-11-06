@@ -2893,6 +2893,11 @@ details[open] > summary {
 .playback-caption-list-item {
   min-width: 0;
 }
+.playback-caption-row [data-fragment-active="true"] {
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
 .playback-caption-row:hover,
 .playback-caption-row:focus-visible {
   border-color: var(--palette-136);

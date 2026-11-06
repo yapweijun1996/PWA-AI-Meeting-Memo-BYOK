@@ -8,6 +8,7 @@ import {
   captionsAtTime,
   captionContextAtTime,
   hasValidTimedSegments,
+  fragmentsAtTime,
   playbackCaptionWindowStart,
 } from "../domain/playback";
 import {
@@ -37,6 +38,7 @@ export function SpeakerReview({
   playbackStatus,
   locked,
   onCue,
+  onSeek,
   onPause,
   onChange,
   onMerge,
@@ -53,6 +55,7 @@ export function SpeakerReview({
   playbackStatus: PlaybackStatus;
   locked: boolean;
   onCue: (start: number, end: number) => void;
+  onSeek: (position: number) => void;
   onPause: () => void;
   onChange: (fn: (meeting: Meeting) => Meeting) => Promise<void>;
   onMerge: (speakerId: string) => void;
@@ -377,7 +380,7 @@ export function SpeakerReview({
           audioAvailable={audioAvailable}
           duration={duration}
           locked={locked}
-          onCue={onCue}
+          onSeek={onSeek}
           onPause={onPause}
           onSelectSpeaker={openSpeakerEditor}
           onPlaybackRangeChange={onPlaybackRangeChange}
@@ -556,7 +559,7 @@ function PlaybackMode({
   audioAvailable,
   duration,
   locked,
-  onCue,
+  onSeek,
   onPause,
   onSelectSpeaker,
   onPlaybackRangeChange,
@@ -570,7 +573,7 @@ function PlaybackMode({
   audioAvailable: boolean;
   duration: number;
   locked: boolean;
-  onCue: (start: number, end: number) => void;
+  onSeek: (position: number) => void;
   onPause: () => void;
   onSelectSpeaker: (speakerId: string) => void;
   onPlaybackRangeChange?: (range: { start: number; end: number } | null) => void;
@@ -742,7 +745,7 @@ function PlaybackMode({
                   <button
                     type="button"
                     className="button secondary compact"
-                    onClick={() => onCue(jumpTarget.start, jumpTarget.end)}
+                    onClick={() => onSeek(jumpTarget.start)}
                   >
                     <Play size={13} />
                     {nextCaption
@@ -901,11 +904,18 @@ function PlaybackMode({
                   type="button"
                 data-caption-id={caption.id}
                 className={`playback-caption-row${active ? " is-active" : ""}`}
-                onClick={() => onCue(caption.start, caption.end)}
+                onClick={() => onSeek(caption.start)}
                 disabled={!audioAvailable}
               >
                 <span className="playback-caption-time">{formatTime(caption.start)} · {names}</span>
-                <span>{caption.text}</span>
+                <span className={`caption-${captionSize}`}>
+                  {caption.fragments.map((fragment, index) => (
+                    <span key={fragment.id} data-fragment-id={fragment.id}
+                      data-fragment-active={fragmentsAtTime([fragment], position).length ? "true" : "false"}>
+                      {index > 0 ? " " : ""}{fragment.text}
+                    </span>
+                  ))}
+                </span>
                 </button>
               </div>
             );

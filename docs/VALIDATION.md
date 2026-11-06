@@ -1,5 +1,13 @@
 # Validation record
 
+## Fragment projection and state-preserving seek checkpoint — 2026-11-06
+
+The additive domain checkpoint `dcb2ef1` preserves copied fragment IDs, speaker IDs, nullable times and exact text without altering meeting/export schemas. Fragment matching uses half-open source intervals; merged gaps do not become speech. Local unit verification passed 88 tests, with lint and type checks passing.
+
+The follow-up renderer highlights actual fragments with non-color emphasis. Playback bubbles and gap navigation now seek without starting paused audio or imposing a sample end; bounded Naming/citation playback remains separate. All 26 speaker-review Chromium/WebKit browser cases, local build, artifact boundaries and both-engine PWA lifecycle checks passed. Publication must be read back before this checkpoint is described as deployed. Native playing-through-the-bubble-boundary acceptance remains pending.
+
+This is partial delivery of the group-chat plan. The full group-chat layout, Web Audio energy graph and its lifecycle/fallback tests remain unimplemented. No paid provider call or reservation was made; real-device, account/billing and annotated quality gates remain open.
+
 ## Core follow-up delivery — 2026-11-06
 
 Application source `ce8bd7456e3f7b51e4c79c299acc620ac53f7c0b` passed the complete trusted-main verification and publication in [run 42189291028](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/42189291028): 85 unit tests, all 102 Chromium/WebKit browser cases, lint/type/build, both-engine PWA lifecycle and artifact boundary. Worker identity is `ac6adadc1d7a2170`. Fresh isolated production readback confirmed the exact SHA, 47.75px of first memo text at 390px, no horizontal overflow and zero provider calls. This supersedes the failed layout publication attempts below without erasing them.
