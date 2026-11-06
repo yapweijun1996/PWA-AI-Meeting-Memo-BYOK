@@ -36,6 +36,8 @@ The E2E script must start a static preview server and shut it down, with Playwri
 
 The active workflow was copied from [the example](examples/github-pages.yml) after these prerequisites passed. It checks pull requests, builds on `main`, and publishes only successful trusted-main runs. Manual dispatch from other branches never deploys. The `github-pages` environment was rechecked through the API and permits only the `main` branch.
 
+The browser-dependency step rewrites only the Ubuntu runner's `azure.archive.ubuntu.com` entries to the official `archive.ubuntu.com` mirror before Playwright installs Chromium and WebKit system packages. It preserves the runner's signed suites, components, security source and the existing install command; it does not disable APT signature checks or bypass browser tests. This is an ephemeral CI-network workaround, not an application or deployment-host configuration.
+
 The example uses action commit pins taken from the official Vite deployment guidance and checked for existence against their official repositories on 2026-11-04. Review pin updates and transitive dependencies normally; a resolvable commit alone is not a security audit.
 
 ## Project path and navigation
