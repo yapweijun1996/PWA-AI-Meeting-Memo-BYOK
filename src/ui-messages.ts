@@ -1,5 +1,27 @@
 // Translate only application-owned fixed messages; never rewrite user content.
 const messages: Record<string, string> = {
+  "Memo input needs text.": "纪要输入需要文字。",
+  "A source passage cannot fit a bounded memo request.": "某个来源片段超过单次纪要请求限制。",
+  "This meeting needs more than eight extraction requests. No request was sent.": "此会议需要超过八次提取请求，尚未发送任何请求。",
+  "Meeting history has no capacity for the complete memo plan. Back up the meeting first.": "会议历史容量不足以保存完整纪要计划，请先备份。",
+  "The memo checkpoint would exceed the safe backup budget. No request was sent.": "纪要检查点将超过安全备份容量，尚未发送请求。",
+  "Extraction exceeds 8,000 characters. Results were not truncated; review the paid attempt.": "提取结果超过 8,000 字符。结果未被截断，请核对本次付费请求。",
+  "Synthesis input exceeds 80,000 characters. No synthesis request was sent.": "合成输入超过 80,000 字符，尚未发送合成请求。",
+  "The confirmed memo plan changed. Open the confirmation again.": "已确认的纪要计划发生改变，请重新打开确认窗口。",
+  "Review the previous paid outcome before confirming another attempt.": "再次确认前请先核对之前付费请求的结果。",
+  "This meeting changed or has an unfinished request. Reload before submitting.": "此会议已更改或有未完成请求，请重新加载后再提交。",
+  "Memo plan paused. Saved steps were retained.": "纪要计划已暂停，已保存的步骤得到保留。",
+  "Memo plan stopped. Review this attempt and provider billing before a new generation.": "纪要计划已停止，请先核对本次请求及服务商账单，再开始新生成。",
+  "Could not prepare the memo plan.": "无法准备纪要计划。",
+  "Add the selected provider key in Settings first.": "请先在设置中添加所选服务商的密钥。",
+  "Pipeline data requires meeting schema version 2.": "多阶段纪要需要会议数据格式版本 2。",
+  "Invalid memo pipeline checkpoint.": "纪要检查点无效。",
+  "Pipeline sources do not match meeting evidence.": "纪要计划的来源与会议证据不符。",
+  "Invalid pipeline source coverage.": "纪要计划的来源覆盖范围无效。",
+  "Invalid extraction source.": "提取引用的来源无效。",
+  "Invalid extraction quote.": "提取结果的原文引用无效。",
+  "Memo input exceeds 80,000 characters. No request was sent.": "纪要输入超过 80,000 字符，尚未发送请求。",
+
   "Local storage could not be opened. Check browser storage permissions; private mode may be temporary.": "无法打开本地存储。请检查浏览器存储权限；隐私模式中的数据可能是临时的。",
   "Settings could not be saved. Return to Settings and enter them again.": "无法保存设置。请返回设置并重新输入。",
   "This meeting is no longer available.": "此会议已不可用。",
@@ -113,6 +135,8 @@ const messages: Record<string, string> = {
 export function translateMessage(message: string, language: string): string {
   if (language !== "zh-CN") return message;
   if (Object.prototype.hasOwnProperty.call(messages, message)) return messages[message];
+  const step = /^(Memo step|Saved memo step) (\d+)\/(\d+)\.(?: Keep this page open\.)?$/.exec(message);
+  if (step) return `${step[1] === "Saved memo step" ? "已保存纪要步骤" : "纪要步骤"} ${step[2]}/${step[3]}。${step[1] === "Memo step" ? "请保持页面打开。" : ""}`;
   const key = /^(?:Add your|Enter your) (OpenAI|OpenRouter) key in Settings(?: first)?\.$/.exec(message);
   if (key) return `请先在设置中输入 ${key[1]} 密钥。`;
   const storage = /^(\d+\.\d) MB used · browser-managed storage$/.exec(message);

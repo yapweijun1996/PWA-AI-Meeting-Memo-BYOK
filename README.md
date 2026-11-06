@@ -37,7 +37,7 @@ Browser storage is not backup or synchronization. Export a full backup regularly
 - Notes default to OpenAI Responses with GPT-6 Luna. Both providers offer selectable model IDs; notes require structured-output support and are validated against source IDs. OpenRouter routes data to an upstream provider and their retention policies apply.
 - Provider-specific keys, selections and the speech rate persist in this browser after saving. The first update from an older version cannot recover keys that existed only in its page memory; enter and save them once. OpenRouter models and access vary by account. No provider call occurs until confirmation.
 - Local audio import is capped at 50 MiB; single-request transcription is capped at 25 MB and sent as the original container. No arbitrary byte chunking, full-file PCM conversion, or local model inference is advertised.
-- Memo input is capped at 80,000 serialized characters and output at 8,000 tokens. When needed, consecutive passages with the same ordered speaker assignments are grouped for transport, up to 20 passages per group. All text is retained and citations resolve back to original passage revisions; stored transcripts and timestamps stay intact. Inputs still above the limit are rejected before submission.
+- Each memo request is capped at 80,000 serialized characters and 8,000 output tokens. Inputs that fit retain the existing single-request path and lossless transport grouping. Longer transcripts can use a confirmed plan of at most eight extraction requests and one synthesis request. Each successful step is saved; interrupted/unknown attempts never resume automatically. Review prior billing and explicitly confirm a new paid attempt before retrying an unfinished step. Sources and generated originals remain available for human review. Oversized plans, extraction results or synthesis input stop without truncating text or silently adding requests.
 - Requests time out after nine minutes; this stops waiting, not necessarily remote processing or billing.
 - New memo versions preserve normalized generated items separately from human edits. Older backups without that snapshot still load, with the original explicitly unavailable. Update all open tabs before reviewing newly created memo data.
 - Charges use your provider account. Speech estimates require a known duration and a user-entered rate bound to the model, with a public pricing URL and checked date; otherwise cost is unknown. OpenRouter transcription costs returned in the response are shown as provider-reported amounts; missing amounts remain unknown. Usage and totals are not an invoice.
@@ -74,10 +74,14 @@ npm run check:artifact
 
 Provider browser tests block service workers and unhandled external requests while mocking responses. They exercise real IndexedDB, UI, and request orchestration; they do not test vendor accuracy. No development API key or `.env` file is needed.
 
+Meeting records now use schema v2; v1 backups remain readable. Older app versions may safely reject v2 data. Save drafts and update all open tabs before editing; prefer a forward fix over rolling back to a v1-only client. Backup/restore retains plan checkpoints without provider keys.
+
 ## Documentation
 
 | Document | Purpose |
 | --- | --- |
+| [Owner acceptance pack](docs/RELEASE-ACCEPTANCE.md) | Device, billing and annotated quality procedures |
+| [Optional capability evaluation](docs/FUTURE-EVALUATION.md) | B01?B05 decisions and future entry gates |
 | [Implementation tasks](task.md) | Completed checkpoints and remaining acceptance gates |
 | [Product requirements](docs/PRODUCT.md) | Workflow and P0/P1/P2 scope |
 | [Browser architecture](docs/ARCHITECTURE.md) | State ownership, evidence, jobs, and PWA lifecycle |

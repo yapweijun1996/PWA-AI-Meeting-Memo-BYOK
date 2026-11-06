@@ -123,6 +123,8 @@ Users accept, edit, or reject individual items and jump to transcript/audio evid
 
 The review screen can expand the cited revisions together in citation order and open each revision in the source inspector. Check the full claim against those passages: matching citation identifiers do not establish that the claim is supported. This view does not perform semantic fact-checking.
 
+Long transcripts may require a bounded plan of up to eight evidence-extraction requests plus one synthesis request. Before sending, show the full stage count, destination and known/unknown charge; one confirmation covers the remaining sequential steps. Save successful steps before proceeding, stop on every error and never automatically resume after reload. Explicit retry of a failed/unknown step requires a billing-review acknowledgement. Keep all source fragments and revision references; do not silently truncate or promise arbitrary-length support. Extraction and synthesis remain unverified model claims requiring human review. See the owner acceptance pack for real-data quality gates.
+
 ### 7. Export, back up, and delete
 
 Support human-readable Markdown/TXT and versioned JSON. A full meeting backup also carries audio or explicitly records its absence. Exported review state and unknowns remain visible. Print/PDF is a separate tested capability.

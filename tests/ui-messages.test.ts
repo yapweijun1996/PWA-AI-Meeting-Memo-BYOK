@@ -1,6 +1,12 @@
 import { expect, it } from "vitest";
 import { translateMessage } from "../src/ui-messages";
 
+it("long memo confirmation errors and saved-step status retain Chinese text", () => {
+  expect(translateMessage("Memo plan paused. Saved steps were retained.", "zh-CN")).toBe("纪要计划已暂停，已保存的步骤得到保留。");
+  expect(translateMessage("Saved memo step 2/3.", "zh-CN")).toBe("已保存纪要步骤 2/3。");
+  expect(translateMessage("Memo step 1/3. Keep this page open.", "zh-CN")).toBe("纪要步骤 1/3。请保持页面打开。");
+});
+
 it("translates known messages without changing unknown content", () => {
   const english = "This meeting changed in another tab. Reload it before saving; your unsaved text is still in this page.";
   expect(translateMessage(english, "en")).toBe(english);

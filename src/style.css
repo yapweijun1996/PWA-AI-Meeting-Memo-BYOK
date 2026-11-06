@@ -1,5 +1,16 @@
 :root {
-  /* Primitive palette; semantic tokens below are the shared public surface. */
+  --status-neutral-bg: var(--palette-31);
+  --status-neutral-text: var(--palette-32);
+  --status-green-bg: var(--palette-33);
+  --status-green-text: var(--palette-18);
+  --status-sand-bg: var(--palette-34);
+  --status-sand-text: var(--palette-32);
+  --status-light-bg: var(--palette-36);
+  --status-light-text: var(--palette-32);
+  --status-danger-bg: var(--palette-87);
+  --status-danger-text: var(--status-danger);
+
+  /* Palette primitives and semantic aliases share one authoritative scope. */
   --text-body: #26382f;
   --bg-app: #f7f8f5;
   --status-green: #385e45;
@@ -637,22 +648,22 @@ main {
   border-radius: 6px;
   line-height: 1.5;
   padding: 3px 8px;
-  background: var(--palette-31);
-  color: var(--palette-32);
+  background: var(--status-neutral-bg);
+  color: var(--status-neutral-text);
   white-space: nowrap;
 }
 .pill.green {
-  background: var(--palette-33);
-  color: var(--palette-18);
+  background: var(--status-green-bg);
+  color: var(--status-green-text);
 }
 .pill.sand {
-  background: var(--palette-34);
-  color: var(--palette-32);
+  background: var(--status-sand-bg);
+  color: var(--status-sand-text);
 }
 .pill.light {
   border: 1px solid var(--palette-35);
-  background: var(--palette-36);
-  color: var(--palette-32);
+  background: var(--status-light-bg);
+  color: var(--status-light-text);
   font-size: var(--text-xs);
   border-radius: 20px;
   padding: 4px 10px;
@@ -1424,6 +1435,12 @@ details[open] > summary {
 }
 .notice > span {
   flex: 1;
+}
+.memo-plan-progress {
+  flex-wrap: wrap;
+}
+.memo-plan-progress strong {
+  overflow-wrap: anywhere;
 }
 .notice.danger {
   background: var(--palette-87);
@@ -3510,13 +3527,20 @@ details[open] > summary {
     width: 60px;
   }
   .memo-version {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
   }
   .memo-version > span {
     display: none;
   }
   .memo-version select {
     max-width: 230px;
+    min-width: 0;
+    flex: 1;
+    font-size: var(--text-lg);
+  }
+  .memo-version label {
+    min-width: 0;
+    flex: 1;
   }
   /* Keep the first reviewed memo item above the fixed player on phones.
      This only tightens spacing; meeting context and every action remain. */

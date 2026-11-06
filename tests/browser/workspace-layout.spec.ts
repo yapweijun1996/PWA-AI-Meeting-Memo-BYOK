@@ -179,6 +179,7 @@ async function layoutMetrics(page: Page) {
         .filter((element) => element.getBoundingClientRect().right > innerWidth + 1)
         .map((element) => `${element.tagName}.${element.className}`),
       regionsFit: importantRegions.every((region) => region.right <= innerWidth + 1),
+      regions: importantRegions,
     };
   });
 }
@@ -225,9 +226,14 @@ for (const language of ["en", "zh-CN"] as const) {
     const metrics = await layoutMetrics(page);
     expect(metrics.documentWidth).toBeLessThanOrEqual(metrics.viewport.width + 1);
     expect(metrics.regionsFit).toBe(true);
-    expect(metrics.visibleMemo).toBeGreaterThanOrEqual(24);
+    expect(metrics.visibleMemo, JSON.stringify(metrics)).toBeGreaterThanOrEqual(24);
     expect(metrics.memo?.y).toBeLessThan(metrics.player?.y ?? 0);
     await expectWorkspaceActions(page, language);
+
+    // Different OS fallback fonts must not push the version selector onto a new row.
+    await page.addStyleTag({content: ":root { font-family: Arial, sans-serif; }"});
+    const fallback = await layoutMetrics(page);
+    expect(fallback.visibleMemo, JSON.stringify(fallback)).toBeGreaterThanOrEqual(24);
 
     await page.setViewportSize({ width: 320, height: 844 });
     await expect.poll(async () => {

@@ -22,6 +22,8 @@ export type MeetingAccountingSummary = {
 function sameAccounting(a: Job, b: Job) {
   return (
     a.stage === b.stage &&
+    a.pipelineId === b.pipelineId &&
+    a.stepIndex === b.stepIndex &&
     a.state === b.state &&
     a.billing === b.billing &&
     a.requestId === b.requestId &&

@@ -91,7 +91,7 @@ Requirements: [product](docs/PRODUCT.md#requested-preset-and-cost-visibility-pla
 - [x] Provide English and Simplified Chinese for the implemented preset, usage, cost, errors, unknown and accessible status text; narrow-layout and browser accessibility checks are recorded.
 - [x] Add focused synthetic coverage for fresh/upgraded settings, custom models, missing keys, no paid call on preset selection, independent credentials, zero/missing/malformed usage, cache counts, partial totals, old backups, failure/cancellation/timeout and no duplicate submission. Current official pricing remains documentation evidence, not a hard-coded account cap.
 - [ ] Validate provider billing reconciliation and current account/model behavior with the user’s keys on the finished deployed site; no automatic retry is permitted.
-- [ ] Continue the evidence-preserving long-recording path for recordings above the serialized input limit; current bounded compaction is validated, but arbitrary-length support is not claimed.
+- [x] Continue the evidence-preserving long-recording path above the serialized input limit with a bounded, confirmed extraction/synthesis pipeline, per-request checkpoints/accounting and reviewed recovery. Synthetic unit/browser/backup/source-revision coverage is recorded in [validation](docs/VALIDATION.md#bounded-long-memo-execution-and-acceptance-tools--2026-11-06). Real multi-stage provider and semantic acceptance remain open; arbitrary-length support and audio splitting are not claimed.
 
 ## Completed foundation
 
@@ -201,13 +201,13 @@ These items are outside the first P0 release and must not become hidden prerequi
 
 - [ ] B01 — Microphone capture with clearly documented sources and permissions.
 - [ ] B02 — Richer waveform, ERP templates, glossary, and additional browser-validated engines.
-- [ ] B03 — Evaluate optional encrypted backups and their recovery/key design.
-- [ ] B04 — Evaluate browser-local inference or an optional companion with explicit installation, authentication, and data ownership.
-- [ ] B05 — Evaluate live transcription/diarization, meeting-platform audio access, collaboration, and cross-device synchronization as separate scopes.
+- [x] B03 — Evaluate optional encrypted backups and their recovery/key design; design evaluation complete, implementation deferred. See [optional capability evaluation](docs/FUTURE-EVALUATION.md).
+- [x] B04 — Evaluate browser-local inference or an optional companion with explicit installation, authentication, and data ownership; evaluated and deferred pending measured device/quality evidence. No runtime added.
+- [x] B05 — Evaluate live transcription/diarization, meeting-platform audio access, collaboration, and cross-device synchronization as separate scopes; four distinct scopes assessed and deferred. No capability shipped.
 
 ## Current next action and evidence
 
-The browser application and automatic Pages publication workflow are implemented. Playback follow-up c692dc8 passed verification and publication in Actions run 42179825770. Real provider, annotated quality and physical-device acceptance remain separate open gates. The user chose to enter BYOK credentials in the finished website for live acceptance; development creates no provider key. Use a private, consented recording for that acceptance and keep recordings/keys out of Git and CI.
+The browser application and automatic Pages publication workflow are implemented. Playback follow-up c692dc8 passed verification and publication in Actions run 42179825770. Real provider, annotated quality and physical-device acceptance remain separate open gates. Remaining external acceptance uses [the owner test pack](docs/RELEASE-ACCEPTANCE.md); optional B01-B05 decisions are in [the evaluation](docs/FUTURE-EVALUATION.md). The user chose to enter BYOK credentials in the finished website for live acceptance; development creates no provider key. Use a private, consented recording for that acceptance and keep recordings/keys out of Git and CI.
 
 | Evidence | Current result |
 | --- | --- |
@@ -230,6 +230,6 @@ Remaining acceptance gates are deliberate and stay unchecked:
 | R07 | Physical iPhone/Android Safari/Chrome and installed-mode tests |
 | R08 | Complete release matrix, including the outstanding real provider and physical-device evidence |
 
-B01–B05 remain later work outside the first P0 scope. A deployed beta and passing mocked tests do not replace real speaker-aware product acceptance.
+B01-B05 remain optional beyond P0; B03-B05 checkmarks record design evaluations, not implementation. B01 and B02 remain unimplemented. A deployed beta and passing mocked tests do not replace real speaker-aware product acceptance.
 
 When starting work, confirm current repository state. When finishing a task, add the relevant commit or sanitized verification reference, update the checkbox, and identify any failed or unrun acceptance check. Keep detailed verification procedures in the linked documents rather than duplicating them here.

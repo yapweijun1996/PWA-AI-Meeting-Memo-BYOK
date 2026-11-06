@@ -1,20 +1,40 @@
+import {
+  runMemoPipeline,
+  pipelineActive,
+  cancelPipeline,
+} from "./memo-pipeline";
+import type { MemoPipeline } from "../providers/memo-plan";
+import type { Selection } from "../providers/credentials";
 import { id, type Meeting, type Job } from "../domain/model";
 import { replaceTranscript } from "../domain/operations";
 import { getMeeting, saveMeeting, getAudio } from "../storage/repository";
 import { generateMemo, transcribe, ProviderError } from "../providers/api";
-import { getKey, getSelection, getSpeechEstimate } from "../providers/credentials";
+import {
+  getKey,
+  getSelection,
+  getSpeechEstimate,
+} from "../providers/credentials";
 import { buildMemoInput } from "../providers/memo-input";
 let controller: AbortController | undefined;
 let activeMeetingId: string | undefined;
 export const isProcessingMeeting = (id: string) =>
-  !!controller && activeMeetingId === id;
-export const isProcessing = () => !!controller;
-export const cancelProcessing = () => controller?.abort();
+  (!!controller && activeMeetingId === id) || pipelineActive(id);
+export const isProcessing = () => !!controller || pipelineActive();
+export const cancelProcessing = () => {
+  controller?.abort();
+  cancelPipeline();
+};
 export async function runJob(
   m: Meeting,
   stage: Job["stage"],
+  confirmed?: {
+    selection: Selection;
+    plan?: MemoPipeline | null;
+    reviewedRetry?: boolean;
+    onCheckpoint?: (m: Meeting) => void;
+  },
 ): Promise<Meeting> {
-  if (controller)
+  if (isProcessing())
     throw new Error("Finish the current request before starting another.");
   if (m.jobs.some((j) => j.state === "in_flight"))
     throw new Error(
@@ -24,7 +44,15 @@ export async function runJob(
     throw new Error(
       "Meeting history limit reached. Back up this meeting and create a new one before further processing.",
     );
-  const selection = getSelection(stage);
+  const selection = confirmed?.selection ?? getSelection(stage);
+  if (stage === "memo" && confirmed?.plan)
+    return runMemoPipeline(
+      m,
+      selection,
+      confirmed.plan,
+      confirmed.reviewedRetry,
+      confirmed.onCheckpoint,
+    );
   const provider = selection.provider === "openai" ? "OpenAI" : "OpenRouter";
   const key = getKey(selection.provider);
   if (!key) throw new Error(`Add your ${provider} key in Settings first.`);
@@ -38,7 +66,8 @@ export async function runJob(
       throw new Error(
         "This meeting changed. Reload before starting a request.",
       );
-    const estimate = stage === "speech" ? getSpeechEstimate(m.audio?.duration) : null;
+    const estimate =
+      stage === "speech" ? getSpeechEstimate(m.audio?.duration) : null;
     const job: Job = {
       id: id(),
       stage,
@@ -52,7 +81,14 @@ export async function runJob(
       provider: selection.provider,
       model: selection.model,
       estimateUsd: estimate?.amount ?? null,
-      estimateDetails: estimate ? { rate: estimate.rate, seconds: estimate.seconds, source: estimate.source, date: estimate.date } : null,
+      estimateDetails: estimate
+        ? {
+            rate: estimate.rate,
+            seconds: estimate.seconds,
+            source: estimate.source,
+            date: estimate.date,
+          }
+        : null,
     };
     await saveMeeting({ ...m, jobs: [...m.jobs, job] });
     controller = new AbortController();
@@ -138,7 +174,10 @@ export async function runJob(
           ? {
               ...j,
               state: "completed",
-              billing: reportedCostUsd === null ? "possibly_charged" : "provider_reported",
+              billing:
+                reportedCostUsd === null
+                  ? "possibly_charged"
+                  : "provider_reported",
               requestId,
               usage: reportedUsage,
               reportedCostUsd,
@@ -171,13 +210,14 @@ export async function runJob(
                   reportedCostUsd,
                   requestId: memoRequestId,
                   state: failure.uncertain ? "outcome_unknown" : "failed",
-                  billing: reportedCostUsd !== null
-                    ? "provider_reported"
-                    : failure.uncertain || failure.charged
-                      ? "possibly_charged"
-                      : failure.submitted
+                  billing:
+                    reportedCostUsd !== null
+                      ? "provider_reported"
+                      : failure.uncertain || failure.charged
                         ? "possibly_charged"
-                        : "not_submitted",
+                        : failure.submitted
+                          ? "possibly_charged"
+                          : "not_submitted",
                   updatedAt: new Date().toISOString(),
                   message: failure.message,
                 }

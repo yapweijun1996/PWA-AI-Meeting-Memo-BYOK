@@ -100,17 +100,69 @@ export const JobSchema = z
       .nullable()
       .optional(),
     estimateUsd: z.number().nonnegative().nullable().optional(),
-    estimateDetails: z.object({ rate: z.number().finite().nonnegative(), seconds: z.number().finite().nonnegative(), source: z.string().min(1).max(300), date: z.iso.date() }).strict().nullable().optional(),
+    estimateDetails: z
+      .object({
+        rate: z.number().finite().nonnegative(),
+        seconds: z.number().finite().nonnegative(),
+        source: z.string().min(1).max(300),
+        date: z.iso.date(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
     provider: z.enum(["openai", "openrouter"]).optional(),
     model: z.string().min(1).max(100).optional(),
     reportedCostUsd: z.number().finite().nonnegative().nullable().optional(),
     message: z.string().max(1000),
     inputRevision: z.number().int().positive(),
+    pipelineId: key.optional(),
+    stepIndex: z.number().int().min(0).max(8).optional(),
+  })
+  .strict();
+const PipelineSnapshotSchema = SnapshotSchema.extend({
+  revision: z.number().int().positive(),
+  languages: z.string().max(100),
+  kind: z.enum(["general", "erp"]),
+  glossary: z.string().max(2000),
+}).strict();
+export const MemoPipelineSchema = z
+  .object({
+    id: key,
+    provider: z.enum(["openai", "openrouter"]),
+    model: z.string().min(1).max(100),
+    createdAt: z.string(),
+    sourceRevision: z.number().int().positive(),
+    snapshot: PipelineSnapshotSchema,
+    state: z.enum(["ready", "running", "paused", "blocked", "completed"]),
+    chunks: z.array(z.array(key).min(1).max(20000)).min(1).max(8),
+    results: z
+      .array(
+        z
+          .object({
+            items: z.array(MemoItemSchema).min(1).max(100),
+            quotes: z
+              .array(
+                z
+                  .object({
+                    id: key,
+                    revision: z.number().int().positive(),
+                    text: z.string().max(20000),
+                  })
+                  .strict(),
+              )
+              .max(10000),
+          })
+          .strict()
+          .nullable(),
+      )
+      .max(8),
+    memoId: key.nullable(),
   })
   .strict();
 export const MeetingSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.union([z.literal(1), z.literal(2)]),
+    memoPipelines: z.array(MemoPipelineSchema).max(30).optional(),
     version: z.number().int().nonnegative(),
     id: key,
     title: z.string().min(1).max(160),
@@ -217,7 +269,81 @@ export function validateMeeting(value: unknown): Meeting {
     )
   )
     throw new Error("Unresolved memo evidence");
-  return m;
+  if (m.schemaVersion === 1 && m.memoPipelines !== undefined)
+    throw new Error("Pipeline data requires meeting schema version 2.");
+  if (
+    new Set((m.memoPipelines ?? []).map((p) => p.id)).size !==
+    (m.memoPipelines?.length ?? 0)
+  )
+    throw new Error("Duplicate pipeline identity.");
+  for (const pipeline of m.memoPipelines ?? []) {
+    new Intl.DateTimeFormat("en", {
+      timeZone: pipeline.snapshot.timezone,
+    }).format();
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(pipeline.snapshot.date) ||
+      new Date(`${pipeline.snapshot.date}T12:00:00Z`)
+        .toISOString()
+        .slice(0, 10) !== pipeline.snapshot.date
+    )
+      throw new Error("Invalid pipeline meeting date.");
+    const labels = new Set(pipeline.snapshot.speakers.map((s) => s.id));
+    if (
+      labels.size !== pipeline.snapshot.speakers.length ||
+      pipeline.snapshot.segments.some((s) =>
+        s.speakerIds.some((id) => !labels.has(id)),
+      )
+    )
+      throw new Error("Invalid pipeline speaker reference.");
+    const captured = new Map(
+      pipeline.snapshot.segments.map((s) => [ref(s), s]),
+    );
+    if (
+      pipeline.snapshot.segments.some(
+        (s) => immutable.get(ref(s)) !== JSON.stringify(s),
+      )
+    )
+      throw new Error("Pipeline sources do not match meeting evidence.");
+    if (
+      pipeline.sourceRevision !== pipeline.snapshot.revision ||
+      pipeline.results.length !== pipeline.chunks.length
+    )
+      throw new Error("Invalid memo pipeline checkpoint.");
+    if (
+      pipeline.state === "completed" &&
+      (!pipeline.memoId ||
+        pipeline.results.some((r) => !r) ||
+        !m.memos.some(
+          (v) =>
+            v.id === pipeline.memoId &&
+            v.sourceRevision === pipeline.sourceRevision,
+        ))
+    )
+      throw new Error("Invalid completed memo pipeline.");
+    if (
+      new Set(pipeline.snapshot.segments.map((s) => s.id)).size !==
+      pipeline.snapshot.segments.length
+    )
+      throw new Error("Duplicate pipeline source ID.");
+    const core = pipeline.chunks.flat();
+    if (
+      core.length !== pipeline.snapshot.segments.length ||
+      core.some((v, i) => v !== pipeline.snapshot.segments[i].id)
+    )
+      throw new Error("Invalid pipeline source coverage.");
+    for (const result of pipeline.results) {
+      if (!result) continue;
+      if (JSON.stringify(result).length > 8000)
+        throw new Error("Pipeline extraction exceeds its limit.");
+      for (const item of result.items)
+        if (item.sources.some((s) => !captured.has(ref(s))))
+          throw new Error("Invalid extraction source.");
+      for (const quote of result.quotes)
+        if (captured.get(ref(quote))?.text !== quote.text)
+          throw new Error("Invalid extraction quote.");
+    }
+  }
+  return { ...m, schemaVersion: 2 };
 }
 export function createMeeting(
   values: Partial<

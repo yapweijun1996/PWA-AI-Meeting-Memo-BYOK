@@ -1,3 +1,6 @@
+import { planMemo, type MemoPipeline } from "../providers/memo-plan";
+import { resumablePipeline } from "../jobs/memo-pipeline";
+import type { Selection } from "../providers/credentials";
 import { speakerBackground } from "../components/speaker-appearance";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -88,7 +91,9 @@ export function MeetingWorkspace({
   const reviewInteraction = useRef<
     { key: string; phase: "pending" | "committing" } | undefined
   >(undefined);
+  const [reviewedRetry, setReviewedRetry] = useState(false);
   const [evidence, setEvidence] = useState<Segment>();
+  const [confirmed, setConfirmed] = useState<{ selection: Selection; plan?: MemoPipeline | null }>();
   const [uiLanguage, setUiLanguage] = useState(getUiLanguage());
   const t = (en: string, zh: string) => uiLanguage === "zh-CN" ? zh : en;
   const updatePlaybackRange = useCallback(
@@ -263,14 +268,24 @@ export function MeetingWorkspace({
     }
     cueRange(s.start, s.end);
   }
+  function prepareConfirmation(stage: "speech" | "memo") {
+    try {
+      const selection = { ...getSelection(stage) };
+      const plan = stage === "memo" ? resumablePipeline(m,selection,true) ?? planMemo(m,selection.provider,selection.model) : null;
+      setReviewedRetry(false);
+      setConfirmed({selection,plan});
+      setConfirmStage(stage);
+    } catch(error) { onError(error instanceof Error ? error.message : "Could not prepare the memo plan."); }
+  }
   async function process() {
     if (!confirmStage) return;
     const stage = confirmStage;
     setConfirmStage(undefined);
     setProcessing(true);
+    if (stage === "memo") setTab("memo");
     setNotice("");
     try {
-      const completed = await runJob(m, stage);
+      const completed = await runJob(m, stage, confirmed ? {...confirmed,reviewedRetry,onCheckpoint:onUpdate} : undefined);
       onUpdate(completed);
       setViewVersion(undefined);
       setNotice(
@@ -359,6 +374,7 @@ export function MeetingWorkspace({
         return;
       await persist({
         ...m,
+        memoPipelines: m.memoPipelines?.map(p => ({...p,state: m.jobs.some(j=>j.pipelineId===p.id && j.state==="in_flight") ? "blocked" as const : p.state})),
         jobs: m.jobs.map((j) =>
           j.state === "in_flight"
             ? {
@@ -502,7 +518,7 @@ export function MeetingWorkspace({
                   )
                 : undefined
             }
-            onClick={() => setConfirmStage("speech")}
+            onClick={() => prepareConfirmation("speech")}
             disabled={locked || !url}
           >
             <AudioLines size={15} />
@@ -864,7 +880,7 @@ export function MeetingWorkspace({
               <h2>{t("Meeting notes", "会议笔记")}</h2>
               <p>
                 {memo
-                  ? t(`${m.memos.length} saved version${m.memos.length === 1 ? "" : "s"} · every item starts with review`, `已保存 ${m.memos.length} 个版本 · 每一项都需要审阅`)
+                  ? t(`${m.memos.length} saved version${m.memos.length === 1 ? "" : "s"} · Review required`, `已保存 ${m.memos.length} 个版本 · 每一项都需要审阅`)
                   : t("A first draft, grounded in your transcript.", "根据转录生成的初稿。")}
               </p>
             </div>
@@ -875,7 +891,7 @@ export function MeetingWorkspace({
                 "创建独立版本；服务商可能收取费用。",
               )}
               disabled={locked || !m.segments.length}
-              onClick={() => setConfirmStage("memo")}
+              onClick={() => prepareConfirmation("memo")}
             >
               <Sparkles size={15} />
               {memo ? t("Generate new version", "生成新版本") : t("Generate meeting notes", "生成会议笔记")}
@@ -920,7 +936,7 @@ export function MeetingWorkspace({
                       <button
                         className="button secondary compact"
                         disabled={locked || !m.segments.length}
-                        onClick={() => setConfirmStage("memo")}
+                        onClick={() => prepareConfirmation("memo")}
                       >
                         {t("Generate another version", "生成另一个版本")}
                       </button>
@@ -1175,6 +1191,13 @@ export function MeetingWorkspace({
           )}
         </section>
       )}
+      {(m.memoPipelines ?? []).map(p => (
+        <section className="notice memo-plan-progress" key={p.id} aria-label={t("Long memo progress", "长纪要进度")}>
+          <strong role="status">{t("Long memo", "长纪要")} · {p.results.filter(Boolean).length}/{p.chunks.length} {t("extractions saved", "步提取已保存")}</strong>
+          <span>{t("State", "状态")}: {uiLanguage === "zh-CN" ? ({ready:"待执行",running:"执行中",paused:"已暂停",blocked:"已停止，需核对",completed:"已完成"})[p.state] : p.state}</span>
+          {!processing && p.state !== "completed" && <button className="button secondary" onClick={() => prepareConfirmation("memo")}>{t("Review generation plan", "查看生成计划")}</button>}
+        </section>
+      ))}
       {(m.jobs.length > 0 || m.runs.length > 0) && (
         <details className="history-panel">
           <summary>
@@ -1356,7 +1379,7 @@ export function MeetingWorkspace({
             <dl className="confirmation-list">
               <dt>{t("Destination", "接收方")}</dt>
               <dd>
-                {getSelection(confirmStage).provider === "openai"
+                {(confirmed?.selection ?? getSelection(confirmStage)).provider === "openai"
                   ? "OpenAI · api.openai.com"
                   : t("OpenRouter · openrouter.ai (routes to a model provider)", "OpenRouter · openrouter.ai（转发给模型服务商）")}
               </dd>
@@ -1367,7 +1390,7 @@ export function MeetingWorkspace({
                   : t("Transcript, speaker names and meeting context (title, date, timezone, languages, type and glossary)", "转录、说话人姓名和会议背景（标题、日期、时区、语言、类型和术语）")}
               </dd>
               <dt>{t("Model", "模型")}</dt>
-              <dd>{getSelection(confirmStage).model}</dd>
+              <dd>{(confirmed?.selection ?? getSelection(confirmStage)).model}</dd>
               <dt>{t("Estimated charge", "预计费用")}</dt>
               <dd>
                 {confirmStage === "speech" && getSpeechEstimate(m.audio?.duration) ? (() => {
@@ -1379,6 +1402,14 @@ export function MeetingWorkspace({
             <p className="muted">
               {t("Keep this page open. Cancellation does not guarantee remote processing or billing stops. The app does not automatically retry. Review the provider's retention policy for your account.", "请保持此页面打开。取消不保证远端处理或计费停止。应用不会自动重试。请查看服务商对您账户的数据保留政策。")}
             </p>
+            {confirmStage === "memo" && confirmed?.plan && (
+              <div className="notice sand" role="status">
+                {t(`Long memo: ${confirmed.plan.chunks.length} extraction requests and one synthesis request. ${confirmed.plan.results.filter(Boolean).length} extraction steps are already saved. Total cost is unknown; each request may be charged. This confirmation authorizes the remaining steps in order. Any error stops the plan; reloading never resumes requests automatically.`, `长纪要：${confirmed.plan.chunks.length} 次提取和 1 次合成。已保存 ${confirmed.plan.results.filter(Boolean).length} 步提取。总费用未知，每次请求均可能收费。本次确认允许按顺序执行剩余步骤；出现错误即停止，重新加载不会自动恢复请求。`)}
+              </div>
+            )}
+            {confirmStage === "memo" && m.jobs.some(j=>j.stage==="memo" && j.state!=="completed") && (
+              <p className="notice sand">{t("Previous memo attempts may already be charged. This is a separately confirmed generation, not a free retry. Review provider billing first.", "之前的纪要请求可能已经收费。这是单独确认的新生成，不是免费重试。请先核对服务商账单。")}</p>
+            )}
             {confirmStage === "memo" && (unknown || pending) > 0 && (
               <div className="notice sand">
                 {t(`${unknown} speakers are unconfirmed and ${pending} passages are unreviewed. Unknown fields remain subject to review.`, `${unknown} 位说话人未确认，${pending} 段转录未审阅。未知字段仍需核对。`)}
@@ -1404,6 +1435,9 @@ export function MeetingWorkspace({
                 {t("A new transcription replaces the current view only if its source has not changed. Previous text and edits remain in revision history.", "只有来源未改变时，新转录才会替换当前视图。之前的文字和编辑会保留在修订历史中。")}
               </div>
             )}
+            {confirmStage === "memo" && confirmed?.plan && m.jobs.some(j=>j.pipelineId===confirmed.plan!.id && j.state!=="completed") && (
+              <label><input type="checkbox" checked={reviewedRetry} onChange={e=>setReviewedRetry(e.target.checked)} /> {t("I reviewed the previous request outcome and billing. I authorize a new paid attempt for the unfinished step.", "我已核对之前请求的结果和账单，并允许为未完成步骤提交新的付费请求。")}</label>
+            )}
             <div className="modal-actions">
               <button
                 className="button secondary"
@@ -1413,13 +1447,13 @@ export function MeetingWorkspace({
               </button>
               <button
                 className="button primary"
-                disabled={!getKey(getSelection(confirmStage).provider)}
+                disabled={!getKey((confirmed?.selection ?? getSelection(confirmStage)).provider) || (Boolean(confirmed?.plan && m.jobs.some(j=>j.pipelineId===confirmed.plan!.id && j.state!=="completed")) && !reviewedRetry)}
                 onClick={() => void process()}
               >
                 {t("Confirm and send", "确认并发送")}
               </button>
             </div>
-            {!getKey(getSelection(confirmStage).provider) && (
+            {!getKey((confirmed?.selection ?? getSelection(confirmStage)).provider) && (
               <a
                 href="#/settings"
                 className="text-button"

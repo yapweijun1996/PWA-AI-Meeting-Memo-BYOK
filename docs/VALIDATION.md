@@ -1,10 +1,22 @@
 # Validation record
 
-## Readable mobile typography follow-up ? 2026-11-06
+## Bounded long-memo execution and acceptance tools — 2026-11-06
 
-Design-system CI run 42183545596 passed 95/96 browser cases but blocked publication: Linux WebKit showed only 14.75px of the first English memo text above the fixed player (required minimum 24px). Local broad coverage had passed; the Linux result is retained as a genuine layout failure. Mobile workspace margins/padding now reclaim 30px without shrinking controls or hiding context. Remaining 7?10px typography aliases also resolve to the 12px support-text token. Fourteen focused Chromium/WebKit layout, localization and accessibility checks passed locally, retaining the original visibility and touch-target assertions. Physical zoom and screen-reader certification remain open.
+The approved core follow-up adds a local planner (at most eight extractions plus one synthesis), frozen source snapshots, per-request accounting/checkpoints, exact quoted source fragments, original-reference expansion and explicit reviewed recovery. A failed/unknown attempt never resubmits on reload. Successful steps are reused only after confirmation. v1 data is read without a write and normalized to schema v2; new exports/checkpoints are v2, and older clients must reject unsupported data rather than rewrite it. JSON restore preserves completed pipelines and creates a separate meeting copy. Source edits during execution retain captured citations and make final notes stale/pending rather than replacing human corrections.
 
-## Shared design tokens and workflow projection ? 2026-11-06
+Local pinned Node 22.23.3: lint/type/build and 85 unit tests passed. The broad production-path browser run passed 100 cases in Chromium/WebKit, followed by both-engine N-to-N+1 checks and artifact checks. Subsequent changes added Chinese confirmation/status regression coverage, fallback-font layout checks, schema validation and a narrower synthesis payload; 12 focused layout/pipeline cases passed on the later build. Final exact-commit Linux CI and publication remain required. The non-failing bundle warning remains (approximately 525 kB main JS); no speculative lazy loading was added.
+
+The initial new pipeline browser run passed 3/4: WebKit recovery stayed in a 650-passage correction editor while checkpoint saves rerendered it. Starting generation now opens the memo view immediately; the same test passed without increasing timeouts. A Windows text-pipe encoding error in newly added Chinese strings was corrected before publication, with Chinese exact-text/status tests added. No existing user text was rewritten.
+
+Design follow-up run 42184869149 still failed the same Linux WebKit English memo-visibility gate (95/96), so publication was skipped again. The later patch constrains the mobile version selector to a single shrinking row, uses readable 16px form text, shortens the equivalent English review subtitle, and includes region geometry in failure diagnostics plus fallback-font assertions. Local focused layout tests pass; Linux results must determine whether this fully resolves the platform-specific issue.
+
+The offline speech annotation CLI has synthetic arithmetic tests for global label mapping, WER/CER, overlap, silence, null denominators and malformed ranges. It performs no recognition or requests. The owner test pack and optional-capability evaluations are linked from README. B03-B05 completion means design evaluation only, not shipped encryption, inference, live or collaboration features. Consented annotations, provider billing reconciliation, current production-origin authenticated model access and physical iPhone/Android/readers remain open external gates. No new provider request or paid reservation occurred; the documented protective ledger remains US$4.85, not verified spend.
+
+## Readable mobile typography follow-up — 2026-11-06
+
+Design-system CI run 42183545596 passed 95/96 browser cases but blocked publication: Linux WebKit showed only 14.75px of the first English memo text above the fixed player (required minimum 24px). Local broad coverage had passed; the Linux result is retained as a genuine layout failure. Mobile workspace margins/padding now reclaim 30px without shrinking controls or hiding context. Remaining 7-10px typography aliases also resolve to the 12px support-text token. Fourteen focused Chromium/WebKit layout, localization and accessibility checks passed locally, retaining the original visibility and touch-target assertions. Physical zoom and screen-reader certification remain open.
+
+## Shared design tokens and workflow projection — 2026-11-06
 
 CSS colors and pixel typography now resolve through root tokens; speaker backgrounds use one CSS palette and a shared token selector. Supporting 11px text is raised to 12px. A pure domain projection supplies workflow badges, stage labels and CTAs to existing consumers; its classification order is preserved. Pill tones are a constrained union.
 
