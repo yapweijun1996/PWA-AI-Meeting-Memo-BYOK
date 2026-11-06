@@ -419,13 +419,20 @@ export default function App() {
             >
               <Menu size={22} />
             </button>
-            <span>{t("Workspace", "工作空间")}</span>
+            <a className="breadcrumb-root" href="#/">
+              {t("Workspace", "工作空间")}
+            </a>
             <ChevronRight size={14} />
             <strong>
               {route === "/settings"
                 ? t("Settings", "设置")
                 : current?.title || t("Your meetings", "您的会议")}
             </strong>
+            {route.startsWith("/meetings/") && current && (
+              <Pill tone={getMeetingWorkflow(current).tone}>
+                {getMeetingWorkflow(current).badge}
+              </Pill>
+            )}
           </div>
           <span className="privacy-top">
             <ShieldCheck size={15} />
