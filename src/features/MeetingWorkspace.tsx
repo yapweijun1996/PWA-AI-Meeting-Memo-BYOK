@@ -827,7 +827,7 @@ export function MeetingWorkspace({
         <section className="workspace-panel">
           <header className="panel-toolbar">
             <div>
-              <h2>{t("From discussion to direction", "从讨论到行动")}</h2>
+              <h2>{t("Meeting notes", "会议笔记")}</h2>
               <p>
                 {memo
                   ? t(`${m.memos.length} saved version${m.memos.length === 1 ? "" : "s"} · every item starts with review`, `已保存 ${m.memos.length} 个版本 · 每一项都需要审阅`)

@@ -1,5 +1,26 @@
 # Validation record
 
+## Workspace vertical-space closeout — 2026-11-06
+
+The owner resumed UI closeout only. The earlier checkpoint `15210bb` completed both verification and publication in [Actions run 42006664705](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/42006664705); its former pending-CI status below is historical. Production API validation has not resumed.
+
+A reproducible isolated Chromium check uses one synthetic full-audio ZIP with a 10-second recording, one speaker, transcript and saved memo. The same meeting data and current DOM are used throughout. The before state applies the `c744f0f` stylesheet and its memo heading; the after state applies the current stylesheet and the clearer Meeting notes heading. This isolates layout/copy changes rather than replaying an entire historical application. The normal PWA path is enabled; no artificial service-worker-denial warning is inserted.
+
+| Viewport and language | First memo editor top, before | After | Upward gain | Visible editor height above player, after |
+| --- | ---: | ---: | ---: | ---: |
+| 1280 × 900, English | 672.81 px | 640.36 px | 32.45 px | 174.45 px |
+| 1280 × 900, Simplified Chinese | 672.81 px | 640.36 px | 32.45 px | 174.45 px |
+| 390 × 844, English | 812.88 px | 714.47 px | 98.41 px | 49.53 px |
+| 390 × 844, Simplified Chinese | 761.88 px | 698.38 px | 63.50 px | 65.63 px |
+
+All four normal cases have no horizontal overflow. A separate 640 × 450 CSS viewport at device scale factor 2 represents desktop 200% reflow within 1280 × 900 physical pixels; both languages retain scroll access without horizontal overflow. At that short viewport the memo requires vertical scrolling. This is a reflow simulation, not native browser zoom or physical-phone certification. Direct CSS zoom of the root does not update media queries like browser zoom, so its diagnostic overflow results are not used as proof of native zoom behavior.
+
+The change tightens phone spacing, preserves 44-pixel primary recording/memo action targets and lays out the memo heading beside generation controls. The title, date, language, filename, recording metadata, settings, delete, export, transcription, generation and version selection remain available. No paid API endpoint was contacted. The ignored reproduction script, numeric report and before/after screenshots remain under `private-fixtures/spike/ui-closeout*`.
+
+The layout regression uses a restored synthetic ZIP and explicitly accepts its restore confirmation. Media errors and service-worker registration are simulated as a normal, non-updating state: Windows WebKit cannot decode the fixture WAV consistently, and an initial update banner can otherwise change the viewport under measurement. Product playback errors and worker lifecycle behavior are unchanged. The comparison screenshots and pixel measurements use Chromium's actual fixture decoding and normal worker registration. The layout cases cover 390/320 CSS-pixel widths in both UI languages and the 640-pixel reflow simulation; they do not certify native zoom, a physical phone or a screen reader.
+
+Local verification: production build `3dcb66ef2cb3867f`, TypeScript, ESLint, artifact checks and both-engine PWA update lifecycle checks PASS. The broad 80-case run passed 79 cases; its remaining WebKit English layout case was affected by an initial worker-update banner. After isolating normal worker state in that fixture, all six layout cases passed in both engines (8.6 seconds). No application code or existing assertions were weakened to remove the banner. An earlier overlapping test run had invalid artifact output and is excluded. The unchanged domain-unit baseline is 70 tests; publication CI runs the complete current suite independently.
+
 ## Shutdown checkpoint — 2026-11-05
 
 Stopped further testing and paid validation at the owner's request before PC shutdown. Commit `6582cb7` contains the speaker/video workspace, compact UI and accounting changes. Its CI run [42004598184](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/42004598184) passed 73/74 browser cases, failed Linux WebKit memo review with a version-conflict alert, and skipped publication.

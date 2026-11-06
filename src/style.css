@@ -2447,6 +2447,10 @@ details[open] > summary {
   .toolbar-actions .button {
     min-height: 42px;
   }
+  .workspace-toolbar .button,
+  .workspace-panel > .panel-toolbar > .button {
+    min-height: 44px;
+  }
   .workspace-tabs {
     gap: 16px;
     margin-top: 22px;
@@ -2814,6 +2818,45 @@ details[open] > summary {
   }
   .memo-version select {
     max-width: 230px;
+  }
+  /* Keep the first reviewed memo item above the fixed player on phones.
+     This only tightens spacing; meeting context and every action remain. */
+  .back-link {
+    margin-bottom: 14px;
+  }
+  .meeting-heading {
+    margin-bottom: 12px;
+  }
+  .workspace-toolbar {
+    padding: 11px 12px;
+    gap: 10px;
+  }
+  .workspace-tabs {
+    margin-top: 14px;
+    margin-bottom: 10px;
+  }
+  .panel-toolbar {
+    gap: 10px;
+    padding: 13px 14px;
+  }
+  .memo-version {
+    padding: 10px 12px;
+  }
+  .memo-list {
+    padding: 12px;
+  }
+  .workspace-panel:has(.memo-version) > .panel-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+  .workspace-panel:has(.memo-version) > .panel-toolbar > div {
+    min-width: 0;
+  }
+  .workspace-panel:has(.memo-version) > .panel-toolbar > .button {
+    max-width: 170px;
+    white-space: normal;
+    text-align: center;
   }
   .notice.install {
     display: none;
