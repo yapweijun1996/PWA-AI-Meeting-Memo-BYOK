@@ -904,6 +904,9 @@ test("preserves zero-width speech evidence across reload without resubmitting", 
   await page
     .getByRole("button", { name: "Confirm and send", exact: true })
     .click();
+  // Completion intentionally navigates to Speakers. Wait for that boundary
+  // before selecting Transcript, rather than racing the final runJob callback.
+  await expect(page.getByRole("tab", { name: /Speakers/ })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("tab", { name: /Transcript/ }).click();
   await expect(page.getByText("Before", { exact: true })).toBeVisible();
   await expect(page.getByText("Instant", { exact: true })).toBeVisible();
