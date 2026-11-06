@@ -37,6 +37,7 @@ The implementation uses React/TypeScript/Vite, npm with a locked dependency tree
 | `src/jobs/` | Foreground scheduler, checkpoints, billing uncertainty |
 | `src/audio/` | Original-file limits/metadata and bounded checksum worker; no decode/encode pipeline shipped |
 | `src/pwa/` | Install, connectivity, worker update UX |
+| `src/components/ui.tsx` & `src/style.css` | Single Source of Truth (SSOT) Design System tokens, primitives (`Modal`, `Pill`, `Empty`, `Brand`), speaker palette, and responsive layout rules |
 
 Prefer two small initial integrations over a universal plugin framework: one browser-validated speech provider and one memo provider. The speech integration must prove speaker/time capability before release. The same provider can serve both roles only when its contracts support them.
 
@@ -134,6 +135,28 @@ Caption grouping and active-speaker/transcript projection belong to the read lay
 
 Playback following is view state, separate from memo-citation selection and correction state. Manual transcript browsing pauses following; resuming follow does not move keyboard focus. Bounded rendering must preserve navigation to every group and the existing source-inspection/editing paths. Player controls, sample cues, evidence cues and reference-video mutual exclusion retain a single audio owner. Photos or reference metadata, if added later, remain presentation metadata and must not enter provider prompts implicitly.
 
+#### Group-chat playback and audio-reactive avatar architecture (planned 2026-11-06)
+
+The group-chat playback stage derives all visual synchronization from `HTMLAudioElement.currentTime` as the single source of truth:
+
+```text
+Audio.currentTime
+   |
+   v
+Find active transcript segment
+   |
+   +-- Speaker ID     -> Active Avatar (top speaker stage card + bubble avatar badge)
+   +-- Time range     -> Active Chat Bubble (150-200ms soft-green surface/border transition)
+   +-- Word timing    -> Caption Highlight (fragment-level when fragments.length > 1, else sentence-level)
+   +-- Audio analyser -> Avatar Pulse (bounded 1.00-1.12 scale when playing && active)
+```
+
+Module responsibilities for this pipeline:
+
+- **`src/domain/playback.ts` (`PlaybackCaption.fragments` preservation)**: Consecutive short segments from the same speaker (`gap <= 350 ms`, up to `220` characters) merge into a single `PlaybackCaption` bubble for readability while preserving an ordered `fragments` array (`id`, `start`, `end`, `speakerIds`, `text`, `untimed`). Active state at `currentTime` resolves both the active bubble (`activeCaptions`) and the active sub-segments (`activeSegmentIds`) so `SpeakerReview` can render word/phrase-level highlighting when provider responses include sub-sentence timestamps (`fragments.length > 1`) and sentence-level highlighting when only sentence timestamps exist (`fragments.length === 1`), without character-count time interpolation.
+- **`src/features/usePlaybackClock.ts` (Web Audio `AnalyserNode` energy boundary)**: Attach a lazy singleton `AudioContext` + `MediaElementAudioSourceNode` + `AnalyserNode` (`fftSize = 256`) to the persistent `<audio>` element on user gesture (`play`). During active playback, sample `getByteFrequencyData` inside the existing 50 ms foreground animation-frame loop and compute an exponentially smoothed normalized energy value (`energy = prev * 0.75 + current * 0.25`, clamped to `[0, 1]`). Expose `--audio-pulse-scale: calc(1 + energy * 0.12)` (`1.00` to `1.12`) only on speaker avatars whose `speakerId` is in `activeSpeakerIds` while `playing === true` and `prefers-reduced-motion` is not `reduce`. If `AudioContext` is suspended or unavailable, degrade gracefully to static active borders and the `·|·|·` waveform indicator without breaking audio playback.
+- **`src/features/SpeakerReview.tsx` (Sequential group-chat stream)**: Render a persistent top speaker avatar row (`S1`–`S5` with `--speaker-1` through `--speaker-5` identity colors and `Idle` vs. live `·|·|·` status) above a chronological, left-aligned group-chat stream. Clicking any chat bubble or its bottom-right timestamp seeks `HTMLAudioElement.currentTime` to `caption.start`. Manual scrolling pauses `followPlayback` immediately and displays a floating `Jump to live` / `Follow playback` control.
+
 The beta stores one original recording up to 50 MiB, uploads up to 25 MB per transcription request, and computes its checksum in a worker; conversion and multi-chunk transcription are deferred. Valid future chunking requires container-aware processing or bounded decode/re-encode. `Blob.slice()` over arbitrary MP3/M4A/WebM bytes is not an independent playable file. Preserve source offsets, encoder delay where relevant, and boundary provenance. Handle overlapping transcription windows with a documented boundary reconciliation algorithm; text similarity alone must not delete genuinely repeated speech.
 
 Prefer one provider request for the whole recording when its verified limits permit it, preserving global speaker clustering. Otherwise scope labels by run/chunk and require evidence-based mapping. Preserve isolated channels before any downmix; multiple people can still share one channel.
@@ -169,3 +192,22 @@ The update flow is: detect waiting worker, notify, save edits, settle active sub
 ## Optional extensions
 
 Local pyannote, self-hosted models, and persistent server jobs are separate future deployment modes. Adding one must document origin/authentication, data destination, installation, and state ownership. Failure of a direct browser provider is not authorization to introduce a mandatory backend.
+
+## SSOT Design System protocol
+
+To prevent visual drift, duplicated hex literals, and conflicting status labels across screens, the UI architecture follows a four-layer Single Source of Truth (SSOT) Design System protocol:
+
+1. **Layer 1 — Design Tokens (`src/style.css` `:root`)**:
+   - **Typography scale**: `--font-sans` (`Plus Jakarta Sans`), `--font-serif` (`Instrument Serif`), `--text-xs` (`0.75rem`), `--text-sm` (`0.8125rem`), `--text-base` (`0.875rem`), `--text-md` (`0.9375rem`), `--text-lg` (`1.0625rem`), `--text-xl` (`1.25rem`), `--text-2xl` (`1.5rem`), and `--text-display` (`clamp(1.75rem, 2.5vw, 2.25rem)`).
+   - **Surface, text, and border tokens**: `--bg-canvas`, `--bg-card`, `--bg-subtle`, `--bg-muted`, `--text-primary`, `--text-secondary`, `--text-muted`, `--border-subtle`, `--border-default`, and `--border-focus`.
+   - **Semantic status tokens**: `--status-green-bg` / `--status-green-fg`, `--status-sand-bg` / `--status-sand-fg`, `--status-danger-bg` / `--status-danger-fg`, and `--status-neutral-bg` / `--status-neutral-fg` (all verified at WCAG AA `>= 4.5:1` contrast).
+   - **5-Slot speaker identity palette**: `--speaker-1-bg: #e3f1e6` / `--speaker-1-fg: #244830` (forest green), `--speaker-2-bg: #ede8f8` / `--speaker-2-fg: #3b2a68` (lavender), `--speaker-3-bg: #f8eedc` / `--speaker-3-fg: #6b4710` (amber), `--speaker-4-bg: #e3f0f8` / `--speaker-4-fg: #1c4966` (sky), and `--speaker-5-bg: #f8e6ea` / `--speaker-5-fg: #6b2135` (rose).
+2. **Layer 2 — UI Primitives (`src/components/ui.tsx`)**:
+   - `<Button>`, `<Card>`, `<Pill>`, `<Dialog>`, `<Notice>`, and `<EmptyState>` own component geometry, focus rings, touch-target minimums (`44px` on coarse pointers), and `aria-*` semantics. Feature views compose these primitives rather than introducing ad-hoc button or badge classes.
+3. **Layer 3 — Shared Workflow and Speaker Semantics**:
+   - Meeting lifecycle status (`Recording`, `Transcribing`, `Needs review`, `Ready`, `Failed`), stage subtitle, and primary next-step CTA derive from a single workflow-status projection used across Dashboard cards, sidebar recent items, and the topbar breadcrumb `<Pill>`.
+   - Speaker badge numbering (`S1`–`S5`) and palette slot assignment (`--speaker-1` to `--speaker-5`) derive from a single deterministic speaker-order helper shared by `SpeakerReview` and `MeetingWorkspace`.
+4. **Layer 4 — Viewport and Layout Contracts**:
+   - Sticky `.topbar` uses a compact `52px` desktop (`56px` mobile) height with a clickable `.breadcrumb-root` link (`Workspace -> #/`) and in-context meeting status `<Pill>`.
+   - Dashboard prioritizes above-the-fold task density (`Topbar -> Page Heading -> 3 Workflow KPI Cards -> Compact Welcome Banner -> Unified .library-toolbar -> Meeting Cards`).
+   - Mobile viewports (`<= 720px`) enforce single-column stacking, `>= 16px` form controls (preventing iOS Safari auto-zoom), safe-area insets, and a persistent accessible bottom audio player.

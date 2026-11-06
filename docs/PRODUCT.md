@@ -80,6 +80,29 @@ The recording's `HTMLAudioElement.currentTime` is the only audio timeline. Play,
 
 Caption grouping is a read-only presentation over original fragments and source IDs, not a source revision or a fabricated alignment. Untimed text remains available for review without being assigned an inferred audio position. Short word gaps inside an existing same-speaker group may retain explicitly inactive context to avoid flashing the stage empty; active-speaker state and transcript highlighting still require an exact source interval. Do not delay real speaker changes or merge identities to hide uncertain source attribution. Long transcripts need bounded rendering with a way to reach every displayed group. Automatic following pauses when the user browses manually and resumes only through an explicit follow action; it must not steal keyboard focus. Caption size is adjustable, speaker state does not rely on color alone, and reduced-motion preferences apply. Speaker counts refer to source fragments, and any summed interval duration must not be presented as independently measured unique speaking time.
 
+#### Group-chat playback stage, audio-reactive avatars, and synchronized captions (planned 2026-11-06)
+
+To make multi-speaker playback easier to scan than a split live-caption box plus separate transcript cards, the Playback view adopts a **WhatsApp-style sequential group-chat stream** paired with a persistent top speaker avatar stage:
+
+| Element | Behavior during playback |
+| --- | --- |
+| **5 Speakers (or $N$ detected/manual speakers)** | Persistent top row of speaker cards; each speaker has a fixed circular avatar (`S1`–`S5`), distinct SSOT identity color (`--speaker-1` to `--speaker-5`), and status label (`Idle` when inactive; live equalizer indicator `·\|·\|·` and highlighted border when active). |
+| **Active Avatar** | Soft outer pulse halo (`scale(1.00)` to `1.12`) driven by smoothed audio energy from the recording when both `playing === true` and an attributed segment is active. |
+| **Chat Bubble** | Chronological, left-aligned group-chat bubbles (no left/right private-chat alternation). Each bubble displays the speaker's circular avatar anchored at the bottom-left, speaker name at top-left, active waveform icon at top-right, caption text in the body, and timestamp at bottom-right. |
+| **Live Captions** | Consecutive short segments from the same speaker merge into one readable bubble while preserving underlying fragment timestamps for word- or sentence-level synchronized highlighting. |
+| **Timestamp** | Clicking a bubble or its bottom-right timestamp (`00:08`) seeks `HTMLAudioElement.currentTime` directly to that segment's `start`. |
+| **Speaker Switch** | Previous speaker's avatar immediately stops pulsing and returns to `Idle`; new active speaker's avatar and chat bubble transition smoothly without reflowing the layout. |
+| **Audio Player** | Persistent bottom bar controlling the shared `HTMLAudioElement.currentTime` timeline across the entire chat stream and speaker stage. |
+
+Production animation and data-integrity rules for this layout:
+
+- **Avatar Pulse**: The outer halo expands within a bounded `1.00–1.12` scale range driven by smoothed audio energy (`0.0–1.0`) from a Web Audio `AnalyserNode`. Silence, paused playback, inter-segment gaps, and inactive speakers must display zero pulse (`scale(1.00)`).
+- **Active Chat Bubble**: The active bubble uses a soft green surface (`#eaf5ec`), green accent border (`#5b9b70`), and a `150–200ms` color transition without changing box dimensions or re-sorting the chat list.
+- **Caption Highlight (Word vs. Sentence Granularity)**: When sub-sentence or word-level timestamps exist within a merged bubble (`fragments.length > 1`), highlight the active fragment/words as `currentTime` advances; when only sentence-level timestamps exist (`fragments.length === 1`), highlight the full sentence. Never divide duration evenly by character count or interpolate missing timestamps to claim word-level synchronization.
+- **Smart Auto Scroll**: Auto-scroll follows the active chat bubble by default. Manual user scrolling immediately pauses auto-follow and surfaces an explicit `Jump to live` / `Follow playback` button so playback never steals the user's reading position or keyboard focus.
+- **Overlap and Evidence Preservation**: Merging consecutive short turns from the same speaker into one visual bubble is a read-only view projection; the underlying model must retain every segment's `id`, `start`, `end`, `speakerIds`, and `text`. When overlapping speech occurs, multiple speaker avatars may be active simultaneously—never overwrite overlapping attribution with a single speaker ID.
+- **Responsive Layout and Reduced Motion**: Mobile uses a single-column chat list, a compact horizontal avatar bar at the top, and a fixed bottom audio player; desktop can present the chat stream alongside the speaker stage/inspector. When `prefers-reduced-motion: reduce` is active, disable pulse scaling and smooth-scroll motion while keeping static active borders and badges.
+
 An optional original YouTube reference lets users see people while checking a voice manually. A video ID in an audio filename is only a suggestion; it is not proof of the source or synchronization. The user explicitly saves a validated YouTube link and can adjust the time offset (video time = recording time + offset). The reference is auxiliary meeting metadata, included in backups but excluded from AI input; changing it does not revise transcript evidence or confirm an identity. Older meetings without this field remain valid.
 
 The player connects to YouTube only after an explicit load/watch action, uses privacy-enhanced embedding, and provides a timestamped external link when embedding is unavailable. Local recording playback and the embedded video are mutually exclusive. The reference requires a network connection and does not upload the local recording. See [YouTube embedding guidance](https://support.google.com/youtube/answer/171780?hl=en) and [player timing parameters](https://developers.google.com/youtube/player_parameters). People remain anonymous until a user confirms a name; the app does not recognize faces or voices as real identities.
@@ -109,6 +132,15 @@ Deleting a meeting removes its local audio, chunks, revisions, and jobs accordin
 ## Screens and interaction
 
 Meeting Library, New Meeting/Import, Processing, Speaker Review, Transcript Editor, Memo Review, and Settings are the primary screens. Use consistent navigation and a persistent compact player when reviewing evidence.
+
+### Dashboard information architecture and SSOT design system (2026-11-06)
+
+The home screen is a task-oriented Meeting Management Workspace rather than a promotional landing page:
+
+- **Primary CTA hierarchy**: Keep one primary `New meeting` button in the page heading; sidebar shortcuts (`Your meetings`, `Needs review`, `New meeting`, `Restore backup`, and `Recent meetings`) and the compact overview banner's `How it works` action remain visually secondary.
+- **Above-the-fold priority**: Order the dashboard as compact sticky topbar (`52px` desktop, `56px` mobile) -> page heading -> three workflow KPI cards (`Total meetings`, `Needs review`, `Completed notes`) -> compact single-row overview banner -> unified `Meeting library` toolbar (status filter pills, search input, and sort selector in one wrapping row) -> meeting cards. Local-storage disclosure belongs in the topbar and sidebar status regions rather than occupying a KPI card.
+- **Unified workflow statuses**: Represent each meeting's lifecycle state consistently across library cards, sidebar recent indicators, and the topbar breadcrumb badge using `Recording`, `Transcribing`, `Needs review`, `Ready`, and `Failed`, paired with the stage subtitle (`Draft notes`, `Review transcript`, `Completed notes`, `Ready to transcribe`, `Outcome unknown`) and an explicit next-step CTA (`Review`, `Transcribe`, `Open`, `View`, `Start`).
+- **SSOT Design System protocol**: Define colors, typography scale (14–16px body text, at least 12px supporting text on desktop, and 16px mobile form controls), spacing, radii, semantic status tones (`neutral`, `green`, `sand`, `danger`, `light`), and the 5-color speaker identity palette in one authoritative token/component layer (`src/style.css` `:root` tokens and `src/components/ui.tsx`) with verified WCAG 2.1/2.2 AA contrast (>= 4.5:1).
 
 Desktop can show a speaker list, transcript, and review panel side by side. The speaker review stage provides adjustable listening samples and an optional explicit-load public-video reference beside the samples. Mobile uses a single column with filters and an accessible bottom sheet or full-screen editor. Keep controls usable with touch, keyboard, and screen readers.
 
