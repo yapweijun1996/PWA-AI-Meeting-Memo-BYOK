@@ -3649,8 +3649,8 @@ details[open] > summary {
   --chat-active-border: #5b9b70;
 }
 .playback-mode { display: flex; flex-direction: column; align-items: stretch; gap: 16px; }
-.playback-left-stack { position: static; }
-.playback-stage { padding: 14px 16px; }
+.playback-left-stack { position: static; grid-template-columns: minmax(0, 1fr); }
+.playback-stage { min-width: 0; padding: 14px 16px; }
 .playback-stage .live-caption-head { justify-content: flex-end; margin-top: 8px; }
 .playback-gap { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
 .playback-roster { margin-top: 8px; padding-top: 8px; }

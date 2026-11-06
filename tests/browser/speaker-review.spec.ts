@@ -394,6 +394,8 @@ test("group chat keeps a persistent speaker stage above chronological bubbles", 
     const mobileTranscript = await transcript.boundingBox();
     expect(mobileStage).not.toBeNull();
     expect(mobileTranscript).not.toBeNull();
+    expect(mobileStage!.x + mobileStage!.width).toBeLessThanOrEqual(width);
+    expect(mobileTranscript!.x + mobileTranscript!.width).toBeLessThanOrEqual(width);
     expect(mobileTranscript!.y).toBeGreaterThanOrEqual(mobileStage!.y + mobileStage!.height);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }
