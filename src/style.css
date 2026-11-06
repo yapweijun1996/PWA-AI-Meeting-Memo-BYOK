@@ -145,12 +145,12 @@
   --text-lg: 16px;
   --text-xs: 12px;
   --text-size-22: 22px;
-  --text-size-8: 8px;
-  --text-size-10: 10px;
+  --text-size-8: var(--text-xs);
+  --text-size-10: var(--text-xs);
   --text-sm: 13px;
   --text-size-25: 25px;
   --text-size-30: 30px;
-  --text-size-7: 7px;
+  --text-size-7: var(--text-xs);
   --text-2xl: 24px;
   --text-size-15: 15px;
   --text-size-18: 18px;
@@ -159,7 +159,7 @@
   --text-size-35: 35px;
   --text-size-27: 27px;
   --text-3xl: 32px;
-  --text-size-9: 9px;
+  --text-size-9: var(--text-xs);
   --text-size-21: 21px;
   --text-size-26: 26px;
   --text-size-29: 29px;
@@ -3521,28 +3521,28 @@ details[open] > summary {
   /* Keep the first reviewed memo item above the fixed player on phones.
      This only tightens spacing; meeting context and every action remain. */
   .back-link {
-    margin-bottom: 14px;
+    margin-bottom: 10px;
   }
   .meeting-heading {
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }
   .workspace-toolbar {
-    padding: 11px 12px;
+    padding: 9px 12px;
     gap: 10px;
   }
   .workspace-tabs {
-    margin-top: 14px;
-    margin-bottom: 10px;
+    margin-top: 10px;
+    margin-bottom: 8px;
   }
   .panel-toolbar {
     gap: 10px;
-    padding: 13px 14px;
+    padding: 10px 14px;
   }
   .memo-version {
-    padding: 10px 12px;
+    padding: 8px 12px;
   }
   .memo-list {
-    padding: 12px;
+    padding: 8px 12px;
   }
   .workspace-panel:has(.memo-version) > .panel-toolbar {
     display: grid;

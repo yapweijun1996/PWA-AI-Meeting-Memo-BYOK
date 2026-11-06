@@ -1,5 +1,9 @@
 # Validation record
 
+## Readable mobile typography follow-up ? 2026-11-06
+
+Design-system CI run 42183545596 passed 95/96 browser cases but blocked publication: Linux WebKit showed only 14.75px of the first English memo text above the fixed player (required minimum 24px). Local broad coverage had passed; the Linux result is retained as a genuine layout failure. Mobile workspace margins/padding now reclaim 30px without shrinking controls or hiding context. Remaining 7?10px typography aliases also resolve to the 12px support-text token. Fourteen focused Chromium/WebKit layout, localization and accessibility checks passed locally, retaining the original visibility and touch-target assertions. Physical zoom and screen-reader certification remain open.
+
 ## Shared design tokens and workflow projection ? 2026-11-06
 
 CSS colors and pixel typography now resolve through root tokens; speaker backgrounds use one CSS palette and a shared token selector. Supporting 11px text is raised to 12px. A pure domain projection supplies workflow badges, stage labels and CTAs to existing consumers; its classification order is preserved. Pill tones are a constrained union.
