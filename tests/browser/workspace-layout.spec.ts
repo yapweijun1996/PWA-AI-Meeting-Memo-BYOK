@@ -130,9 +130,8 @@ async function restoreMeeting(page: Page, language: "en" | "zh-CN") {
       true,
     );
   });
-  await page.goto(base);
+  await page.goto(language === "zh-CN" ? `${base}#/settings` : base);
   if (language === "zh-CN") {
-    await page.goto(`${base}#/settings`);
     await page.getByLabel("Display language / 显示语言").selectOption(language);
     await page.getByRole("button", { name: "保存设置", exact: true }).click();
   }
@@ -176,6 +175,9 @@ async function layoutMetrics(page: Page) {
           ? Math.max(0, Math.min(innerHeight, player.y) - memo.y)
           : 0,
       documentWidth: document.documentElement.scrollWidth,
+      overflowingElements: Array.from(document.querySelectorAll<HTMLElement>("body *"))
+        .filter((element) => element.getBoundingClientRect().right > innerWidth + 1)
+        .map((element) => `${element.tagName}.${element.className}`),
       regionsFit: importantRegions.every((region) => region.right <= innerWidth + 1),
     };
   });
@@ -228,8 +230,13 @@ for (const language of ["en", "zh-CN"] as const) {
     await expectWorkspaceActions(page, language);
 
     await page.setViewportSize({ width: 320, height: 844 });
+    await expect.poll(async () => {
+      const resized = await layoutMetrics(page);
+      return resized.documentWidth <= resized.viewport.width + 1;
+    }).toBe(true);
     const narrowMetrics = await layoutMetrics(page);
-    expect(narrowMetrics.documentWidth).toBeLessThanOrEqual(narrowMetrics.viewport.width + 1);
+    expect(narrowMetrics.documentWidth, JSON.stringify(narrowMetrics.overflowingElements))
+      .toBeLessThanOrEqual(narrowMetrics.viewport.width + 1);
     expect(narrowMetrics.regionsFit).toBe(true);
     await expectWorkspaceActions(page, language);
   });
