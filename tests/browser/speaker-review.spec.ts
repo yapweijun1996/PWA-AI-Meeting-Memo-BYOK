@@ -414,13 +414,14 @@ test("unsaved reference drafts stay guarded across playback mode", async ({ page
   const playbackMode = page.getByRole("button", { name: "Playback mode", exact: true });
   const namingMode = page.getByRole("button", { name: "Edit speakers", exact: true });
   const url = page.getByLabel("YouTube URL", { exact: true });
+  const referenceModeNotice = page.locator('.speaker-review-panel > p.notice.sand[role="alert"]');
   await url.fill("https://www.youtube.com/watch?v=yslXlV2BP_Y");
   await expect(page.locator('.reference-video[data-unsaved-edit="true"]')).toHaveCount(1);
   await playbackMode.click();
   await expect(namingMode).toHaveAttribute("aria-pressed", "true");
   await expect(playbackMode).toHaveAttribute("aria-pressed", "false");
   await expect(url).toHaveValue("https://www.youtube.com/watch?v=yslXlV2BP_Y");
-  await expect(page.getByRole("alert")).toContainText(
+  await expect(referenceModeNotice).toContainText(
     "Save or reset your video reference draft before switching modes.",
   );
   expect(youtubeRequests).toEqual([]);
@@ -429,13 +430,13 @@ test("unsaved reference drafts stay guarded across playback mode", async ({ page
   await expect(page.locator('.reference-video[data-unsaved-edit="true"]')).toHaveCount(0);
   await playbackMode.click();
   await expect(page.locator(".playback-mode")).toBeVisible();
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(referenceModeNotice).toHaveCount(0);
   expect(youtubeRequests).toEqual([]);
 
   await namingMode.click();
   await expect(namingMode).toHaveAttribute("aria-pressed", "true");
   await expect(url).toHaveValue("");
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(referenceModeNotice).toHaveCount(0);
 });
 
 test("sample playback and name confirmation keep the identity review explicit", async ({ page }) => {
