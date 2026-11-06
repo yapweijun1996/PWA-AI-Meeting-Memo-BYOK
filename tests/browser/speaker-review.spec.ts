@@ -595,7 +595,17 @@ test("speaker review stays usable on a narrow viewport", async ({ page }) => {
   expect(box?.width).toBeLessThanOrEqual(390);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
-  expect(result.violations.map((violation) => violation.id)).toEqual([]);
+  const violationDetails = result.violations.map((violation) => ({
+    id: violation.id,
+    impact: violation.impact,
+    help: violation.help,
+    nodes: violation.nodes.map((node) => ({
+      target: node.target,
+      html: node.html,
+      summary: node.failureSummary,
+    })),
+  }));
+  expect(result.violations.map((violation) => violation.id), JSON.stringify(violationDetails)).toEqual([]);
   await page.getByLabel("Name for speaker 1", { exact: true }).focus();
   await expect(page.getByLabel("Name for speaker 1", { exact: true })).toBeFocused();
 });
