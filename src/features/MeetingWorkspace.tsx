@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   AudioLines,
@@ -71,6 +71,7 @@ export function MeetingWorkspace({
     [assignment, setAssignment] = useState(""),
     [editing, setEditing] = useState<Segment>(),
     [splitting, setSplitting] = useState<Segment>(),
+    [splitAt, setSplitAt] = useState(1),
     [merge, setMerge] = useState<string>(),
     [highlight, setHighlight] = useState(""),
     [pendingOnly, setPendingOnly] = useState(false);
@@ -378,6 +379,10 @@ export function MeetingWorkspace({
     unknown = m.speakers.filter((s) => !s.confirmed).length,
     pending = m.segments.filter((s) => !s.reviewed).length,
     accounting = summarizeMeetingAccounting(m.jobs);
+  const segmentIndexById = useMemo(
+    () => new Map(m.segments.map((seg, idx) => [seg.id, idx])),
+    [m.segments],
+  );
   const segments = pendingOnly
     ? m.segments.filter((s) => !s.reviewed)
     : m.segments;
@@ -417,7 +422,13 @@ export function MeetingWorkspace({
             </summary>
             <div>
               {(["md", "txt", "json", "zip"] as const).map((f) => (
-                <button key={f} onClick={() => void exportFile(f)}>
+                <button
+                  key={f}
+                  onClick={(e) => {
+                    e.currentTarget.closest("details")?.removeAttribute("open");
+                    void exportFile(f);
+                  }}
+                >
                   {f === "zip"
                     ? t("Full backup with audio", "完整备份（含录音）")
                     : f === "json"
@@ -671,7 +682,7 @@ export function MeetingWorkspace({
                   <div className="passage-select">
                     <input
                       type="checkbox"
-                      aria-label={t(`Select passage ${m.segments.indexOf(s) + 1}`, `选择第 ${m.segments.indexOf(s) + 1} 段`)}
+                      aria-label={t(`Select passage ${(segmentIndexById.get(s.id) ?? 0) + 1}`, `选择第 ${(segmentIndexById.get(s.id) ?? 0) + 1} 段`)}
                       checked={selected.includes(s.id)}
                       disabled={locked}
                       onChange={(e) =>
@@ -686,13 +697,13 @@ export function MeetingWorkspace({
                   <div
                     className="speaker-avatar"
                     style={{
-                      background: ["#e7efda", "#ede7f4", "#faeed9", "#e3edef"][
+                      background: ["#e7efda", "#ede7f4", "#faeed9", "#e3edef", "#f3e8d6"][
                         Math.max(
                           0,
                           m.speakers.findIndex((p) =>
                             s.speakerIds.includes(p.id),
                           ),
-                        ) % 4
+                        ) % 5
                       ],
                     }}
                   >
@@ -736,8 +747,11 @@ export function MeetingWorkspace({
                       </button>
                       <button
                         className="text-button"
-                        onClick={() => setSplitting(s)}
-                        disabled={locked}
+                        onClick={() => {
+                          setSplitAt(Math.max(1, Math.floor(s.text.length / 2)));
+                          setSplitting(s);
+                        }}
+                        disabled={locked || s.text.length < 2}
                       >
                         {t("Split", "拆分")}
                       </button>
@@ -1079,8 +1093,8 @@ export function MeetingWorkspace({
                             }}
                           >
                             {t("Passage", "段落")}{" "}
-                            {m.segments.findIndex((s) => s.id === source.id) +
-                              1 || `${n + 1} ${t("(historical)", "（历史）")}`}{" "}
+                            {(segmentIndexById.get(source.id) ?? -1) + 1 ||
+                              `${n + 1} ${t("(historical)", "（历史）")}`}{" "}
                             · r{source.revision}
                           </button>
                         );
@@ -1689,9 +1703,30 @@ export function MeetingWorkspace({
                 min={1}
                 max={splitting.text.length - 1}
                 required
-                defaultValue={Math.floor(splitting.text.length / 2)}
+                value={splitAt}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  if (Number.isFinite(next)) {
+                    setSplitAt(
+                      Math.min(
+                        Math.max(1, Math.trunc(next)),
+                        Math.max(1, splitting.text.length - 1),
+                      ),
+                    );
+                  }
+                }}
               />
             </label>
+            <div className="split-preview" aria-live="polite">
+              <div>
+                <span className="small muted">{t("First part", "第一部分")}</span>
+                <p>{splitting.text.slice(0, splitAt)}</p>
+              </div>
+              <div>
+                <span className="small muted">{t("Second part", "第二部分")}</span>
+                <p>{splitting.text.slice(splitAt)}</p>
+              </div>
+            </div>
             {splitting.start !== null && (
               <label>
                 {t("Exact audio boundary in seconds · optional", "精确录音分界时间（秒）· 可选")}

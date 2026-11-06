@@ -4,13 +4,13 @@ import {
   ArrowUp,
   AudioLines,
   BookOpen,
+  CheckCircle2,
   ChevronRight,
+  Clock,
   FileText,
   FolderOpen,
-  HardDrive,
   HelpCircle,
   Leaf,
-  LockKeyhole,
   Menu,
   Plus,
   Search,
@@ -54,6 +54,7 @@ export default function App() {
   const [error, setError] = useState(getSettingsStorageError()),
     [search, setSearch] = useState(""),
     [filter, setFilter] = useState("all"),
+    [sortBy, setSortBy] = useState<"recent" | "date" | "title">("recent"),
     [newOpen, setNewOpen] = useState(false),
     [mobileNav, setMobileNav] = useState(false),
     [help, setHelp] = useState(false);
@@ -182,16 +183,121 @@ export default function App() {
       setError(e instanceof Error ? e.message : "Could not restore this file.");
     }
   }
-  const visible = meetings.filter(
-    (m) =>
-      m.title.toLowerCase().includes(search.toLowerCase()) &&
-      (filter === "all" ||
-        (filter === "notes" && m.memos.length) ||
-        (filter === "review" && m.segments.some((s) => !s.reviewed))),
-  );
-  const reviewed = meetings.filter((m) =>
-    m.memos.some((v) => v.items.some((i) => i.review === "accepted")),
-  ).length;
+  const isMeetingCompleted = (m: Meeting) => {
+    const latestMemo = m.memos.at(-1);
+    return Boolean(
+      latestMemo?.items.length &&
+        latestMemo.items.some((i) => i.review === "accepted") &&
+        latestMemo.items.every(
+          (i) =>
+            i.review === "rejected" ||
+            (i.review === "accepted" && i.reviewedRevision === m.revision),
+        ) &&
+        m.segments.every((s) => s.reviewed),
+    );
+  };
+  const doesMeetingNeedReview = (m: Meeting) => {
+    if (isMeetingCompleted(m)) return false;
+    const latestJob = m.jobs.at(-1);
+    if (
+      latestJob &&
+      (latestJob.state === "failed" ||
+        latestJob.state === "outcome_unknown" ||
+        latestJob.state === "failed_before_send")
+    )
+      return true;
+    return (
+      m.segments.some((s) => !s.reviewed) ||
+      m.speakers.some((s) => !s.confirmed) ||
+      Boolean(
+        m.memos
+          .at(-1)
+          ?.items.some(
+            (i) => i.review === "pending" || i.reviewedRevision !== m.revision,
+          ),
+      )
+    );
+  };
+  const getMeetingWorkflow = (m: Meeting) => {
+    const latestJob = m.jobs.at(-1);
+    if (m.jobs.some((j) => j.state === "in_flight")) {
+      return {
+        badge: t("Transcribing", "处理中"),
+        tone: "sand" as const,
+        stage: t("Processing in progress", "正在处理请求"),
+        cta: t("View", "查看"),
+      };
+    }
+    if (
+      latestJob &&
+      (latestJob.state === "failed" ||
+        latestJob.state === "outcome_unknown" ||
+        latestJob.state === "failed_before_send")
+    ) {
+      return {
+        badge: t("Failed", "失败"),
+        tone: "sand" as const,
+        stage:
+          latestJob.state === "outcome_unknown"
+            ? t("Outcome unknown", "结果未知")
+            : t("Request failed", "请求失败"),
+        cta: t("Review", "审阅"),
+      };
+    }
+    if (isMeetingCompleted(m)) {
+      return {
+        badge: t("Ready", "已完成"),
+        tone: "green" as const,
+        stage: t("Completed notes", "已完成笔记"),
+        cta: t("Open", "打开"),
+      };
+    }
+    if (m.memos.length > 0) {
+      return {
+        badge: t("Needs review", "需要审阅"),
+        tone: "green" as const,
+        stage: t("Draft notes", "笔记草稿"),
+        cta: t("Review", "审阅"),
+      };
+    }
+    if (m.segments.length > 0) {
+      return {
+        badge: t("Needs review", "需要审阅"),
+        tone: "neutral" as const,
+        stage: t("Review transcript", "审阅转录"),
+        cta: t("Review", "审阅"),
+      };
+    }
+    if (m.audio) {
+      return {
+        badge: t("Recording", "录音就绪"),
+        tone: "neutral" as const,
+        stage: t("Ready to transcribe", "准备转录"),
+        cta: t("Transcribe", "转录"),
+      };
+    }
+    return {
+      badge: t("Ready", "就绪"),
+      tone: "neutral" as const,
+      stage: t("Ready to start", "准备开始"),
+      cta: t("Start", "开始"),
+    };
+  };
+  const needsReviewCount = meetings.filter(doesMeetingNeedReview).length;
+  const completedCount = meetings.filter(isMeetingCompleted).length;
+  const visible = meetings
+    .filter(
+      (m) =>
+        m.title.toLowerCase().includes(search.toLowerCase()) &&
+        (filter === "all" ||
+          (filter === "notes" && m.memos.length > 0) ||
+          (filter === "review" && doesMeetingNeedReview(m))),
+    )
+    .sort((a, b) => {
+      if (sortBy === "title") return a.title.localeCompare(b.title);
+      if (sortBy === "date") return b.date.localeCompare(a.date);
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
   return (
     <div className="app-shell">
       <a
@@ -220,12 +326,27 @@ export default function App() {
           <a
             href="#/"
             className={
-              route === "/" || route.startsWith("/meetings") ? "active" : ""
+              (route === "/" && filter !== "review") || route.startsWith("/meetings")
+                ? "active"
+                : ""
             }
+            onClick={() => setFilter("all")}
           >
             <FolderOpen size={19} />
             {t("Your meetings", "您的会议")}<span className="nav-count">{meetings.length}</span>
           </a>
+          <button
+            className={route === "/" && filter === "review" ? "active" : ""}
+            onClick={() => {
+              setFilter("review");
+              navigate("/");
+              setMobileNav(false);
+            }}
+          >
+            <Clock size={19} />
+            {t("Needs review", "待审阅")}
+            <span className="nav-count">{needsReviewCount}</span>
+          </button>
           <button onClick={() => setNewOpen(true)}>
             <Plus size={19} />
             {t("New meeting", "新建会议")}
@@ -243,17 +364,31 @@ export default function App() {
             />
           </label>
         </nav>
-        <div className="sidebar-note">
-          <Leaf size={22} />
-          <strong>
-            {t("A little less admin.", "少一点行政工作。")}
-            <br />{t("A lot more presence.", "多一点专注。")}
-          </strong>
-          <p>
-            {t("Bring your own key.", "使用您自己的密钥。")}
-            <br />
-            {t("Keep your meetings close.", "让会议资料留在身边。")}
-          </p>
+        <div className="sidebar-recent" aria-label={t("Recent meetings", "最近会议")}>
+          <p className="nav-label">{t("RECENT MEETINGS", "最近会议")}</p>
+          {meetings.length > 0 ? (
+            <div className="sidebar-recent-list">
+              {meetings.slice(0, 4).map((m) => {
+                const status = getMeetingWorkflow(m);
+                return (
+                  <a
+                    key={m.id}
+                    href={`#/meetings/${m.id}`}
+                    className={current?.id === m.id ? "active" : ""}
+                  >
+                    <span
+                      className={`status-dot ${status.tone === "green" ? "is-ready" : status.tone === "sand" ? "is-warn" : ""}`}
+                    />
+                    <span className="sidebar-recent-title">{m.title}</span>
+                  </a>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="sidebar-empty-hint">
+              {t("Created meetings appear here for quick switching.", "创建的会议将显示在此处，方便快速切换。")}
+            </p>
+          )}
         </div>
         <div className="sidebar-bottom">
           <a
@@ -270,7 +405,7 @@ export default function App() {
           </button>
           <div className="local-label">
             <span className="status-dot" />
-            {t("Saved on this device", "已保存在此设备")}
+            {t("Saved on this device · Local storage", "已保存在此设备 · 本地存储")}
           </div>
         </div>
       </aside>
@@ -294,7 +429,9 @@ export default function App() {
           </div>
           <span className="privacy-top">
             <ShieldCheck size={15} />
-            {online ? t("Private by design", "重视隐私") : t("Browser reports offline", "浏览器显示离线")}
+            {online
+              ? t("Private by design · Local storage", "重视隐私 · 本地存储")
+              : t("Browser reports offline · Local storage", "浏览器显示离线 · 本地存储")}
           </span>
         </header>
         <main id="main-content" tabIndex={-1}>
@@ -345,14 +482,10 @@ export default function App() {
             <>
               <section className="page-heading">
                 <div>
-                  <div className="eyebrow">
-                    <span />
-                    {t("YOUR PERSONAL WORKSPACE", "您的个人工作空间")}
-                  </div>
                   <h1>
                     {t("Your meetings", "您的会议")}<span className="heading-dot">.</span>
                   </h1>
-                  <p>{t("Good conversations deserve clear next steps.", "让每次讨论都有清晰的下一步。")}</p>
+                  <p>{t("Manage recordings, transcripts and notes.", "管理录音、转录与会议笔记。")}</p>
                 </div>
                 <button
                   className="button primary"
@@ -361,71 +494,6 @@ export default function App() {
                   <Plus size={18} />
                   {t("New meeting", "新建会议")}
                 </button>
-              </section>
-              <section className="welcome-panel">
-                <div className="welcome-copy">
-                  <Pill tone="light">
-                    <Sparkles size={13} /> {t("A clearer head after every meeting", "每次会议后思路更清晰")}
-                  </Pill>
-                  <h2>
-                    {t("Stay in the conversation.", "专注于讨论。")}
-                    <br />
-                    <em>{t("Leave the notes to your workspace.", "让工作空间协助整理笔记。")}</em>
-                  </h2>
-                  <p>
-                    {t("Turn a recording into a transcript you can trust, then review the decisions and next steps.", "将录音转换为可审阅的转录，再检查决定与下一步行动。")}
-                  </p>
-                  <button
-                    className="button dark"
-                    onClick={() => setNewOpen(true)}
-                  >
-                    {t("Start with a recording", "从录音开始")}
-                    <ArrowUpRight size={17} />
-                  </button>
-                  <span className="welcome-foot">
-                    <LockKeyhole size={12} />
-                    {t("Your keys. Your review. Your notes.", "您的密钥，您的审阅，您的笔记。")}
-                  </span>
-                </div>
-                <div className="welcome-art" aria-hidden="true">
-                  <div className="art-ring" />
-                  <div className="floating-label">
-                    <span className="status-dot" />
-                    {t("Thoughtfully captured", "用心记录")}
-                  </div>
-                  <div className="art-document">
-                    <div className="art-doc-head">
-                      <span className="small-mark">
-                        <AudioLines size={22} />
-                      </span>
-                      <span>
-                        {t("Team conversation", "团队讨论")}
-                        <small>{t("Ready for a little clarity", "让思路更清晰")}</small>
-                      </span>
-                    </div>
-                    <div className="wave-bars">
-                      {Array.from({ length: 32 }, (_, i) => (
-                        <i
-                          key={i}
-                          style={{
-                            height: `${12 + (Math.sin(i * 1.7) + 1) * 18}px`,
-                          }}
-                        />
-                      ))}
-                    </div>
-                    <div className="art-line long" />
-                    <div className="art-line" />
-                    <div className="art-check">
-                      <span>✓</span>{t("A clear next step", "清晰的下一步")}
-                    </div>
-                    <div className="art-line short" />
-                  </div>
-                  <div className="floating-note">
-                    <FileText size={17} />
-                    {t("From conversation to clarity", "从讨论到清晰行动")}
-                    <Leaf size={15} />
-                  </div>
-                </div>
               </section>
               <section className="stats" aria-label={t("Library summary", "会议库摘要")}>
                 <div>
@@ -436,95 +504,129 @@ export default function App() {
                     <strong>
                       {meetings.length.toString().padStart(2, "0")}
                     </strong>
-                    <span>{t("Meetings saved", "已保存会议")}</span>
-                  </div>
-                </div>
-                <div>
-                  <span className="stat-icon lavender">
-                    <BookOpen size={19} />
-                  </span>
-                  <div>
-                    <strong>{reviewed.toString().padStart(2, "0")}</strong>
-                    <span>{t("With reviewed notes", "已有审阅笔记")}</span>
+                    <span>{t("Total meetings", "会议总数")}</span>
                   </div>
                 </div>
                 <div>
                   <span className="stat-icon sand">
-                    <HardDrive size={19} />
+                    <BookOpen size={19} />
                   </span>
                   <div>
-                    <strong>{t("Local", "本地")}</strong>
-                    <span>{t("Stored on this device", "保存在此设备")}</span>
+                    <strong>{needsReviewCount.toString().padStart(2, "0")}</strong>
+                    <span>{t("Needs review", "待审阅")}</span>
                   </div>
                 </div>
+                <div>
+                  <span className="stat-icon lavender">
+                    <CheckCircle2 size={19} />
+                  </span>
+                  <div>
+                    <strong>{completedCount.toString().padStart(2, "0")}</strong>
+                    <span>{t("Completed notes", "已完成笔记")}</span>
+                  </div>
+                </div>
+              </section>
+              <section className="welcome-banner" aria-label={t("Workspace overview", "工作空间简介")}>
+                <div className="welcome-banner-copy">
+                  <strong>
+                    <Sparkles size={16} />
+                    {t("Turn conversations into clear next steps.", "将每次讨论转化为清晰的下一步。")}
+                  </strong>
+                  <p>
+                    {t("Record, transcribe and review — all in one workspace.", "在一个工作空间中完成录音导入、转录与笔记审阅。")}
+                  </p>
+                </div>
+                <button className="text-button" onClick={() => setHelp(true)}>
+                  {t("How it works", "使用说明")}
+                  <ArrowUpRight size={15} />
+                </button>
               </section>
               <section className="library">
                 <div className="section-title">
                   <h2>
                     {t("Meeting library", "会议库")} <span>{meetings.length}</span>
                   </h2>
-                  <label className="search">
-                    <Search size={17} />
-                    <input
-                      aria-label={t("Search meetings", "搜索会议")}
-                      placeholder={t("Search your meetings", "搜索您的会议")}
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                    />
-                  </label>
                 </div>
-                <div className="filter-row">
-                  {[
-                    ["all", t("All meetings", "所有会议")],
-                    ["review", t("Needs review", "需要审阅")],
-                    ["notes", t("With notes", "有笔记")],
-                  ].map(([value, label]) => (
-                    <button
-                      key={value}
-                      className={filter === value ? "selected" : ""}
-                      onClick={() => setFilter(value)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                  <span>{t("Most recently updated", "最近更新")}</span>
+                <div className="library-toolbar">
+                  <div className="filter-row" role="group" aria-label={t("Filter meetings", "筛选会议")}>
+                    {[
+                      ["all", `${t("All", "全部")} (${meetings.length})`],
+                      ["review", t("Needs review", "需要审阅")],
+                      ["notes", t("With notes", "有笔记")],
+                    ].map(([value, label]) => (
+                      <button
+                        key={value}
+                        className={filter === value ? "selected" : ""}
+                        onClick={() => setFilter(value)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="library-controls">
+                    <label className="search">
+                      <Search size={16} />
+                      <input
+                        aria-label={t("Search meetings", "搜索会议")}
+                        placeholder={t("Search meetings", "搜索会议")}
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                      />
+                    </label>
+                    <label className="sort-control">
+                      <span>{t("Sort", "排序")}</span>
+                      <select
+                        aria-label={t("Sort meetings", "排序会议")}
+                        value={sortBy}
+                        onChange={(e) =>
+                          setSortBy(e.target.value as "recent" | "date" | "title")
+                        }
+                      >
+                        <option value="recent">{t("Recently updated", "最近更新")}</option>
+                        <option value="date">{t("Meeting date", "会议日期")}</option>
+                        <option value="title">{t("Title A–Z", "标题排序")}</option>
+                      </select>
+                    </label>
+                  </div>
                 </div>
                 {loading ? (
                   <p role="status">{t("Opening local library…", "正在打开本地会议库…")}</p>
                 ) : visible.length ? (
                   <div className="meeting-grid">
-                    {visible.map((m) => (
-                      <a
-                        className="meeting-card"
-                        href={`#/meetings/${m.id}`}
-                        key={m.id}
-                      >
-                        <div className="card-top">
-                          <span className="card-icon">
-                            <AudioLines size={22} />
-                          </span>
-                          <Pill tone={m.memos.length ? "green" : "neutral"}>
-                            {m.memos.length
-                              ? t("Draft notes", "笔记草稿")
-                              : m.segments.length
-                                ? t("Review transcript", "审阅转录")
-                                : t("Ready to start", "准备开始")}
-                          </Pill>
-                        </div>
-                        <h3>{m.title}</h3>
-                        <p>
-                          {m.synthetic
-                            ? t("Synthetic example · no recording", "模拟示例 · 无录音")
-                            : `${m.date} · ${m.kind === "erp" ? t("ERP discovery", "ERP 需求讨论") : t("General meeting", "一般会议")}`}
-                        </p>
-                        <footer>
-                          <span>
-                            {m.segments.length} {t("passages", "段转录")} · {m.speakers.length} {t("speakers", "位说话人")}
-                          </span>
-                          <ArrowUpRight size={18} />
-                        </footer>
-                      </a>
-                    ))}
+                    {visible.map((m) => {
+                      const status = getMeetingWorkflow(m);
+                      return (
+                        <a
+                          className="meeting-card"
+                          href={`#/meetings/${m.id}`}
+                          key={m.id}
+                        >
+                          <div className="card-top">
+                            <span className="card-icon">
+                              <AudioLines size={20} />
+                            </span>
+                            <Pill tone={status.tone}>{status.badge}</Pill>
+                          </div>
+                          <h3>{m.title}</h3>
+                          <p className="meeting-card-stage">
+                            <strong>{status.stage}</strong>
+                            {" · "}
+                            {m.synthetic
+                              ? t("Synthetic example · no recording", "模拟示例 · 无录音")
+                              : `${m.date} · ${m.kind === "erp" ? t("ERP discovery", "ERP 需求讨论") : t("General meeting", "一般会议")}`}
+                          </p>
+                          <footer>
+                            <span>
+                              {m.segments.length} {t("passages", "段转录")} · {m.speakers.length} {t("speakers", "位说话人")}
+                            </span>
+                            <span className="card-cta">
+                              {status.cta}
+                              <ArrowUpRight size={15} />
+                            </span>
+                          </footer>
+                        </a>
+                      );
+                    })}
                   </div>
                 ) : (
                   <Empty

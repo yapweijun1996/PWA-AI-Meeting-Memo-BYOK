@@ -24,6 +24,7 @@ export function NewMeeting({
   const language = useUiLanguage();
   const t = (en: string, zh: string) => language === "zh-CN" ? zh : en;
   const [file, setFile] = useState<File>(),
+    [dragOver, setDragOver] = useState(false),
     [transcript, setTranscript] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
@@ -136,7 +137,20 @@ export function NewMeeting({
             />
           </label>
         </div>
-        <label className={`upload-zone ${file ? "has-file" : ""}`}>
+        <label
+          className={`upload-zone ${file ? "has-file" : ""} ${dragOver ? "is-dragging" : ""}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (!dragOver) setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const dropped = e.dataTransfer.files?.[0];
+            if (dropped) setFile(dropped);
+          }}
+        >
           <span>{file ? <Check size={25} /> : <Upload size={25} />}</span>
           <strong>{file ? file.name : t("Drop into a clearer workflow", "添加会议录音")}</strong>
           <small>

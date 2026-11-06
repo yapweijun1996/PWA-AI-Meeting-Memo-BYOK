@@ -440,6 +440,11 @@ export function Settings() {
           </p>
         </form>
       </section>
+      {notice && (
+        <div className="notice" role="status">
+          {translateMessage(notice, uiLanguage)}
+        </div>
+      )}
       <div className="settings-grid">
         <section className="settings-panel">
           <div className="panel-title">
@@ -454,28 +459,23 @@ export function Settings() {
             {t("Request persistent storage", "请求持久化存储")}
           </button>
         </section>
+        <section className="settings-panel">
+          <h2>{t("About this workspace", "关于此工作空间")}</h2>
+          <p className="muted">
+            {t("Browser-first, offline review, and bring-your-own keys. Cloud processing needs a connection and an open page. Supported uploads are stored up to 50 MiB; cloud uploads are limited to 25 MB. Longer recordings may need an externally prepared transcript. Live provider quality and physical-phone validation are tracked separately.", "浏览器优先，支持离线审阅并使用自己的密钥。云端处理需要网络并保持页面打开。本地录音上限为 50 MiB，云端上传上限为 25 MB。较长录音可能需要外部准备的转录。真实服务商质量与实体手机验证另行跟踪。")}
+          </p>
+          <a
+            className="text-button"
+            href="https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t("Source & verification notes", "源代码与验证记录")}
+            <ExternalLink size={15} />
+          </a>
+          <p className="small muted">{t("Build", "构建版本")} {__BUILD_ID__}</p>
+        </section>
       </div>
-      {notice && (
-        <div className="notice" role="status">
-          {translateMessage(notice, uiLanguage)}
-        </div>
-      )}
-      <section className="settings-panel">
-        <h2>{t("About this workspace", "关于此工作空间")}</h2>
-        <p className="muted">
-          {t("Browser-first, offline review, and bring-your-own keys. Cloud processing needs a connection and an open page. Supported uploads are stored up to 50 MiB; cloud uploads are limited to 25 MB. Longer recordings may need an externally prepared transcript. Live provider quality and physical-phone validation are tracked separately.", "浏览器优先，支持离线审阅并使用自己的密钥。云端处理需要网络并保持页面打开。本地录音上限为 50 MiB，云端上传上限为 25 MB。较长录音可能需要外部准备的转录。真实服务商质量与实体手机验证另行跟踪。")}
-        </p>
-        <a
-          className="text-button"
-          href="https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK"
-          target="_blank"
-          rel="noreferrer"
-        >
-          {t("Source & verification notes", "源代码与验证记录")}
-          <ExternalLink size={15} />
-        </a>
-        <p className="small muted">{t("Build", "构建版本")} {__BUILD_ID__}</p>
-      </section>
     </>
   );
 }
