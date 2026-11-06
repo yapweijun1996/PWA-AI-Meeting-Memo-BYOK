@@ -669,6 +669,42 @@ test("speaker review stays usable on a narrow viewport", async ({ page }) => {
   await expect(page.getByLabel("Name for speaker 1", { exact: true })).toBeFocused();
 });
 
+test("speaker mode buttons retain readable contrast throughout a mode switch", async ({ page }) => {
+  await createFixture(page);
+  const ratios = await page.locator(".speaker-mode-switch").evaluate(async (group) => {
+    await Promise.all(group.getAnimations({ subtree: true }).map((animation) => animation.finished.catch(() => undefined)));
+    const luminance = (values: number[]) => values.reduce((sum, value, index) => {
+      const s = value / 255;
+      return sum + (s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4) * [0.2126, 0.7152, 0.0722][index];
+    }, 0);
+    const rgb = (color: string) => color.match(/[\d.]+/g)!.map(Number);
+    const observed: number[] = [];
+    const buttons = [...group.querySelectorAll("button")];
+    buttons[0].click();
+    await new Promise<void>((resolve) => {
+      const start = performance.now();
+      const sample = () => {
+        for (const button of buttons) {
+          const style = getComputedStyle(button);
+          const foreground = luminance(rgb(style.color).slice(0, 3));
+          const background = rgb(style.backgroundColor);
+          const alpha = background[3] ?? 1;
+          const behind = rgb(getComputedStyle(group).backgroundColor);
+          const blended = background.slice(0, 3).map((value, index) => value * alpha + behind[index] * (1 - alpha));
+          const back = luminance(blended);
+          observed.push((Math.max(foreground, back) + 0.05) / (Math.min(foreground, back) + 0.05));
+        }
+        if (performance.now() - start >= 200) resolve();
+        else requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    });
+    return observed;
+  });
+  expect(ratios.length).toBeGreaterThan(2);
+  expect(Math.min(...ratios)).toBeGreaterThanOrEqual(4.5);
+});
+
 test("playback mode exposes gap jump, direct speaker rename focus, video badge, and WCAG AA compliance", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await createFixture(page, "The State of Startups in 2026 [yslXlV2BP_Y].mp3");

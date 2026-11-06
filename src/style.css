@@ -2276,6 +2276,8 @@ details[open] > summary {
 }
 .speaker-mode-switch .button {
   min-height: 34px;
+  /* Text color changes immediately; crossfading its background loses contrast. */
+  transition: box-shadow 0.15s;
 }
 .speaker-review-dirty-sentinel {
   display: none;
