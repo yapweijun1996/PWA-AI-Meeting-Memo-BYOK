@@ -207,16 +207,16 @@ These items are outside the first P0 release and must not become hidden prerequi
 
 ## Current next action and evidence
 
-The browser application and automatic Pages publication workflow are implemented; the current patch is blocked on the failed CI release gate above and has not been published. The user chose to enter BYOK credentials in the finished website for live acceptance; development creates no provider key. Use a private, consented recording for that acceptance and keep recordings/keys out of Git and CI.
+The browser application and automatic Pages publication workflow are implemented. Playback follow-up c692dc8 passed verification and publication in Actions run 42179825770. Real provider, annotated quality and physical-device acceptance remain separate open gates. The user chose to enter BYOK credentials in the finished website for live acceptance; development creates no provider key. Use a private, consented recording for that acceptance and keep recordings/keys out of Git and CI.
 
 | Evidence | Current result |
 | --- | --- |
 | Design and implementation on `main` | Each completed task has its own committed/pushed checkpoint in [implementation evidence](docs/IMPLEMENTATION-LOG.md) and Git history |
 | Local candidate checks | Previous candidate `93c325cceb45b7d3`: 70 unit tests, 74 browser cases, lint, typecheck, production build, two-engine PWA checks and artifact checks PASS locally. This evidence predates the CI CAS fix. |
-| Current CI release gate | [Run 42004598184](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/42004598184) FAIL: 73/74, Linux WebKit memo CAS fixture; publication skipped and no paid request. Focused guard coverage passes; fixture repair and full rerun remain pending. Exact scope and limitations are recorded in [validation](docs/VALIDATION.md) |
+| Historical CI failure (superseded by run 42179825770) | [Run 42004598184](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/42004598184) FAIL: 73/74, Linux WebKit memo CAS fixture; publication skipped and no paid request. Focused guard coverage passes; the repair and subsequent verification/publication succeeded in run 42179825770. Exact scope and limitations are recorded in [validation](docs/VALIDATION.md) |
 | Active auto-deployment | [Trusted-main workflow](.github/workflows/pages.yml) checks before publishing only `dist/`; no provider keys are used |
 | Historical successful publication | [Run 41845407515](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41845407515), build `18cd59c`; served identity, HTTPS, scoped worker, hash refresh, synthetic storage and offline reload PASS in both engines. This is not the current patch. |
-| Historical update hardening | Stale-HTTP-cache regression fixed; [run 41847942972](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41847942972) published `6e0fcdf`; actual Chromium/WebKit upgrade, saved editor, old assets and new-build offline reload PASS. Current patch still needs publication. |
+| Historical update hardening | Stale-HTTP-cache regression fixed; [run 41847942972](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/41847942972) published `6e0fcdf`; actual Chromium/WebKit upgrade, saved editor, old assets and new-build offline reload PASS. The later playback build c692dc8 was published successfully. |
 | Live provider/device evaluation | Exact authorized browser calls and Chrome speaker/time delivery are recorded; annotated model quality, production account/CORS reconciliation and physical-phone acceptance remain NOT RUN |
 
 Remaining acceptance gates are deliberate and stay unchecked:
