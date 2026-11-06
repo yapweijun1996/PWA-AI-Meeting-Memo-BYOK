@@ -779,9 +779,17 @@ export function MeetingWorkspace({
             <div>
               <h2>{t("Put a name to the voice", "为声音确认姓名")}</h2>
               <p>
-                {t("Listen to longer samples and watch the reference video before confirming a name.", "先试听较长样本并查看参考视频，再确认姓名。")}
+                {t("Follow synchronized playback to spot voices, or switch to Edit speakers for samples, video comparison, and name confirmation.", "跟随同步播放定位声音，或切换到“编辑说话人”试听样本、对照参考视频并确认姓名。")}
               </p>
             </div>
+            {m.speakers.length > 0 && (
+              <Pill tone={m.speakers.every((s) => s.confirmed) ? "green" : "sand"}>
+                {t(
+                  `${m.speakers.filter((s) => s.confirmed).length} / ${m.speakers.length} confirmed`,
+                  `已确认 ${m.speakers.filter((s) => s.confirmed).length} / ${m.speakers.length} 位`,
+                )}
+              </Pill>
+            )}
           </header>
           <SpeakerReview
             meeting={m}

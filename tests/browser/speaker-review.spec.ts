@@ -610,3 +610,33 @@ test("speaker review stays usable on a narrow viewport", async ({ page }) => {
   await page.getByLabel("Name for speaker 1", { exact: true }).focus();
   await expect(page.getByLabel("Name for speaker 1", { exact: true })).toBeFocused();
 });
+
+test("playback mode exposes gap jump, direct speaker rename focus, video badge, and WCAG AA compliance", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await createFixture(page, "The State of Startups in 2026 [yslXlV2BP_Y].mp3");
+  await expect(page.getByText("0 / 2 confirmed", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Playback mode", exact: true }).click();
+  const playback = page.locator(".playback-mode");
+  await expect(playback).toBeVisible();
+  await expect(playback.locator(".playback-reference-badge")).toHaveText("Video ID suggested");
+
+  // Silent gap at 0.0s offers a quick-jump action to the next speech at 0.1s
+  const nextSpeech = playback.getByRole("button", { name: /Next speech/ });
+  await expect(nextSpeech).toBeVisible();
+  await nextSpeech.click();
+  await expect
+    .poll(() => page.locator("audio").evaluate((el) => (el as HTMLMediaElement).currentTime))
+    .toBeGreaterThanOrEqual(0.1);
+
+  // Verify WCAG 2.1 AA compliance inside Playback mode
+  const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+  expect(axe.violations.map((v) => v.id), JSON.stringify(axe.violations)).toEqual([]);
+
+  // Clicking Speaker 2 card switches to Edit speakers and focuses Speaker 2 input
+  await playback.locator(".playback-speaker").nth(1).click();
+  await expect(page.getByRole("button", { name: "Edit speakers", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByLabel("Name for speaker 2", { exact: true })).toBeFocused();
+});
