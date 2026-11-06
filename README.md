@@ -21,6 +21,8 @@ Playback requires local audio and supported source timing. Caption groups improv
 
 Speaker-name drafts remain protected when switching modes. Save or reset an unsaved video-reference draft before switching modes; the workspace keeps that editor open rather than silently discarding its URL or offset.
 
+Playback now uses a sequential group-chat view: a persistent roster of all speakers above left-aligned, timestamped bubbles. Exact source fragments are highlighted inside each bubble; overlapping speakers remain visible. Clicking a bubble seeks while preserving play/pause state. Manual scrolling pauses following until **Follow playback** is selected. Untimed text is available separately under **Timing unavailable** and has no fabricated seek position. Speaker names remain editable in **Edit speakers**. The activity glyph indicates timed attribution, not independently measured speaker volume.
+
 ## What stays local
 
 The meeting library, recordings, revisions, review history, and jobs live in this browser's IndexedDB. Encoded audio bytes and media type are stored atomically with metadata; playback reconstructs a Blob. Settings, including provider keys, are stored in a separate local IndexedDB database. **Keys are unencrypted** and accessible to scripts sharing this website origin and anyone with access to this browser profile. They are excluded from meeting exports, logs, service-worker caches and GitHub builds. Use **Forget keys** to remove saved keys; clearing site data also removes them and local meetings. `localhost` and the GitHub Pages address have different origins and do not automatically share or migrate keys; saving a key on either origin stores it only in that browser origin.

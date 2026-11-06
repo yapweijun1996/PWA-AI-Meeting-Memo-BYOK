@@ -1,5 +1,11 @@
 # Validation record
 
+## Sequential group-chat playback — 2026-11-06
+
+Replaced the duplicated hero/live-caption area with a stable N-speaker roster and a chronological, left-aligned bubble stream. Bubbles carry names, avatars, timestamps, exact fragment emphasis and a timed-attribution activity glyph; the glyph does not measure audio energy. Preserved overlap, pause attribution, independent Naming mode, reference draft guards, bounded rendering and state-preserving seek. Untimed passages use a separate paged disclosure. Manual wheel/touch/keyboard and scrollbar interaction suspend follow. Reduced motion disables the 180ms bubble transition.
+
+Local verification: 88 unit tests; 28 existing Chromium/WebKit speaker and bilingual cases; four updated/new two-engine group-chat cases covering responsive alignment, six speakers, unknown timing, reduced motion and scrollbar interruption. Lint/type/build/artifact and both-engine PWA lifecycle checks passed. A first new fixture run failed because its helper hard-coded two speakers; the helper now asserts the actual input count and both engines pass. Screenshot inspection found a flex alignment width issue, repaired before publication. Native audio-energy animation, real-phone and provider-quality gates remain open.
+
 ## Fragment projection and state-preserving seek checkpoint — 2026-11-06
 
 The additive domain checkpoint `dcb2ef1` preserves copied fragment IDs, speaker IDs, nullable times and exact text without altering meeting/export schemas. Fragment matching uses half-open source intervals; merged gaps do not become speech. Local unit verification passed 88 tests, with lint and type checks passing.

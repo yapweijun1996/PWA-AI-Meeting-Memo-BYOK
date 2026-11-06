@@ -186,7 +186,7 @@ async function createFixture(
   });
   await page.getByRole("tab", { name: /Speakers/ }).click();
   await page.getByRole("button", { name: "Edit speakers", exact: true }).click();
-  await expect(page.locator(".speaker-review-card")).toHaveCount(2);
+  await expect(page.locator(".speaker-review-card")).toHaveCount(meeting.speakers.length);
 }
 
 async function storedMeeting(page: Page) {
@@ -301,7 +301,7 @@ test("playback mode keeps speaker, caption, and transcript state on one audio cl
   const audio = page.locator("audio");
   const playback = page.locator(".playback-mode");
   await expect(playback).toBeVisible();
-  const caption = playback.locator(".live-caption p");
+  const caption = playback.locator(".chat-text").first();
   const normalCaptionSize = await caption.evaluate((element) =>
     Number.parseFloat(getComputedStyle(element).fontSize),
   );
@@ -365,7 +365,7 @@ test("playback mode keeps speaker, caption, and transcript state on one audio cl
   await expect(playback.locator('[data-speaker-active="true"]')).toHaveCount(0);
 });
 
-test("playback stage and transcript use responsive columns", async ({ page }) => {
+test("group chat keeps a persistent speaker stage above chronological bubbles", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await createFixture(page);
   await page.getByRole("button", { name: "Playback mode", exact: true }).click();
@@ -378,8 +378,15 @@ test("playback stage and transcript use responsive columns", async ({ page }) =>
   const desktopTranscript = await transcript.boundingBox();
   expect(desktopStage).not.toBeNull();
   expect(desktopTranscript).not.toBeNull();
-  expect(Math.abs(desktopStage!.y - desktopTranscript!.y)).toBeLessThanOrEqual(1);
-  expect(desktopTranscript!.x - (desktopStage!.x + desktopStage!.width)).toBeGreaterThanOrEqual(16);
+  expect(desktopTranscript!.y).toBeGreaterThanOrEqual(desktopStage!.y + desktopStage!.height);
+  expect(Math.abs(desktopTranscript!.x - desktopStage!.x)).toBeLessThanOrEqual(1);
+  const bubbles = playback.locator(".playback-caption-row");
+  await expect(bubbles.first().locator(".chat-speaker-name")).toHaveText("Speaker 1");
+  await expect(bubbles.first().locator(".chat-avatars")).toBeVisible();
+  const leftEdges = await bubbles.evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().left));
+  expect(Math.max(...leftEdges) - Math.min(...leftEdges)).toBeLessThanOrEqual(1);
+  await stage.evaluate((element) => element.scrollIntoView({ block: "start" }));
+  await page.screenshot({ path: `test-results/group-chat-desktop-${test.info().project.name}.png` });
 
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
@@ -390,6 +397,31 @@ test("playback stage and transcript use responsive columns", async ({ page }) =>
     expect(mobileTranscript!.y).toBeGreaterThanOrEqual(mobileStage!.y + mobileStage!.height);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }
+  await page.screenshot({ path: `test-results/group-chat-mobile-${test.info().project.name}.png` });
+});
+
+test("group chat preserves all identities, untimed evidence and reduced motion", async ({ page }) => {
+  const meeting = fixtureMeeting();
+  for (let index = 3; index <= 6; index++) meeting.speakers.push({
+    ...meeting.speakers[0], id: `00000000-0000-4000-8000-00000000000${index}`, name: `Speaker ${index}`,
+  });
+  meeting.segments.push({ ...meeting.segments[0], id: "00000000-0000-4000-8000-000000000009", start: null, end: null, text: "Untimed evidence stays available" });
+  await createFixture(page, "group-chat.wav", meeting);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Playback mode", exact: true }).click();
+  await expect(page.locator(".playback-speaker")).toHaveCount(6);
+  await expect(page.locator(".live-caption")).toHaveCount(0);
+  await page.locator(".playback-untimed summary").click();
+  await expect(page.locator(".playback-untimed")).toContainText("Untimed evidence stays available");
+  await expect(page.locator(".playback-untimed [data-caption-id]")).toHaveCount(0);
+  const bubble = page.locator(".playback-caption-row").first();
+  expect(await bubble.evaluate((element) => getComputedStyle(element).transitionDuration)).toBe("0s");
+  await bubble.click();
+  await expect(page.locator(".playback-caption-row.is-active [data-fragment-active=true]")).not.toHaveCount(0);
+  const list = page.locator(".playback-transcript-list");
+  const box = (await list.boundingBox())!;
+  await page.mouse.click(box.x + box.width - 2, box.y + 10);
+  await expect(page.getByRole("button", { name: "Follow playback", exact: true })).toBeVisible();
 });
 
 test("speaker changes refresh without timeupdate and short word gaps retain inactive context", async ({ page }) => {
@@ -420,22 +452,22 @@ test("speaker changes refresh without timeupdate and short word gaps retain inac
   await expect(stage.locator('[data-speaker-hero="true"]')).toHaveCount(0);
   await expect(stage.locator('[data-speaker-active="true"]')).toHaveCount(0);
   await expect(page.locator(".playback-caption-row.is-active")).toHaveCount(0);
-  await expect(stage.locator(".playback-hero strong")).toHaveText("Speaker 1");
-  await expect(stage.locator(".live-caption")).toContainText("Caption context · between words");
+  await expect(stage.locator(".playback-speaker")).toHaveCount(2);
+
   await setTime(1.5);
   await expect(stage.locator('[data-speaker-hero="true"] strong')).toHaveText("Speaker 2");
-  await expect(stage.locator(".live-caption p")).toContainText("The second speaker");
+  await expect(page.locator(".playback-caption-row.is-active .chat-text")).toContainText("The second speaker");
   await expect(page.locator(".playback-caption-row.is-active")).toHaveCount(1);
   await setTime(2);
   await expect(stage.locator('[data-speaker-hero="true"]')).toHaveCount(2);
   await setTime(3);
-  await expect(stage.locator(".playback-hero strong")).toHaveCount(0);
+  await expect(stage.locator('[data-speaker-hero="true"]')).toHaveCount(0);
   await expect(title).toHaveText("Speaker & captions");
   await page.getByRole("button", { name: "Pause audio", exact: true }).click();
   await setTime(0.2);
   // No sampling while paused, and no stale clock extrapolation.
   await page.waitForTimeout(150);
-  await expect(stage.locator(".playback-hero strong")).toHaveCount(0);
+  await expect(stage.locator('[data-speaker-hero="true"]')).toHaveCount(0);
   await page.locator("audio").dispatchEvent("seeked");
   await expect(stage.locator('[data-speaker-hero="true"] strong')).toHaveText("Speaker 1");
   await expect(stage.locator('[data-speaker-active="true"]')).toHaveCount(0);
