@@ -1,3 +1,4 @@
+import { isMeetingCompleted, doesMeetingNeedReview, getMeetingWorkflow } from "./domain/workflow";
 import { useCallback, useEffect, useState } from "react";
 import {
   ArrowUpRight,
@@ -183,105 +184,9 @@ export default function App() {
       setError(e instanceof Error ? e.message : "Could not restore this file.");
     }
   }
-  const isMeetingCompleted = (m: Meeting) => {
-    const latestMemo = m.memos.at(-1);
-    return Boolean(
-      latestMemo?.items.length &&
-        latestMemo.items.some((i) => i.review === "accepted") &&
-        latestMemo.items.every(
-          (i) =>
-            i.review === "rejected" ||
-            (i.review === "accepted" && i.reviewedRevision === m.revision),
-        ) &&
-        m.segments.every((s) => s.reviewed),
-    );
-  };
-  const doesMeetingNeedReview = (m: Meeting) => {
-    if (isMeetingCompleted(m)) return false;
-    const latestJob = m.jobs.at(-1);
-    if (
-      latestJob &&
-      (latestJob.state === "failed" ||
-        latestJob.state === "outcome_unknown" ||
-        latestJob.state === "failed_before_send")
-    )
-      return true;
-    return (
-      m.segments.some((s) => !s.reviewed) ||
-      m.speakers.some((s) => !s.confirmed) ||
-      Boolean(
-        m.memos
-          .at(-1)
-          ?.items.some(
-            (i) => i.review === "pending" || i.reviewedRevision !== m.revision,
-          ),
-      )
-    );
-  };
-  const getMeetingWorkflow = (m: Meeting) => {
-    const latestJob = m.jobs.at(-1);
-    if (m.jobs.some((j) => j.state === "in_flight")) {
-      return {
-        badge: t("Transcribing", "处理中"),
-        tone: "sand" as const,
-        stage: t("Processing in progress", "正在处理请求"),
-        cta: t("View", "查看"),
-      };
-    }
-    if (
-      latestJob &&
-      (latestJob.state === "failed" ||
-        latestJob.state === "outcome_unknown" ||
-        latestJob.state === "failed_before_send")
-    ) {
-      return {
-        badge: t("Failed", "失败"),
-        tone: "sand" as const,
-        stage:
-          latestJob.state === "outcome_unknown"
-            ? t("Outcome unknown", "结果未知")
-            : t("Request failed", "请求失败"),
-        cta: t("Review", "审阅"),
-      };
-    }
-    if (isMeetingCompleted(m)) {
-      return {
-        badge: t("Ready", "已完成"),
-        tone: "green" as const,
-        stage: t("Completed notes", "已完成笔记"),
-        cta: t("Open", "打开"),
-      };
-    }
-    if (m.memos.length > 0) {
-      return {
-        badge: t("Needs review", "需要审阅"),
-        tone: "green" as const,
-        stage: t("Draft notes", "笔记草稿"),
-        cta: t("Review", "审阅"),
-      };
-    }
-    if (m.segments.length > 0) {
-      return {
-        badge: t("Needs review", "需要审阅"),
-        tone: "neutral" as const,
-        stage: t("Review transcript", "审阅转录"),
-        cta: t("Review", "审阅"),
-      };
-    }
-    if (m.audio) {
-      return {
-        badge: t("Recording", "录音就绪"),
-        tone: "neutral" as const,
-        stage: t("Ready to transcribe", "准备转录"),
-        cta: t("Transcribe", "转录"),
-      };
-    }
-    return {
-      badge: t("Ready", "就绪"),
-      tone: "neutral" as const,
-      stage: t("Ready to start", "准备开始"),
-      cta: t("Start", "开始"),
-    };
+  const workflow = (m: Meeting) => {
+    const value = getMeetingWorkflow(m);
+    return { ...value, badge: t(...value.badge), stage: t(...value.stage), cta: t(...value.cta) };
   };
   const needsReviewCount = meetings.filter(doesMeetingNeedReview).length;
   const completedCount = meetings.filter(isMeetingCompleted).length;
@@ -369,7 +274,7 @@ export default function App() {
           {meetings.length > 0 ? (
             <div className="sidebar-recent-list">
               {meetings.slice(0, 4).map((m) => {
-                const status = getMeetingWorkflow(m);
+                const status = workflow(m);
                 return (
                   <a
                     key={m.id}
@@ -429,8 +334,8 @@ export default function App() {
                 : current?.title || t("Your meetings", "您的会议")}
             </strong>
             {route.startsWith("/meetings/") && current && (
-              <Pill tone={getMeetingWorkflow(current).tone}>
-                {getMeetingWorkflow(current).badge}
+              <Pill tone={workflow(current).tone}>
+                {workflow(current).badge}
               </Pill>
             )}
           </div>
@@ -601,7 +506,7 @@ export default function App() {
                 ) : visible.length ? (
                   <div className="meeting-grid">
                     {visible.map((m) => {
-                      const status = getMeetingWorkflow(m);
+                      const status = workflow(m);
                       return (
                         <a
                           className="meeting-card"

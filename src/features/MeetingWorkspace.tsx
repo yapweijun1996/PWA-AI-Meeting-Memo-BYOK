@@ -1,3 +1,4 @@
+import { speakerBackground } from "../components/speaker-appearance";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -697,14 +698,12 @@ export function MeetingWorkspace({
                   <div
                     className="speaker-avatar"
                     style={{
-                      background: ["#e7efda", "#ede7f4", "#faeed9", "#e3edef", "#f3e8d6"][
-                        Math.max(
+                      background: speakerBackground(Math.max(
                           0,
                           m.speakers.findIndex((p) =>
                             s.speakerIds.includes(p.id),
                           ),
-                        ) % 5
-                      ],
+                        )),
                     }}
                   >
                     {(s.speakerIds.length ? speakerName(m, s.speakerIds) : t("Unknown speaker", "未知说话人")).slice(0, 1)}

@@ -77,12 +77,13 @@ export function Empty({
     </section>
   );
 }
+export type PillTone = "neutral" | "green" | "sand" | "danger" | "light";
 export function Pill({
   children,
   tone = "neutral",
 }: {
   children: ReactNode;
-  tone?: string;
+  tone?: PillTone;
 }) {
   return <span className={`pill ${tone}`}>{children}</span>;
 }

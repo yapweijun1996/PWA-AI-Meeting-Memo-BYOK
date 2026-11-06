@@ -1,5 +1,11 @@
 # Validation record
 
+## Shared design tokens and workflow projection ? 2026-11-06
+
+CSS colors and pixel typography now resolve through root tokens; speaker backgrounds use one CSS palette and a shared token selector. Supporting 11px text is raised to 12px. A pure domain projection supplies workflow badges, stage labels and CTAs to existing consumers; its classification order is preserved. Pill tones are a constrained union.
+
+Pinned Node 22.23.3: typecheck, lint, 76 unit tests, production build and all 96 Chromium/WebKit browser cases passed locally. Both-engine N-to-N+1/request/editor/cache/failure checks and the artifact boundary passed on a separate rerun. An initial PWA run overlapping the broad browser suite timed out waiting for navigation; the isolated rerun passed. This is local evidence, not physical-device or provider-quality certification. No provider requests or new paid reservations occurred. Publication remains subject to trusted-main CI and served-build readback.
+
 ## Speaker-switch responsiveness follow-up — 2026-11-06
 
 The owner reported frequent or late Speaker 1/2 changes during listening. Source inspection identified event-only clock sampling and short internal word gaps that cleared the stage. The repair reads the actual media clock through a foreground animation-frame sampler, throttled to 50 ms. Pause, buffering, hidden document, error, end and unmount cancel sampling; media events retain their immediate transitions. The section heading is stable, anonymous avatars show distinct numbers, and only playback status is automatically announced.

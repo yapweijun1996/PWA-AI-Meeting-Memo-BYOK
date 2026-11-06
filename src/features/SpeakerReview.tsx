@@ -1,3 +1,4 @@
+import { speakerBackground } from "../components/speaker-appearance";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Check, Pause, Play, Plus } from "lucide-react";
 import type { Meeting } from "../domain/model";
@@ -715,7 +716,7 @@ function PlaybackMode({
                     <span
                       className="speaker-avatar hero"
                       style={{
-                        background: ["#e7efda", "#ede7f4", "#faeed9", "#e3edef", "#f3e8d6"][speakerIndex % 5],
+                        background: speakerBackground(speakerIndex),
                       }}
                       aria-hidden="true"
                     >
@@ -802,7 +803,7 @@ function PlaybackMode({
                       <span
                         className="speaker-avatar large"
                         style={{
-                          background: ["#e7efda", "#ede7f4", "#faeed9", "#e3edef", "#f3e8d6"][index % 5],
+                          background: speakerBackground(index),
                         }}
                         aria-hidden="true"
                       >
