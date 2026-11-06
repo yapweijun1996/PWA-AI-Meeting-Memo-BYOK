@@ -96,6 +96,25 @@ function fixtureMeeting() {
   };
 }
 
+function longFixtureMeeting() {
+  const baseMeeting = fixtureMeeting();
+  const longSegments = Array.from({ length: 120 }, (_, index) => {
+    const start = 4 + index * 0.27;
+    return {
+      id: `30000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      revision: 1,
+      start,
+      end: start + 0.2,
+      speakerIds: [speakerIds[index % 2]],
+      originalText: `Long caption ${index + 1}`,
+      text: `Long caption ${index + 1}`,
+      reviewed: false,
+      parents: [],
+    };
+  });
+  return { ...baseMeeting, segments: [...baseMeeting.segments, ...longSegments] };
+}
+
 function wavFile(seconds = 40) {
   const sampleRate = 8_000;
   const dataSize = sampleRate * seconds * 2;
@@ -115,15 +134,22 @@ function wavFile(seconds = 40) {
   return buffer;
 }
 
-async function createFixture(page: Page, audioName = "speaker-review.wav") {
+async function createFixture(
+  page: Page,
+  audioName = "speaker-review.wav",
+  meeting = fixtureMeeting(),
+) {
   await page.addInitScript(() => {
     HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
+      Object.defineProperty(this, "paused", { configurable: true, value: false });
+      Object.defineProperty(this, "ended", { configurable: true, value: false });
       this.dataset.testPlaying = "true";
       this.dataset.testPaused = "false";
       this.dispatchEvent(new Event("play"));
       return Promise.resolve();
     };
     HTMLMediaElement.prototype.pause = function (this: HTMLMediaElement) {
+      Object.defineProperty(this, "paused", { configurable: true, value: true });
       this.dataset.testPlaying = "false";
       this.dataset.testPaused = "true";
       this.dispatchEvent(new Event("pause"));
@@ -134,7 +160,7 @@ async function createFixture(page: Page, audioName = "speaker-review.wav") {
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Meeting title", { exact: true }).fill("Speaker UI fixture");
   await dialog.getByText("Start from a transcript instead").click();
-  await dialog.getByLabel("Transcript", { exact: true }).fill(JSON.stringify(fixtureMeeting()));
+  await dialog.getByLabel("Transcript", { exact: true }).fill(JSON.stringify(meeting));
   await dialog.getByRole("button", { name: "Create meeting", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Speaker UI fixture", exact: true })).toBeVisible();
@@ -159,6 +185,7 @@ async function createFixture(page: Page, audioName = "speaker-review.wav") {
     element.dispatchEvent(new Event("loadedmetadata", { bubbles: true }));
   });
   await page.getByRole("tab", { name: /Speakers/ }).click();
+  await page.getByRole("button", { name: "Edit speakers", exact: true }).click();
   await expect(page.locator(".speaker-review-card")).toHaveCount(2);
 }
 
@@ -256,7 +283,8 @@ test("speaker review offers long samples and explicit overlap/gap activity", asy
     media.currentTime = 2;
     media.dispatchEvent(new Event("timeupdate", { bubbles: true }));
   });
-  await expect(page.locator('.speaker-stage-card[data-speaker-active="true"]')).toHaveCount(2);
+  await expect(page.locator('.speaker-stage-card[data-speaker-active="true"]')).toHaveCount(0);
+  await expect(page.getByText("At playback position: Speaker 1 + Speaker 2", { exact: true })).toBeVisible();
   await audio.evaluate((element) => {
     const media = element as HTMLMediaElement;
     media.currentTime = 2.6;
@@ -267,11 +295,155 @@ test("speaker review offers long samples and explicit overlap/gap activity", asy
   await expect(page.getByText(/Some passages have no time/)).toBeVisible();
 });
 
+test("playback mode keeps speaker, caption, and transcript state on one audio clock", async ({ page }, testInfo) => {
+  await createFixture(page);
+  await page.getByRole("button", { name: "Playback mode", exact: true }).click();
+  const audio = page.locator("audio");
+  const playback = page.locator(".playback-mode");
+  await expect(playback).toBeVisible();
+  const caption = playback.locator(".live-caption p");
+  const normalCaptionSize = await caption.evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).fontSize),
+  );
+  await page.getByLabel("Caption size", { exact: true }).selectOption("large");
+  await expect.poll(() => caption.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThan(normalCaptionSize);
+  const largeCaptionSize = await caption.evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).fontSize),
+  );
+  await page.getByLabel("Caption size", { exact: true }).selectOption("xlarge");
+  await expect.poll(() => caption.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThan(largeCaptionSize);
+  await page.getByLabel("Caption size", { exact: true }).selectOption("normal");
+  const speed = page.getByLabel("Playback speed", { exact: true });
+  await speed.selectOption("1.5");
+  await expect(speed).toHaveValue("1.5");
+  const seekControl = page.getByLabel("Playback position", { exact: true });
+  await seekControl.press("Home");
+  for (let index = 0; index < 16; index++) await seekControl.press("ArrowRight");
+  await expect.poll(() => audio.evaluate((element) => (element as HTMLMediaElement).currentTime)).toBeCloseTo(1.6, 2);
+  await audio.evaluate((element) => {
+    const media = element as HTMLMediaElement;
+    media.currentTime = 0.2;
+    media.dispatchEvent(new Event("timeupdate", { bubbles: true }));
+  });
+  await expect(playback.locator('[data-speaker-hero="true"]')).toHaveCount(1);
+  await expect(playback.locator('.playback-caption-row.is-active')).toHaveCount(1);
+  await expect(playback.locator('[data-speaker-active="true"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "Play audio", exact: true }).click();
+  if (await audio.evaluate((element) => Boolean((element as HTMLMediaElement).error))) {
+    testInfo.annotations.push({
+      type: "unsupported",
+      description: "WebKit on Windows rejected the synthetic WAV fixture; playback UI exposed the media error.",
+    });
+    await expect(page.getByText("This browser cannot play the recording. The provider may still support it; verify before sending.", { exact: true })).toBeVisible();
+    return;
+  }
+  await expect(playback.locator('[data-playback-status="playing"]')).toBeVisible();
+  await expect(playback.locator('[data-speaker-active="true"]')).toHaveCount(1);
+  await expect(playback.getByText("Playing", { exact: true })).toBeVisible();
+  await audio.evaluate((element) => {
+    const media = element as HTMLMediaElement;
+    media.currentTime = 2;
+    media.dispatchEvent(new Event("timeupdate", { bubbles: true }));
+  });
+  await expect(playback.locator('[data-speaker-active="true"]')).toHaveCount(2);
+  await expect(playback.locator('[data-speaker-hero="true"]')).toHaveCount(2);
+  await audio.evaluate((element) => {
+    const media = element as HTMLMediaElement;
+    media.currentTime = 2.6;
+    media.dispatchEvent(new Event("timeupdate", { bubbles: true }));
+  });
+  await expect(playback.locator('[data-speaker-active="true"]')).toHaveCount(0);
+  await expect(playback.locator('[data-speaker-hero="true"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "Pause audio", exact: true }).click();
+  await expect(playback.getByText("Paused", { exact: true })).toBeVisible();
+  await audio.evaluate((element) => {
+    const media = element as HTMLMediaElement;
+    media.currentTime = 1.5;
+    media.dispatchEvent(new Event("timeupdate", { bubbles: true }));
+  });
+  await expect(playback.locator('[data-speaker-hero="true"]')).toHaveCount(1);
+  await expect(playback.locator('[data-speaker-active="true"]')).toHaveCount(0);
+});
+
+test("playback stage and transcript use responsive columns", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await createFixture(page);
+  await page.getByRole("button", { name: "Playback mode", exact: true }).click();
+  const playback = page.locator(".playback-mode");
+  const stage = playback.locator(".playback-stage");
+  const transcript = playback.locator(".playback-transcript-panel");
+  await expect(stage).toBeVisible();
+  await expect(transcript).toBeVisible();
+  const desktopStage = await stage.boundingBox();
+  const desktopTranscript = await transcript.boundingBox();
+  expect(desktopStage).not.toBeNull();
+  expect(desktopTranscript).not.toBeNull();
+  expect(Math.abs(desktopStage!.y - desktopTranscript!.y)).toBeLessThanOrEqual(1);
+  expect(desktopTranscript!.x - (desktopStage!.x + desktopStage!.width)).toBeGreaterThanOrEqual(16);
+
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    const mobileStage = await stage.boundingBox();
+    const mobileTranscript = await transcript.boundingBox();
+    expect(mobileStage).not.toBeNull();
+    expect(mobileTranscript).not.toBeNull();
+    expect(mobileTranscript!.y).toBeGreaterThanOrEqual(mobileStage!.y + mobileStage!.height);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  }
+});
+
+test("unsaved speaker drafts stay guarded across playback mode", async ({ page }) => {
+  await createFixture(page);
+  const name = page.getByLabel("Name for speaker 1", { exact: true });
+  await name.fill("Draft speaker");
+  await expect(page.locator('.speaker-review-dirty-sentinel[data-unsaved-edit="true"]')).toHaveCount(1);
+  await page.getByRole("button", { name: "Playback mode", exact: true }).click();
+  await expect(page.locator('.speaker-review-dirty-sentinel[data-unsaved-edit="true"]')).toHaveCount(1);
+  await page.getByRole("button", { name: "Edit speakers", exact: true }).click();
+  await expect(name).toHaveValue("Draft speaker");
+  await page.getByRole("button", { name: "Save name", exact: true }).first().click();
+  await expect(page.locator('.speaker-review-dirty-sentinel[data-unsaved-edit="true"]')).toHaveCount(0);
+});
+
+test("unsaved reference drafts stay guarded across playback mode", async ({ page }) => {
+  const youtubeRequests: string[] = [];
+  page.on("request", (request) => {
+    if (/youtube(?:-nocookie)?\.com|youtu\.be/i.test(request.url())) youtubeRequests.push(request.url());
+  });
+  await createFixture(page);
+  const playbackMode = page.getByRole("button", { name: "Playback mode", exact: true });
+  const namingMode = page.getByRole("button", { name: "Edit speakers", exact: true });
+  const url = page.getByLabel("YouTube URL", { exact: true });
+  await url.fill("https://www.youtube.com/watch?v=yslXlV2BP_Y");
+  await expect(page.locator('.reference-video[data-unsaved-edit="true"]')).toHaveCount(1);
+  await playbackMode.click();
+  await expect(namingMode).toHaveAttribute("aria-pressed", "true");
+  await expect(playbackMode).toHaveAttribute("aria-pressed", "false");
+  await expect(url).toHaveValue("https://www.youtube.com/watch?v=yslXlV2BP_Y");
+  await expect(page.getByRole("alert")).toContainText(
+    "Save or reset your video reference draft before switching modes.",
+  );
+  expect(youtubeRequests).toEqual([]);
+
+  await url.fill("");
+  await expect(page.locator('.reference-video[data-unsaved-edit="true"]')).toHaveCount(0);
+  await playbackMode.click();
+  await expect(page.locator(".playback-mode")).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(youtubeRequests).toEqual([]);
+
+  await namingMode.click();
+  await expect(namingMode).toHaveAttribute("aria-pressed", "true");
+  await expect(url).toHaveValue("");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
 test("sample playback and name confirmation keep the identity review explicit", async ({ page }) => {
   await createFixture(page);
   await seedMemoFixture(page);
   await page.reload();
   await page.getByRole("tab", { name: /Speakers/ }).click();
+  await page.getByRole("button", { name: "Edit speakers", exact: true }).click();
   const name = page.getByLabel("Name for speaker 1", { exact: true });
   const revisionBeforeWhitespace = (await storedMeeting(page) as { revision: number }).revision;
   await name.fill(" Speaker 1 ");
@@ -301,11 +473,48 @@ test("sample playback and name confirmation keep the identity review explicit", 
   await page.getByRole("tab", { name: /Transcript/ }).click();
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   await page.getByRole("tab", { name: /Speakers/ }).click();
+  await page.getByRole("button", { name: "Edit speakers", exact: true }).click();
   await expect(page.getByLabel("Name for speaker 1", { exact: true })).toHaveValue("Speaker 1");
   await expect(page.getByText("Needs a name", { exact: true })).toHaveCount(2);
   await page.reload();
   await page.getByRole("tab", { name: /Speakers/ }).click();
+  await page.getByRole("button", { name: "Edit speakers", exact: true }).click();
   await expect(page.getByLabel("Name for speaker 1", { exact: true })).toHaveValue("Speaker 1");
+});
+
+test("long playback lists keep manual paging and nearest gap/end anchors", async ({ page }) => {
+  await createFixture(page, "long-fixture.wav", longFixtureMeeting());
+  await page.getByRole("button", { name: "Playback mode", exact: true }).click();
+  const playback = page.locator(".playback-mode");
+  const list = playback.locator(".playback-transcript-list");
+  await expect(list.locator("button")).toHaveCount(80);
+  await page.getByRole("button", { name: "Load later", exact: true }).click();
+  const pagedFirst = await list.locator("button").first().textContent();
+  expect(pagedFirst).toContain("Long caption");
+  await list.evaluate((element) => {
+    element.dispatchEvent(new WheelEvent("wheel", { deltaY: 300, bubbles: true }));
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  await expect(page.getByRole("button", { name: "Follow playback", exact: true })).toBeVisible();
+  await expect(list.locator("button").first()).toHaveText(pagedFirst!);
+  await page.getByRole("button", { name: "Follow playback", exact: true }).click();
+  await expect(list.locator("button").first()).toContainText("The first speaker");
+  const audio = page.locator("audio");
+  await audio.evaluate((element) => {
+    const media = element as HTMLMediaElement;
+    media.currentTime = 20.435;
+    media.dispatchEvent(new Event("timeupdate", { bubbles: true }));
+  });
+  await expect(list.locator(".is-active")).toHaveCount(0);
+  await expect(list.locator("button").first()).toContainText("Long caption");
+  await audio.evaluate((element) => {
+    const media = element as HTMLMediaElement;
+    media.currentTime = 39;
+    media.dispatchEvent(new Event("timeupdate", { bubbles: true }));
+  });
+  await expect(list.locator(".is-active")).toHaveCount(0);
+  await expect(list.locator("button").last()).toContainText("Long caption 120");
 });
 
 test("workspace actions and count labels explain their units", async ({ page }) => {
@@ -374,6 +583,7 @@ test("filename video suggestion does not load YouTube until the user watches", a
   });
   await page.reload();
   await page.getByRole("tab", { name: /Speakers/ }).click();
+  await page.getByRole("button", { name: "Edit speakers", exact: true }).click();
   await expect(page.getByLabel("Audio-to-video offset (seconds)", { exact: true })).toHaveValue("5");
 });
 

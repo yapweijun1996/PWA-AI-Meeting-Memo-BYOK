@@ -11,11 +11,15 @@ Live app: **https://yapweijun1996.github.io/PWA-AI-Meeting-Memo-BYOK/**. GitHub 
 1. Create a meeting and attach a recording up to 50 MB, paste a transcript, or import a Meeting Memo JSON transcript.
 2. In **Settings & API keys**, enter your provider keys. New settings use **OpenRouter / `elevenlabs/scribe-v2`** for transcription and OpenAI for notes; existing saved selections remain unchanged. Choose the providers and models separately. Click **Save settings** to keep keys, selections and the speech rate in this browser across reloads. Saving settings makes no API request.
 3. Choose **Transcribe** and review the provider, recording, and estimated/unknown charge before confirming. Keep the page open.
-4. Open **Speakers** to listen to longer examples with transcript context and see the current speaker attribution during playback. Optionally link the original YouTube video to see people while manually checking a voice. Confirm names, correct text and assignments, merge voices, split passages, and undo changes. Unknown timing or identity stays explicit.
+4. Open **Speakers**. **Playback mode** presents current speaker attribution, live captions and a synchronized transcript from the recording's audio clock. Seek or change speed using the persistent player; pause retains the selected position without claiming someone is speaking. Use **Edit speakers** for longer samples, name confirmation and merge. The separate **Transcript** tab retains source corrections, reassignment, split and undo. Optionally expand the video reference and explicitly load YouTube for manual comparison. Unknown timing and identity stay explicit.
 5. Choose **Generate meeting notes**, review the selected destination and what is sent, then inspect, edit, accept, or reject each cited item. **Original generated item** shows its separately saved generated snapshot. Source changes require re-review; new generations preserve older human versions.
 6. Export Markdown/TXT for the selected notes version, JSON for all meeting data without audio, or ZIP for a full backup with audio. **Restore backup** creates a separate copy.
 
 Use **How it works → Explore a synthetic example** to try local review without a recording, key, or charge. The example contains invented text and no recorded audio or generated memo.
+
+Playback requires local audio and supported source timing. Caption groups improve readability without changing original source fragments; gaps and overlapping voices remain visible. Adjust caption size in Playback mode. When browsing the playback transcript manually, following pauses; use **Follow playback** to return to the current position. Long playback transcripts render a bounded window with earlier/later navigation. The original correction editor remains a separate full-source view. These controls synchronize existing attribution; they do not independently recognize a person's voice or verify provider accuracy.
+
+Speaker-name drafts remain protected when switching modes. Save or reset an unsaved video-reference draft before switching modes; the workspace keeps that editor open rather than silently discarding its URL or offset.
 
 ## What stays local
 

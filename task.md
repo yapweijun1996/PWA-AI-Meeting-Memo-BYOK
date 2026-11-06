@@ -1,6 +1,6 @@
 # Implementation tasks
 
-Updated: 2026-11-06. The owner resumed UI closeout only. The earlier `15210bb` checkpoint passed verification and publication in [run 42006664705](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/42006664705). Vertical-space review is implemented and locally verified with paired synthetic layout measurements and all 80 Chromium/WebKit browser cases; see [validation](docs/VALIDATION.md#workspace-vertical-space-closeout--2026-11-06). The current local candidate is `7bd0e9799d8a0f79`, including a narrow-tab wrapping and layout-fixture follow-up after CI found two WebKit failures; release status follows the [trusted-main workflow](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/workflows/pages.yml). Production API validation has not resumed, no new paid request or reservation occurred, and protective reservations remain US$4.85. Physical-device and annotated-quality gates remain open.
+Updated: 2026-11-06. The owner authorized the synchronized playback improvement, per-task commits/main merges/pushes and deployment, with final owner testing after delivery. The existing vertical-space UI has passed all 80 browser cases locally and in Linux CI; see [validation](docs/VALIDATION.md#workspace-vertical-space-closeout--2026-11-06). CI reliability fix `02afcbe` passed 70 unit tests, 80 browser cases, both-engine PWA updates and artifact checks in [run 42155181979](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/42155181979); publication/readback and the new playback candidate are tracked below. Production API validation has not resumed, no new paid request or reservation occurred, and protective reservations remain US$4.85. Physical-device and annotated-quality gates remain open.
 
 This file tracks execution. [Product requirements](docs/PRODUCT.md), [architecture](docs/ARCHITECTURE.md), [feasibility](docs/FEASIBILITY.md), [deployment](docs/DEPLOYMENT.md), and [the roadmap](docs/ROADMAP.md) define the detailed contracts. A checked task requires evidence, not just code or a proposed design.
 
@@ -12,6 +12,18 @@ This file tracks execution. [Product requirements](docs/PRODUCT.md), [architectu
 - Use synthetic fixtures in CI. Live API tests require explicit authorization for the data and potential charges.
 - Persist completed work and distinguish provider polling from resubmitting a paid request. Never automatically retry an unknown paid outcome.
 - Record app commit, environment, test procedure, and result when completing a validation task. Real-browser, physical-device, and mocked tests establish different things.
+
+## Synchronized playback improvement — owner authorized 2026-11-06
+
+The owner approved the supplied Playback/Naming mockups and authorized coding, per-task commits, main merges/pushes and deployment. Final owner testing follows delivery. This work uses synthetic fixtures; paid provider validation and independent diarization quality evaluation remain separate.
+
+- [x] Implement and locally verify the core audio-clock synchronization: one `HTMLAudioElement.currentTime` timeline drives active speakers, live captions and transcript highlighting, including pause, seek, speed, end, overlap, gaps and missing timestamps.
+- [x] Provide Playback and Edit Speakers modes with a persistent player, desktop two-column/mobile single-column layout, adjustable captions, explicit follow controls and a bounded long-transcript view; preserve source IDs, edits, identity confirmation and CAS.
+- [ ] Commit/merge/push the independently verified core, publish through the existing trusted-main workflow and read back the served build.
+- [x] Assess the visual/privacy follow-up: numbered/color placeholders and reduced-motion-aware emphasis are included; custom photo upload remains future work with separate storage/backup semantics. Reference video remains explicit, collapsible and excluded from AI input.
+- [x] Complete local browser/PWA/artifact checks: 74 unit tests, a 90-case broad browser pass, 20 focused two-engine cases after the final manual-window guard, 18 native Chromium checks and both-engine update checks. Physical-device, native Windows WebKit codec certification and real screen-reader checks remain unrun.
+
+The earlier UI-only follow-up run [42150925350](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/42150925350) was cancelled at its 20-minute browser-dependency installation limit; publication was skipped. Its local 80-case pass remains local evidence only.
 
 ## Meeting workspace UI review — screenshot observations 2026-11-05
 

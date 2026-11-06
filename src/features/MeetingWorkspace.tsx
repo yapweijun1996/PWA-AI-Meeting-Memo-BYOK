@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   AudioLines,
@@ -45,6 +45,7 @@ import { Empty, Modal, Pill } from "../components/ui";
 import { CitedEvidence } from "./CitedEvidence";
 import { SpeakerReview } from "./SpeakerReview";
 import { ReferenceVideo } from "./ReferenceVideo";
+import { usePlaybackClock } from "./usePlaybackClock";
 import { useUiLanguage } from "../ui-language";
 import { translateMessage } from "../ui-messages";
 export function MeetingWorkspace({
@@ -74,14 +75,13 @@ export function MeetingWorkspace({
     [highlight, setHighlight] = useState(""),
     [pendingOnly, setPendingOnly] = useState(false);
   const [url, setUrl] = useState(""),
-    [playing, setPlaying] = useState(false),
-    [position, setPosition] = useState(0),
-    [duration, setDuration] = useState(m.audio?.duration || 0),
     [audioMissing, setAudioMissing] = useState(false),
     [sampleRange, setSampleRange] = useState<{ start: number; end: number } | null>(null),
     [audioStopToken, setAudioStopToken] = useState(0);
   const player = useRef<HTMLAudioElement>(null),
     playUntil = useRef<number | null>(null);
+  const playback = usePlaybackClock(player, Boolean(url), m.audio?.duration || 0),
+    { playing, position, duration } = playback;
   // A save can disable the focused editor; guard only that item's blur until review commits.
   const reviewInteraction = useRef<
     { key: string; phase: "pending" | "committing" } | undefined
@@ -89,6 +89,16 @@ export function MeetingWorkspace({
   const [evidence, setEvidence] = useState<Segment>();
   const [uiLanguage, setUiLanguage] = useState(getUiLanguage());
   const t = (en: string, zh: string) => uiLanguage === "zh-CN" ? zh : en;
+  const updatePlaybackRange = useCallback(
+    (range: { start: number; end: number } | null) => {
+      setSampleRange((current) =>
+        current?.start === range?.start && current?.end === range?.end
+          ? current
+          : range,
+      );
+    },
+    [],
+  );
   useEffect(() => {
     const changed = () => setUiLanguage(getUiLanguage());
     window.addEventListener("memo-keys-changed", changed);
@@ -235,6 +245,7 @@ export function MeetingWorkspace({
     setAudioStopToken((value) => value + 1);
     playUntil.current = end;
     player.current.currentTime = start;
+    playback.refresh();
     void player.current
       .play()
       .catch(() =>
@@ -778,6 +789,7 @@ export function MeetingWorkspace({
             duration={duration}
             position={position}
             playing={playing}
+            playbackStatus={playback.status}
             locked={locked}
             onCue={cueRange}
             onPause={() => player.current?.pause()}
@@ -807,6 +819,7 @@ export function MeetingWorkspace({
                 );
             }}
             t={t}
+            onPlaybackRangeChange={updatePlaybackRange}
             referenceVideo={
               <ReferenceVideo
                 value={m.referenceVideo}
@@ -1228,7 +1241,6 @@ export function MeetingWorkspace({
             onLoadedMetadata={(e) => {
               const d = e.currentTarget.duration;
               if (Number.isFinite(d)) {
-                setDuration(d);
                 if (m.audio && m.audio.duration !== d && !saving)
                   void persistQuietly({
                     ...m,
@@ -1237,7 +1249,6 @@ export function MeetingWorkspace({
               }
             }}
             onTimeUpdate={(e) => {
-              setPosition(e.currentTarget.currentTime);
               if (
                 playUntil.current !== null &&
                 e.currentTarget.currentTime >= playUntil.current
@@ -1246,8 +1257,6 @@ export function MeetingWorkspace({
                 playUntil.current = null;
               }
             }}
-            onPlay={() => setPlaying(true)}
-            onPause={() => setPlaying(false)}
             onError={() =>
               setNotice(
                 "This browser cannot play the recording. The provider may still support it; verify before sending.",
@@ -1286,6 +1295,7 @@ export function MeetingWorkspace({
               if (player.current) {
                 playUntil.current = null;
                 player.current.currentTime = Number(e.target.value);
+                playback.refresh();
               }
             }}
           />
@@ -1296,7 +1306,7 @@ export function MeetingWorkspace({
               if (player.current)
                 player.current.playbackRate = Number(e.target.value);
             }}
-            defaultValue="1"
+            value={String(playback.rate)}
           >
             <option value="0.75">0.75×</option>
             <option value="1">1×</option>

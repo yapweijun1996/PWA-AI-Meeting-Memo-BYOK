@@ -758,6 +758,7 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
   await page
     .getByRole("button", { name: "Confirm and send", exact: true })
     .click();
+  await page.getByRole("button", { name: "Edit speakers", exact: true }).click();
   await expect(page.getByLabel("Name for speaker 1")).toHaveValue("Speaker 1");
   await expect(page.getByLabel("Name for speaker 2")).toHaveValue("Speaker 2");
   await expect(page.getByText("Needs a name", { exact: true })).toHaveCount(2);
