@@ -8,6 +8,14 @@ For every case record: build SHA, date, device, OS, browser/version, installed o
 
 Use English and Simplified Chinese for the core flows. Test iPhone Safari and standalone, Android Chrome and installed PWA, VoiceOver and TalkBack. Use a separate synthetic meeting before testing private audio. Do not clear site storage to resolve an update or save failure.
 
+Create the transferable synthetic full backup with the pinned Node runtime:
+
+```sh
+node scripts/create-acceptance-fixture.mjs private-fixtures/owner-acceptance
+```
+
+Transfer `synthetic-playback.zip` to the device and use Restore backup. It contains eight seconds of low/high tones, authored timing/overlap/gaps, an untimed note and a clearly labeled authored memo. It contains no people, recognized speech, credentials or paid attempts. It exercises playback, review and restore; it cannot establish recognition accuracy. The generator refuses to overwrite an existing archive. Generated archives remain outside Git and the production artifact.
+
 ## Device and accessibility cases
 
 | ID | Steps | Expected result |
