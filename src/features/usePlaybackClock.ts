@@ -115,6 +115,34 @@ export function usePlaybackClock(
       });
     };
     refreshRef.current = read;
+    let frame: number | null = null;
+    let lastSample = -Infinity;
+    const stopSampling = () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      frame = null;
+    };
+    const sample = (timestamp: number) => {
+      frame = null;
+      if (audio.paused || audio.ended || audio.error || document.hidden) return;
+      // The frame timestamp only limits rendering work; media time is never
+      // inferred from it. Media events still handle background/seek transitions.
+      if (timestamp - lastSample >= 50) {
+        read();
+        lastSample = timestamp;
+      }
+      frame = requestAnimationFrame(sample);
+    };
+    const startSampling = () => {
+      if (frame === null && !audio.paused && !audio.ended && !document.hidden) {
+        lastSample = -Infinity;
+        frame = requestAnimationFrame(sample);
+      }
+    };
+    const visibilityChanged = () => {
+      stopSampling();
+      read();
+      startSampling();
+    };
     const handlers: Array<[keyof HTMLMediaElementEventMap, () => void]> = [
       ["loadedmetadata", () => read(undefined, true)],
       ["durationchange", () => read(undefined, true)],
@@ -122,17 +150,21 @@ export function usePlaybackClock(
       ["seeking", () => read()],
       ["seeked", () => read()],
       ["ratechange", () => read()],
-      ["play", () => read("playing")],
-      ["playing", () => read("playing")],
-      ["pause", () => read(audio.ended ? "ended" : "paused")],
-      ["waiting", () => read("buffering")],
-      ["canplay", () => read(audio.paused ? "paused" : "playing")],
-      ["ended", () => read("ended")],
-      ["error", () => read("error")],
+      ["play", () => { read("playing"); startSampling(); }],
+      ["playing", () => { read("playing"); startSampling(); }],
+      ["pause", () => { stopSampling(); read(audio.ended ? "ended" : "paused"); }],
+      ["waiting", () => { stopSampling(); read("buffering"); }],
+      ["canplay", () => { read(audio.paused ? "paused" : "playing"); startSampling(); }],
+      ["ended", () => { stopSampling(); read("ended"); }],
+      ["error", () => { stopSampling(); read("error"); }],
     ];
     for (const [event, handler] of handlers) audio.addEventListener(event, handler);
+    document.addEventListener("visibilitychange", visibilityChanged);
     read();
+    startSampling();
     return () => {
+      stopSampling();
+      document.removeEventListener("visibilitychange", visibilityChanged);
       for (const [event, handler] of handlers) audio.removeEventListener(event, handler);
       if (refreshRef.current === read) refreshRef.current = () => undefined;
     };

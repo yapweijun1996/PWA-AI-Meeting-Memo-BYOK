@@ -5,11 +5,30 @@ import { resolvePlaybackStatus } from "../src/features/usePlaybackClock";
 import {
   buildPlaybackCaptions,
   captionsAtTime,
+  captionContextAtTime,
   playbackCaptionWindow,
   playbackCaptionWindowStart,
 } from "../src/domain/playback";
 
 describe("speaker listening workspace", () => {
+  it("retains only short internal caption context without activating speech or altering source", () => {
+    const source = [
+      segment("first word", ["a"], 0, 0.8),
+      segment("next word", ["a"], 0.95, 1.2),
+      segment("reply", ["b"], 1.35, 1.7),
+      segment("later", ["a"], 3, 4),
+      segment("untimed", ["a"], null, null),
+    ];
+    const before = JSON.stringify(source);
+    const captions = buildPlaybackCaptions(source);
+    expect(captionContextAtTime(captions, 0.85)).toEqual([captions[0]]);
+    expect(captionsAtTime(captions, 0.85)).toEqual([]);
+    expect(speakerActivity(source, 0.85).activeSpeakerIds).toEqual([]);
+    for (const position of [0.5, 0.95, 1.25, 1.4, 2, 5])
+      expect(captionContextAtTime(captions, position)).toEqual([]);
+    expect(JSON.stringify(source)).toBe(before);
+  });
+
   it("keeps buffering through a timeupdate until a real resume transition", () => {
     const waitingState = { error: false, ended: false, playing: true, position: 1 };
     expect(resolvePlaybackStatus("buffering", undefined, waitingState)).toBe("buffering");

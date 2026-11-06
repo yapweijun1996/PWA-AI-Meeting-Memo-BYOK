@@ -6,6 +6,8 @@ This file tracks execution. [Product requirements](docs/PRODUCT.md), [architectu
 
 ## Working rules
 
+Speaker-switch follow-up, 2026-11-06: reduce event-driven playback lag and short-word-gap flicker while preserving exact attribution. The isolated repair adds bounded foreground media-time sampling, explicitly inactive same-caption gap context, stable headings and numbered anonymous avatars. Source output and confirmation remain unchanged. See [validation](docs/VALIDATION.md#speaker-switch-responsiveness-follow-up--2026-11-06) for the native audio probe and the distinction between clock responsiveness and provider diarization accuracy. Concurrent unrelated workspace edits are excluded from this release.
+
 - Keep the core browser-first, with runtime BYOK and static GitHub Pages hosting. A companion and backend remain optional future modes.
 - Preserve speaker correction, original results, source references, and human edits throughout the workflow.
 - The user selected unencrypted local browser persistence for keys; keep them out of Git, meeting exports, build artifacts, logs, and caches, and disclose the shared-origin trust boundary.

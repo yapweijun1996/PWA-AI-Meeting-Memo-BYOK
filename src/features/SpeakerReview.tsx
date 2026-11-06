@@ -5,6 +5,7 @@ import { editMeeting, formatTime } from "../domain/operations";
 import {
   buildPlaybackCaptions,
   captionsAtTime,
+  captionContextAtTime,
   hasValidTimedSegments,
   playbackCaptionWindowStart,
 } from "../domain/playback";
@@ -583,6 +584,10 @@ function PlaybackMode({
     () => captionsAtTime(captions, position),
     [captions, position],
   );
+  const context = useMemo(
+    () => captionContextAtTime(captions, position),
+    [captions, position],
+  );
   const activity = useMemo(
     () => speakerActivity(meeting.segments, position),
     [meeting.segments, position],
@@ -610,12 +615,14 @@ function PlaybackMode({
     (playing ? activity.activeSpeakerIds : []).filter(Boolean),
   );
   const currentIds = new Set(activity.activeSpeakerIds);
+  const contextIds = new Set(context.flatMap((caption) => caption.speakerIds));
+  const betweenWords = context.length > 0;
   const heroSpeakers = meeting.speakers.filter((speaker) =>
-    (playing ? activeIds : currentIds).has(speaker.id),
+    (betweenWords ? contextIds : playing ? activeIds : currentIds).has(speaker.id),
   );
   const hasActiveCaption = current.length > 0;
-  const captionText = hasActiveCaption
-    ? current
+  const captionText = hasActiveCaption || betweenWords
+    ? (hasActiveCaption ? current : context)
         .map((caption) => {
           const names = caption.speakerIds.length
             ? caption.speakerIds
@@ -689,29 +696,22 @@ function PlaybackMode({
       <div className="playback-left-stack">
         <section className="playback-stage" aria-label={t("Live playback", "实时播放")}>
           <div className="playback-stage-heading">
-            <h3>
-              {playing
-                ? t("Now speaking", "当前发言")
-                : heroSpeakers.length
-                  ? t("Attributed speaker", "当前位置说话人")
-                  : t("Quiet interval", "无发言间隙")}
-            </h3>
+            <h3>{t("Speaker & captions", "说话人与字幕")}</h3>
             <span
               className={`playback-state${playing ? " is-playing" : ""}`}
-              role="status"
               data-playback-status={playbackStatus}
             >
-              <span>{statusLabel}</span>
+              <span role="status">{statusLabel}</span>
               <span aria-hidden="true"> · </span>
               <span>{formatTime(position)}</span>
             </span>
           </div>
-          <div className={`playback-hero${heroSpeakers.length ? "" : " is-empty"}`} aria-live="polite">
+          <div className={`playback-hero${heroSpeakers.length ? "" : " is-empty"}`}>
             {heroSpeakers.length ? (
               heroSpeakers.map((speaker) => {
                 const speakerIndex = meeting.speakers.findIndex((item) => item.id === speaker.id);
                 return (
-                  <div className="playback-hero-speaker" key={speaker.id} data-speaker-hero="true">
+                  <div className={`playback-hero-speaker${betweenWords ? " is-context" : ""}`} key={speaker.id} data-speaker-hero={betweenWords ? "false" : "true"}>
                     <span
                       className="speaker-avatar hero"
                       style={{
@@ -719,12 +719,16 @@ function PlaybackMode({
                       }}
                       aria-hidden="true"
                     >
-                      {speaker.name.slice(0, 1)}
+                      {/^Speaker \d+$/.test(speaker.name) ? `S${speakerIndex + 1}` : speaker.name.slice(0, 1)}
                     </span>
                     <div>
                       <strong>{speaker.name}</strong>
                       <span className="small muted">
-                        {playing ? t("Speaking", "正在说话") : t("At position", "当前位置")}
+                        {betweenWords
+                          ? t("Between words · context only", "词间停顿 · 仅作上下文")
+                          : playing ? t("Speaking", "正在说话")
+                            : playbackStatus === "paused" || playbackStatus === "idle"
+                              ? t("Paused here", "暂停于此") : statusLabel}
                       </span>
                     </div>
                   </div>
@@ -750,7 +754,7 @@ function PlaybackMode({
           </div>
           <div className="live-caption" role="region" aria-label={t("Live captions", "实时字幕")}>
             <div className="live-caption-head">
-              <span className="small muted">{t("Live captions", "实时字幕")}</span>
+              <span className="small muted">{betweenWords ? t("Caption context · between words", "字幕上下文 · 词间停顿") : t("Live captions", "实时字幕")}</span>
               <label className="small muted">
                 {t("Caption size", "字幕大小")}
                 <select
@@ -802,17 +806,16 @@ function PlaybackMode({
                         }}
                         aria-hidden="true"
                       >
-                        {speaker.name.slice(0, 1)}
+                        {/^Speaker \d+$/.test(speaker.name) ? `S${index + 1}` : speaker.name.slice(0, 1)}
                       </span>
                       <strong>{speaker.name}</strong>
                       <span className="small muted">
                         {isActive
                           ? t("Speaking", "正在说话")
                           : atPosition
-                            ? t("At position", "当前位置")
-                            : speaker.confirmed
-                              ? t("Confirmed", "已确认")
-                              : t("Unconfirmed · Rename", "未确认 · 去命名")}
+                            ? (playbackStatus === "paused" || playbackStatus === "idle"
+                              ? t("Paused here", "暂停于此") : statusLabel)
+                            : t("Edit name", "编辑姓名")}
                       </span>
                       <span className="speaker-number" aria-hidden="true">
                         S{index + 1}

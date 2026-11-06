@@ -392,6 +392,64 @@ test("playback stage and transcript use responsive columns", async ({ page }) =>
   }
 });
 
+test("speaker changes refresh without timeupdate and short word gaps retain inactive context", async ({ page }) => {
+  const meeting = fixtureMeeting();
+  meeting.segments[1].start = 0.85;
+  await createFixture(page, "speaker-review.wav", meeting);
+  await page.getByRole("button", { name: "Playback mode", exact: true }).click();
+  const stage = page.locator(".playback-stage");
+  const title = stage.locator("h3");
+  await expect(title).toHaveText("Speaker & captions");
+  // Remove event delivery and control only the media read value. This proves
+  // the foreground sampler reads currentTime instead of predicting elapsed time.
+  await page.locator("audio").evaluate((element) => {
+    element.addEventListener("timeupdate", (event) => event.stopImmediatePropagation(), true);
+    // This fixture already simulates play/pause. Isolate its clock contract
+    // from Windows WebKit's unsupported WAV decoder; native audio is probed separately.
+    Object.defineProperty(element, "error", { configurable: true, value: null });
+    element.addEventListener("error", (event) => event.stopImmediatePropagation(), true);
+    Object.defineProperty(element, "currentTime", { configurable: true, value: 0.2 });
+  });
+  await page.getByRole("button", { name: "Play audio", exact: true }).click();
+  await expect(stage.locator('[data-speaker-hero="true"] strong')).toHaveText("Speaker 1");
+  const setTime = async (value: number) => page.locator("audio").evaluate((element, position) => {
+    Object.defineProperty(element, "currentTime", { configurable: true, value: position });
+  }, value);
+  await setTime(0.75);
+  await expect(stage.getByText("Between words · context only", { exact: true })).toBeVisible();
+  await expect(stage.locator('[data-speaker-hero="true"]')).toHaveCount(0);
+  await expect(stage.locator('[data-speaker-active="true"]')).toHaveCount(0);
+  await expect(page.locator(".playback-caption-row.is-active")).toHaveCount(0);
+  await expect(stage.locator(".playback-hero strong")).toHaveText("Speaker 1");
+  await expect(stage.locator(".live-caption")).toContainText("Caption context · between words");
+  await setTime(1.5);
+  await expect(stage.locator('[data-speaker-hero="true"] strong')).toHaveText("Speaker 2");
+  await expect(stage.locator(".live-caption p")).toContainText("The second speaker");
+  await expect(page.locator(".playback-caption-row.is-active")).toHaveCount(1);
+  await setTime(2);
+  await expect(stage.locator('[data-speaker-hero="true"]')).toHaveCount(2);
+  await setTime(3);
+  await expect(stage.locator(".playback-hero strong")).toHaveCount(0);
+  await expect(title).toHaveText("Speaker & captions");
+  await page.getByRole("button", { name: "Pause audio", exact: true }).click();
+  await setTime(0.2);
+  // No sampling while paused, and no stale clock extrapolation.
+  await page.waitForTimeout(150);
+  await expect(stage.locator(".playback-hero strong")).toHaveCount(0);
+  await page.locator("audio").dispatchEvent("seeked");
+  await expect(stage.locator('[data-speaker-hero="true"] strong')).toHaveText("Speaker 1");
+  await expect(stage.locator('[data-speaker-active="true"]')).toHaveCount(0);
+  await expect(title).toHaveText("Speaker & captions");
+  await page.getByRole("button", { name: "Play audio", exact: true }).click();
+  await page.locator("audio").dispatchEvent("waiting");
+  await setTime(1.5);
+  await page.waitForTimeout(150);
+  await expect(stage.locator('[data-playback-status="buffering"]')).toBeVisible();
+  await expect(stage.locator('[data-speaker-active="true"]')).toHaveCount(0);
+  await page.locator("audio").dispatchEvent("playing");
+  await expect(stage.locator('[data-speaker-hero="true"] strong')).toHaveText("Speaker 2");
+});
+
 test("unsaved speaker drafts stay guarded across playback mode", async ({ page }) => {
   await createFixture(page);
   const name = page.getByLabel("Name for speaker 1", { exact: true });

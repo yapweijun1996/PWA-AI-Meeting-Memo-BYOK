@@ -74,6 +74,18 @@ export function captionsAtTime(captions: PlaybackCaption[], position: number) {
   );
 }
 
+/** Readable context only: never marks a source gap as active speech. */
+export function captionContextAtTime(captions: PlaybackCaption[], position: number) {
+  if (captionsAtTime(captions, position).length) return [];
+  return captions.filter((caption) =>
+    caption.sourceIntervals.some((interval, index, intervals) => {
+      const next = intervals[index + 1];
+      return next && next.start - interval.end <= 0.35 &&
+        position >= interval.end && position < next.start;
+    }),
+  );
+}
+
 export function playbackCaptionWindow(
   captions: PlaybackCaption[],
   position: number,

@@ -2337,6 +2337,7 @@ details[open] > summary {
   border: 1px solid #dce8d9;
   border-radius: 10px;
   background: #fff;
+  min-height: 82px;
 }
 .playback-hero-speaker {
   display: flex;
@@ -2358,6 +2359,10 @@ details[open] > summary {
   border: 3px solid #d1ead7;
   box-shadow: 0 0 0 4px rgba(91, 155, 112, 0.14);
   font-size: 22px;
+}
+.playback-hero-speaker.is-context .speaker-avatar.hero {
+  border-color: #dce8d9;
+  box-shadow: none;
 }
 .playback-hero.is-empty {
   padding: 11px 14px;
