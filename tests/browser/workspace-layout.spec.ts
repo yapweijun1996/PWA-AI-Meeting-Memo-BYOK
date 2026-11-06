@@ -226,6 +226,8 @@ for (const language of ["en", "zh-CN"] as const) {
     const metrics = await layoutMetrics(page);
     expect(metrics.documentWidth).toBeLessThanOrEqual(metrics.viewport.width + 1);
     expect(metrics.regionsFit).toBe(true);
+    const tabRows = await page.locator(".workspace-tabs > button").evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().y));
+    expect(Math.max(...tabRows) - Math.min(...tabRows)).toBeLessThanOrEqual(1);
     expect(metrics.visibleMemo, JSON.stringify(metrics)).toBeGreaterThanOrEqual(24);
     expect(metrics.memo?.y).toBeLessThan(metrics.player?.y ?? 0);
     await expectWorkspaceActions(page, language);
