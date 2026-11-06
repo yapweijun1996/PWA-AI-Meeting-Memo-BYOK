@@ -776,17 +776,18 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
   );
   await page.getByLabel("summary note").fill("Human reviewed greeting.");
   await page.getByRole("button", { name: "✓ Accept", exact: true }).click();
-  await page.getByText("Export", { exact: true }).click();
   for (const [label, extension] of [
     ["MD notes", "md"],
     ["TXT notes", "txt"],
     ["Meeting JSON (no audio)", "json"],
   ]) {
+    await page.getByText("Export", { exact: true }).click();
     const exported = page.waitForEvent("download");
     await page.getByRole("button", { name: label, exact: true }).click();
     const document = await exported,
       exportedPath = info.outputPath(`reviewed.${extension}`);
     await document.saveAs(exportedPath);
+    await expect(page.locator(".export-menu")).toHaveJSProperty("open", false);
     const text = await readFile(exportedPath, "utf8");
     expect(text).toContain("Human reviewed greeting.");
     expect(text).toContain("accepted");
@@ -801,6 +802,7 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
       expect(document.memos[0].items[0].text).toBe("Human reviewed greeting.");
     }
   }
+  await page.getByText("Export", { exact: true }).click();
   const downloaded = page.waitForEvent("download");
   await page.getByRole("button", { name: "Full backup with audio" }).click();
   const file = await downloaded,
