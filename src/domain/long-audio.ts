@@ -14,6 +14,14 @@ export interface MergedSpeech {
   droppedOverlapSegments: number;
   untimedSegments: number;
   notes: string[];
+  boundaries: { chunkIndex: number; time: number; snappedToPause: boolean; pauseSeconds: number | null }[];
+}
+
+interface Boundary {
+  chunkIndex: number;
+  time: number;
+  snappedToPause: boolean;
+  pauseSeconds: number | null;
 }
 
 interface MappedSegment {
@@ -31,8 +39,12 @@ const INVALID_INPUT = "Chunk speech inputs must be sorted and contiguous.";
 
 export function mergeChunkSpeech(
   inputs: ChunkSpeechInput[],
-  options?: { partLabel?: (chunkIndex: number, speakerName: string) => string },
+  options?: { partLabel?: (chunkIndex: number, speakerName: string) => string; minPauseSeconds?: number },
 ): MergedSpeech {
+  const minPauseSeconds = options?.minPauseSeconds ?? 0.25;
+  if (!Number.isFinite(minPauseSeconds) || minPauseSeconds < 0.05 || minPauseSeconds > 2) {
+    throw new RangeError("minPauseSeconds must be between 0.05 and 2 seconds.");
+  }
   for (let index = 1; index < inputs.length; index += 1) {
     const previous = inputs[index - 1];
     const current = inputs[index];
@@ -44,6 +56,52 @@ export function mergeChunkSpeech(
     ) {
       throw new RangeError(INVALID_INPUT);
     }
+  }
+
+  const boundaries: Boundary[] = [];
+  for (let index = 1; index < inputs.length; index += 1) {
+    const previous = inputs[index - 1];
+    const current = inputs[index];
+    if (previous === undefined || current === undefined) continue;
+    const overlap = current.chunk.leadInSeconds;
+    const midpoint = current.chunk.ownStartSeconds - overlap / 2;
+    let selected: { time: number; pauseSeconds: number } | undefined;
+    if (overlap >= 2) {
+      const absolute = current.speech.segments
+        .filter((segment) => segment.start !== null)
+        .map((segment) => ({
+          start: current.chunk.ownStartSeconds - overlap + (segment.start as number),
+          end: current.chunk.ownStartSeconds - overlap + (segment.end ?? segment.start as number),
+        }))
+        .sort((left, right) => left.start - right.start);
+      const windowStart = midpoint - overlap / 4;
+      const windowEnd = midpoint + overlap / 4;
+      for (let candidateIndex = 0; candidateIndex + 1 < absolute.length; candidateIndex += 1) {
+        const left = absolute[candidateIndex];
+        const right = absolute[candidateIndex + 1];
+        if (left === undefined || right === undefined) continue;
+        const pauseSeconds = right.start - left.end;
+        const time = (left.end + right.start) / 2;
+        if (pauseSeconds < minPauseSeconds || time < windowStart || time > windowEnd) continue;
+        const crossedByPrevious = previous.speech.segments.some((segment) => {
+          if (segment.start === null) return false;
+          const start = previous.chunk.ownStartSeconds - previous.chunk.leadInSeconds + segment.start;
+          const end = previous.chunk.ownStartSeconds - previous.chunk.leadInSeconds + (segment.end ?? segment.start);
+          return start < time && time < end;
+        });
+        if (crossedByPrevious) continue;
+        if (selected === undefined || pauseSeconds > selected.pauseSeconds
+          || (pauseSeconds === selected.pauseSeconds && Math.abs(time - midpoint) < Math.abs(selected.time - midpoint))) {
+          selected = { time, pauseSeconds };
+        }
+      }
+    }
+    boundaries.push({
+      chunkIndex: current.chunk.index,
+      time: selected?.time ?? midpoint,
+      snappedToPause: selected !== undefined,
+      pauseSeconds: selected?.pauseSeconds ?? null,
+    });
   }
 
   let droppedOverlapSegments = 0;
@@ -81,9 +139,9 @@ export function mergeChunkSpeech(
       });
     }
 
-    const lowerBound = inputIndex > 0 ? chunk.ownStartSeconds - chunk.leadInSeconds / 2 : null;
-    const next = inputs[inputIndex + 1];
-    const upperBound = next === undefined ? null : next.chunk.ownStartSeconds - next.chunk.leadInSeconds / 2;
+    const lowerBound = boundaries[inputIndex - 1]?.time ?? null;
+    const next = boundaries[inputIndex];
+    const upperBound = next?.time ?? null;
     const selected: MappedSegment[] = [];
     for (const [originalIndex, original] of speech.segments.entries()) {
       const absoluteStart = original.start === null ? null : chunk.ownStartSeconds - chunk.leadInSeconds + original.start;
@@ -179,11 +237,17 @@ export function mergeChunkSpeech(
     if (!lastTimedPosition.has(input.chunk.index) && untimed !== undefined) output.push(...untimed.map(toOutput));
   }
 
-  const notes = untimedSegments > 0 ? [`${untimedSegments} untimed segment${untimedSegments === 1 ? "" : "s"} kept in their source chunk order.`] : [];
+  const fallbackCount = boundaries.filter((boundary) => !boundary.snappedToPause
+    && (inputs.find((input) => input.chunk.index === boundary.chunkIndex)?.chunk.leadInSeconds ?? 0) >= 2).length;
+  const notes = [
+    ...(untimedSegments > 0 ? [`${untimedSegments} untimed segment${untimedSegments === 1 ? "" : "s"} kept in their source chunk order.`] : []),
+    ...(fallbackCount > 0 ? [`${fallbackCount} of ${boundaries.length} chunk boundaries had no shared pause and used the midpoint; a word near those boundaries may be duplicated or missing.`] : []),
+  ];
   return {
     speech: { speakers, segments: output.map((item) => item.segment), duration, requestId: null },
     droppedOverlapSegments,
     untimedSegments,
     notes,
+    boundaries,
   };
 }

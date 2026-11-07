@@ -143,4 +143,97 @@ describe("mergeChunkSpeech", () => {
     expect(merged.speech.segments.map(({ text }) => text)).toEqual(words.map(({ text }) => text));
     expect(new Set(merged.speech.segments.map(({ text }) => text)).size).toBe(words.length);
   });
+
+  it("snaps jittered duplicate words to an agreed pause", () => {
+    const result = mergeChunkSpeech([
+      input(0, 0, 20, 0, makeSpeech([
+        makeSegment("before", "before", 14.3, 14.5),
+        makeSegment("word", "word", 14.85, 15.1),
+      ])),
+      input(1, 20, 20, 10, makeSpeech([
+        makeSegment("before", "before", 4.6, 4.8),
+        makeSegment("word", "word", 4.95, 5.2),
+        makeSegment("after", "after", 5.6, 5.8),
+      ])),
+    ]);
+    expect(result.boundaries[0]?.snappedToPause).toBe(true);
+    expect(result.speech.segments.map(({ text }) => text)).toEqual(["before", "word", "after"]);
+  });
+
+  it("keeps jittered paused words exactly once across three chunks for fixed seeds", () => {
+    for (const seed of [7, 31, 90210]) {
+      let state = seed;
+      const random = () => {
+        state = (state * 1664525 + 1013904223) >>> 0;
+        return state / 0x100000000;
+      };
+      const words = Array.from({ length: 200 }, (_, index) => ({
+        text: `word-${index}`,
+        start: index * 1,
+      }));
+      const chunks = [0, 95, 190].map((ownStart, chunkIndex) => input(
+        chunkIndex,
+        ownStart,
+        95,
+        chunkIndex === 0 ? 0 : 10,
+        makeSpeech(words
+          .filter(({ start }) => start >= ownStart - (chunkIndex === 0 ? 0 : 10) && start < ownStart + 95)
+          .map(({ text, start }) => {
+            const jitter = (random() * 0.24) - 0.12;
+            const absoluteStart = start + jitter;
+            return makeSegment(`${chunkIndex}-${text}`, text, absoluteStart - ownStart + (chunkIndex === 0 ? 0 : 10), absoluteStart - ownStart + (chunkIndex === 0 ? 0 : 10) + 0.2);
+          }),
+        ),
+      ));
+      const texts = mergeChunkSpeech(chunks).speech.segments.map(({ text }) => text);
+      expect(texts).toEqual(words.map(({ text }) => text));
+    }
+  });
+
+  it("reports a midpoint fallback when the overlap has no shared pause", () => {
+    const result = mergeChunkSpeech([
+      input(0, 0, 20, 0, makeSpeech([makeSegment("a", "continuous", 19.8, 20.2)])),
+      input(1, 20, 20, 10, makeSpeech([makeSegment("b", "continuous", 9.8, 10.2)])),
+    ]);
+    expect(result.boundaries[0]).toEqual({ chunkIndex: 1, time: 15, snappedToPause: false, pauseSeconds: null });
+    expect(result.notes).toContain("1 of 1 chunk boundaries had no shared pause and used the midpoint; a word near those boundaries may be duplicated or missing.");
+  });
+
+  it("rejects a candidate pause crossing a previous-chunk word", () => {
+    const result = mergeChunkSpeech([
+      input(0, 0, 20, 0, makeSpeech([makeSegment("crossing", "previous-word", 14.9, 15.4)])),
+      input(1, 20, 20, 10, makeSpeech([
+        makeSegment("a", "left", 4.8, 5),
+        makeSegment("b", "right", 5.4, 5.6),
+      ])),
+    ]);
+    expect(result.boundaries[0]?.snappedToPause).toBe(false);
+    expect(result.boundaries[0]?.time).toBe(15);
+  });
+
+  it("ignores untimed segments while selecting a shared pause", () => {
+    const result = mergeChunkSpeech([
+      input(0, 0, 20, 0, makeSpeech([makeSegment("a", "left", 14, 14.2)])),
+      input(1, 20, 20, 10, makeSpeech([
+        makeSegment("untimed", "unknown", null, null),
+        makeSegment("a", "left", 4, null),
+        makeSegment("b", "right", 4.6, 4.8),
+      ])),
+    ]);
+    expect(result.boundaries[0]?.snappedToPause).toBe(true);
+    expect(result.untimedSegments).toBe(1);
+  });
+
+  it("validates pause thresholds and remains deterministic without mutating frozen inputs", () => {
+    expect(() => mergeChunkSpeech([], { minPauseSeconds: 0.049 })).toThrow(RangeError);
+    expect(() => mergeChunkSpeech([], { minPauseSeconds: 2.01 })).toThrow(RangeError);
+    const frozen = deepFreeze([
+      input(0, 0, 20, 0, makeSpeech([makeSegment("a", "left", 14, 14.2)])),
+      input(1, 20, 20, 10, makeSpeech([
+        makeSegment("a", "left", 4, 4.2),
+        makeSegment("b", "right", 4.6, 4.8),
+      ])),
+    ]);
+    expect(mergeChunkSpeech(frozen)).toEqual(mergeChunkSpeech(frozen));
+  });
 });
