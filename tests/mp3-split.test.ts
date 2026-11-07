@@ -192,8 +192,37 @@ describe("splitMp3", () => {
     expect(splitMp3(data, { targetSeconds: 3600, maxBytes: 100000 })).toEqual(byteLimited);
   });
 
+  it("adds a minimum lead-in while keeping own frame ranges contiguous", () => {
+    const data = stream(Array.from({ length: 1600 }, () => makeFrame({ mainDataBegin: 1 })));
+    const defaults = splitMp3(data, { targetSeconds: 5, maxBytes: 1000000 });
+    const explicitDefault = splitMp3(data, { targetSeconds: 5, maxBytes: 1000000, minLeadInSeconds: 0 });
+    expect(explicitDefault).toEqual(defaults);
+    const result = splitMp3(data, { targetSeconds: 5, maxBytes: 1000000, minLeadInSeconds: 10 });
+    expect(result.chunks.length).toBeGreaterThan(1);
+    for (let index = 1; index < result.chunks.length; index += 1) {
+      const previous = result.chunks[index - 1];
+      const current = result.chunks[index];
+      if (previous !== undefined && current !== undefined) {
+        expect(current.leadInSeconds).toBeGreaterThanOrEqual(Math.min(10, current.ownStartSeconds));
+        expect(current.ownStartSeconds).toBeCloseTo(previous.ownStartSeconds + previous.ownDurationSeconds, 12);
+        expect(current.leadInFrames * (417 - 4 - 32)).toBeGreaterThanOrEqual(1022);
+      }
+    }
+    expect(result.chunks.reduce((sum, chunk) => sum + chunk.ownDurationSeconds, 0)).toBeCloseTo(result.totalSeconds, 12);
+  });
+
+  it("reduces oversized lead-ins to fit maxBytes and warns once", () => {
+    const data = stream(Array.from({ length: 1000 }, () => makeFrame()));
+    const result = splitMp3(data, { targetSeconds: 5, maxBytes: 100000, minLeadInSeconds: 10 });
+    expect(result.chunks.every((chunk) => chunk.bytes.length <= 100000)).toBe(true);
+    expect(result.warnings.filter((warning) => warning.includes("Reduced lead-in"))).toHaveLength(1);
+  });
+
   it("validates option ranges", () => {
     expect(() => splitMp3(stream([makeFrame()]), { targetSeconds: 4, maxBytes: 100000 })).toThrow(RangeError);
     expect(() => splitMp3(stream([makeFrame()]), { targetSeconds: 5, maxBytes: 99999 })).toThrow(RangeError);
+    for (const minLeadInSeconds of [-0.1, 60.1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => splitMp3(stream([makeFrame()]), { targetSeconds: 5, maxBytes: 100000, minLeadInSeconds })).toThrow(RangeError);
+    }
   });
 });

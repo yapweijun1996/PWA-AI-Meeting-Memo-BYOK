@@ -26,7 +26,9 @@ export interface Mp3SplitResult {
 export interface Mp3SplitOptions {
   targetSeconds: number;
   maxBytes: number;
+  minLeadInSeconds?: number;
 }
+
 
 interface Header {
   length: number;
@@ -112,6 +114,10 @@ export function splitMp3(data: Uint8Array, options: Mp3SplitOptions): Mp3SplitRe
   if (!Number.isInteger(options.maxBytes) || options.maxBytes < 100000 || options.maxBytes > 24000000) {
     throw new RangeError("maxBytes must be between 100000 and 24000000.");
   }
+  const minLeadInSeconds = options.minLeadInSeconds ?? 0;
+  if (!Number.isFinite(minLeadInSeconds) || minLeadInSeconds < 0 || minLeadInSeconds > 60) {
+    throw new RangeError("minLeadInSeconds must be between 0 and 60.");
+  }
 
   let end = data.length;
   if (end >= 128 && hasMarker(data, end - 128, "TAG")) end -= 128;
@@ -130,6 +136,7 @@ export function splitMp3(data: Uint8Array, options: Mp3SplitOptions): Mp3SplitRe
   const samplesPerFrame: number[] = [];
   const reservoir: number[] = [];
   const warnings: string[] = [];
+  let leadInReduced = false;
   let skippedBytes = 0;
   let cursor = start;
   let metadataAllowed = true;
@@ -181,6 +188,20 @@ export function splitMp3(data: Uint8Array, options: Mp3SplitOptions): Mp3SplitRe
         leadFrames += 1;
       }
     }
+    if (minLeadInSeconds > 0 && ownStart > 0) {
+      while (leadStart > 0 && timeline[ownStart] - timeline[leadStart] < minLeadInSeconds) {
+        leadStart -= 1;
+        leadFrames += 1;
+      }
+      const availableLeadBytes = options.maxBytes - lengths[ownStart];
+      let leadBytes = offsets[ownStart] - offsets[leadStart];
+      while (leadStart < ownStart && leadBytes > availableLeadBytes) {
+        leadBytes -= lengths[leadStart];
+        leadStart += 1;
+        leadFrames -= 1;
+        leadInReduced = true;
+      }
+    }
     let byteLimitEnd = ownStart;
     const firstByte = offsets[leadStart];
     while (byteLimitEnd < offsets.length && offsets[byteLimitEnd] + lengths[byteLimitEnd] - firstByte <= options.maxBytes) {
@@ -224,6 +245,7 @@ export function splitMp3(data: Uint8Array, options: Mp3SplitOptions): Mp3SplitRe
     });
     ownStart = ownEnd;
   }
+  if (leadInReduced) warnings.push("Reduced lead-in on one or more chunks to fit maxBytes.");
   return { chunks, totalSeconds, sampleRate: rates[0], warnings };
 }
 
