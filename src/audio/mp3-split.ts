@@ -107,7 +107,90 @@ function findNextFrame(data: Uint8Array, from: number, end: number): number {
   return -1;
 }
 
-export function splitMp3(data: Uint8Array, options: Mp3SplitOptions): Mp3SplitResult {
+export interface Mp3ChunkPlan {
+  index: number;
+  byteOffset: number;
+  byteLength: number;
+  frameCount: number;
+  leadInFrames: number;
+  leadInSeconds: number;
+  ownStartSeconds: number;
+  ownDurationSeconds: number;
+}
+
+export interface Mp3PlanResult {
+  chunks: Mp3ChunkPlan[];
+  totalSeconds: number;
+  sampleRate: number;
+  warnings: string[];
+}
+
+export interface Mp3WindowOptions extends Mp3SplitOptions {
+  windowBytes?: number;
+  signal?: AbortSignal;
+}
+
+interface FrameIndex {
+  offsets: Float64Array;
+  lengths: Uint16Array;
+  payloadSizes: Uint16Array;
+  rates: Float64Array;
+  samples: Uint16Array;
+  reservoir: Uint16Array;
+  count: number;
+}
+
+function createIndex(): FrameIndex {
+  return {
+    offsets: new Float64Array(1024),
+    lengths: new Uint16Array(1024),
+    payloadSizes: new Uint16Array(1024),
+    rates: new Float64Array(1024),
+    samples: new Uint16Array(1024),
+    reservoir: new Uint16Array(1024),
+    count: 0,
+  };
+}
+
+function appendFrame(
+  index: FrameIndex,
+  offset: number,
+  header: Header,
+  data: Uint8Array,
+  localOffset: number,
+  reservoirValue?: number,
+): void {
+  if (index.count === index.offsets.length) {
+    const capacity = index.offsets.length * 2;
+    const offsets = new Float64Array(capacity);
+    const lengths = new Uint16Array(capacity);
+    const payloadSizes = new Uint16Array(capacity);
+    const rates = new Float64Array(capacity);
+    const samples = new Uint16Array(capacity);
+    const reservoir = new Uint16Array(capacity);
+    offsets.set(index.offsets);
+    lengths.set(index.lengths);
+    payloadSizes.set(index.payloadSizes);
+    rates.set(index.rates);
+    samples.set(index.samples);
+    reservoir.set(index.reservoir);
+    index.offsets = offsets;
+    index.lengths = lengths;
+    index.payloadSizes = payloadSizes;
+    index.rates = rates;
+    index.samples = samples;
+    index.reservoir = reservoir;
+  }
+  const at = index.count++;
+  index.offsets[at] = offset;
+  index.lengths[at] = header.length;
+  index.payloadSizes[at] = header.length - 4 - header.crcBytes - header.sideInfoBytes;
+  index.rates[at] = header.sampleRate;
+  index.samples[at] = header.samples;
+  index.reservoir[at] = reservoirValue ?? mainDataBegin(data, localOffset, header);
+}
+
+function validateOptions(options: Mp3SplitOptions): number {
   if (!Number.isFinite(options.targetSeconds) || options.targetSeconds < 5 || options.targetSeconds > 3600) {
     throw new RangeError("targetSeconds must be between 5 and 3600.");
   }
@@ -118,7 +201,101 @@ export function splitMp3(data: Uint8Array, options: Mp3SplitOptions): Mp3SplitRe
   if (!Number.isFinite(minLeadInSeconds) || minLeadInSeconds < 0 || minLeadInSeconds > 60) {
     throw new RangeError("minLeadInSeconds must be between 0 and 60.");
   }
+  return minLeadInSeconds;
+}
 
+interface Selection {
+  plans: Mp3ChunkPlan[];
+  totalSeconds: number;
+  sampleRate: number;
+  warnings: string[];
+}
+
+function selectChunks(index: FrameIndex, skippedBytes: number, minLeadInSeconds: number, maxBytes: number, targetSeconds: number): Selection {
+  if (index.count === 0) throw new Mp3SplitError();
+  const warnings: string[] = [];
+  let leadInReduced = false;
+  if (skippedBytes > 0) warnings.push(`Resynchronized after skipping ${skippedBytes} bytes.`);
+  const rates = index.rates.subarray(0, index.count);
+  const sampleRate = rates[0] ?? 0;
+  for (let i = 1; i < index.count; i += 1) {
+    if (rates[i] !== sampleRate) {
+      warnings.push("MP3 contains mixed sample rates.");
+      break;
+    }
+  }
+  const timeline = new Float64Array(index.count + 1);
+  for (let i = 0; i < index.count; i += 1) {
+    timeline[i + 1] = (timeline[i] ?? 0) + (index.samples[i] ?? 0) / (rates[i] ?? 1);
+  }
+  const totalSeconds = timeline[index.count] ?? 0;
+  const plans: Mp3ChunkPlan[] = [];
+  let ownStart = 0;
+  while (ownStart < index.count) {
+    let leadStart = ownStart;
+    let leadFrames = 0;
+    if (ownStart > 0 && index.reservoir[ownStart] !== 0) {
+      let leadPayloadBytes = 0;
+      while (leadStart > 0 && leadPayloadBytes < 1022) {
+        leadStart -= 1;
+        leadPayloadBytes += index.payloadSizes[leadStart] ?? 0;
+        leadFrames += 1;
+      }
+    }
+    if (minLeadInSeconds > 0 && ownStart > 0) {
+      while (leadStart > 0 && (timeline[ownStart] ?? 0) - (timeline[leadStart] ?? 0) < minLeadInSeconds) {
+        leadStart -= 1;
+        leadFrames += 1;
+      }
+      const availableLeadBytes = maxBytes - (index.lengths[ownStart] ?? 0);
+      let leadBytes = (index.offsets[ownStart] ?? 0) - (index.offsets[leadStart] ?? 0);
+      while (leadStart < ownStart && leadBytes > availableLeadBytes) {
+        leadBytes -= index.lengths[leadStart] ?? 0;
+        leadStart += 1;
+        leadFrames -= 1;
+        leadInReduced = true;
+      }
+    }
+    const firstByte = index.offsets[leadStart] ?? 0;
+    let byteLimitEnd = ownStart;
+    while (
+      byteLimitEnd < index.count
+      && (index.offsets[byteLimitEnd] ?? 0) + (index.lengths[byteLimitEnd] ?? 0) - firstByte <= maxBytes
+    ) byteLimitEnd += 1;
+    const targetTime = (timeline[ownStart] ?? 0) + targetSeconds;
+    let targetEnd = ownStart + 1;
+    while (targetEnd < index.count && (timeline[targetEnd] ?? 0) < targetTime) targetEnd += 1;
+    let ownEnd = Math.min(byteLimitEnd, targetEnd);
+    if (ownEnd <= ownStart) ownEnd = ownStart + 1;
+    if (ownEnd < index.count && ownEnd === targetEnd) {
+      const searchEndTime = (timeline[ownEnd] ?? 0) + 5;
+      let preferred = ownEnd;
+      while (
+        preferred < index.count && preferred < byteLimitEnd
+        && (timeline[preferred] ?? 0) <= searchEndTime && index.reservoir[preferred] !== 0
+      ) preferred += 1;
+      if (preferred < index.count && preferred < byteLimitEnd && (timeline[preferred] ?? 0) <= searchEndTime) ownEnd = preferred;
+    }
+    const byteOffset = index.offsets[leadStart] ?? 0;
+    const endOffset = (index.offsets[ownEnd - 1] ?? 0) + (index.lengths[ownEnd - 1] ?? 0);
+    plans.push({
+      index: plans.length,
+      byteOffset,
+      byteLength: endOffset - byteOffset,
+      frameCount: ownEnd - leadStart,
+      leadInFrames: leadFrames,
+      leadInSeconds: (timeline[ownStart] ?? 0) - (timeline[leadStart] ?? 0),
+      ownStartSeconds: timeline[ownStart] ?? 0,
+      ownDurationSeconds: (timeline[ownEnd] ?? 0) - (timeline[ownStart] ?? 0),
+    });
+    ownStart = ownEnd;
+  }
+  if (leadInReduced) warnings.push("Reduced lead-in on one or more chunks to fit maxBytes.");
+  return { plans, totalSeconds, sampleRate, warnings };
+}
+
+export function splitMp3(data: Uint8Array, options: Mp3SplitOptions): Mp3SplitResult {
+  const minLeadInSeconds = validateOptions(options);
   let end = data.length;
   if (end >= 128 && hasMarker(data, end - 128, "TAG")) end -= 128;
   let start = 0;
@@ -128,15 +305,7 @@ export function splitMp3(data: Uint8Array, options: Mp3SplitOptions): Mp3SplitRe
     start = 10 + tagSize + footerBytes;
     if (start > end) throw new Mp3SplitError();
   }
-
-  const offsets: number[] = [];
-  const lengths: number[] = [];
-  const payloadSizes: number[] = [];
-  const rates: number[] = [];
-  const samplesPerFrame: number[] = [];
-  const reservoir: number[] = [];
-  const warnings: string[] = [];
-  let leadInReduced = false;
+  const index = createIndex();
   let skippedBytes = 0;
   let cursor = start;
   let metadataAllowed = true;
@@ -150,103 +319,133 @@ export function splitMp3(data: Uint8Array, options: Mp3SplitOptions): Mp3SplitRe
     }
     const parsed = parseHeader(data, cursor, end);
     if (parsed === null) break;
-
-    if (!(metadataAllowed && isMetadataFrame(data, cursor, parsed))) {
-      offsets.push(cursor);
-      lengths.push(parsed.length);
-      payloadSizes.push(parsed.length - 4 - parsed.crcBytes - parsed.sideInfoBytes);
-      rates.push(parsed.sampleRate);
-      samplesPerFrame.push(parsed.samples);
-      reservoir.push(mainDataBegin(data, cursor, parsed));
-    }
+    if (!(metadataAllowed && isMetadataFrame(data, cursor, parsed))) appendFrame(index, cursor, parsed, data, cursor);
     metadataAllowed = false;
     cursor += parsed.length;
   }
-  if (offsets.length === 0) throw new Mp3SplitError();
-  if (skippedBytes > 0) warnings.push(`Resynchronized after skipping ${skippedBytes} bytes.`);
-  if (rates.some((rate) => rate !== rates[0])) warnings.push("MP3 contains mixed sample rates.");
+  const selected = selectChunks(index, skippedBytes, minLeadInSeconds, options.maxBytes, options.targetSeconds);
+  return {
+    chunks: selected.plans.map((plan) => ({
+      index: plan.index,
+      bytes: data.subarray(plan.byteOffset, plan.byteOffset + plan.byteLength),
+      byteOffset: plan.byteOffset,
+      frameCount: plan.frameCount,
+      leadInFrames: plan.leadInFrames,
+      leadInSeconds: plan.leadInSeconds,
+      ownStartSeconds: plan.ownStartSeconds,
+      ownDurationSeconds: plan.ownDurationSeconds,
+    })),
+    totalSeconds: selected.totalSeconds,
+    sampleRate: selected.sampleRate,
+    warnings: selected.warnings,
+  };
+}
 
-  const durations: number[] = new Array(offsets.length);
-  const timeline: number[] = new Array(offsets.length + 1);
-  timeline[0] = 0;
-  for (let i = 0; i < offsets.length; i += 1) {
-    durations[i] = samplesPerFrame[i] / rates[i];
-    timeline[i + 1] = timeline[i] + durations[i];
+export async function planMp3Split(source: Blob, options: Mp3WindowOptions): Promise<Mp3PlanResult> {
+  const minLeadInSeconds = validateOptions(options);
+  const windowBytes = options.windowBytes ?? 4 * 1024 * 1024;
+  if (!Number.isInteger(windowBytes) || windowBytes < 64 * 1024) throw new RangeError("windowBytes must be at least 65536.");
+  const signal = options.signal;
+  const checkAbort = (): void => {
+    if (signal?.aborted === true) throw new DOMException("The operation was aborted.", "AbortError");
+  };
+  let window = new Uint8Array(0);
+  let windowStart = 0;
+  const read = async (offset: number, length: number): Promise<Uint8Array> => {
+    checkAbort();
+    if (offset < windowStart || offset + length > windowStart + window.length) {
+      window = new Uint8Array(0);
+      windowStart = offset;
+      const end = Math.min(source.size, offset + windowBytes);
+      const buffer = await source.slice(offset, end).arrayBuffer();
+      checkAbort();
+      window = new Uint8Array(buffer);
+    }
+    const localOffset = offset - windowStart;
+    if (localOffset + length > window.length) return read(offset, length);
+    return window.subarray(localOffset, localOffset + length);
+  };
+  const marker = async (offset: number, value: string): Promise<boolean> => {
+    if (offset < 0 || offset + value.length > source.size) return false;
+    const bytes = await read(offset, value.length);
+    for (let i = 0; i < value.length; i += 1) if (bytes[i] !== value.charCodeAt(i)) return false;
+    return true;
+  };
+  let end = source.size;
+  if (end >= 128 && await marker(end - 128, "TAG")) end -= 128;
+  let start = 0;
+  if (source.size >= 10 && await marker(0, "ID3")) {
+    const tag = await read(0, 10);
+    if ((tag[6]! & 0x80) !== 0 || (tag[7]! & 0x80) !== 0 || (tag[8]! & 0x80) !== 0 || (tag[9]! & 0x80) !== 0) throw new Mp3SplitError();
+    const tagSize = (tag[6]! << 21) | (tag[7]! << 14) | (tag[8]! << 7) | tag[9]!;
+    start = 10 + tagSize + ((tag[5]! & 0x10) !== 0 ? 10 : 0);
+    if (start > end) throw new Mp3SplitError();
   }
-  const totalSeconds = timeline[offsets.length];
-  const chunks: Mp3Chunk[] = [];
-  let ownStart = 0;
-  while (ownStart < offsets.length) {
-    let ownEnd: number;
-    let leadStart = ownStart;
-    let leadFrames = 0;
-    if (ownStart > 0 && reservoir[ownStart] !== 0) {
-      let leadPayloadBytes = 0;
-      while (leadStart > 0 && leadPayloadBytes < 1022) {
-        leadStart -= 1;
-        leadPayloadBytes += payloadSizes[leadStart];
-        leadFrames += 1;
-      }
+  const parse = async (offset: number): Promise<Header | null> => {
+    if (offset + 4 > end) return null;
+    const bytes = await read(offset, 4);
+    const first = bytes[0] ?? 0;
+    const b1 = bytes[1] ?? 0;
+    const b2 = bytes[2] ?? 0;
+    const b3 = bytes[3] ?? 0;
+    const versionBits = (b1 >> 3) & 3;
+    const layerBits = (b1 >> 1) & 3;
+    const bitrateIndex = b2 >> 4;
+    const sampleRateIndex = (b2 >> 2) & 3;
+    const padding = (b2 >> 1) & 1;
+    if (first !== 0xff || (b1 & 0xe0) !== 0xe0 || versionBits === 1 || layerBits !== 1 || bitrateIndex === 0 || bitrateIndex === 15 || sampleRateIndex === 3) return null;
+    const version = versionBits === 3 ? 1 : versionBits === 2 ? 2 : 25;
+    const bitrate = BITRATES[version === 1 ? 1 : 2]?.[bitrateIndex];
+    const baseRate = BASE_SAMPLE_RATES[sampleRateIndex];
+    if (bitrate === undefined || baseRate === undefined) return null;
+    const sampleRate = version === 1 ? baseRate : version === 2 ? baseRate / 2 : baseRate / 4;
+    const length = Math.floor((version === 1 ? 144 : 72) * bitrate * 1000 / sampleRate) + padding;
+    if (offset + length > end) return null;
+    const mono = (b3 >> 6) === 3;
+    return { length, sampleRate, samples: version === 1 ? 1152 : 576, crcBytes: (b1 & 1) === 0 ? 2 : 0, sideInfoBytes: version === 1 ? (mono ? 17 : 32) : (mono ? 9 : 17), version };
+  };
+  const findNext = async (from: number): Promise<number> => {
+    for (let at = from; at + 4 <= end; at += 1) {
+      const header = await parse(at);
+      if (header === null) continue;
+      if (at + header.length === end || await parse(at + header.length) !== null) return at;
     }
-    if (minLeadInSeconds > 0 && ownStart > 0) {
-      while (leadStart > 0 && timeline[ownStart] - timeline[leadStart] < minLeadInSeconds) {
-        leadStart -= 1;
-        leadFrames += 1;
-      }
-      const availableLeadBytes = options.maxBytes - lengths[ownStart];
-      let leadBytes = offsets[ownStart] - offsets[leadStart];
-      while (leadStart < ownStart && leadBytes > availableLeadBytes) {
-        leadBytes -= lengths[leadStart];
-        leadStart += 1;
-        leadFrames -= 1;
-        leadInReduced = true;
-      }
+    return -1;
+  };
+  const index = createIndex();
+  let skippedBytes = 0;
+  let cursor = start;
+  let metadataAllowed = true;
+  while (cursor + 4 <= end) {
+    let header = await parse(cursor);
+    if (header === null) {
+      const next = await findNext(cursor + 1);
+      if (next < 0) break;
+      skippedBytes += next - cursor;
+      cursor = next;
+      header = await parse(cursor);
     }
-    let byteLimitEnd = ownStart;
-    const firstByte = offsets[leadStart];
-    while (byteLimitEnd < offsets.length && offsets[byteLimitEnd] + lengths[byteLimitEnd] - firstByte <= options.maxBytes) {
-      byteLimitEnd += 1;
+    if (header === null) break;
+    let metadata = false;
+    if (metadataAllowed) {
+      const xingOffset = cursor + 4 + header.crcBytes + header.sideInfoBytes;
+      metadata = await marker(xingOffset, "Xing") || await marker(xingOffset, "Info") || await marker(cursor + 36, "VBRI");
     }
-    const targetTime = timeline[ownStart] + options.targetSeconds;
-    let targetEnd = ownStart + 1;
-    while (targetEnd < offsets.length && timeline[targetEnd] < targetTime) targetEnd += 1;
-    ownEnd = Math.min(byteLimitEnd, targetEnd);
-    if (ownEnd <= ownStart) ownEnd = ownStart + 1;
-
-    if (ownEnd < offsets.length && ownEnd === targetEnd) {
-      const searchEndTime = timeline[ownEnd] + 5;
-      let preferred = ownEnd;
-      while (
-        preferred < offsets.length
-        && preferred < byteLimitEnd
-        && timeline[preferred] <= searchEndTime
-        && reservoir[preferred] !== 0
-      ) preferred += 1;
-      if (
-        preferred < offsets.length
-        && preferred < byteLimitEnd
-        && timeline[preferred] <= searchEndTime
-      ) ownEnd = preferred;
+    if (!metadata) {
+      const side = cursor + 4 + header.crcBytes;
+      const sideBytes = await read(side, header.version === 1 ? 2 : 1);
+      const reservoir = header.version === 1 ? (((sideBytes[0] ?? 0) << 1) | ((sideBytes[1] ?? 0) >> 7)) : sideBytes[0] ?? 0;
+      appendFrame(index, cursor, header, sideBytes, 0, reservoir);
     }
-
-    const byteOffset = offsets[leadStart];
-    const endOffset = offsets[ownEnd - 1] + lengths[ownEnd - 1];
-    const ownDurationSeconds = timeline[ownEnd] - timeline[ownStart];
-    const leadInSeconds = timeline[ownStart] - timeline[leadStart];
-    chunks.push({
-      index: chunks.length,
-      bytes: data.subarray(byteOffset, endOffset),
-      byteOffset,
-      frameCount: ownEnd - leadStart,
-      leadInFrames: leadFrames,
-      leadInSeconds,
-      ownStartSeconds: timeline[ownStart],
-      ownDurationSeconds,
-    });
-    ownStart = ownEnd;
+    metadataAllowed = false;
+    cursor += header.length;
   }
-  if (leadInReduced) warnings.push("Reduced lead-in on one or more chunks to fit maxBytes.");
-  return { chunks, totalSeconds, sampleRate: rates[0], warnings };
+  const selected = selectChunks(index, skippedBytes, minLeadInSeconds, options.maxBytes, options.targetSeconds);
+  return { chunks: selected.plans, totalSeconds: selected.totalSeconds, sampleRate: selected.sampleRate, warnings: selected.warnings };
+}
+
+export function readMp3Chunk(source: Blob, plan: Mp3ChunkPlan): Blob {
+  return source.slice(plan.byteOffset, plan.byteOffset + plan.byteLength, "audio/mpeg");
 }
 
 // Absolute provider time for a chunk timestamp t is ownStartSeconds - leadInSeconds + t.
