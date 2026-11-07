@@ -13,7 +13,7 @@ test("cited revisions can be read together without claiming semantic verificatio
   const item = { id: crypto.randomUUID(), type: "summary" as const, text: "A hypothetical 30% increase.", ownerId: null, dueDate: null, dueOriginal: null, sources: [{ id: first.id, revision: first.revision }, { id: second.id, revision: second.revision }], review: "pending" as const };
   meeting.memos.push({ id: crypto.randomUUID(), model: "synthetic", createdAt: new Date().toISOString(), sourceRevision: meeting.revision, items: [item], originalItems: [structuredClone(item)] });
   await page.goto("/PWA-AI-Meeting-Memo-BYOK/");
-  await expect(page.getByRole("heading", { name: "Meeting library 0" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Your meetings/ })).toBeVisible();
   await expect(page.getByText("Opening local library…")).toHaveCount(0);
   await page.evaluate(async (value) => new Promise<void>((resolve, reject) => {
     const request = indexedDB.open("meeting-memo-byok-v1");

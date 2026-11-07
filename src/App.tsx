@@ -19,7 +19,6 @@ import {
   Search,
   Settings as SettingsIcon,
   ShieldCheck,
-  Sparkles,
   Upload,
   X,
 } from "lucide-react";
@@ -64,6 +63,7 @@ export default function App() {
     [newOpen, setNewOpen] = useState(false),
     [mobileNav, setMobileNav] = useState(false),
     [help, setHelp] = useState(false);
+  const hasMeetings = meetings.length > 0;
   const [online, setOnline] = useState(navigator.onLine);
   const [topHidden, setTopHidden] = useState(false),
     [showTop, setShowTop] = useState(false);
@@ -425,14 +425,17 @@ export default function App() {
                   </h1>
                   <p>{t("Manage recordings, transcripts and notes.", "管理录音、转录与会议笔记。")}</p>
                 </div>
-                <button
-                  className="button primary"
-                  onClick={() => setNewOpen(true)}
-                >
-                  <Plus size={18} />
-                  {t("New meeting", "新建会议")}
-                </button>
+                {hasMeetings && (
+                  <button
+                    className="button primary"
+                    onClick={() => setNewOpen(true)}
+                  >
+                    <Plus size={18} />
+                    {t("New meeting", "新建会议")}
+                  </button>
+                )}
               </section>
+              {hasMeetings && (
               <section className="stats" aria-label={t("Library summary", "会议库摘要")}>
                 <div>
                   <span className="stat-icon">
@@ -464,27 +467,16 @@ export default function App() {
                   </div>
                 </div>
               </section>
-              <section className="welcome-banner" aria-label={t("Workspace overview", "工作空间简介")}>
-                <div className="welcome-banner-copy">
-                  <strong>
-                    <Sparkles size={16} />
-                    {t("Turn conversations into clear next steps.", "将每次讨论转化为清晰的下一步。")}
-                  </strong>
-                  <p>
-                    {t("Record, transcribe and review — all in one workspace.", "在一个工作空间中完成录音导入、转录与笔记审阅。")}
-                  </p>
-                </div>
-                <button className="text-button" onClick={() => setHelp(true)}>
-                  {t("How it works", "使用说明")}
-                  <ArrowUpRight size={15} />
-                </button>
-              </section>
+              )}
               <section className="library">
+                {hasMeetings && (
                 <div className="section-title">
                   <h2>
                     {t("Meeting library", "会议库")} <span>{meetings.length}</span>
                   </h2>
                 </div>
+                )}
+                {hasMeetings && (
                 <div className="library-toolbar">
                   <div className="filter-row" role="group" aria-label={t("Filter meetings", "筛选会议")}>
                     {[
@@ -510,6 +502,16 @@ export default function App() {
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                       />
+                      {search && (
+                        <button
+                          type="button"
+                          className="icon-button search-clear"
+                          aria-label={t("Clear search", "清除搜索")}
+                          onClick={() => setSearch("")}
+                        >
+                          <X size={15} />
+                        </button>
+                      )}
                     </label>
                     <label className="sort-control">
                       <span>{t("Sort", "排序")}</span>
@@ -527,6 +529,7 @@ export default function App() {
                     </label>
                   </div>
                 </div>
+                )}
                 {loading ? (
                   <p role="status">{t("Opening local library…", "正在打开本地会议库…")}</p>
                 ) : visible.length ? (

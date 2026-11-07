@@ -156,7 +156,7 @@ async function createFixture(
     };
   });
   await page.goto(base);
-  await page.getByRole("button", { name: "New meeting", exact: true }).last().click();
+  await page.locator("main").getByRole("button", { name: /^(New meeting|Create your first meeting)$/ }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Meeting title", { exact: true }).fill("Speaker UI fixture");
   await dialog.getByText("Start from a transcript instead").click();
