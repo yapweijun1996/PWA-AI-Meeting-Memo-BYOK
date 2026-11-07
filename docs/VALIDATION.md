@@ -383,3 +383,7 @@ No failed check is being waived. Pending acceptance items are not promoted to PA
 ## Reproduce
 
 Use the commands in [README](../README.md). Workflow runs use only mocks and synthetic fixtures, with no provider secrets. Repeat the relevant real-browser/device checks when storage, worker lifecycle, provider contracts, or supported limits change. Do not mark the open acceptance items complete based on a successful CI run.
+
+## Sidebar collapse and dashboard streamlining - 2026-11-07
+
+Local, Node v25.5.0 (project pins 22.23.3), Playwright Chromium and WebKit. 88 unit tests, lint, typecheck, build, `check:artifact` and both-engine `test:pwa` passed. Playwright: 8 sidebar cases and 14 viewport/axe cases passed. In the full suite, `memo-pipeline.spec.ts:6` (Chromium) and `providers.spec.ts:121` (WebKit) fail locally on unmodified `main` as well (cause not investigated; they passed in published CI). `providers.spec.ts:838` (WebKit) failed once in a full run and passed on two reruns, so it is treated as flaky. Not run: physical devices, screen readers, dark theme, live providers.

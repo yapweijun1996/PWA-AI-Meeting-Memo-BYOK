@@ -239,3 +239,12 @@ Remaining acceptance gates are deliberate and stay unchecked:
 B01-B05 remain optional beyond P0; B03-B05 checkmarks record design evaluations, not implementation. B01 and B02 remain unimplemented. A deployed beta and passing mocked tests do not replace real speaker-aware product acceptance.
 
 When starting work, confirm current repository state. When finishing a task, add the relevant commit or sanitized verification reference, update the checkbox, and identify any failed or unrun acceptance check. Keep detailed verification procedures in the linked documents rather than duplicating them here.
+
+## UI redesign phases (mockup v1.1) - 2026-11-07
+
+Visual direction only; no business logic, storage schema, provider or pricing change. Mockup-only content (recording, Templates, notifications, duration/storage statistics, user name) is intentionally not implemented.
+
+- [x] Phase 1 - app shell: collapsible desktop sidebar (icon rail, accessible names, `localStorage` preference), tablet rail by default below 1024px, mobile drawer unchanged. Mobile bottom navigation and design-token realignment were deliberately not done: the existing drawer is retained and tokens need a contrast review first.
+- [x] Phase 2 - dashboard and library: empty library hides KPI cards, toolbar and banner and keeps one primary action; populated library keeps real counts only; search clear control.
+- [ ] Phase 3 - meeting detail and AI states: audited only, no change; existing stages already map to real workflow states and `MeetingWorkspace.tsx` is high risk.
+- [x] Phase 4 (partial) - 7 viewports from 320x568 to 1440x900 on both engines: no horizontal overflow and no axe wcag2a/2aa/22aa violations on the empty dashboard. Physical devices, screen readers and a dark theme remain NOT RUN / not implemented.
