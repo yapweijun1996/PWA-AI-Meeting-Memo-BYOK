@@ -13,6 +13,8 @@ import {
   HelpCircle,
   Leaf,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   Settings as SettingsIcon,
@@ -39,6 +41,7 @@ import {
   isSettingsDirty,
 } from "./providers/credentials";
 import { PwaStatus } from "./pwa/status";
+import { useSidebarCollapsed } from "./features/useSidebarCollapsed";
 import { useUiLanguage } from "./ui-language";
 import { translateMessage } from "./ui-messages";
 export const navigate = (route: string) => {
@@ -46,6 +49,8 @@ export const navigate = (route: string) => {
 };
 export default function App() {
   const uiLanguage = useUiLanguage();
+  const [sidebarCollapsed, toggleSidebar] = useSidebarCollapsed();
+  const navTip = (label: string) => (sidebarCollapsed ? label : undefined);
   const t = (en: string, zh: string) => uiLanguage === "zh-CN" ? zh : en;
   useEffect(() => { document.documentElement.lang = uiLanguage; }, [uiLanguage]);
   const [route, setRoute] = useState(location.hash.slice(1) || "/"),
@@ -204,7 +209,7 @@ export default function App() {
       return b.updatedAt.localeCompare(a.updatedAt);
     });
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <a
         className="skip-link"
         href="#main-content"
@@ -222,7 +227,7 @@ export default function App() {
           aria-label={t("Close navigation", "关闭导航")}
         />
       )}
-      <aside className={`sidebar ${mobileNav ? "open" : ""}`}>
+      <aside id="app-sidebar" className={`sidebar ${mobileNav ? "open" : ""}`}>
         <a className="brand-link" href="#/" aria-label={t("Meeting Memo home", "Meeting Memo 首页")}>
           <Brand />
         </a>
@@ -230,6 +235,7 @@ export default function App() {
         <nav aria-label={t("Main navigation", "主导航")}>
           <a
             href="#/"
+            title={navTip(t("Your meetings", "您的会议"))}
             className={
               (route === "/" && filter !== "review") || route.startsWith("/meetings")
                 ? "active"
@@ -238,9 +244,10 @@ export default function App() {
             onClick={() => setFilter("all")}
           >
             <FolderOpen size={19} />
-            {t("Your meetings", "您的会议")}<span className="nav-count">{meetings.length}</span>
+            <span className="nav-text">{t("Your meetings", "您的会议")}</span><span className="nav-count">{meetings.length}</span>
           </a>
           <button
+            title={navTip(t("Needs review", "待审阅"))}
             className={route === "/" && filter === "review" ? "active" : ""}
             onClick={() => {
               setFilter("review");
@@ -249,16 +256,16 @@ export default function App() {
             }}
           >
             <Clock size={19} />
-            {t("Needs review", "待审阅")}
+            <span className="nav-text">{t("Needs review", "待审阅")}</span>
             <span className="nav-count">{needsReviewCount}</span>
           </button>
-          <button onClick={() => setNewOpen(true)}>
+          <button title={navTip(t("New meeting", "新建会议"))} onClick={() => setNewOpen(true)}>
             <Plus size={19} />
-            {t("New meeting", "新建会议")}
+            <span className="nav-text">{t("New meeting", "新建会议")}</span>
           </button>
-          <label className="nav-file">
+          <label className="nav-file" title={navTip(t("Restore backup", "恢复备份"))}>
             <Upload size={19} />
-            {t("Restore backup", "恢复备份")}
+            <span className="nav-text">{t("Restore backup", "恢复备份")}</span>
             <input
               type="file"
               accept=".zip,.json"
@@ -298,19 +305,20 @@ export default function App() {
         <div className="sidebar-bottom">
           <a
             href="#/settings"
+            title={navTip(t("Settings & API keys", "设置与 API 密钥"))}
             className={route === "/settings" ? "active" : ""}
           >
             <SettingsIcon size={18} />
-            {t("Settings & API keys", "设置与 API 密钥")}
+            <span className="nav-text">{t("Settings & API keys", "设置与 API 密钥")}</span>
           </a>
-          <button onClick={() => setHelp(true)}>
+          <button title={navTip(t("How it works", "使用说明"))} onClick={() => setHelp(true)}>
             <HelpCircle size={18} />
-            {t("How it works", "使用说明")}
-            <ArrowUpRight size={14} />
+            <span className="nav-text">{t("How it works", "使用说明")}</span>
+            <ArrowUpRight size={14} className="nav-trailing" />
           </button>
           <div className="local-label">
             <span className="status-dot" />
-            {t("Saved on this device · Local storage", "已保存在此设备 · 本地存储")}
+            <span className="nav-text">{t("Saved on this device · Local storage", "已保存在此设备 · 本地存储")}</span>
           </div>
         </div>
       </aside>
@@ -323,6 +331,24 @@ export default function App() {
               aria-label={t("Open navigation", "打开导航")}
             >
               <Menu size={22} />
+            </button>
+            <button
+              className="icon-button sidebar-toggle"
+              onClick={toggleSidebar}
+              aria-controls="app-sidebar"
+              aria-expanded={!sidebarCollapsed}
+              aria-label={
+                sidebarCollapsed
+                  ? t("Expand sidebar", "展开侧边栏")
+                  : t("Collapse sidebar", "收起侧边栏")
+              }
+              title={
+                sidebarCollapsed
+                  ? t("Expand sidebar", "展开侧边栏")
+                  : t("Collapse sidebar", "收起侧边栏")
+              }
+            >
+              {sidebarCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
             </button>
             <a className="breadcrumb-root" href="#/">
               {t("Workspace", "工作空间")}

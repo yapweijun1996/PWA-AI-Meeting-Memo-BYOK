@@ -3689,3 +3689,65 @@ details[open] > summary {
 @media (prefers-reduced-motion: reduce) {
   .playback-caption-row { transition: none; }
 }
+
+/* Desktop sidebar collapse: icon-only rail; mobile keeps its off-canvas drawer. */
+:root {
+  --sidebar-rail: 72px;
+}
+.sidebar-toggle {
+  display: none;
+}
+@media (min-width: 761px) {
+  .sidebar-toggle {
+    display: inline-grid;
+  }
+  .sidebar,
+  .main-shell {
+    transition:
+      width 0.2s ease,
+      margin-left 0.2s ease;
+  }
+  .sidebar-collapsed .sidebar {
+    width: var(--sidebar-rail);
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .sidebar-collapsed .main-shell {
+    margin-left: var(--sidebar-rail);
+  }
+  .sidebar-collapsed .brand-link {
+    padding: 0;
+    display: grid;
+    place-items: center;
+  }
+  .sidebar-collapsed .brand > span:last-child,
+  .sidebar-collapsed .nav-label,
+  .sidebar-collapsed .nav-count,
+  .sidebar-collapsed .sidebar-recent,
+  .sidebar-collapsed .nav-trailing {
+    display: none;
+  }
+  /* Keep labels in the accessibility tree while hiding them visually. */
+  .sidebar-collapsed .nav-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .sidebar-collapsed .sidebar nav a,
+  .sidebar-collapsed .sidebar nav button,
+  .sidebar-collapsed .nav-file,
+  .sidebar-collapsed .sidebar-bottom > a,
+  .sidebar-collapsed .sidebar-bottom > button {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .sidebar-collapsed .local-label {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
