@@ -206,13 +206,13 @@ try {
       await page
         .getByRole("button", { name: "Save correction", exact: true })
         .click();
-      page.once("dialog", (d) => d.accept());
+      await page.getByRole("button", { name: "Update now", exact: true }).click();
       await Promise.all([
         page.waitForEvent(
           "framenavigated",
           (frame) => frame === page.mainFrame(),
         ),
-        page.getByRole("button", { name: "Update now", exact: true }).click(),
+        page.getByRole("button", { name: "Confirm update", exact: true }).click(),
       ]);
       await page
         .getByRole("heading", { name: "Preserved across update", exact: true })
@@ -263,10 +263,10 @@ try {
         .getByRole("button", { name: "Update now", exact: true })
         .waitFor();
       await page.clock.install();
-      page.once("dialog", (d) => d.accept());
       await page
         .getByRole("button", { name: "Update now", exact: true })
         .click();
+      await page.getByRole("button", { name: "Confirm update", exact: true }).click();
       await expect(
         page.getByRole("button", { name: "Updating…", exact: true }),
       ).toBeVisible();
@@ -295,13 +295,13 @@ try {
       await page.waitForFunction(
         () => !document.body.textContent.includes("Updating…"),
       );
-      page.once("dialog", (d) => d.accept());
+      await page.getByRole("button", { name: "Update now", exact: true }).click();
       await Promise.all([
         page.waitForEvent(
           "framenavigated",
           (frame) => frame === page.mainFrame(),
         ),
-        page.getByRole("button", { name: "Update now", exact: true }).click(),
+        page.getByRole("button", { name: "Confirm update", exact: true }).click(),
       ]);
       await expect(
         page.getByRole("heading", {

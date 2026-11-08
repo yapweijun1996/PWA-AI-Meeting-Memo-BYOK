@@ -83,26 +83,23 @@ export function PwaStatus() {
       removeEventListener("beforeinstallprompt", prompt);
     };
   }, []);
+  function blocker(): string {
+    if (document.querySelector("dialog[open]")) return "Save or close the open editor before updating.";
+    if (isSettingsDirty()) return "Save your settings before updating.";
+    if (isProcessing()) return "Finish the active provider request before updating.";
+    if (document.querySelector('[data-unsaved-edit="true"]')) return "Save or close the open editor before updating.";
+    return "";
+  }
+  function requestUpdate() {
+    const reason = blocker();
+    setError(reason);
+    setConfirming(reason === "");
+  }
   async function update() {
-    if (document.querySelector("dialog[open]")) {
-      setError("Save or close the open editor before updating.");
-      return;
-    }
-    if (isSettingsDirty()) {
-      setError("Save your settings before updating.");
-      return;
-    }
-    if (isProcessing()) {
-      setError("Finish the active provider request before updating.");
-      return;
-    }
-    if (document.querySelector('[data-unsaved-edit="true"]')) {
-      setError(
-        t(
-          "Save or close the open editor before updating.",
-          "更新前请保存或关闭打开的编辑器。",
-        ),
-      );
+    const reason = blocker();
+    if (reason) {
+      setError(reason);
+      setConfirming(false);
       return;
     }
     setConfirming(false);
@@ -158,7 +155,7 @@ export function PwaStatus() {
           ) : (
             <button
               className="button secondary compact"
-              onClick={() => { setError(""); setConfirming(true); }}
+              onClick={requestUpdate}
               disabled={updating}
             >
               {updating ? t("Updating…", "正在更新…") : t("Update now", "立即更新")}
