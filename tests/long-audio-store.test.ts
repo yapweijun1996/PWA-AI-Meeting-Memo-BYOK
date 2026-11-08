@@ -80,6 +80,7 @@ describe("long audio IndexedDB store", () => {
     const meetingId = crypto.randomUUID();
     const first = await storeLongAudio(input(meetingId, ["old"]));
     await expect(storeLongAudio(input(meetingId, ["rejected"]))).rejects.toThrow("already exists");
+    await new Promise((resolve) => setTimeout(resolve, 5));
     const replacement = await storeLongAudio({ ...input(meetingId, ["new", "data"]), replace: true });
     expect(replacement.totalBytes).toBe(7);
     expect(replacement.createdAt).not.toBe(first.createdAt);

@@ -44,9 +44,10 @@ import { getAudio, getMeeting, saveMeeting } from "../storage/repository";
 import { backupMeeting, download, safeFilename } from "../storage/backup";
 import { inspectAudio } from "../audio/files";
 import { importLongRecording, isLongRecordingCandidate } from "../audio/long-import";
-import { deleteLongAudio, getLongAudioChunk, getLongAudioManifest } from "../storage/long-audio-store";
+import { deleteLongAudio, getLongAudioChunk, getLongAudioManifest, type LongAudioManifest } from "../storage/long-audio-store";
 import { getKey, getSelection, getSpeechEstimate, getUiLanguage } from "../providers/credentials";
 import { cancelProcessing, runJob, isProcessingMeeting } from "../jobs/runner";
+import { getChunkedProgress, runChunkedSpeech } from "../jobs/chunked-runner";
 import { Empty, Modal, Pill } from "../components/ui";
 import { CitedEvidence } from "./CitedEvidence";
 import { SpeakerReview } from "./SpeakerReview";
@@ -84,6 +85,9 @@ export function MeetingWorkspace({
     [pendingOnly, setPendingOnly] = useState(false);
   const [url, setUrl] = useState(""),
     [audioMissing, setAudioMissing] = useState(false),
+    [chunkManifest, setChunkManifest] = useState<LongAudioManifest>(),
+    [chunkProgress, setChunkProgress] = useState<{ total: number; done: number; nextIndex: number; blockedIndex: number | null }>(),
+    [chunkProgressText, setChunkProgressText] = useState(""),
     [sampleRange, setSampleRange] = useState<{ start: number; end: number } | null>(null),
     [audioStopToken, setAudioStopToken] = useState(0);
   const player = useRef<HTMLAudioElement>(null),
@@ -125,13 +129,27 @@ export function MeetingWorkspace({
       object = "";
     if (m.audio?.chunked) {
       setUrl("");
+      setChunkManifest(undefined);
+      setChunkProgress(undefined);
       void getLongAudioManifest(m.id)
-        .then((manifest) => {
-          if (!cancelled) setAudioMissing(!manifest);
+        .then(async (manifest) => {
+          const progress = await getChunkedProgress(m);
+          if (!cancelled) {
+            setChunkManifest(manifest);
+            setChunkProgress(progress);
+            setAudioMissing(!manifest);
+          }
         })
-        .catch(() => { if (!cancelled) setAudioMissing(true); });
+        .catch(() => {
+          if (!cancelled) {
+            setChunkManifest(undefined);
+            setAudioMissing(true);
+          }
+        });
       return () => { cancelled = true; };
     }
+    setChunkManifest(undefined);
+    setChunkProgress(undefined);
     void getAudio(m.id)
       .then((blob) => {
         if (cancelled) return;
@@ -280,11 +298,18 @@ export function MeetingWorkspace({
     }
     cueRange(s.start, s.end);
   }
-  function prepareConfirmation(stage: "speech" | "memo") {
+  async function prepareConfirmation(stage: "speech" | "memo") {
     try {
       const selection = { ...getSelection(stage) };
       const plan = stage === "memo" ? resumablePipeline(m,selection,true) ?? planMemo(m,selection.provider,selection.model) : null;
       setReviewedRetry(false);
+      if (stage === "speech" && m.audio?.chunked) {
+        const manifest = await getLongAudioManifest(m.id);
+        if (!manifest) throw new Error("The chunk manifest is missing. Reattach or restore the long recording before transcription.");
+        const progress = await getChunkedProgress(m);
+        setChunkManifest(manifest);
+        setChunkProgress(progress);
+      }
       setConfirmed({selection,plan});
       setConfirmStage(stage);
     } catch(error) { onError(error instanceof Error ? error.message : "Could not prepare the memo plan."); }
@@ -294,10 +319,20 @@ export function MeetingWorkspace({
     const stage = confirmStage;
     setConfirmStage(undefined);
     setProcessing(true);
+    setChunkProgressText("");
     if (stage === "memo") setTab("memo");
     setNotice("");
     try {
-      const completed = await runJob(m, stage, confirmed ? {...confirmed,reviewedRetry,onCheckpoint:onUpdate} : undefined);
+      const completed = stage === "speech" && m.audio?.chunked
+        ? await runChunkedSpeech(m, {
+            selection: confirmed!.selection,
+            reviewedChunks: chunkProgress?.blockedIndex != null && reviewedRetry ? [chunkProgress.blockedIndex] : undefined,
+            onProgress: ({ done, total, index }) => {
+              setChunkProgressText(t(`Transcribing part ${index + 1} of ${total}`, `正在转录第 ${index + 1}/${total} 部分`));
+              setChunkProgress({ total, done, nextIndex: index + 1, blockedIndex: null });
+            },
+          })
+        : await runJob(m, stage, confirmed ? {...confirmed,reviewedRetry,onCheckpoint:onUpdate} : undefined);
       onUpdate(completed);
       setViewVersion(undefined);
       setNotice(
@@ -315,9 +350,13 @@ export function MeetingWorkspace({
     } catch (e) {
       onError(e instanceof Error ? e.message : "Processing did not complete.");
       const latest = await getMeeting(m.id);
-      if (latest) onUpdate(latest);
+      if (latest) {
+        onUpdate(latest);
+        if (latest.audio?.chunked) setChunkProgress(await getChunkedProgress(latest));
+      }
     } finally {
       setProcessing(false);
+      setChunkProgressText("");
     }
   }
   async function attach(file?: File) {
@@ -556,11 +595,13 @@ export function MeetingWorkspace({
                   )
                 : undefined
             }
-            onClick={() => prepareConfirmation("speech")}
-            disabled={locked || !url}
+            onClick={() => void prepareConfirmation("speech")}
+            disabled={locked || (m.audio?.chunked ? audioMissing || !chunkManifest : !url)}
           >
             <AudioLines size={15} />
-            {t("Transcribe", "转录")}
+            {m.audio?.chunked && chunkProgress && chunkProgress.done > 0 && chunkProgress.done < chunkProgress.total
+              ? t(`Resume transcription (${chunkProgress.done} of ${chunkProgress.total} parts done)`, `恢复转录（已完成 ${chunkProgress.done}/${chunkProgress.total} 部分）`)
+              : t("Transcribe", "转录")}
           </button>
         </div>
       </div>
@@ -599,6 +640,7 @@ export function MeetingWorkspace({
           </span>
           <div className="processing-copy" role="status" aria-live="polite">
             <strong>{t("Processing your request", "正在处理请求")}</strong>
+            {chunkProgressText && <strong>{chunkProgressText}</strong>}
             <span>
               {t("Keep this page open. Completed results are saved to this device.", "请保持此页面打开。完成的结果会保存在此设备。")}
             </span>
@@ -1264,6 +1306,7 @@ export function MeetingWorkspace({
                 <strong>
                   {j.stage === "speech" ? t("Transcription", "转录") : t("Memo", "笔记")} ·{" "}
                   {uiLanguage === "zh-CN" ? ({ in_flight: "进行中", completed: "已完成", outcome_unknown: "结果未知", failed_before_send: "发送前失败", failed: "失败" } as const)[j.state] : j.state.replaceAll("_", " ")}
+                  {j.chunk && <> · {t(`Part ${j.chunk.index + 1}/${j.chunk.total}`, `第 ${j.chunk.index + 1}/${j.chunk.total} 部分`)}</>}
                 </strong>
                 <span>
                   {new Date(j.createdAt).toLocaleString()} · {t("billing", "计费状态")}: {" "}
@@ -1433,19 +1476,56 @@ export function MeetingWorkspace({
               <dt>{t("Data sent", "发送的数据")}</dt>
               <dd>
                 {confirmStage === "speech"
-                  ? t(`Your complete recording (${((m.audio?.size || 0) / 1024 / 1024).toFixed(1)} MB)`, `完整录音（${((m.audio?.size || 0) / 1024 / 1024).toFixed(1)} MB）`)
+                  ? m.audio?.chunked
+                    ? t(`${chunkManifest?.chunks.length ?? m.audio.chunked.chunkCount} recording parts`, `${chunkManifest?.chunks.length ?? m.audio.chunked.chunkCount} 个录音部分`)
+                    : t(`Your complete recording (${((m.audio?.size || 0) / 1024 / 1024).toFixed(1)} MB)`, `完整录音（${((m.audio?.size || 0) / 1024 / 1024).toFixed(1)} MB）`)
                   : t("Transcript, speaker names and meeting context (title, date, timezone, languages, type and glossary)", "转录、说话人姓名和会议背景（标题、日期、时区、语言、类型和术语）")}
               </dd>
               <dt>{t("Model", "模型")}</dt>
               <dd>{(confirmed?.selection ?? getSelection(confirmStage)).model}</dd>
               <dt>{t("Estimated charge", "预计费用")}</dt>
               <dd>
-                {confirmStage === "speech" && getSpeechEstimate(m.audio?.duration) ? (() => {
-                  const estimate = getSpeechEstimate(m.audio?.duration)!;
-                  return `${t("About", "约")} US$${estimate.amount.toFixed(3)} · ${estimate.seconds.toFixed(1)} ${t("seconds at", "秒，费率")} US$${estimate.rate}/${t("minute", "分钟")} · ${t("checked", "核对日期")} ${estimate.date} · ${estimate.source}. ${t("Assumes the entire recording is billed at this rate.", "假设整个录音按此费率计费。")}`;
-                })() : t("Unknown · provider charges apply. A dated applicable rate or duration is unavailable.", "未知 · 服务商可能收费。缺少适用的带日期费率或录音时长。")}
+                {confirmStage === "speech" && m.audio?.chunked
+                  ? (() => {
+                      const remaining = chunkManifest?.chunks.filter((part) => part.index >= (chunkProgress?.nextIndex ?? 0)) ?? [];
+                      const estimates = remaining.map((part) => getSpeechEstimate(part.ownDurationSeconds + part.leadInSeconds));
+                      const total = estimates.every((estimate) => estimate !== null)
+                        ? estimates.reduce((sum, estimate) => sum + (estimate?.amount ?? 0), 0)
+                        : null;
+                      const averageMinutes = remaining.length
+                        ? remaining.reduce((sum, part) => sum + part.ownDurationSeconds, 0) / remaining.length / 60
+                        : 0;
+                      return (
+                        <>
+                          <div>{t("Remaining requests", "剩余请求")}: {t(`${remaining.length} parts of about ${averageMinutes.toFixed(1)} minutes each`, `剩余 ${remaining.length} 个部分，每部分约 ${averageMinutes.toFixed(1)} 分钟`)}</div>
+                          <div>{t("Estimate per part", "每部分估算")}:</div>
+                          {remaining.length ? remaining.map((part, index) => {
+                            const estimate = estimates[index];
+                            return <div key={part.index}>{t(`Part ${part.index + 1}`, `第 ${part.index + 1} 部分`)}: {estimate ? `US$${estimate.amount.toFixed(3)}` : t("unknown", "未知")}</div>;
+                          }) : <div>{t("No remaining parts", "没有剩余部分")}</div>}
+                          <div>{t("Total estimate", "总估算")}: {total === null ? t("Unknown · provider charges apply.", "未知 · 服务商可能收费。") : `US$${total.toFixed(3)}`}</div>
+                        </>
+                      );
+                    })()
+                  : confirmStage === "speech" && getSpeechEstimate(m.audio?.duration) ? (() => {
+                      const estimate = getSpeechEstimate(m.audio?.duration)!;
+                      return `${t("About", "约")} US$${estimate.amount.toFixed(3)} · ${estimate.seconds.toFixed(1)} ${t("seconds at", "秒，费率")} US$${estimate.rate}/${t("minute", "分钟")} · ${t("checked", "核对日期")} ${estimate.date} · ${estimate.source}. ${t("Assumes the entire recording is billed at this rate.", "假设整个录音按此费率计费。")}`;
+                    })() : t("Unknown · provider charges apply. A dated applicable rate or duration is unavailable.", "未知 · 服务商可能收费。缺少适用的带日期费率或录音时长。")}
               </dd>
             </dl>
+            {confirmStage === "speech" && m.audio?.chunked && chunkManifest && (
+              <>
+                <div className="notice sand">
+                  {t(`These ${chunkManifest.chunks.length - (chunkProgress?.done ?? 0)} requests are sent one after another with your key. If any request fails or its result is unknown, the run stops and nothing is retried automatically. Each completed part is saved before the next is sent.`, `这 ${chunkManifest.chunks.length - (chunkProgress?.done ?? 0)} 次请求将使用您的密钥依次发送。任何请求失败或结果未知时，流程都会停止，且不会自动重试。每个已完成部分都会在发送下一部分前保存。`)}
+                </div>
+                {chunkProgress?.blockedIndex !== null && chunkProgress?.blockedIndex !== undefined && (
+                  <div className="notice sand">
+                    <p>{t(`Part ${chunkProgress.blockedIndex + 1} has an unknown outcome. Check your provider account before deciding whether to submit it again.`, `第 ${chunkProgress.blockedIndex + 1} 部分的结果未知。决定是否重新提交前，请检查服务商账户。`)}</p>
+                    <label><input type="checkbox" checked={reviewedRetry} onChange={(event) => setReviewedRetry(event.target.checked)} /> {t(`I checked my provider account for part ${chunkProgress.blockedIndex + 1} and want to send it again`, `我已检查服务商账户中第 ${chunkProgress.blockedIndex + 1} 部分的情况，并希望重新发送`)}</label>
+                  </div>
+                )}
+              </>
+            )}
             <p className="muted">
               {t("Keep this page open. Cancellation does not guarantee remote processing or billing stops. The app does not automatically retry. Review the provider's retention policy for your account.", "请保持此页面打开。取消不保证远端处理或计费停止。应用不会自动重试。请查看服务商对您账户的数据保留政策。")}
             </p>
@@ -1462,7 +1542,7 @@ export function MeetingWorkspace({
                 {t(`${unknown} speakers are unconfirmed and ${pending} passages are unreviewed. Unknown fields remain subject to review.`, `${unknown} 位说话人未确认，${pending} 段转录未审阅。未知字段仍需核对。`)}
               </div>
             )}
-            {confirmStage === "speech" && (
+            {confirmStage === "speech" && !m.audio?.chunked && (
               <p className="small muted">
                 {t("Audio uploads are limited to 25 MB. Speaker labels and timestamps depend on the chosen model and returned result; missing evidence stays unknown.", "录音上传上限为 25 MB。说话人标签和时间戳取决于所选模型及其返回结果；缺少的证据保持未知。")}
               </p>
@@ -1494,10 +1574,12 @@ export function MeetingWorkspace({
               </button>
               <button
                 className="button primary"
-                disabled={!getKey((confirmed?.selection ?? getSelection(confirmStage)).provider) || (Boolean(confirmed?.plan && m.jobs.some(j=>j.pipelineId===confirmed.plan!.id && j.state!=="completed")) && !reviewedRetry)}
+                disabled={!getKey((confirmed?.selection ?? getSelection(confirmStage)).provider) || (Boolean(confirmed?.plan && m.jobs.some(j=>j.pipelineId===confirmed.plan!.id && j.state!=="completed")) && !reviewedRetry) || (confirmStage === "speech" && Boolean(m.audio?.chunked && chunkProgress?.blockedIndex !== null && chunkProgress?.blockedIndex !== undefined) && !reviewedRetry)}
                 onClick={() => void process()}
               >
-                {t("Confirm and send", "确认并发送")}
+                {confirmStage === "speech" && m.audio?.chunked
+                  ? t(`Confirm and send ${Math.max(0, (chunkManifest?.chunks.length ?? 0) - (chunkProgress?.done ?? 0))} requests`, `确认并发送 ${Math.max(0, (chunkManifest?.chunks.length ?? 0) - (chunkProgress?.done ?? 0))} 次请求`)
+                  : t("Confirm and send", "确认并发送")}
               </button>
             </div>
             {!getKey((confirmed?.selection ?? getSelection(confirmStage)).provider) && (
