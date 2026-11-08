@@ -11,6 +11,7 @@ export function PwaStatus() {
   const [refreshReady, setRefreshReady] = useState(false);
   const [waiting, setWaiting] = useState<ServiceWorker>(),
     [updating, setUpdating] = useState(false),
+    [confirming, setConfirming] = useState(false),
     [error, setError] = useState(""),
     [offline, setOffline] = useState(!navigator.onLine);
   const [install, setInstall] = useState<
@@ -104,8 +105,7 @@ export function PwaStatus() {
       );
       return;
     }
-    if (!confirm(t("Apply the update now? Save any open text edits first.", "现在应用更新吗？请先保存正在编辑的文字。")))
-      return;
+    setConfirming(false);
     try {
       await flushWrites();
       await flushSettingsWrites();
@@ -146,13 +146,24 @@ export function PwaStatus() {
         <div className="notice update" role="status">
           <RefreshCw size={17} />
           <span>{t("A new version is ready. Save your work before updating.", "新版本已准备好。更新前请先保存工作。")}</span>
-          <button
-            className="button secondary compact"
-            onClick={() => void update()}
-            disabled={updating}
-          >
-            {updating ? t("Updating…", "正在更新…") : t("Update now", "立即更新")}
-          </button>
+          {confirming && !updating ? (
+            <>
+              <button className="button secondary compact" onClick={() => void update()}>
+                {t("Confirm update", "确认更新")}
+              </button>
+              <button className="text-button" onClick={() => setConfirming(false)}>
+                {t("Cancel", "取消")}
+              </button>
+            </>
+          ) : (
+            <button
+              className="button secondary compact"
+              onClick={() => { setError(""); setConfirming(true); }}
+              disabled={updating}
+            >
+              {updating ? t("Updating…", "正在更新…") : t("Update now", "立即更新")}
+            </button>
+          )}
         </div>
       )}
       {install && (
