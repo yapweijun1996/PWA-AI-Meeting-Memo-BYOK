@@ -9,6 +9,8 @@ import {
 } from "../domain/model";
 import { saveMeeting } from "../storage/repository";
 import { inspectAudio } from "../audio/files";
+import { importLongRecording, isLongRecordingCandidate } from "../audio/long-import";
+import { deleteLongAudio } from "../storage/long-audio-store";
 import { Modal } from "../components/ui";
 import { useUiLanguage } from "../ui-language";
 import { translateMessage } from "../ui-messages";
@@ -27,11 +29,14 @@ export function NewMeeting({
     [dragOver, setDragOver] = useState(false),
     [transcript, setTranscript] = useState(""),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [progress, setProgress] = useState("");
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
     setError("");
+    let importedMeetingId = "";
+    let storedChunks = false;
     try {
       const form = new FormData(e.currentTarget);
       let m = createMeeting({
@@ -64,29 +69,38 @@ export function NewMeeting({
         }
       }
       if (file) {
-        const info = await inspectAudio(file);
-        if (m.audio && m.audio.hash !== info.hash)
-          throw new Error(
-            t("This recording does not match the imported transcript's source. Use its original recording or create a separate meeting.", "录音与导入转录的来源不符。请使用原录音或另建会议。"),
-          );
-        if (
-          !m.audio &&
-          m.segments.some((s) => s.start !== null) &&
-          !confirm(
-            t("Confirm this is the original recording for the imported timestamps. Verify playback before relying on them.", "请确认这是导入时间戳对应的原始录音，并在使用前验证播放。"),
-          )
-        )
-          return;
-        m.audio = info;
+        if (isLongRecordingCandidate(file)) {
+          const result = await importLongRecording(file, m.id, {
+            onProgress: (p) => setProgress(`${p.phase}: ${p.done}/${p.total}`),
+          });
+          importedMeetingId = m.id;
+          storedChunks = true;
+          if (m.audio && m.audio.hash !== result.audio.hash)
+            throw new Error(t("This recording does not match the imported transcript's source. Use its original recording or create a separate meeting.", "录音与导入转录的来源不符。请使用原录音或另建会议。"));
+          if (!m.audio && m.segments.some((s) => s.start !== null) && !confirm(t("Confirm this is the original recording for the imported timestamps. Verify playback before relying on them.", "请确认这是导入时间戳对应的原始录音，并在使用前验证播放。"))) {
+            await deleteLongAudio(m.id);
+            return;
+          }
+          m.audio = result.audio;
+        } else {
+          const info = await inspectAudio(file);
+          if (m.audio && m.audio.hash !== info.hash)
+            throw new Error(t("This recording does not match the imported transcript's source. Use its original recording or create a separate meeting.", "录音与导入转录的来源不符。请使用原录音或另建会议。"));
+          if (!m.audio && m.segments.some((s) => s.start !== null) && !confirm(t("Confirm this is the original recording for the imported timestamps. Verify playback before relying on them.", "请确认这是导入时间戳对应的原始录音，并在使用前验证播放。"))) return;
+          m.audio = info;
+        }
       }
-      const saved = await saveMeeting(m, file);
+      const saved = storedChunks ? await saveMeeting(m) : await saveMeeting(m, file);
       onCreated(saved);
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : t("The meeting could not be saved.", "无法保存会议。");
+      if (storedChunks && importedMeetingId) {
+        try { await deleteLongAudio(importedMeetingId); } catch { /* preserve the original import error */ }
+      }
+      const message = err instanceof Error ? err.message : t("The meeting could not be saved.", "无法保存会议。");
       setError(message);
       onError("");
     } finally {
+      setProgress("");
       setBusy(false);
     }
   }
@@ -98,6 +112,7 @@ export function NewMeeting({
       }}
     >
       <form onSubmit={submit} className="modal-body">
+        <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <p className="muted">
           {t("A recording, a transcript, or just a title to get started.", "从录音、转录或会议标题开始。")}
         </p>
@@ -106,6 +121,7 @@ export function NewMeeting({
             {translateMessage(error, language)}
           </div>
         )}
+        {progress && <div className="notice" role="status">{t("Importing long recording", "正在导入长录音")} · {progress}</div>}
         <label>
           {t("Meeting title", "会议标题")}
           <input
@@ -156,7 +172,7 @@ export function NewMeeting({
           <small>
             {file
               ? `${(file.size / 1024 / 1024).toFixed(1)} MB · ${t("stays on this device until you confirm", "确认发送前保留在本设备")}`
-              : t("Choose an audio recording · up to 50 MB", "选择录音 · 最大 50 MB")}
+              : t("Choose an audio recording · up to 4 GiB", "选择录音 · 最大 4 GiB")}
           </small>
           <input
             aria-label={t("Audio recording", "会议录音")}
@@ -262,6 +278,7 @@ export function NewMeeting({
         <p className="small muted center">
           {t("No AI request is made when you create a meeting.", "创建会议不会发送 AI 请求。")}
         </p>
+        </fieldset>
       </form>
     </Modal>
   );

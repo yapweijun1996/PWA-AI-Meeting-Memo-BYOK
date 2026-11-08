@@ -29,6 +29,7 @@ import {
   saveMeeting,
   deleteMeeting,
 } from "./storage/repository";
+import { cleanupIncompleteLongAudio } from "./storage/long-audio-store";
 import { readBackup } from "./storage/backup";
 import { Brand, Empty, Modal, Pill } from "./components/ui";
 import { NewMeeting } from "./features/NewMeeting";
@@ -102,6 +103,9 @@ export default function App() {
   useEffect(() => {
     setLoading(true);
     void refresh()
+      .then(async () => {
+        try { await cleanupIncompleteLongAudio(); } catch { /* startup cleanup is best-effort */ }
+      })
       .catch(() =>
         setError(
           "Local storage could not be opened. Check browser storage permissions; private mode may be temporary.",

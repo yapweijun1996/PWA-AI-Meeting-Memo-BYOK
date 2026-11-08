@@ -3,7 +3,8 @@ import { validateMeeting, type Meeting, id } from "../domain/model";
 import { getAudio } from "./repository";
 const MAX_BACKUP = 120 * 1024 * 1024;
 export async function backupMeeting(m: Meeting): Promise<Blob> {
-  const audio = await getAudio(m.id);
+  const chunked = !!m.audio?.chunked;
+  const audio = chunked ? undefined : await getAudio(m.id);
   const document = {
     ...m,
     audio: m.audio ? { ...m.audio, present: !!audio } : null,

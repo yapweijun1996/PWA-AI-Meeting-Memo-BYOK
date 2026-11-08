@@ -43,6 +43,8 @@ import {
 import { getAudio, getMeeting, saveMeeting } from "../storage/repository";
 import { backupMeeting, download, safeFilename } from "../storage/backup";
 import { inspectAudio } from "../audio/files";
+import { importLongRecording, isLongRecordingCandidate } from "../audio/long-import";
+import { deleteLongAudio, getLongAudioChunk, getLongAudioManifest } from "../storage/long-audio-store";
 import { getKey, getSelection, getSpeechEstimate, getUiLanguage } from "../providers/credentials";
 import { cancelProcessing, runJob, isProcessingMeeting } from "../jobs/runner";
 import { Empty, Modal, Pill } from "../components/ui";
@@ -67,6 +69,7 @@ export function MeetingWorkspace({
     [saving, setSaving] = useState(false),
     [processing, setProcessing] = useState(() => isProcessingMeeting(m.id)),
     [notice, setNotice] = useState(""),
+    [importProgress, setImportProgress] = useState(""),
     [confirmStage, setConfirmStage] = useState<"speech" | "memo">(),
     [metadata, setMetadata] = useState(false),
     [addText, setAddText] = useState(false),
@@ -120,6 +123,15 @@ export function MeetingWorkspace({
   useEffect(() => {
     let cancelled = false,
       object = "";
+    if (m.audio?.chunked) {
+      setUrl("");
+      void getLongAudioManifest(m.id)
+        .then((manifest) => {
+          if (!cancelled) setAudioMissing(!manifest);
+        })
+        .catch(() => { if (!cancelled) setAudioMissing(true); });
+      return () => { cancelled = true; };
+    }
     void getAudio(m.id)
       .then((blob) => {
         if (cancelled) return;
@@ -137,7 +149,7 @@ export function MeetingWorkspace({
       cancelled = true;
       if (object) URL.revokeObjectURL(object);
     };
-  }, [m.id, m.audio?.hash, m.audio?.present]);
+  }, [m.id, m.audio?.hash, m.audio?.present, m.audio?.chunked]);
   async function persist(next: Meeting, blob?: Blob) {
     setSaving(true);
     try {
@@ -312,23 +324,42 @@ export function MeetingWorkspace({
     if (!file) return;
     setSaving(true);
     try {
-      const info = await inspectAudio(file);
-      if (m.audio && m.audio.hash !== info.hash)
-        throw new Error(
-          "This meeting belongs to a different recording. Create a new meeting to preserve its source evidence.",
-        );
-      if (
-        !m.audio &&
-        m.segments.some((s) => s.start !== null) &&
-        !confirm(
-            t("Confirm this is the original recording for the imported timestamps. Verify playback before relying on the evidence.", "请确认这是导入时间戳对应的原始录音。依赖此证据前请验证播放。"),
-        )
-      )
-        return;
-      onUpdate(await saveMeeting({ ...m, audio: info }, file));
+      if (isLongRecordingCandidate(file)) {
+        const manifest = m.audio?.chunked ? await getLongAudioManifest(m.id) : undefined;
+        let replace = !!m.audio?.chunked && !manifest;
+        if (manifest) {
+          for (const chunk of manifest.chunks) {
+            try { await getLongAudioChunk(m.id, chunk.index); }
+            catch { replace = true; break; }
+          }
+        }
+        const result = await importLongRecording(file, m.id, {
+          replace,
+          onProgress: (progress) => setImportProgress(`${progress.phase}: ${progress.done}/${progress.total}`),
+        });
+        if (m.audio && (!m.audio.chunked || m.audio.hash !== result.audio.hash)) {
+          await deleteLongAudio(m.id);
+          throw new Error("This meeting belongs to a different recording. Create a new meeting to preserve its source evidence.");
+        }
+        if (!m.audio && m.segments.some((segment) => segment.start !== null) && !confirm(t("Confirm this is the original recording for the imported timestamps. Verify playback before relying on the evidence.", "请确认这是导入时间戳对应的原始录音。依赖此证据前请验证播放。"))) {
+          await deleteLongAudio(m.id);
+          return;
+        }
+        const saved = await saveMeeting({ ...m, audio: result.audio });
+        onUpdate(saved);
+        if (result.warnings.length) setNotice(result.warnings.join(" "));
+      } else {
+        const info = await inspectAudio(file);
+        if (m.audio && m.audio.hash !== info.hash)
+          throw new Error("This meeting belongs to a different recording. Create a new meeting to preserve its source evidence.");
+        if (!m.audio && m.segments.some((s) => s.start !== null) && !confirm(t("Confirm this is the original recording for the imported timestamps. Verify playback before relying on the evidence.", "请确认这是导入时间戳对应的原始录音。依赖此证据前请验证播放。")))
+          return;
+        onUpdate(await saveMeeting({ ...m, audio: info }, file));
+      }
     } catch (e) {
       onError(e instanceof Error ? e.message : "Could not attach recording.");
     } finally {
+      setImportProgress("");
       setSaving(false);
     }
   }
@@ -353,6 +384,8 @@ export function MeetingWorkspace({
               { type: format === "json" ? "application/json" : "text/plain" },
             );
       download(blob, `${safeFilename(m.title)}.${format}`);
+      if (m.audio?.chunked)
+        setNotice(t("Long recordings are not included in backups. Keep the original file.", "备份不包含长录音。请保留原始文件。"));
     } catch {
       onError(
         "Could not create a backup. Check local audio access and available memory.",
@@ -494,6 +527,11 @@ export function MeetingWorkspace({
                 ? `${(m.audio.size / 1024 / 1024).toFixed(1)} MB${duration ? ` · ${formatTime(duration)}` : ""}${audioMissing ? ` · ${t("audio missing on this device", "此设备缺少录音")}` : ""}`
                 : t("Import audio to transcribe, or work from a transcript.", "导入录音进行转录，或使用已有转录。")}
             </small>
+            {m.audio?.chunked && (
+              <div className="small muted">
+                {t(`Long recording stored in ${m.audio.chunked.chunkCount} parts; in-app playback arrives in a later update`, `长录音已分为 ${m.audio.chunked.chunkCount} 个部分保存；应用内播放将在后续更新中提供`)}
+              </div>
+            )}
           </div>
         </div>
         <div className="toolbar-actions">
@@ -526,6 +564,7 @@ export function MeetingWorkspace({
           </button>
         </div>
       </div>
+      {importProgress && <div className="notice" role="status">{t("Importing long recording", "正在导入长录音")} · {importProgress}</div>}
       {notice && !processing && (
         <div className="notice" role="status">
           {translateMessage(notice, uiLanguage)}
