@@ -16,6 +16,7 @@ import {
   speakerActivity,
   type SpeakerWindow,
 } from "../domain/speaker-review";
+import type { SpeakerLink } from "../domain/long-audio";
 import type { PlaybackStatus } from "./usePlaybackClock";
 import { suggestVideoId } from "../domain/reference-video";
 import { Pill } from "../components/ui";
@@ -42,6 +43,8 @@ export function SpeakerReview({
   onPause,
   onChange,
   onMerge,
+  onMergeGroups,
+  onSelectMerge,
   onAdd,
   t: translate,
   onPlaybackRangeChange,
@@ -59,6 +62,8 @@ export function SpeakerReview({
   onPause: () => void;
   onChange: (fn: (meeting: Meeting) => Meeting) => Promise<void>;
   onMerge: (speakerId: string) => void;
+  onMergeGroups: (groups: string[][]) => Promise<void>;
+  onSelectMerge: (speakerIds: string[]) => void;
   onAdd: () => void;
   t: Translate;
   onPlaybackRangeChange?: (range: { start: number; end: number } | null) => void;
@@ -71,9 +76,11 @@ export function SpeakerReview({
   );
   const modeTouched = useRef(false);
   const pendingSpeakerFocus = useRef<string | null>(null);
-  const [modeNotice, setModeNotice] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
+  const [selectedSpeakers, setSelectedSpeakers] = useState<string[]>([]);
+  const [modeNotice, setModeNotice] = useState("");
+  const [mergeNotice, setMergeNotice] = useState("");
   const savedNames = useRef<Record<string, string>>({});
   const activity = useMemo(
     () => speakerActivity(meeting.segments, position),
@@ -261,6 +268,21 @@ export function SpeakerReview({
     return paragraphs.join(" ");
   }
 
+  const visibleLinks = (meeting.speakerLinks ?? []).filter((link) =>
+    meeting.speakers.some((speaker) => speaker.id === link.fromSpeakerId)
+      && meeting.speakers.some((speaker) => speaker.id === link.toSpeakerId),
+  );
+  const linkGroups = connectedLinkGroups(visibleLinks);
+  const visibleSelected = selectedSpeakers.filter((speakerId) => meeting.speakers.some((speaker) => speaker.id === speakerId));
+  async function mergeSuggested(groups: string[][]) {
+    try {
+      await onMergeGroups(groups);
+      setMergeNotice(t("Speakers merged. Use Undo to restore them.", "说话人已合并。使用“撤销”可还原。"));
+      setSelectedSpeakers([]);
+    } catch {
+      setMergeNotice(t("Could not merge these speakers.", "无法合并这些说话人。"));
+    }
+  }
   return (
     <>
       <span
@@ -371,6 +393,33 @@ export function SpeakerReview({
         </div>
       </div>
       {modeNotice && <p className="notice sand" role="alert">{modeNotice}</p>}
+      {linkGroups.length > 0 && (
+        <section className="notice sand" aria-labelledby="speaker-links-title">
+          <h3 id="speaker-links-title">{t("Suggested same-speaker links from overlapping audio", "重叠音频中的同一说话人建议链接")}</h3>
+          <p>{t("Suggestions are based on matching words in overlapping audio, not voice identity. Merging can be undone with Undo.", "这些建议基于重叠音频中的匹配词语，并非声音身份识别。合并后可使用“撤销”还原。")}</p>
+          <button className="button primary compact" disabled={locked} onClick={() => void mergeSuggested(linkGroups.map((group) => group.ids))}>
+            {t("Merge all suggested groups", "合并所有建议组")}
+          </button>
+          {linkGroups.map((group) => (
+            <article key={group.ids.join("|")} className="speaker-link-group">
+              <p>{group.ids.map((speakerId) => meeting.speakers.find((speaker) => speaker.id === speakerId)?.name ?? speakerId).join(" → ")}</p>
+              {group.links.map((link) => (
+                <p className="small muted" key={`${link.fromSpeakerId}:${link.toSpeakerId}`}>
+                  {t(`${link.sharedWords} matching words across the part overlap`, `分段重叠处有 ${link.sharedWords} 个匹配词`)}
+                </p>
+              ))}
+              <button className="button secondary compact" disabled={locked} onClick={() => void mergeSuggested([group.ids])}>{t("Merge this group", "合并此组")}</button>
+              <button className="text-button" disabled={locked} onClick={() => {
+                const keys = new Set(group.links.map((link) => `${link.fromSpeakerId}\u0000${link.toSpeakerId}`));
+                void onChange((current) => editMeeting(current, (draft) => {
+                  draft.speakerLinks = draft.speakerLinks?.filter((link) => !keys.has(`${link.fromSpeakerId}\u0000${link.toSpeakerId}`));
+                }));
+              }}>{t("Not the same", "不是同一人")}</button>
+            </article>
+          ))}
+        </section>
+      )}
+      {mergeNotice && <p role="status" aria-live="polite">{mergeNotice}</p>}
       {mode === "playback" ? (
         <PlaybackMode
           meeting={meeting}
@@ -421,7 +470,15 @@ export function SpeakerReview({
           <p className="small muted">{t("No speaker labels yet.", "还没有说话人标签。")}</p>
         )}
       </div>
-      <div className="speaker-listening-layout">
+      {visibleSelected.length >= 2 && (
+        <div className="speaker-selection-bar">
+          <span>{t(`${visibleSelected.length} selected`, `已选择 ${visibleSelected.length} 位`)}</span>
+          <button className="button primary compact" disabled={locked} onClick={() => onSelectMerge(visibleSelected)}>
+            {t("Merge selected", "合并所选")}
+          </button>
+        </div>
+      )}
+        <div className="speaker-listening-layout">
         <div className="speaker-review-cards">
           {meeting.speakers.length ? (
             <div className="speaker-grid speaker-review-grid">
@@ -442,6 +499,18 @@ export function SpeakerReview({
             return (
               <article key={speaker.id} className="speaker-card speaker-review-card">
                 <div className="speaker-card-top">
+                  <label>
+                    <input
+                      type="checkbox"
+                      aria-label={t(`Select ${speaker.name}`, `选择${speaker.name}`)}
+                      checked={visibleSelected.includes(speaker.id)}
+                      disabled={locked}
+                      onChange={(event) => setSelectedSpeakers((current) => event.target.checked
+                        ? [...current, speaker.id]
+                        : current.filter((id) => id !== speaker.id))}
+                    />
+                    {t("Select", "选择")}
+                  </label>
                   <span className="speaker-avatar large" aria-hidden="true">
                     {speaker.name.slice(0, 1)}
                   </span>
@@ -538,7 +607,7 @@ export function SpeakerReview({
                 </div>
               </article>
             );
-          })}
+            })}
             </div>
           ) : null}
         </div>
@@ -549,6 +618,36 @@ export function SpeakerReview({
       </>}
     </>
   );
+}
+
+function connectedLinkGroups(links: SpeakerLink[]): { ids: string[]; links: SpeakerLink[] }[] {
+  const remaining = new Set(links);
+  const groups: { ids: string[]; links: SpeakerLink[] }[] = [];
+  while (remaining.size) {
+    const first = remaining.values().next().value as SpeakerLink;
+    const component = new Set<string>([first.fromSpeakerId, first.toSpeakerId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const link of remaining) {
+        if (component.has(link.fromSpeakerId) || component.has(link.toSpeakerId)) {
+          const size = component.size;
+          component.add(link.fromSpeakerId);
+          component.add(link.toSpeakerId);
+          changed ||= component.size !== size;
+        }
+      }
+    }
+    const componentLinks = links.filter((link) => component.has(link.fromSpeakerId) && component.has(link.toSpeakerId));
+    for (const link of componentLinks) remaining.delete(link);
+    const ids: string[] = [];
+    for (const link of componentLinks) {
+      if (!ids.includes(link.fromSpeakerId)) ids.push(link.fromSpeakerId);
+      if (!ids.includes(link.toSpeakerId)) ids.push(link.toSpeakerId);
+    }
+    groups.push({ ids, links: componentLinks });
+  }
+  return groups;
 }
 
 function PlaybackMode({

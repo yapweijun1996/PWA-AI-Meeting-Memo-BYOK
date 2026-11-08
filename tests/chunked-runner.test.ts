@@ -16,13 +16,13 @@ vi.mock("../src/providers/api", async () => {
 });
 vi.stubGlobal("window", new EventTarget());
 const selection = { provider: "openrouter" as const, model: "scribe" };
-const prepare = async () => {
+const prepare = async (leadInSeconds = 0) => {
   const meeting = createMeeting();
   const chunks = ["a", "b", "c"];
   const manifest = await storeLongAudio({
     meetingId: meeting.id, format: "mp3", mimeType: "audio/mpeg", totalSeconds: 30, sampleRate: 44100,
     chunks: chunks.map((value, index) => ({
-      meta: { index, ownStartSeconds: index * 10, ownDurationSeconds: 10, leadInSeconds: 0 },
+      meta: { index, ownStartSeconds: index * 10, ownDurationSeconds: 10, leadInSeconds: index === 0 ? 0 : leadInSeconds },
       read: async () => new Blob([value]),
     })),
   });
@@ -45,6 +45,35 @@ describe("chunked speech runner", () => {
     expect(result.jobs.map((job) => job.chunk)).toEqual([{ index: 0, total: 3 }, { index: 1, total: 3 }, { index: 2, total: 3 }]);
     expect(result.jobs.map((job) => job.state)).toEqual(["completed", "completed", "completed"]);
     expect(result.segments.map((item) => [item.text, item.start])).toEqual([["one", 1], ["two", 11], ["three", 21]]);
+  });
+
+  it("stores evidence-based links for matching words across adjacent chunk overlaps", async () => {
+    const words = (prefix: string, offset: number, speakerId: string) => Array.from({ length: 8 }, (_, index) => {
+      const start = offset + index * 0.45;
+      return segment(`${prefix}${index}`, [speakerId], start, start + 0.2);
+    });
+    const makeSpeech = (index: number) => {
+      const speakerId = `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`;
+      const segments = index === 0
+        ? words("a", 5, speakerId)
+        : index === 1
+          ? [...words("a", 0, speakerId), ...words("b", 10, speakerId)]
+          : words("b", 0, speakerId);
+      return {
+        speakers: [{ id: speakerId, name: `Speaker ${index + 1}`, confirmed: false, sourceLabels: [speakerId] }],
+        segments,
+        duration: 15,
+        requestId: null,
+      };
+    };
+    mocks.transcribe.mockImplementation(async (_audio: Blob, _key: string, _signal: AbortSignal, _selection: unknown, filename: string) =>
+      makeSpeech(Number(filename.match(/(\d{4})/)?.[1]) - 1));
+    const meeting = await prepare(5);
+    const result = await runChunkedSpeech(meeting, { selection });
+    expect(result.speakerLinks).toEqual([
+      { fromSpeakerId: "part-0:00000000-0000-4000-8000-000000000001", toSpeakerId: "part-1:00000000-0000-4000-8000-000000000002", sharedWords: 8, share: 1 },
+      { fromSpeakerId: "part-1:00000000-0000-4000-8000-000000000002", toSpeakerId: "part-2:00000000-0000-4000-8000-000000000003", sharedWords: 8, share: 1 },
+    ]);
   });
 
   it("stops on a failed chunk and resumes without resending saved speech", async () => {

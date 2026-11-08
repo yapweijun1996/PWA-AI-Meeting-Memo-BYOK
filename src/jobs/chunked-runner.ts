@@ -1,4 +1,4 @@
-import { mergeChunkSpeech, type ChunkSpeechInput } from "../domain/long-audio";
+import { linkChunkSpeakers, mergeChunkSpeech, type ChunkSpeechInput } from "../domain/long-audio";
 import { id, MAX_JOBS, type Job, type Meeting } from "../domain/model";
 import { replaceTranscript } from "../domain/operations";
 import { ProviderError, transcribe } from "../providers/api";
@@ -130,12 +130,15 @@ export async function runChunkedSpeech(m: Meeting, confirmed: Confirmed): Promis
       inputs.push({ chunk: meta, speech });
     }
     const merged = mergeChunkSpeech(inputs);
+    const speakerLinks = linkChunkSpeakers(inputs).slice(0, 200);
     const speech = merged.speech;
     const latest = await getMeeting(m.id);
     if (!latest) throw new Error("The meeting was removed while processing.");
     let result = latest;
-    if (latest.revision === m.revision) result = replaceTranscript(latest, speech.speakers, speech.segments, provider, selection.model);
-    else result = {
+    if (latest.revision === m.revision) {
+      result = replaceTranscript(latest, speech.speakers, speech.segments, provider, selection.model);
+      result.speakerLinks = speakerLinks;
+    } else result = {
       ...latest,
       runs: [...latest.runs, { id: id(), provider, model: selection.model, createdAt: new Date().toISOString(), speakers: speech.speakers, originalSegments: speech.segments }],
     };

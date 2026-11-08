@@ -33,6 +33,7 @@ import {
   editSegment,
   formatTime,
   markdown,
+  mergeSpeakerGroups,
   mergeSpeakers,
   replaceTranscript,
   resolveSource,
@@ -82,6 +83,7 @@ export function MeetingWorkspace({
     [splitting, setSplitting] = useState<Segment>(),
     [splitAt, setSplitAt] = useState(1),
     [merge, setMerge] = useState<string>(),
+    [mergeSelection, setMergeSelection] = useState<string[]>([]),
     [highlight, setHighlight] = useState(""),
     [pendingOnly, setPendingOnly] = useState(false);
   const [url, setUrl] = useState(""),
@@ -371,8 +373,8 @@ export function MeetingWorkspace({
       setViewVersion(undefined);
       setNotice(
         stage === "speech"
-          ? "Transcript ready. Review speakers and passages before making notes."
-          : "New memo version ready for review.",
+          ? `${t("Transcript ready. Review speakers and passages before making notes.", "转录已就绪。请先审阅说话人和段落，再生成笔记.")}${m.audio?.chunked && m.audio.chunked.chunkCount > 1 ? ` ${t("Speakers are numbered per part; use the suggested links or merge manually in the Speakers tab.", "说话人编号在每个分段中独立；请使用建议链接，或在“说话人”标签页手动合并。")}` : ""}`
+          : t("New memo version ready for review.", "新版本笔记已就绪，请审阅。"),
       );
       setTab(
         stage === "speech"
@@ -959,6 +961,10 @@ export function MeetingWorkspace({
               await persist(fn(m));
             }}
             onMerge={setMerge}
+            onMergeGroups={async (groups) => {
+              await persist(mergeSpeakerGroups(m, groups));
+            }}
+            onSelectMerge={setMergeSelection}
             onAdd={() => {
               const name = prompt(
                 t(
@@ -1933,44 +1939,38 @@ export function MeetingWorkspace({
           </form>
         </Modal>
       )}
-      {merge && (
+      {(merge || mergeSelection.length >= 2) && (
         <Modal
-          title={t("Merge this voice into another", "将此声音合并到另一说话人")}
-          onClose={() => setMerge(undefined)}
+          title={merge ? t("Merge this voice into another", "将此声音合并到另一说话人") : t("Merge selected speakers", "合并所选说话人")}
+          onClose={() => { setMerge(undefined); setMergeSelection([]); }}
         >
-          <form
-            className="modal-body"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const target = String(
-                new FormData(e.currentTarget).get("target"),
-              );
-              try {
-                await persist(mergeSpeakers(m, merge, target));
-                setMerge(undefined);
-              } catch {
-                /* feedback */
+          <form className="modal-body" onSubmit={async (e) => {
+            e.preventDefault();
+            const target = String(new FormData(e.currentTarget).get("target"));
+            try {
+              if (merge) await persist(mergeSpeakers(m, merge, target));
+              else {
+                await persist(mergeSpeakerGroups(m, [[target, ...mergeSelection.filter((speakerId) => speakerId !== target)]]));
+                setNotice(t("Speakers merged. Use Undo to restore them.", "说话人已合并。使用“撤销”可还原。"));
               }
-            }}
-          >
-            <p>
-              {t(`All passages assigned to ${speakerName(m, [merge])} will be reassigned. The combined identity needs confirmation again. You can undo this change.`, `分配给 ${speakerName(m, [merge])} 的所有段落都将重新分配。合并后的身份需要重新确认。您可以撤销此更改。`)}
-            </p>
+              setMerge(undefined);
+              setMergeSelection([]);
+            } catch {
+              /* feedback */
+            }
+          }}>
+            <p>{merge
+              ? t(`All passages assigned to ${speakerName(m, [merge])} will be reassigned. The combined identity needs confirmation again. You can undo this change.`, `分配给 ${speakerName(m, [merge])} 的所有段落都将重新分配。合并后的身份需要重新确认。您可以撤销此更改。`)
+              : t("Choose which selected speaker's name to keep. Other selected speakers merge into it, remain unconfirmed, and can be restored with Undo.", "选择要保留姓名的说话人。其他所选说话人将合并到该说话人，身份保持未确认，可使用“撤销”还原。")}</p>
             <label>
-              {t("Merge into", "合并到")}
+              {t("Keep this speaker's name", "保留此说话人的姓名")}
               <select name="target">
-                {m.speakers
-                  .filter((s) => s.id !== merge)
-                  .map((s) => (
-                    <option value={s.id} key={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
+                {m.speakers.filter((speaker) => merge ? speaker.id !== merge : mergeSelection.includes(speaker.id)).map((speaker) => (
+                  <option value={speaker.id} key={speaker.id}>{speaker.name}</option>
+                ))}
               </select>
             </label>
-            <button className="button primary" disabled={locked}>
-              {t("Confirm merge", "确认合并")}
-            </button>
+            <button className="button primary" disabled={locked}>{t("Confirm merge", "确认合并")}</button>
           </form>
         </Modal>
       )}

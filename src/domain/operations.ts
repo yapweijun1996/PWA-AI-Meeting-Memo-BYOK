@@ -19,6 +19,7 @@ export function editMeeting(
       timezone: m.timezone,
       speakers: structuredClone(m.speakers),
       segments: structuredClone(m.segments),
+      speakerLinks: structuredClone(m.speakerLinks),
     },
   ].slice(-20);
   const existing = new Set(draft.history.map(ref));
@@ -69,31 +70,52 @@ export function assignSegments(
     );
   });
 }
+function mergeSpeakerGroupsInDraft(d: Meeting, groups: string[][]): void {
+  const replacements = new Map<string, string>();
+  const consumed = new Set<string>();
+  for (const group of groups) {
+    const [targetId, ...sourceIds] = group;
+    const target = d.speakers.find((speaker) => speaker.id === targetId);
+    if (!target) throw new Error("Speaker no longer exists.");
+    const sources = sourceIds.map((sourceId) => {
+      const source = d.speakers.find((speaker) => speaker.id === sourceId);
+      if (!source) throw new Error("Speaker no longer exists.");
+      replacements.set(sourceId, targetId);
+      return source;
+    });
+    for (const speakerId of group) consumed.add(speakerId);
+    target.sourceLabels = [...new Set([...target.sourceLabels, ...sources.flatMap((source) => source.sourceLabels)])];
+    target.confirmed = false;
+  }
+  d.speakers = d.speakers.filter((speaker) => !replacements.has(speaker.id));
+  d.segments = d.segments.map((segment) => {
+    if (!segment.speakerIds.some((speakerId) => replacements.has(speakerId))) return segment;
+    return {
+      ...segment,
+      speakerIds: [...new Set(segment.speakerIds.map((speakerId) => replacements.get(speakerId) ?? speakerId))],
+      revision: nextRevision(d, segment),
+      reviewed: false,
+      parents: [ref(segment)],
+    };
+  });
+  d.speakerLinks = d.speakerLinks?.filter((link) => !consumed.has(link.fromSpeakerId) && !consumed.has(link.toSpeakerId));
+}
+
+export function mergeSpeakerGroups(m: Meeting, groups: string[][]): Meeting {
+  if (!groups.length || groups.some((group) => group.length < 2))
+    throw new Error("Each merge group needs at least two speakers.");
+  const used = new Set<string>();
+  for (const group of groups) for (const speakerId of group) {
+    if (used.has(speakerId)) throw new Error("A speaker can appear only once.");
+    used.add(speakerId);
+    if (!m.speakers.some((speaker) => speaker.id === speakerId)) throw new Error("Speaker no longer exists.");
+  }
+  return editMeeting(m, (draft) => mergeSpeakerGroupsInDraft(draft, groups));
+}
+
 export function mergeSpeakers(m: Meeting, from: string, into: string): Meeting {
   if (from === into) throw new Error("Select two different speakers.");
-  return editMeeting(m, (d) => {
-    const source = d.speakers.find((s) => s.id === from),
-      target = d.speakers.find((s) => s.id === into);
-    if (!source || !target) throw new Error("Speaker no longer exists.");
-    target.sourceLabels = [
-      ...new Set([...target.sourceLabels, ...source.sourceLabels]),
-    ];
-    target.confirmed = false;
-    d.speakers = d.speakers.filter((s) => s.id !== from);
-    d.segments = d.segments.map((s) =>
-      s.speakerIds.includes(from)
-        ? {
-            ...s,
-            speakerIds: [
-              ...new Set(s.speakerIds.map((x) => (x === from ? into : x))),
-            ],
-            revision: nextRevision(m, s),
-            reviewed: false,
-            parents: [ref(s)],
-          }
-        : s,
-    );
-  });
+  return mergeSpeakerGroups(m, [[into, from]]);
 }
 export function splitSegment(
   m: Meeting,
@@ -158,6 +180,7 @@ export function replaceTranscript(
   return editMeeting(m, (d) => {
     d.speakers = speakers;
     d.segments = segments;
+    d.speakerLinks = undefined;
     d.runs.push({
       id: id(),
       provider,

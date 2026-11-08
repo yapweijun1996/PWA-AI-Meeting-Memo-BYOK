@@ -8,6 +8,108 @@ export interface ChunkSpeechInput {
   speech: NormalizedSpeech;
 }
 
+export interface SpeakerLink {
+  fromSpeakerId: string;
+  toSpeakerId: string;
+  sharedWords: number;
+  share: number;
+}
+
+const chunkSpeakerId = (chunkIndex: number, speakerId: string) => `part-${chunkIndex}:${speakerId}`;
+
+export function linkChunkSpeakers(
+  inputs: ChunkSpeechInput[],
+  options?: { toleranceSeconds?: number; minSharedWords?: number; minShare?: number },
+): SpeakerLink[] {
+  const tolerance = options?.toleranceSeconds ?? 0.4;
+  const minShared = options?.minSharedWords ?? 8;
+  const minShare = options?.minShare ?? 0.7;
+  if (!Number.isFinite(tolerance) || tolerance < 0 || !Number.isInteger(minShared) || minShared < 1
+      || !Number.isFinite(minShare) || minShare < 0 || minShare > 1) {
+    throw new RangeError("Invalid speaker-link thresholds.");
+  }
+  const pairs = new Map<string, SpeakerLink>();
+  for (let index = 1; index < inputs.length; index += 1) {
+    const previous = inputs[index - 1];
+    const next = inputs[index];
+    if (!previous || !next || next.chunk.index !== previous.chunk.index + 1) continue;
+    const overlapStart = next.chunk.ownStartSeconds - next.chunk.leadInSeconds;
+    const overlapEnd = next.chunk.ownStartSeconds;
+    const prevSegments = previous.speech.segments
+      .map((segment, order) => ({ segment, order, start: segment.start === null ? null : previous.chunk.ownStartSeconds - previous.chunk.leadInSeconds + segment.start }))
+      .filter((item) => item.start !== null && item.start >= overlapStart && item.start < overlapEnd && item.segment.speakerIds.length === 1 && normalizedWord(item.segment.text));
+    const nextSegments = next.speech.segments
+      .map((segment, order) => ({ segment, order, start: segment.start === null ? null : next.chunk.ownStartSeconds - next.chunk.leadInSeconds + segment.start }))
+      .filter((item) => item.start !== null && item.start >= overlapStart && item.start < overlapEnd && item.segment.speakerIds.length === 1 && normalizedWord(item.segment.text));
+    const counts = new Map<string, number>();
+    const nextMatchedTotals = new Map<string, number>();
+    const prevByWord = new Map<string, typeof prevSegments>();
+    const nextByWord = new Map<string, typeof nextSegments>();
+    for (const item of prevSegments) {
+      const word = normalizedWord(item.segment.text);
+      const group = prevByWord.get(word) ?? [];
+      group.push(item);
+      prevByWord.set(word, group);
+    }
+    for (const item of nextSegments) {
+      const word = normalizedWord(item.segment.text);
+      const group = nextByWord.get(word) ?? [];
+      group.push(item);
+      nextByWord.set(word, group);
+    }
+    const byTime = (a: (typeof prevSegments)[number], b: (typeof prevSegments)[number]) =>
+      a.start! - b.start! || a.order - b.order;
+    for (const [word, leftWords] of prevByWord) {
+      const rightWords = nextByWord.get(word);
+      if (!rightWords) continue;
+      leftWords.sort(byTime);
+      rightWords.sort(byTime);
+      let leftIndex = 0;
+      let rightIndex = 0;
+      while (leftIndex < leftWords.length && rightIndex < rightWords.length) {
+        const left = leftWords[leftIndex]!;
+        const right = rightWords[rightIndex]!;
+        const difference = left.start! - right.start!;
+        if (Math.abs(difference) <= tolerance) {
+          const leftId = left.segment.speakerIds[0]!;
+          const rightId = right.segment.speakerIds[0]!;
+          const key = `${leftId}\u0000${rightId}`;
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+          nextMatchedTotals.set(rightId, (nextMatchedTotals.get(rightId) ?? 0) + 1);
+          leftIndex += 1;
+          rightIndex += 1;
+        } else if (difference < 0) leftIndex += 1;
+        else rightIndex += 1;
+      }
+    }
+    const bestByNext = new Map<string, { from: string; count: number; tied: boolean }>();
+    const bestByPrevious = new Map<string, { to: string; count: number; tied: boolean }>();
+    for (const [key, count] of counts) {
+      const [from, to] = key.split("\u0000") as [string, string];
+      const nextBest = bestByNext.get(to);
+      if (!nextBest || count > nextBest.count) bestByNext.set(to, { from, count, tied: false });
+      else if (count === nextBest.count) nextBest.tied = true;
+      const prevBest = bestByPrevious.get(from);
+      if (!prevBest || count > prevBest.count) bestByPrevious.set(from, { to, count, tied: false });
+      else if (count === prevBest.count) prevBest.tied = true;
+    }
+    for (const [to, best] of bestByNext) {
+      if (best.tied || best.count < minShared || best.count / (nextMatchedTotals.get(to) ?? 1) < minShare) continue;
+      const reverse = bestByPrevious.get(best.from);
+      if (!reverse || reverse.tied || reverse.to !== to) continue;
+      const fromSpeakerId = chunkSpeakerId(previous.chunk.index, best.from);
+      const toSpeakerId = chunkSpeakerId(next.chunk.index, to);
+      pairs.set(`${fromSpeakerId}\u0000${toSpeakerId}`, { fromSpeakerId, toSpeakerId, sharedWords: best.count, share: best.count / (nextMatchedTotals.get(to) ?? 1) });
+    }
+  }
+  return [...pairs.values()].sort((a, b) => (a.fromSpeakerId < b.fromSpeakerId ? -1 : a.fromSpeakerId > b.fromSpeakerId ? 1 : 0)
+    || (a.toSpeakerId < b.toSpeakerId ? -1 : a.toSpeakerId > b.toSpeakerId ? 1 : 0));
+}
+
+function normalizedWord(value: string): string {
+  return value.toLowerCase().replace(/[\p{P}\s]/gu, "");
+}
+
 export interface MergedSpeech {
   speech: NormalizedSpeech;
   droppedOverlapSegments: number;
@@ -114,7 +216,7 @@ export function mergeChunkSpeech(
     const { chunk, speech } = input;
     const speakerIds = new Map<string, string>();
     for (const [speakerIndex, speaker] of speech.speakers.entries()) {
-      const id = `part-${chunk.index}:${speaker.id}`;
+      const id = chunkSpeakerId(chunk.index, speaker.id);
       speakerIds.set(speaker.id, id);
       const partSuffix = ` (part ${chunk.index + 1})`;
       const baseName = options?.partLabel?.(chunk.index, speaker.name)
@@ -158,7 +260,7 @@ export function mergeChunkSpeech(
           ...original,
           start: absoluteStart,
           end: absoluteEnd,
-          speakerIds: original.speakerIds.map((id) => speakerIds.get(id) ?? `part-${chunk.index}:${id}`),
+          speakerIds: original.speakerIds.map((id) => speakerIds.get(id) ?? chunkSpeakerId(chunk.index, id)),
         },
       });
     }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { splitMp3 } from "../src/audio/mp3-split";
-import { mergeChunkSpeech, type ChunkSpeechInput } from "../src/domain/long-audio";
+import { linkChunkSpeakers, mergeChunkSpeech, type ChunkSpeechInput } from "../src/domain/long-audio";
 import type { normalizeSpeech } from "../src/providers/api";
 
 type NormalizedSpeech = ReturnType<typeof normalizeSpeech>;
@@ -235,5 +235,52 @@ describe("mergeChunkSpeech", () => {
       ])),
     ]);
     expect(mergeChunkSpeech(frozen)).toEqual(mergeChunkSpeech(frozen));
+  });
+});
+
+describe("linkChunkSpeakers", () => {
+  const overlapInputs = (pairs: [string, string, string][], ownIndex = 0): ChunkSpeechInput[] => {
+    const previous = pairs.map(([word, speaker]) => makeSegment(`p-${word}`, word, ownIndex + 1, ownIndex + 1.2, [speaker]));
+    const next = pairs.map(([word, , nextSpeaker]) => makeSegment(`n-${word}`, word, 1, 1.2, [nextSpeaker]));
+    const speakers = (ids: string[]) => ids.map((id) => ({ id, name: id, confirmed: false, sourceLabels: [id] }));
+    return [
+      input(0, ownIndex, 10, 0, makeSpeech(previous, speakers([...new Set(pairs.map((pair) => pair[1]))]))),
+      input(1, ownIndex + 10, 10, 10, makeSpeech(next, speakers([...new Set(pairs.map((pair) => pair[2]))]))),
+    ];
+  };
+  const eight = (from = "s1", to = "s1") => Array.from({ length: 8 }, (_, index) => [`word${index}`, from, to] as [string, string, string]);
+
+  it("links same-speaker overlap words, swapped labels, and both speakers with stable merge IDs", () => {
+    const inputPairs = [...eight("s1", "s2"), ...eight("s3", "s4")];
+    const inputs = overlapInputs(inputPairs);
+    inputs[1]!.speech.segments[0]!.text = "WORD0!";
+    expect(linkChunkSpeakers(inputs)).toEqual([
+      { fromSpeakerId: "part-0:s1", toSpeakerId: "part-1:s2", sharedWords: 8, share: 1 },
+      { fromSpeakerId: "part-0:s3", toSpeakerId: "part-1:s4", sharedWords: 8, share: 1 },
+    ]);
+    expect(mergeChunkSpeech(inputs).speech.speakers.map((speaker) => speaker.id)).toEqual([
+      "part-0:s1", "part-0:s3", "part-1:s2", "part-1:s4",
+    ]);
+    expect(linkChunkSpeakers(inputs)).toEqual(linkChunkSpeakers(inputs));
+  });
+
+  it("rejects below-threshold and ambiguous evidence, including non-mutual best matches", () => {
+    expect(linkChunkSpeakers(overlapInputs(eight().slice(0, 7)))).toEqual([]);
+    const ties = [
+      ...Array.from({ length: 4 }, (_, index) => [`word${index}`, "p1", "s1"] as [string, string, string]),
+      ...Array.from({ length: 4 }, (_, index) => [`word${index}`, "p2", "s1"] as [string, string, string]),
+    ];
+    expect(linkChunkSpeakers(overlapInputs(ties), { minSharedWords: 4, minShare: 0.5 })).toEqual([]);
+    const reverseTie = [...eight("p1", "s1"), ...eight("p1", "s2")];
+    expect(linkChunkSpeakers(overlapInputs(reverseTie), { minSharedWords: 8, minShare: 0.5 })).toEqual([]);
+  });
+
+  it("does not link within one part and ignores segments with multiple speakers", () => {
+    const only = overlapInputs(eight());
+    const samePart = [only[0]!, { ...only[1]!, chunk: { ...only[1]!.chunk, index: 0 } }];
+    expect(linkChunkSpeakers(samePart)).toEqual([]);
+    const ambiguous = overlapInputs(eight());
+    ambiguous[0]!.speech.segments[0]!.speakerIds.push("other");
+    expect(linkChunkSpeakers(ambiguous)).toEqual([]);
   });
 });

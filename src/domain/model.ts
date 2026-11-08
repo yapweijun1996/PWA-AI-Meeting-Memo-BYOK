@@ -59,6 +59,12 @@ export const MemoItemSchema = z
     reviewedRevision: z.number().int().positive().nullable().optional(),
   })
   .strict();
+const SpeakerLinkSchema = z.object({
+  fromSpeakerId: z.string().min(1).max(100),
+  toSpeakerId: z.string().min(1).max(100),
+  sharedWords: z.number().int().min(1),
+  share: z.number().finite().min(0).max(1),
+}).strict();
 const SnapshotSchema = z
   .object({
     title: z.string().min(1).max(160),
@@ -66,6 +72,7 @@ const SnapshotSchema = z
     timezone: z.string().max(80),
     speakers: z.array(SpeakerSchema).max(100),
     segments: z.array(SegmentSchema).max(20000),
+    speakerLinks: z.array(SpeakerLinkSchema).max(200).optional(),
   })
   .strict();
 export const JobSchema = z
@@ -187,6 +194,7 @@ const AudioSchema = z.object({
     context.addIssue({ code: "custom", message: "Chunked audio metadata does not match its manifest." });
   }
 });
+
 export const MeetingSchema = z
   .object({
     schemaVersion: z.union([z.literal(1), z.literal(2)]),
@@ -205,6 +213,7 @@ export const MeetingSchema = z
     revision: z.number().int().positive(),
     synthetic: z.boolean(),
     referenceVideo: ReferenceVideoSchema.nullable().optional(),
+    speakerLinks: z.array(SpeakerLinkSchema).max(200).optional(),
     speakers: z.array(SpeakerSchema).max(100),
     segments: z.array(SegmentSchema).max(20000),
     history: z.array(SegmentSchema).max(100000),
