@@ -600,7 +600,8 @@ test("long playback lists keep manual paging and nearest gap/end anchors", async
     media.dispatchEvent(new Event("timeupdate", { bubbles: true }));
   });
   await expect(list.locator(".is-active")).toHaveCount(0);
-  await expect(list.locator("button").first()).toContainText("Long caption");
+  // The window keeps its place until the playhead is well away from it, but must still contain the nearest caption.
+  await expect(list.locator("button").filter({ hasText: "Long caption" })).not.toHaveCount(0);
   await audio.evaluate((element) => {
     const media = element as HTMLMediaElement;
     media.currentTime = 39;
@@ -772,4 +773,43 @@ test("playback mode exposes gap jump, direct speaker rename focus, video badge, 
     "true",
   );
   await expect(page.getByLabel("Name for speaker 2", { exact: true })).toBeFocused();
+});
+
+test("following playback does not reflow rows or swap the caption window on every caption", async ({ page }) => {
+  await createFixture(page, "long-fixture.wav", longFixtureMeeting());
+  await page.getByRole("button", { name: "Playback mode", exact: true }).click();
+  const list = page.locator(".playback-mode .playback-transcript-list");
+  await expect(list.locator("button")).toHaveCount(80);
+  await expect(page.getByText("Following playback", { exact: true })).toBeVisible();
+  const audio = page.locator("audio");
+  const heights = new Map<string, number>();
+  let heightChanges = 0;
+  let windowSwaps = 0;
+  let scrollMoves = 0;
+  let previousFirst = "";
+  let previousTop = -1;
+  for (let time = 0.3; time < 38; time += 0.25) {
+    await audio.evaluate((element, value) => {
+      const media = element as HTMLMediaElement;
+      media.currentTime = value;
+      media.dispatchEvent(new Event("timeupdate", { bubbles: true }));
+    }, time);
+    const sample = await list.evaluate((element) => ({
+      top: element.scrollTop,
+      first: element.querySelector("button")?.getAttribute("data-caption-id") ?? "",
+      rows: [...element.querySelectorAll("button")].map((row) => [row.getAttribute("data-caption-id") ?? "", row.getBoundingClientRect().height] as const),
+    }));
+    if (previousFirst && sample.first !== previousFirst) windowSwaps += 1;
+    if (previousTop >= 0 && Math.abs(sample.top - previousTop) > 0.5) scrollMoves += 1;
+    previousFirst = sample.first;
+    previousTop = sample.top;
+    for (const [id, height] of sample.rows) {
+      const known = heights.get(id);
+      if (known !== undefined && Math.abs(known - height) > 0.5) heightChanges += 1;
+      heights.set(id, height);
+    }
+  }
+  console.log(JSON.stringify({ heightChanges, windowSwaps, scrollMoves }));
+  expect(heightChanges).toBe(0);
+  expect(windowSwaps).toBeLessThanOrEqual(6);
 });

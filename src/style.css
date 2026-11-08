@@ -2798,6 +2798,7 @@ details[open] > summary {
   padding: 3px;
   overflow: auto;
   scroll-behavior: auto;
+  overflow-anchor: none;
 }
 .playback-caption-row {
   display: grid;
@@ -2814,9 +2815,12 @@ details[open] > summary {
   min-width: 0;
 }
 .playback-caption-row [data-fragment-active="true"] {
-  font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
+  /* Highlight without changing glyph metrics, so lines never re-wrap while a word is spoken. */
+  background: #ffe9a8;
+  color: #26382f;
+  border-radius: 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 .playback-caption-row:hover,
 .playback-caption-row:focus-visible {
@@ -3821,4 +3825,20 @@ details[open] > summary {
 }
 .speaker-link-group > p.small {
   flex: 1 1 100%;
+}
+
+.playback-caption-row .chat-text { line-height: 1.65; }
+.playback-follow-chip {
+  align-self: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: var(--text-xs, 12px);
+  font-weight: 600;
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  color: var(--text-muted, inherit);
+}
+.playback-follow-chip.is-following {
+  background: var(--chat-active-bg);
+  border-color: var(--chat-active-border);
 }

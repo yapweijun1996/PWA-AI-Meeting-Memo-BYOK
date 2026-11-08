@@ -30,6 +30,8 @@ function hasUnsavedReferenceVideoDraft() {
   );
 }
 
+const WINDOW_HYSTERESIS = 25;
+
 export function SpeakerReview({
   meeting,
   audioAvailable,
@@ -711,8 +713,15 @@ function PlaybackMode({
   const [pageStart, setPageStart] = useState(0);
   const list = useRef<HTMLDivElement>(null);
   const programmaticScroll = useRef(false);
+  const lastProgrammaticTop = useRef(0);
   const automaticStart = playbackCaptionWindowStart(captions, position, 80);
-  const start = followPlayback ? automaticStart : Math.min(pageStart, Math.max(0, captions.length - 80));
+  // The rendered window only moves once the playhead is well away from where it was placed, so rows are not
+  // swapped on every caption.
+  const [stickyStart, setStickyStart] = useState(automaticStart);
+  const windowStart = Math.abs(automaticStart - stickyStart) > WINDOW_HYSTERESIS ? automaticStart : stickyStart;
+  if (windowStart !== stickyStart) setStickyStart(windowStart);
+  const start = followPlayback ? windowStart : Math.min(pageStart, Math.max(0, captions.length - 80));
+  const activeCaptionId = current[0]?.id ?? null;
   const visible = captions.slice(start, start + 80);
   const activeIds = new Set(
     (playing ? activity.activeSpeakerIds : []).filter(Boolean),
@@ -743,35 +752,37 @@ function PlaybackMode({
 
   function suspendFollowFromUser() {
     if (!followPlayback) return;
-    setPageStart(automaticStart);
+    setPageStart(start);
     setFollowPlayback(false);
   }
 
   useEffect(() => {
-    if (!followPlayback) return;
+    if (!followPlayback || activeCaptionId === null) return;
     const container = list.current;
     if (!container) return;
+    const target = container.querySelector<HTMLElement>(
+      `[data-caption-id="${CSS.escape(activeCaptionId)}"]`,
+    );
+    if (!target) return;
     programmaticScroll.current = true;
-    const target = current.length
-      ? container.querySelector<HTMLElement>(
-          `[data-caption-id="${CSS.escape(current[0].id)}"]`,
-        )
-      : null;
-    if (target) {
-      const listBox = container.getBoundingClientRect();
-      const targetBox = target.getBoundingClientRect();
-      if (targetBox.top < listBox.top)
-        container.scrollTop -= listBox.top - targetBox.top;
-      else if (targetBox.bottom > listBox.bottom)
-        container.scrollTop += targetBox.bottom - listBox.bottom;
+    const listBox = container.getBoundingClientRect();
+    const targetBox = target.getBoundingClientRect();
+    // Scroll only when the active row leaves the middle band, and then put it in the middle, so a normal
+    // caption change does not move the list at all.
+    const bandTop = listBox.top + listBox.height * 0.2;
+    const bandBottom = listBox.bottom - listBox.height * 0.2;
+    if (targetBox.top < bandTop || targetBox.bottom > bandBottom) {
+      const delta = targetBox.top + targetBox.height / 2 - (listBox.top + listBox.height / 2);
+      container.scrollTop += delta;
     }
+    lastProgrammaticTop.current = container.scrollTop;
     let frame = requestAnimationFrame(() => {
       frame = requestAnimationFrame(() => {
         programmaticScroll.current = false;
       });
     });
     return () => cancelAnimationFrame(frame);
-  }, [current, followPlayback, start]);
+  }, [activeCaptionId, followPlayback, start]);
 
   return (
     <div className="playback-mode">
@@ -905,12 +916,15 @@ function PlaybackMode({
               {captions.length} {t("timed caption groups", "个有时间字幕组")} · {t("source timing preserved", "保留源时间")}
             </p>
           </div>
+          <span className={`playback-follow-chip${followPlayback ? " is-following" : ""}`} role="status">
+            {followPlayback ? t("Following playback", "正在跟随播放") : t("Follow paused", "已暂停跟随")}
+          </span>
           {!followPlayback && (
             <button
               className="button secondary compact"
               onClick={() => {
                 setFollowPlayback(true);
-                setPageStart(automaticStart);
+                setStickyStart(automaticStart);
               }}
             >
               {t("Follow playback", "跟随播放")}
@@ -922,6 +936,11 @@ function PlaybackMode({
           ref={list}
           onWheel={suspendFollowFromUser}
           onTouchMove={suspendFollowFromUser}
+          onScroll={(event) => {
+            if (programmaticScroll.current || !followPlayback) return;
+            if (Math.abs(event.currentTarget.scrollTop - lastProgrammaticTop.current) < 2) return;
+            suspendFollowFromUser();
+          }}
           onPointerDown={(event) => {
             const box = event.currentTarget.getBoundingClientRect();
             if (event.clientX >= box.right - 20) suspendFollowFromUser();
