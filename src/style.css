@@ -3788,3 +3788,37 @@ details[open] > summary {
 .speaker-link-group .text-button {
   margin: 4px 10px 4px 0;
 }
+
+.speaker-link-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+}
+.speaker-link-panel h3,
+.speaker-link-panel p {
+  margin: 0;
+}
+.speaker-link-panel > .button {
+  align-self: flex-start;
+}
+.speaker-link-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.12));
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.6);
+}
+.speaker-link-group > p:first-child {
+  flex: 1 1 100%;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.speaker-link-group > p.small {
+  flex: 1 1 100%;
+}

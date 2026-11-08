@@ -394,7 +394,7 @@ export function SpeakerReview({
       </div>
       {modeNotice && <p className="notice sand" role="alert">{modeNotice}</p>}
       {linkGroups.length > 0 && (
-        <section className="notice sand" aria-labelledby="speaker-links-title">
+        <section className="notice sand speaker-link-panel" aria-labelledby="speaker-links-title">
           <h3 id="speaker-links-title">{t("Suggested same-speaker links from overlapping audio", "重叠音频中的同一说话人建议链接")}</h3>
           <p>{t("Suggestions are based on matching words in overlapping audio, not voice identity. Merging can be undone with Undo.", "这些建议基于重叠音频中的匹配词语，并非声音身份识别。合并后可使用“撤销”还原。")}</p>
           <button className="button primary compact" disabled={locked} onClick={() => void mergeSuggested(linkGroups.map((group) => group.ids))}>
