@@ -2,6 +2,8 @@ import {
   getLongAudioChunk,
   type LongAudioManifest,
 } from "../storage/long-audio-store";
+import { splitMp3 } from "./mp3-split";
+import { encodePcm16Wav, mixToMono } from "./wav";
 
 type ChunkElement = Pick<
   HTMLAudioElement,
@@ -36,9 +38,19 @@ export type PlayerLike = Pick<
   | "removeEventListener"
 >;
 
+type WindowPlan = {
+  bytes: Uint8Array;
+  byteOffset?: number;
+  byteLength?: number;
+  leadInSeconds: number;
+  ownStartSeconds: number;
+  ownDurationSeconds: number;
+};
 type ChunkedAudioOptions = {
   loadChunk?: (meetingId: string, index: number) => Promise<Blob>;
   createElement?: () => ChunkElement;
+  planWindows?: (bytes: Uint8Array) => WindowPlan[];
+  decodeWindow?: (bytes: Uint8Array, leadInSeconds: number, ownDurationSeconds: number) => Promise<Blob>;
 };
 
 const forwardedEvents = [
@@ -46,27 +58,38 @@ const forwardedEvents = [
   "seeked", "ratechange", "durationchange", "loadedmetadata", "error", "canplay",
 ] as const;
 
-/** Plays verified local chunks against one continuous, absolute meeting timeline. */
+/** Plays local long recordings on one continuous, absolute meeting timeline. */
 export class ChunkedAudio extends EventTarget implements PlayerLike {
   private readonly element: ChunkElement;
   private readonly loadChunk: (meetingId: string, index: number) => Promise<Blob>;
+  private readonly planWindows: (bytes: Uint8Array) => WindowPlan[];
+  private readonly decodeWindow: NonNullable<ChunkedAudioOptions["decodeWindow"]>;
   private activeIndex = -1;
+  private activeWindow = -1;
+  private activeStart = 0;
   private requestedTime = 0;
   private activeUrl = "";
-  private switchingIndex = -1;
+  private switching = false;
   private generation = 0;
   private disposed = false;
   private isPlaying = false;
   private isEnded = false;
   private mediaError: MediaError | null = null;
-  private cached = new Map<number, Blob>();
-  private prefetching = new Map<number, Promise<Blob>>();
+  private readonly plans = new Map<number, WindowPlan[]>();
+  private readonly windowBlobs = new Map<string, Blob>();
+  private readonly windowLoads = new Map<string, Promise<Blob>>();
   private readonly handlers = new Map<string, EventListener>();
+  private audioContext?: AudioContext;
 
   constructor(readonly manifest: LongAudioManifest, options: ChunkedAudioOptions = {}) {
     super();
     if (manifest.chunks.length === 0) throw new Error("The long-audio manifest has no chunks.");
     this.loadChunk = options.loadChunk ?? getLongAudioChunk;
+    this.planWindows = options.planWindows ?? ((bytes) => splitMp3(bytes, {
+      targetSeconds: 60, maxBytes: 24_000_000, minLeadInSeconds: 1,
+    }).chunks);
+    this.decodeWindow = options.decodeWindow ?? ((bytes, leadInSeconds, ownDurationSeconds) =>
+      this.decodeMp3Window(bytes, leadInSeconds, ownDurationSeconds));
     this.element = (options.createElement ?? (() => document.createElement("audio")))();
     for (const type of forwardedEvents) {
       const handler: EventListener = (event) => this.onMediaEvent(type, event);
@@ -77,6 +100,9 @@ export class ChunkedAudio extends EventTarget implements PlayerLike {
 
   get currentTime(): number {
     if (this.activeIndex < 0) return this.requestedTime;
+    if (this.manifest.format === "mp3") {
+      return Math.max(0, Math.min(this.manifest.totalSeconds, this.activeStart + this.element.currentTime));
+    }
     const chunk = this.manifest.chunks[this.activeIndex];
     return Math.max(0, Math.min(this.manifest.totalSeconds,
       chunk.ownStartSeconds + this.element.currentTime - chunk.leadInSeconds));
@@ -86,9 +112,8 @@ export class ChunkedAudio extends EventTarget implements PlayerLike {
     const time = Math.max(0, Math.min(this.manifest.totalSeconds, Number.isFinite(value) ? value : 0));
     this.requestedTime = time;
     this.isEnded = false;
-    const chunk = this.chunkForTime(time);
     this.dispatchEvent(new Event("seeking"));
-    void this.loadIndex(chunk.position, chunk.leadInSeconds + time - chunk.ownStartSeconds, this.isPlaying)
+    void (this.manifest.format === "mp3" ? this.loadMp3Time(time, this.isPlaying) : this.loadMp4Time(time, this.isPlaying))
       .then(() => this.dispatchEvent(new Event("seeked")))
       .catch((error: unknown) => this.emitError(error));
   }
@@ -106,8 +131,8 @@ export class ChunkedAudio extends EventTarget implements PlayerLike {
     if (this.disposed) throw new Error("Chunked audio has been disposed.");
     const time = this.isEnded ? 0 : this.currentTime;
     this.isEnded = false;
-    const chunk = this.chunkForTime(time);
-    await this.loadIndex(chunk.position, chunk.leadInSeconds + time - chunk.ownStartSeconds, false);
+    if (this.manifest.format === "mp3") await this.loadMp3Time(time, false);
+    else await this.loadMp4Time(time, false);
     await this.element.play();
     this.isPlaying = true;
   }
@@ -124,8 +149,10 @@ export class ChunkedAudio extends EventTarget implements PlayerLike {
     this.element.pause();
     for (const [type, handler] of this.handlers) this.element.removeEventListener(type, handler);
     this.revokeActiveUrl();
-    this.cached.clear();
-    this.prefetching.clear();
+    this.plans.clear();
+    this.windowBlobs.clear();
+    this.windowLoads.clear();
+    void this.audioContext?.close();
   }
 
   private chunkForTime(time: number) {
@@ -139,40 +166,96 @@ export class ChunkedAudio extends EventTarget implements PlayerLike {
     return { ...chunks[position], position };
   }
 
-  private async loadIndex(index: number, elementTime: number, resume: boolean): Promise<void> {
-    if (this.disposed) return;
-    if (index === this.activeIndex) {
-      this.element.currentTime = elementTime;
-      return;
-    }
-    const generation = ++this.generation;
+  private async getPlans(index: number): Promise<WindowPlan[]> {
+    const cached = this.plans.get(index);
+    if (cached) return cached;
     const meta = this.manifest.chunks[index];
-    const pending = this.prefetching.get(index);
-    const blob = this.cached.get(index) ?? await (pending ?? this.loadChunk(this.manifest.meetingId, meta.index));
+    const blob = await this.loadChunk(this.manifest.meetingId, meta.index);
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const plans = this.planWindows(bytes);
+    if (!plans.length) throw new Error("The MP3 chunk contains no playable frames.");
+    this.plans.set(index, plans);
+    return plans;
+  }
+
+  private async getWindowBlob(chunkIndex: number, windowIndex: number): Promise<Blob> {
+    const key = `${chunkIndex}:${windowIndex}`;
+    const cached = this.windowBlobs.get(key);
+    if (cached) return cached;
+    const pending = this.windowLoads.get(key);
+    if (pending) return pending;
+    const load = (async () => {
+      const plans = await this.getPlans(chunkIndex);
+      const plan = plans[windowIndex];
+      const wav = await this.decodeWindow(plan.bytes, plan.leadInSeconds, plan.ownDurationSeconds);
+      if (!this.disposed) {
+        this.windowBlobs.set(key, wav);
+        while (this.windowBlobs.size > 2) {
+          const oldest = this.windowBlobs.keys().next().value;
+          if (oldest === undefined) break;
+          this.windowBlobs.delete(oldest);
+        }
+      }
+      return wav;
+    })();
+    this.windowLoads.set(key, load);
+    try { return await load; }
+    finally { if (this.windowLoads.get(key) === load) this.windowLoads.delete(key); }
+  }
+
+  private async loadMp3Time(time: number, resume: boolean): Promise<void> {
+    const generation = ++this.generation;
+    const chunk = this.chunkForTime(time);
+    const windows = await this.getPlans(chunk.position);
+    // Window times are relative to the chunk blob, which begins leadInSeconds before the chunk's own range.
+    const blobStart = chunk.ownStartSeconds - chunk.leadInSeconds;
+    let windowIndex = windows.findIndex((window, index) =>
+      time >= blobStart + window.ownStartSeconds &&
+      (time < blobStart + window.ownStartSeconds + window.ownDurationSeconds ||
+        (index === windows.length - 1 && time <= chunk.ownStartSeconds + chunk.ownDurationSeconds)),
+    );
+    if (windowIndex < 0) windowIndex = windows.length - 1;
+    const window = windows[windowIndex];
+    const start = blobStart + window.ownStartSeconds;
+    const blob = await this.getWindowBlob(chunk.position, windowIndex);
     if (this.disposed || generation !== this.generation) return;
-    this.cached.delete(index);
+    for (const key of this.windowBlobs.keys()) {
+      if (key !== `${chunk.position}:${windowIndex}`) this.windowBlobs.delete(key);
+    }
     const url = URL.createObjectURL(blob);
     this.revokeActiveUrl();
     this.activeUrl = url;
-    this.activeIndex = index;
+    this.activeIndex = chunk.position;
+    this.activeWindow = windowIndex;
+    this.activeStart = start;
     this.element.src = url;
-    this.element.currentTime = elementTime;
+    this.element.currentTime = Math.max(0, Math.min(window.ownDurationSeconds, time - start));
     this.mediaError = null;
     this.dispatchEvent(new Event("durationchange"));
     if (resume) await this.element.play();
   }
 
-  private prefetch(index: number): void {
-    if (index >= this.manifest.chunks.length || this.cached.has(index) || this.prefetching.has(index)) return;
-    const pending = this.loadChunk(this.manifest.meetingId, this.manifest.chunks[index].index);
-    this.prefetching.set(index, pending);
-    void pending.then(
-      (blob) => { if (!this.disposed) this.cached.set(index, blob); },
-      () => undefined,
-    ).finally(() => {
-      if (this.prefetching.get(index) === pending) this.prefetching.delete(index);
-    });
+  private async loadMp4Time(time: number, resume: boolean): Promise<void> {
+    const chunk = this.chunkForTime(time);
+    const offset = chunk.leadInSeconds + time - chunk.ownStartSeconds;
+    if (chunk.position === this.activeIndex) {
+      this.element.currentTime = offset;
+      return;
+    }
+    const generation = ++this.generation;
+    const blob = await this.loadChunk(this.manifest.meetingId, chunk.index);
+    if (this.disposed || generation !== this.generation) return;
+    const url = URL.createObjectURL(blob);
+    this.revokeActiveUrl();
+    this.activeUrl = url;
+    this.activeIndex = chunk.position;
+    this.element.src = url;
+    this.element.currentTime = offset;
+    this.mediaError = null;
+    this.dispatchEvent(new Event("durationchange"));
+    if (resume) await this.element.play();
   }
+
   private onMediaEvent(type: string, event: Event): void {
     if (this.disposed) return;
     if (type === "error") {
@@ -181,48 +264,115 @@ export class ChunkedAudio extends EventTarget implements PlayerLike {
       this.dispatchEvent(new Event("error"));
       return;
     }
-    if (type === "ended") {
-      if (this.activeIndex + 1 < this.manifest.chunks.length) {
-        this.switchToNextChunk();
-        return;
-      }
-      this.isEnded = true;
-      this.isPlaying = false;
-      this.dispatchEvent(new Event("ended"));
-      return;
-    }
     if (type === "playing" || type === "play") { this.isPlaying = true; this.isEnded = false; }
     if (type === "pause") this.isPlaying = false;
-    if (type === "timeupdate") {
-      const chunk = this.manifest.chunks[this.activeIndex];
-      if (chunk) {
-        const boundary = chunk.leadInSeconds + chunk.ownDurationSeconds;
-        if (this.activeIndex + 1 < this.manifest.chunks.length && this.element.currentTime >= boundary - 3) {
-          this.prefetch(this.activeIndex + 1);
-        }
-        if (this.element.currentTime + 0.04 >= boundary) {
-          if (this.activeIndex + 1 < this.manifest.chunks.length) this.switchToNextChunk();
-          else {
-            this.isEnded = true;
-            this.isPlaying = false;
-            this.dispatchEvent(new Event("ended"));
+    if (type === "ended" || type === "timeupdate") {
+      if (this.manifest.format === "mp3") {
+        const plan = this.plans.get(this.activeIndex)?.[this.activeWindow];
+        if (plan) {
+          const remaining = plan.ownDurationSeconds - this.element.currentTime;
+          if (remaining <= 5) this.prefetchNextWindow();
+          if (type === "ended" || remaining <= 0.04) {
+            if (this.switchNextWindow()) {
+              if (type === "ended") return;
+            } else {
+              this.isEnded = true;
+              this.isPlaying = false;
+              this.dispatchEvent(new Event("ended"));
+              return;
+            }
           }
+        }
+      } else if (type === "ended" || this.isMp4Boundary()) {
+        if (this.activeIndex + 1 < this.manifest.chunks.length) {
+          this.switchNextMp4();
+          if (type === "ended") return;
+        } else {
+          this.isEnded = true;
+          this.isPlaying = false;
+          this.dispatchEvent(new Event("ended"));
+          return;
         }
       }
     }
     this.dispatchEvent(new Event(type, { bubbles: false, cancelable: event.cancelable }));
   }
 
-  private switchToNextChunk(): void {
-    const index = this.activeIndex + 1;
-    if (index >= this.manifest.chunks.length || this.switchingIndex === index) return;
-    this.switchingIndex = index;
-    const next = this.manifest.chunks[index];
-    void this.loadIndex(index, next.leadInSeconds, this.isPlaying)
+  private isMp4Boundary(): boolean {
+    const chunk = this.manifest.chunks[this.activeIndex];
+    return !!chunk && this.element.currentTime + 0.04 >= chunk.leadInSeconds + chunk.ownDurationSeconds;
+  }
+
+  private nextWindow(): { chunkIndex: number; windowIndex: number } | undefined {
+    const windows = this.plans.get(this.activeIndex) ?? [];
+    if (this.activeWindow + 1 < windows.length) return { chunkIndex: this.activeIndex, windowIndex: this.activeWindow + 1 };
+    if (this.activeIndex + 1 < this.manifest.chunks.length) return { chunkIndex: this.activeIndex + 1, windowIndex: 0 };
+    return undefined;
+  }
+
+  private prefetchNextWindow(): void {
+    const next = this.nextWindow();
+    if (next) void this.getWindowBlob(next.chunkIndex, next.windowIndex).catch(() => undefined);
+  }
+
+  private switchNextWindow(): boolean {
+    if (this.switching) return true;
+    const next = this.nextWindow();
+    if (!next) return false;
+    this.switching = true;
+    const startPlaying = this.isPlaying;
+    void this.getWindowBlob(next.chunkIndex, next.windowIndex)
+      .then((blob) => {
+        if (this.disposed) return;
+        const plan = this.plans.get(next.chunkIndex)?.[next.windowIndex];
+        for (const key of this.windowBlobs.keys()) {
+          if (key !== `${next.chunkIndex}:${next.windowIndex}`) this.windowBlobs.delete(key);
+        }
+        if (!plan) return;
+        const url = URL.createObjectURL(blob);
+        this.revokeActiveUrl();
+        this.activeUrl = url;
+        this.activeIndex = next.chunkIndex;
+        this.activeWindow = next.windowIndex;
+        const nextChunk = this.manifest.chunks[next.chunkIndex];
+        this.activeStart = nextChunk.ownStartSeconds - nextChunk.leadInSeconds + plan.ownStartSeconds;
+        this.element.src = url;
+        // Entering a new chunk skips its lead-in overlap, which was already played from the previous chunk.
+        this.element.currentTime = Math.max(0, nextChunk.ownStartSeconds - this.activeStart);
+        if (startPlaying) void this.element.play();
+        this.dispatchEvent(new Event("durationchange"));
+      })
       .catch((error: unknown) => this.emitError(error))
-      .finally(() => {
-        if (this.switchingIndex === index) this.switchingIndex = -1;
-      });
+      .finally(() => { this.switching = false; });
+    return true;
+  }
+
+  private switchNextMp4(): void {
+    if (this.switching) return;
+    const nextIndex = this.activeIndex + 1;
+    if (nextIndex >= this.manifest.chunks.length) return;
+    this.switching = true;
+    const next = this.manifest.chunks[nextIndex];
+    void this.loadMp4Time(next.ownStartSeconds, this.isPlaying)
+      .catch((error: unknown) => this.emitError(error))
+      .finally(() => { this.switching = false; });
+  }
+
+  private async decodeMp3Window(bytes: Uint8Array, leadInSeconds: number, ownDurationSeconds: number): Promise<Blob> {
+    const Context = window.AudioContext;
+    this.audioContext ??= new Context();
+    const input = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(input).set(bytes);
+    const decoded = await this.audioContext.decodeAudioData(input);
+    const rate = decoded.sampleRate;
+    const start = Math.round(leadInSeconds * rate);
+    const count = Math.round(ownDurationSeconds * rate);
+    const mono = mixToMono(
+      Array.from({ length: decoded.numberOfChannels }, (_, channel) => decoded.getChannelData(channel)),
+      start,
+      count,
+    );
+    return encodePcm16Wav(mono, rate);
   }
 
   private emitError(_error: unknown): void {
@@ -232,7 +382,6 @@ export class ChunkedAudio extends EventTarget implements PlayerLike {
     this.element.pause();
     this.dispatchEvent(new Event("error"));
   }
-
 
   private revokeActiveUrl(): void {
     if (this.activeUrl) URL.revokeObjectURL(this.activeUrl);

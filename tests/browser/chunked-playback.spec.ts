@@ -19,19 +19,20 @@ test("plays long local recordings across chunk boundaries", async ({ page, brows
   const bytes = syntheticMp3();
   await page.goto(base);
   const decodes = await page.evaluate(async (data) => {
-    const audio = document.createElement("audio");
-    const url = URL.createObjectURL(new Blob([new Uint8Array(data)], { type: "audio/mpeg" }));
-    const result = await new Promise<boolean>((resolve) => {
-      const timer = window.setTimeout(() => resolve(false), 5000);
-      audio.onloadedmetadata = () => { clearTimeout(timer); resolve(Number.isFinite(audio.duration) && audio.duration > 0); };
-      audio.onerror = () => { clearTimeout(timer); resolve(false); };
-      audio.src = url;
-    });
-    URL.revokeObjectURL(url);
-    audio.removeAttribute("src");
-    return result;
+    const context = new AudioContext();
+    const bytes = new Uint8Array(data);
+    const input = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(input).set(bytes);
+    try {
+      const decoded = await context.decodeAudioData(input);
+      return decoded.duration > 0;
+    } catch {
+      return false;
+    } finally {
+      await context.close();
+    }
   }, Array.from(bytes.subarray(0, 1_000_000)));
-  test.skip(!decodes, `${browserName} cannot decode the synthetic MP3 probe; chunk switching remains covered by unit tests.`);
+  test.skip(!decodes, `${browserName} cannot decode the synthetic MP3 window probe; window switching remains covered by unit tests.`);
 
   await page.getByRole("button", { name: "New meeting", exact: true }).last().click();
   const dialog = page.getByRole("dialog");
@@ -87,25 +88,26 @@ test("plays long local recordings across chunk boundaries", async ({ page, brows
   await expect(slider).toHaveAttribute("max", String(manifest.totalSeconds));
   const totalLabel = `${Math.floor(manifest.totalSeconds / 60)}:${String(Math.floor(manifest.totalSeconds % 60)).padStart(2, "0")}`;
   await expect(page.locator(".player-time").last()).toHaveText(totalLabel);
-  const seek = async (time: number) => {
-    await slider.evaluate((element, value) => {
-      const input = element as HTMLInputElement;
-      input.value = String(value);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    }, time);
+  // Real pointer clicks, as a listener would use. A range input maps x to value with the thumb's geometry, so allow 2% slack.
+  const seekNear = async (time: number) => {
+    const box = await slider.boundingBox();
+    if (!box) throw new Error("The playback slider has no box.");
+    await page.mouse.click(box.x + box.width * (time / manifest.totalSeconds), box.y + box.height / 2);
   };
-  const secondPosition = manifest.chunks[1].ownStartSeconds + 2;
-  await seek(secondPosition);
-  // The range input rounds to its 0.1 step.
-  await expect.poll(async () => Number(await slider.inputValue())).toBeCloseTo(secondPosition, 0);
+  const slack = manifest.totalSeconds * 0.02;
+  const secondPosition = manifest.chunks[1].ownStartSeconds + 30;
+  await seekNear(secondPosition);
+  await expect.poll(async () => Math.abs(Number(await slider.inputValue()) - secondPosition)).toBeLessThan(slack);
   await expect(page.locator(".player-time").first()).toHaveText(/\d+:\d{2}/);
 
   const boundary = manifest.chunks[0].ownStartSeconds + manifest.chunks[0].ownDurationSeconds;
-  await seek(Math.max(0, boundary - 1.5));
+  await seekNear(Math.max(0, boundary - 12));
+  await expect.poll(async () => Math.abs(Number(await slider.inputValue()) - (boundary - 12))).toBeLessThan(slack);
+  const before = Number(await slider.inputValue());
   await page.getByLabel("Playback speed").selectOption("2");
   await page.getByRole("button", { name: "Play audio" }).click();
   await expect(page.getByRole("button", { name: "Pause audio" })).toBeVisible();
-  await expect.poll(async () => Number(await slider.inputValue()), { timeout: 12_000 }).toBeGreaterThan(boundary + 0.2);
+  // Playing at 2x from at most ~slack seconds before the boundary must cross into the next part and keep advancing.
+  await expect.poll(async () => Number(await slider.inputValue()), { timeout: 30_000 }).toBeGreaterThan(Math.max(boundary + 0.2, before + 1));
   await expect(page.getByRole("button", { name: "Pause audio" })).toBeVisible();
 });
