@@ -17,7 +17,7 @@ test("imports long MP3 locally, reloads it, and deletes its chunks with the meet
   await dialog.getByLabel("Audio recording").setInputFiles({ name: "meeting.mp3", mimeType: "audio/mpeg", buffer: bytes });
   await dialog.getByRole("button", { name: "Create meeting" }).click();
   await expect(page.getByRole("heading", { name: "Long recording browser test" })).toBeVisible();
-  await expect(page.getByText(/Long recording stored in \d+ parts/)).toBeVisible();
+  await expect(page.getByText(/plays from \d+ local parts/)).toBeVisible();
   expect(outgoing).toEqual([]);
   const count = await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {

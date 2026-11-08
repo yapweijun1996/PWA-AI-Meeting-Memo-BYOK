@@ -45,6 +45,7 @@ import { backupMeeting, download, safeFilename } from "../storage/backup";
 import { inspectAudio } from "../audio/files";
 import { importLongRecording, isLongRecordingCandidate } from "../audio/long-import";
 import { deleteLongAudio, getLongAudioChunk, getLongAudioManifest, type LongAudioManifest } from "../storage/long-audio-store";
+import { ChunkedAudio, type PlayerLike } from "../audio/chunked-audio";
 import { getKey, getSelection, getSpeechEstimate, getUiLanguage } from "../providers/credentials";
 import { cancelProcessing, runJob, isProcessingMeeting } from "../jobs/runner";
 import { getChunkedProgress, runChunkedSpeech } from "../jobs/chunked-runner";
@@ -90,9 +91,11 @@ export function MeetingWorkspace({
     [chunkProgressText, setChunkProgressText] = useState(""),
     [sampleRange, setSampleRange] = useState<{ start: number; end: number } | null>(null),
     [audioStopToken, setAudioStopToken] = useState(0);
-  const player = useRef<HTMLAudioElement>(null),
+  const player = useRef<PlayerLike | null>(null),
     playUntil = useRef<number | null>(null);
-  const playback = usePlaybackClock(player, Boolean(url), m.audio?.duration || 0),
+  const [chunkPlayer, setChunkPlayer] = useState<ChunkedAudio>();
+  const canPlay = Boolean(url || chunkPlayer);
+  const playback = usePlaybackClock(player, canPlay, chunkManifest?.totalSeconds ?? m.audio?.duration ?? 0),
     { playing, position, duration } = playback;
   // A save can disable the focused editor; guard only that item's blur until review commits.
   const reviewInteraction = useRef<
@@ -103,6 +106,7 @@ export function MeetingWorkspace({
   const [confirmed, setConfirmed] = useState<{ selection: Selection; plan?: MemoPipeline | null }>();
   const [uiLanguage, setUiLanguage] = useState(getUiLanguage());
   const t = (en: string, zh: string) => uiLanguage === "zh-CN" ? zh : en;
+  const chunkPlaybackError = t("This browser cannot play the recording. Check that the local parts are available and supported.", "此浏览器无法播放录音。请检查本地录音部分是否可用且受支持。");
   const updatePlaybackRange = useCallback(
     (range: { start: number; end: number } | null) => {
       setSampleRange((current) =>
@@ -168,6 +172,36 @@ export function MeetingWorkspace({
       if (object) URL.revokeObjectURL(object);
     };
   }, [m.id, m.audio?.hash, m.audio?.present, m.audio?.chunked]);
+  useEffect(() => {
+    if (!chunkManifest || chunkManifest.meetingId !== m.id || !m.audio?.chunked) {
+      setChunkPlayer(undefined);
+      if (player.current instanceof ChunkedAudio) player.current = null;
+      return;
+    }
+    const audio = new ChunkedAudio(chunkManifest);
+    player.current = audio;
+    setChunkPlayer(audio);
+    return () => {
+      if (player.current === audio) player.current = null;
+      audio.dispose();
+    };
+  }, [m.id, chunkManifest?.meetingId, chunkManifest?.manifestSha256]);
+  useEffect(() => {
+    if (!chunkPlayer) return;
+    const stopAtCueEnd = () => {
+      if (playUntil.current !== null && chunkPlayer.currentTime >= playUntil.current) {
+        chunkPlayer.pause();
+        playUntil.current = null;
+      }
+    };
+    const reportPlaybackError = () => setNotice(chunkPlaybackError);
+    chunkPlayer.addEventListener("timeupdate", stopAtCueEnd);
+    chunkPlayer.addEventListener("error", reportPlaybackError);
+    return () => {
+      chunkPlayer.removeEventListener("timeupdate", stopAtCueEnd);
+      chunkPlayer.removeEventListener("error", reportPlaybackError);
+    };
+  }, [chunkPlayer, chunkPlaybackError]);
   async function persist(next: Meeting, blob?: Blob) {
     setSaving(true);
     try {
@@ -476,7 +510,7 @@ export function MeetingWorkspace({
     ? m.segments.filter((s) => !s.reviewed)
     : m.segments;
   return (
-    <div className={url ? "workspace has-player" : "workspace"}>
+    <div className={canPlay ? "workspace has-player" : "workspace"}>
       <a href="#/" className="back-link">
         <ArrowLeft size={15} />
         {t("All meetings", "所有会议")}
@@ -568,7 +602,7 @@ export function MeetingWorkspace({
             </small>
             {m.audio?.chunked && (
               <div className="small muted">
-                {t(`Long recording stored in ${m.audio.chunked.chunkCount} parts; in-app playback arrives in a later update`, `长录音已分为 ${m.audio.chunked.chunkCount} 个部分保存；应用内播放将在后续更新中提供`)}
+                {t(`This recording plays from ${m.audio.chunked.chunkCount} local parts.`, `此录音由 ${m.audio.chunked.chunkCount} 个本地部分播放。`)}
               </div>
             )}
           </div>
@@ -817,7 +851,7 @@ export function MeetingWorkspace({
                       ) && <span className="small muted">{t("Unconfirmed", "未确认")}</span>}
                       <button
                         className="time-link"
-                        disabled={s.start === null || !url}
+                        disabled={s.start === null || !canPlay}
                         onClick={() => cue(s)}
                       >
                         {s.start === null
@@ -903,7 +937,7 @@ export function MeetingWorkspace({
           </header>
           <SpeakerReview
             meeting={m}
-            audioAvailable={!!url}
+            audioAvailable={canPlay}
             duration={duration}
             position={position}
             playing={playing}
@@ -1366,37 +1400,29 @@ export function MeetingWorkspace({
           ))}
         </details>
       )}
-      {url && (
+      {(url || chunkPlayer) && (
         <div className="audio-player">
-          <audio
-            ref={player}
-            src={url}
-            preload="metadata"
-            onLoadedMetadata={(e) => {
-              const d = e.currentTarget.duration;
-              if (Number.isFinite(d)) {
-                if (m.audio && m.audio.duration !== d && !saving)
-                  void persistQuietly({
-                    ...m,
-                    audio: { ...m.audio, duration: d },
-                  });
-              }
-            }}
-            onTimeUpdate={(e) => {
-              if (
-                playUntil.current !== null &&
-                e.currentTarget.currentTime >= playUntil.current
-              ) {
-                e.currentTarget.pause();
-                playUntil.current = null;
-              }
-            }}
-            onError={() =>
-              setNotice(
-                "This browser cannot play the recording. The provider may still support it; verify before sending.",
-              )
-            }
-          />
+          {url && (
+            <audio
+              ref={(element) => {
+                player.current = element;
+              }}
+              src={url}
+              preload="metadata"
+              onLoadedMetadata={(e) => {
+                const d = e.currentTarget.duration;
+                if (Number.isFinite(d) && !m.audio?.chunked && m.audio && m.audio.duration !== d && !saving)
+                  void persistQuietly({ ...m, audio: { ...m.audio, duration: d } });
+              }}
+              onTimeUpdate={(e) => {
+                if (playUntil.current !== null && e.currentTarget.currentTime >= playUntil.current) {
+                  e.currentTarget.pause();
+                  playUntil.current = null;
+                }
+              }}
+              onError={() => setNotice("This browser cannot play the recording. The provider may still support it; verify before sending.")}
+            />
+          )}
           <button
             className="play-button"
             aria-label={playing ? t("Pause audio", "暂停录音") : t("Play audio", "播放录音")}
@@ -1405,9 +1431,7 @@ export function MeetingWorkspace({
               else {
                 setAudioStopToken((value) => value + 1);
                 playUntil.current = null;
-                void player.current
-                  ?.play()
-                  .catch(() => setNotice("Playback could not start."));
+                void player.current?.play().catch(() => setNotice("Playback could not start."));
               }
             }}
           >
@@ -1437,8 +1461,7 @@ export function MeetingWorkspace({
           <select
             aria-label={t("Playback speed", "播放速度")}
             onChange={(e) => {
-              if (player.current)
-                player.current.playbackRate = Number(e.target.value);
+              if (player.current) player.current.playbackRate = Number(e.target.value);
             }}
             value={String(playback.rate)}
           >
@@ -1611,7 +1634,7 @@ export function MeetingWorkspace({
             <div className="toolbar-actions">
               <button
                 className="button secondary"
-                disabled={!url || evidence.start === null}
+                disabled={!canPlay || evidence.start === null}
                 onClick={() => cue(evidence)}
               >
                 <Play size={15} />

@@ -1,5 +1,6 @@
 import { flushSync } from "react-dom";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import type { PlayerLike } from "../audio/chunked-audio";
 
 export type PlaybackStatus =
   | "idle"
@@ -50,7 +51,7 @@ function finite(value: number, fallback: number) {
  * speaker activity, captions, transcript highlighting, and seeking.
  */
 export function usePlaybackClock(
-  audioRef: RefObject<HTMLAudioElement | null>,
+  audioRef: RefObject<PlayerLike | null>,
   enabled: boolean,
   initialDuration = 0,
 ): PlaybackClock {
