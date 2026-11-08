@@ -381,8 +381,8 @@ test("group chat keeps a persistent speaker stage above chronological bubbles", 
   expect(desktopTranscript!.y).toBeGreaterThanOrEqual(desktopStage!.y + desktopStage!.height);
   expect(Math.abs(desktopTranscript!.x - desktopStage!.x)).toBeLessThanOrEqual(1);
   const bubbles = playback.locator(".playback-caption-row");
-  await expect(bubbles.first().locator(".chat-speaker-name")).toHaveText("Speaker 1");
-  await expect(bubbles.first().locator(".chat-avatars")).toBeVisible();
+  await expect(playback.locator(".playback-turn").first().locator(".chat-speaker-name")).toHaveText("Speaker 1");
+  await expect(playback.locator(".playback-turn").first().locator(".chat-avatars")).toBeVisible();
   const leftEdges = await bubbles.evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().left));
   expect(Math.max(...leftEdges) - Math.min(...leftEdges)).toBeLessThanOrEqual(1);
   await stage.evaluate((element) => element.scrollIntoView({ block: "start" }));
@@ -812,4 +812,51 @@ test("following playback does not reflow rows or swap the caption window on ever
   console.log(JSON.stringify({ heightChanges, windowSwaps, scrollMoves }));
   expect(heightChanges).toBe(0);
   expect(windowSwaps).toBeLessThanOrEqual(6);
+});
+
+test("nothing around the captions moves or resizes while people talk, pause and switch speakers", async ({ page }) => {
+  await createFixture(page, "long-fixture.wav", longFixtureMeeting());
+  await page.getByRole("button", { name: "Playback mode", exact: true }).click();
+  const selectors = [
+    ".playback-stage", ".playback-stage-heading", ".playback-state", ".playback-gap", ".live-caption-head",
+    ".playback-roster", ".playback-stage-footer", ".playback-transcript-panel", ".playback-transcript-head",
+    ".playback-transcript-list", ".playback-transcript-paging", ".audio-player", ".audio-player input[type=range]",
+    ".audio-player .play-button", ".audio-player select",
+  ];
+  const speakerCount = await page.locator(".playback-speaker").count();
+  const audio = page.locator("audio");
+  const baseline = new Map<string, string>();
+  const moved: string[] = [];
+  const snapshot = () => page.evaluate(({ selectors: list }) => {
+    const out: Record<string, string> = { scrollY: String(Math.round(window.scrollY)) };
+    for (const selector of list) {
+      document.querySelectorAll(selector).forEach((element, index) => {
+        const box = element.getBoundingClientRect();
+        out[`${selector}#${index}`] = [box.x, box.y, box.width, box.height].map((value) => Math.round(value * 10) / 10).join(",");
+      });
+    }
+    document.querySelectorAll(".playback-speaker").forEach((element, index) => {
+      const box = element.getBoundingClientRect();
+      out[`.playback-speaker#${index}`] = [box.x, box.y, box.width, box.height].map((value) => Math.round(value * 10) / 10).join(",");
+    });
+    return out;
+  }, { selectors });
+  let step = 0;
+  for (let time = 0.1; time < 39; time += 0.2) {
+    await audio.evaluate((element, value) => {
+      const media = element as HTMLMediaElement;
+      media.currentTime = value;
+      media.dispatchEvent(new Event("timeupdate", { bubbles: true }));
+    }, time);
+    if (step % 9 === 0) await audio.evaluate((element) => void (element as HTMLMediaElement).play());
+    if (step % 9 === 5) await audio.evaluate((element) => (element as HTMLMediaElement).pause());
+    step += 1;
+    const sample = await snapshot();
+    for (const [key, value] of Object.entries(sample)) {
+      if (!baseline.has(key)) baseline.set(key, value);
+      else if (baseline.get(key) !== value) moved.push(`${key}: ${baseline.get(key)} -> ${value} at ${time.toFixed(1)}s`);
+    }
+  }
+  expect(speakerCount).toBeGreaterThan(0);
+  expect(moved.slice(0, 12)).toEqual([]);
 });

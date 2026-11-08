@@ -11,7 +11,13 @@ class FakeAudio extends EventTarget {
   error: MediaError | null = null;
   readyState = 0;
   networkState = 0;
-  src = "";
+  private source = "";
+  get src() { return this.source; }
+  set src(value: string) {
+    this.source = value;
+    // A real element reports metadata shortly after a source is set.
+    this.readyState = value ? 1 : 0;
+  }
   play = vi.fn(async () => {
     this.paused = false;
     this.dispatchEvent(new Event("play"));

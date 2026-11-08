@@ -723,6 +723,16 @@ function PlaybackMode({
   const start = followPlayback ? windowStart : Math.min(pageStart, Math.max(0, captions.length - 80));
   const activeCaptionId = current[0]?.id ?? null;
   const visible = captions.slice(start, start + 80);
+  // Consecutive captions from the same speaker share one header instead of repeating it on every row.
+  const turns = useMemo(() => {
+    const result: Array<{ speakerIds: string[]; captions: typeof visible }> = [];
+    for (const caption of visible) {
+      const last = result[result.length - 1];
+      if (last && last.speakerIds.join("|") === caption.speakerIds.join("|")) last.captions.push(caption);
+      else result.push({ speakerIds: caption.speakerIds, captions: [caption] });
+    }
+    return result;
+  }, [captions, start]);
   const activeIds = new Set(
     (playing ? activity.activeSpeakerIds : []).filter(Boolean),
   );
@@ -799,18 +809,17 @@ function PlaybackMode({
               <span>{formatTime(position)}</span>
             </span>
           </div>
-          {!current.length && (
-            <div className="playback-gap small muted">
-              <span>{betweenWords
-                ? t("Between words · context only", "词间停顿 · 仅作上下文")
-                : t("No attributed speaker at this timestamp.", "此时间点没有已归属的说话人。")}</span>
-              {audioAvailable && jumpTarget && (
-                <button type="button" className="text-button" onClick={() => onSeek(jumpTarget.start)}>
-                  {nextCaption ? t("Next speech", "下一段发言") : t("First speech", "首段发言")} · {formatTime(jumpTarget.start)}
-                </button>
-              )}
-            </div>
-          )}
+          {/* Always rendered so the line never appears or disappears while someone talks; only its visibility changes. */}
+          <div className="playback-gap small muted" style={{ visibility: current.length ? "hidden" : "visible" }} aria-hidden={current.length ? true : undefined}>
+            <span>{betweenWords
+              ? t("Between words · context only", "词间停顿 · 仅作上下文")
+              : t("No attributed speaker at this timestamp.", "此时间点没有已归属的说话人。")}</span>
+            {audioAvailable && jumpTarget && (
+              <button type="button" className="text-button" tabIndex={current.length ? -1 : undefined} onClick={() => onSeek(jumpTarget.start)}>
+                {nextCaption ? t("Next speech", "下一段发言") : t("First speech", "首段发言")} · {formatTime(jumpTarget.start)}
+              </button>
+            )}
+          </div>
           <div className="live-caption-head">
               <label className="small muted">
                 {t("Caption size", "字幕大小")}
@@ -884,13 +893,11 @@ function PlaybackMode({
               </div>
             </div>
           )}
-          {playing ? (
-            <div className="playback-stage-footer">
-              <button className="button secondary compact" onClick={onPause}>
-                <Pause size={14} /> {t("Pause", "暂停")}
-              </button>
-            </div>
-          ) : null}
+          <div className="playback-stage-footer" style={{ visibility: playing ? "visible" : "hidden" }}>
+            <button className="button secondary compact" onClick={onPause} tabIndex={playing ? undefined : -1}>
+              <Pause size={14} /> {t("Pause", "暂停")}
+            </button>
+          </div>
         </section>
         {referenceVideo && (
           <details className="playback-reference">
@@ -953,47 +960,56 @@ function PlaybackMode({
           role="list"
           aria-label={t("Timed captions", "有时间字幕")}
         >
-          {visible.map((caption) => {
-            const active = current.includes(caption);
-            const names = caption.speakerIds.length
-              ? caption.speakerIds
-                  .map(
-                    (id) =>
-                      meeting.speakers.find((speaker) => speaker.id === id)?.name ??
-                      t("Unknown speaker", "未知说话人"),
-                  )
-                  .join(" + ")
-              : t("Unknown speaker", "未知说话人");
-            return (
-              <div key={caption.id} role="listitem" className="playback-caption-list-item">
-                <button
-                  type="button"
-                data-caption-id={caption.id}
-                className={`playback-caption-row${active ? " is-active" : ""}`}
-                onClick={() => onSeek(caption.start)}
-                disabled={!audioAvailable}
-              >
-                <span className="chat-speaker-name">{names}</span>
-                {active && playing && <span className="chat-wave" aria-hidden="true">·|·|·</span>}
-                <span className="chat-avatars" aria-hidden="true">
-                  {caption.speakerIds.length ? caption.speakerIds.map((id) => {
-                    const index = meeting.speakers.findIndex((speaker) => speaker.id === id);
-                    return <span key={id} className="speaker-avatar" style={{ background: speakerBackground(Math.max(0, index)) }}>S{index + 1 || "?"}</span>;
-                  }) : <span className="speaker-avatar">?</span>}
-                </span>
-                <span className="playback-caption-time">{formatTime(caption.start)}</span>
-                <span className={`chat-text caption-${captionSize}`}>
-                  {caption.fragments.map((fragment, index) => (
-                    <span key={fragment.id} data-fragment-id={fragment.id}
-                      data-fragment-active={fragmentsAtTime([fragment], position).length ? "true" : "false"}>
-                      {index > 0 ? " " : ""}{fragment.text}
-                    </span>
-                  ))}
-                </span>
-                </button>
+          {turns.map((turn) => (
+            <div key={turn.captions[0].id} role="listitem" className="playback-caption-list-item playback-turn">
+              <span className="chat-avatars" aria-hidden="true">
+                {turn.speakerIds.length ? turn.speakerIds.map((id) => {
+                  const index = meeting.speakers.findIndex((speaker) => speaker.id === id);
+                  return <span key={id} className="speaker-avatar" style={{ background: speakerBackground(Math.max(0, index)) }}>S{index + 1 || "?"}</span>;
+                }) : <span className="speaker-avatar">?</span>}
+              </span>
+              <div className="playback-turn-body">
+                <div className="playback-turn-head">
+                  <strong className="chat-speaker-name">
+                    {turn.speakerIds.length
+                      ? turn.speakerIds
+                          .map(
+                            (id) =>
+                              meeting.speakers.find((speaker) => speaker.id === id)?.name ??
+                              t("Unknown speaker", "未知说话人"),
+                          )
+                          .join(" + ")
+                      : t("Unknown speaker", "未知说话人")}
+                  </strong>
+                  <span className="playback-caption-time">{formatTime(turn.captions[0].start)}</span>
+                </div>
+                {turn.captions.map((caption) => {
+                  const active = current.includes(caption);
+                  return (
+                    <button
+                      key={caption.id}
+                      type="button"
+                      data-caption-id={caption.id}
+                      className={`playback-caption-row${active ? " is-active" : ""}`}
+                      onClick={() => onSeek(caption.start)}
+                      disabled={!audioAvailable}
+                    >
+                      <span className="playback-caption-time">{formatTime(caption.start)}</span>
+                      <span className={`chat-text caption-${captionSize}`}>
+                        {caption.fragments.map((fragment, index) => (
+                          <span key={fragment.id} data-fragment-id={fragment.id}
+                            data-fragment-active={fragmentsAtTime([fragment], position).length ? "true" : "false"}>
+                            {index > 0 ? " " : ""}{fragment.text}
+                          </span>
+                        ))}
+                      </span>
+                      {active && playing && <span className="chat-wave" aria-hidden="true">·|·|·</span>}
+                    </button>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
         <div className="playback-transcript-paging">
           <button

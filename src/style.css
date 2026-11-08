@@ -3665,21 +3665,28 @@ details[open] > summary {
 .playback-transcript-panel { background: var(--bg-app); }
 .playback-transcript-head > div { flex: 1; text-align: center; }
 .chat-divider { display: inline-block; border-radius: 999px; padding: 6px 14px; background: var(--bg-surface); }
-.playback-transcript-list { gap: 16px; padding: 8px; overscroll-behavior: contain; }
-.playback-caption-list-item { width: min(100%, 820px); justify-self: start; }
+.playback-transcript-list { gap: 10px; padding: 8px; overscroll-behavior: contain; }
+.playback-caption-list-item { width: 100%; }
+.playback-turn {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--bg-surface); color: var(--text-body);
+}
+.playback-turn-body { display: grid; gap: 2px; min-width: 0; }
+.playback-turn-head { display: flex; align-items: baseline; gap: 10px; }
 .playback-caption-row {
-  position: relative; min-height: 100px; padding: 12px 16px 12px 58px;
-  border: 1px solid var(--border); border-radius: 14px 14px 14px 4px;
-  background: var(--bg-surface); gap: 8px; color: var(--text-body);
+  position: relative; display: grid; grid-template-columns: 3.2rem minmax(0, 1fr); gap: 8px;
+  width: 100%; padding: 4px 28px 4px 8px; border: 1px solid transparent; border-radius: 8px;
+  background: transparent; color: var(--text-body); text-align: left;
   transition: background-color 180ms ease, border-color 180ms ease;
 }
+.playback-caption-row .playback-caption-time { font-size: var(--text-xs); align-self: baseline; }
 .playback-caption-row.is-active { background: var(--chat-active-bg); border-color: var(--chat-active-border); }
-.chat-speaker-name { font-weight: 700; padding-right: 30px; }
-.chat-wave { position: absolute; top: 10px; right: 14px; font-weight: 700; color: var(--palette-56); }
-.chat-avatars { position: absolute; left: 10px; bottom: 12px; display: flex; flex-direction: column; gap: 3px; }
+.chat-speaker-name { font-weight: 700; }
+.chat-wave { position: absolute; top: 4px; right: 8px; font-weight: 700; color: var(--palette-56); }
+.chat-avatars { display: flex; flex-direction: column; gap: 3px; align-items: center; }
 .chat-avatars .speaker-avatar { width: 34px; height: 34px; border-radius: 50%; font-size: var(--text-xs); }
-.playback-caption-time { grid-row: 3; justify-self: end; font-size: var(--text-xs); }
-.chat-text { grid-row: 2; overflow-wrap: anywhere; }
+.chat-text { overflow-wrap: anywhere; }
 .chat-text.caption-normal { font-size: var(--text-base); }
 .chat-text.caption-large { font-size: var(--text-size-21); }
 .chat-text.caption-xlarge { font-size: var(--text-size-26); }
@@ -3842,3 +3849,10 @@ details[open] > summary {
   background: var(--chat-active-bg);
   border-color: var(--chat-active-border);
 }
+
+/* Nothing in the live playback area may change size or position while someone talks. */
+.playback-gap { min-height: 2.5rem; }
+.playback-stage-footer { min-height: 2.25rem; }
+.playback-state { min-width: 15ch; text-align: center; }
+.playback-speaker { height: 58px; min-height: 58px; overflow: hidden; }
+.playback-speaker .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -229,10 +229,29 @@ export class ChunkedAudio extends EventTarget implements PlayerLike {
     this.activeWindow = windowIndex;
     this.activeStart = start;
     this.element.src = url;
+    // WebKit ignores a seek made before metadata has loaded and lands on the window start, so wait first.
+    await this.whenMetadataReady();
+    if (this.disposed || generation !== this.generation) return;
     this.element.currentTime = Math.max(0, Math.min(window.ownDurationSeconds, time - start));
     this.mediaError = null;
     this.dispatchEvent(new Event("durationchange"));
     if (resume) await this.element.play();
+  }
+
+  private whenMetadataReady(): Promise<void> {
+    const element = this.element;
+    if (element.readyState >= 1) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const finish = () => {
+        clearTimeout(timer);
+        element.removeEventListener("loadedmetadata", finish);
+        element.removeEventListener("error", finish);
+        resolve();
+      };
+      const timer = setTimeout(finish, 4000);
+      element.addEventListener("loadedmetadata", finish);
+      element.addEventListener("error", finish);
+    });
   }
 
   private async loadMp4Time(time: number, resume: boolean): Promise<void> {
@@ -250,6 +269,8 @@ export class ChunkedAudio extends EventTarget implements PlayerLike {
     this.activeUrl = url;
     this.activeIndex = chunk.position;
     this.element.src = url;
+    await this.whenMetadataReady();
+    if (this.disposed || generation !== this.generation) return;
     this.element.currentTime = offset;
     this.mediaError = null;
     this.dispatchEvent(new Event("durationchange"));
