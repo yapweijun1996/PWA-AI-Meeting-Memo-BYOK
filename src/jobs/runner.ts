@@ -5,7 +5,7 @@ import {
 } from "./memo-pipeline";
 import type { MemoPipeline } from "../providers/memo-plan";
 import type { Selection } from "../providers/credentials";
-import { id, type Meeting, type Job } from "../domain/model";
+import { MAX_JOBS, id, type Meeting, type Job } from "../domain/model";
 import { replaceTranscript } from "../domain/operations";
 import { getMeeting, saveMeeting, getAudio } from "../storage/repository";
 import { generateMemo, transcribe, ProviderError } from "../providers/api";
@@ -20,6 +20,20 @@ let activeMeetingId: string | undefined;
 export const isProcessingMeeting = (id: string) =>
   (!!controller && activeMeetingId === id) || pipelineActive(id);
 export const isProcessing = () => !!controller || pipelineActive();
+export function beginRequest(meetingId: string): AbortController {
+  if (isProcessing())
+    throw new Error("Finish the current request before starting another.");
+  controller = new AbortController();
+  activeMeetingId = meetingId;
+  window.dispatchEvent(new Event("memo-processing-changed"));
+  return controller;
+}
+export function finishRequest(requestController: AbortController): void {
+  if (controller !== requestController) return;
+  controller = undefined;
+  activeMeetingId = undefined;
+  window.dispatchEvent(new Event("memo-processing-changed"));
+}
 export const cancelProcessing = () => {
   controller?.abort();
   cancelPipeline();
@@ -40,7 +54,7 @@ export async function runJob(
     throw new Error(
       "A request is active or its outcome needs review. Resolve it before submitting again.",
     );
-  if (m.jobs.length >= 100 || m.memos.length >= 30 || m.runs.length >= 30)
+  if (m.jobs.length >= MAX_JOBS || m.memos.length >= 30 || m.runs.length >= 30)
     throw new Error(
       "Meeting history limit reached. Back up this meeting and create a new one before further processing.",
     );

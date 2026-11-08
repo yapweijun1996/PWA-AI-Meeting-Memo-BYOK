@@ -5,10 +5,11 @@ interface Store extends DBSchema {
   audio: { key: string; value: { bytes: ArrayBuffer; type: string } | Blob };
   audioChunks: { key: [string, number]; value: ArrayBuffer };
   audioManifests: { key: string; value: unknown };
+  chunkSpeech: { key: [string, number]; value: unknown };
 }
 let pending: Promise<IDBPDatabase<Store>> | undefined;
 export function db() {
-  pending ??= openDB<Store>("meeting-memo-byok-v1", 2, {
+  pending ??= openDB<Store>("meeting-memo-byok-v1", 3, {
     upgrade(d, oldVersion) {
       if (oldVersion < 1) {
         d.createObjectStore("meetings", { keyPath: "id" });
@@ -18,6 +19,7 @@ export function db() {
         d.createObjectStore("audioChunks");
         d.createObjectStore("audioManifests");
       }
+      if (oldVersion < 3) d.createObjectStore("chunkSpeech");
     },
     blocked() {
       window.dispatchEvent(new Event("memo-storage-blocked"));
@@ -104,7 +106,7 @@ export async function getAudio(id: string) {
 export async function deleteMeeting(id: string) {
   const database = await db();
   const tx = database.transaction(
-    ["meetings", "audio", "audioChunks", "audioManifests"],
+    ["meetings", "audio", "audioChunks", "audioManifests", "chunkSpeech"],
     "readwrite",
   );
   const chunkRange = IDBKeyRange.bound([id, 0], [id, Infinity]);
@@ -113,6 +115,7 @@ export async function deleteMeeting(id: string) {
     tx.objectStore("audio").delete(id),
     tx.objectStore("audioChunks").delete(chunkRange),
     tx.objectStore("audioManifests").delete(id),
+    tx.objectStore("chunkSpeech").delete(IDBKeyRange.bound([id, 0], [id, Infinity])),
   ]);
   await tx.done;
   channel?.postMessage(id);

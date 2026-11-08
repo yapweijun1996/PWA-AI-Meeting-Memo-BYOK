@@ -201,12 +201,13 @@ function accounting(value: unknown, provider: Selection["provider"]) {
     cost: provider === "openrouter" ? number(fields.cost) : null,
   };
 }
-export function normalizeSpeech(value: unknown): {
+export interface NormalizedSpeech {
   speakers: Speaker[];
   segments: Segment[];
   duration: number | null;
   requestId: string | null;
-} {
+}
+export function normalizeSpeech(value: unknown): NormalizedSpeech {
   const parsed = TimedSpeech.safeParse(value);
   if (!parsed.success)
     throw new ProviderError(

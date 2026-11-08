@@ -1,7 +1,6 @@
 import type { Mp3Chunk } from "../audio/mp3-split";
-import type { normalizeSpeech } from "../providers/api";
+import type { NormalizedSpeech } from "../providers/api";
 
-type NormalizedSpeech = ReturnType<typeof normalizeSpeech>;
 type SpeechSegment = NormalizedSpeech["segments"][number];
 
 export interface ChunkSpeechInput {

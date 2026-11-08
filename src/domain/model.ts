@@ -4,15 +4,16 @@ export const id = () => crypto.randomUUID();
 export const localDate = (now = new Date()) =>
   `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 const key = z.string().uuid();
+const transcriptId = z.union([key, z.string().regex(/^part-\d+:[A-Za-z0-9_-]+(?::\d+)?$/).max(100)]);
 const text = z.string().max(20000);
 const time = z.number().finite().nonnegative().nullable();
 export const SegmentSchema = z
   .object({
-    id: key,
+    id: transcriptId,
     revision: z.number().int().positive(),
     start: time,
     end: time,
-    speakerIds: z.array(key).max(10),
+    speakerIds: z.array(transcriptId).max(10),
     originalText: text,
     text,
     reviewed: z.boolean(),
@@ -27,7 +28,7 @@ export const SegmentSchema = z
   );
 export const SpeakerSchema = z
   .object({
-    id: key,
+    id: transcriptId,
     name: z.string().min(1).max(80),
     confirmed: z.boolean(),
     sourceLabels: z.array(z.string().max(160)).max(100),
@@ -115,6 +116,13 @@ export const JobSchema = z
     reportedCostUsd: z.number().finite().nonnegative().nullable().optional(),
     message: z.string().max(1000),
     inputRevision: z.number().int().positive(),
+    chunk: z
+      .object({
+        index: z.number().int().nonnegative(),
+        total: z.number().int().positive(),
+      })
+      .strict()
+      .optional(),
     pipelineId: key.optional(),
     stepIndex: z.number().int().min(0).max(8).optional(),
   })
@@ -159,6 +167,26 @@ export const MemoPipelineSchema = z
     memoId: key.nullable(),
   })
   .strict();
+export const MAX_JOBS = 400;
+const ChunkedAudioSchema = z.object({
+  format: z.enum(["mp3", "mp4"]),
+  chunkCount: z.number().int().min(1).max(2000),
+  totalSeconds: z.number().finite().positive(),
+  manifestSha256: z.string().regex(/^[a-f0-9]{64}$/),
+}).strict();
+const AudioSchema = z.object({
+  name: z.string().max(255),
+  type: z.string().max(100),
+  size: z.number().int().positive().max(4 * 1024 * 1024 * 1024),
+  duration: z.number().nonnegative().nullable(),
+  hash: z.string().regex(/^[a-f0-9]{64}$/),
+  present: z.boolean(),
+  chunked: ChunkedAudioSchema.optional(),
+}).strict().superRefine((audio, context) => {
+  if (audio.chunked && (audio.hash !== audio.chunked.manifestSha256 || audio.duration !== audio.chunked.totalSeconds)) {
+    context.addIssue({ code: "custom", message: "Chunked audio metadata does not match its manifest." });
+  }
+});
 export const MeetingSchema = z
   .object({
     schemaVersion: z.union([z.literal(1), z.literal(2)]),
@@ -195,22 +223,8 @@ export const MeetingSchema = z
           .strict(),
       )
       .max(30),
-    jobs: z.array(JobSchema).max(100),
-    audio: z
-      .object({
-        name: z.string().max(255),
-        type: z.string().max(100),
-        size: z
-          .number()
-          .int()
-          .positive()
-          .max(100 * 1024 * 1024),
-        duration: z.number().nonnegative().nullable(),
-        hash: z.string().regex(/^[a-f0-9]{64}$/),
-        present: z.boolean(),
-      })
-      .strict()
-      .nullable(),
+    jobs: z.array(JobSchema).max(MAX_JOBS),
+    audio: AudioSchema.nullable(),
     runs: z
       .array(
         z

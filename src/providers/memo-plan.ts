@@ -1,4 +1,4 @@
-import { id, type Meeting, type MemoItem } from "../domain/model";
+import { id, MAX_JOBS, type Meeting, type MemoItem } from "../domain/model";
 import { buildMemoInput, MemoInputError, type MemoInput } from "./memo-input";
 
 export type MemoPipeline = NonNullable<Meeting["memoPipelines"]>[number];
@@ -85,7 +85,7 @@ export function planMemo(
   }
   p.results = p.chunks.map(() => null);
   if (
-    m.jobs.length + p.chunks.length + 1 > 100 ||
+    m.jobs.length + p.chunks.length + 1 > MAX_JOBS ||
     (m.memoPipelines?.length ?? 0) >= 30 ||
     m.memos.length >= 30
   )
