@@ -2367,6 +2367,8 @@ details[open] > summary {
   font-size: var(--text-xs);
   color: var(--palette-32);
   font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+  min-width: 4.6ch;
 }
 .audio-player input {
   flex: 1;
@@ -3853,6 +3855,6 @@ details[open] > summary {
 /* Nothing in the live playback area may change size or position while someone talks. */
 .playback-gap { min-height: 2.5rem; }
 .playback-stage-footer { min-height: 2.25rem; }
-.playback-state { min-width: 15ch; text-align: center; }
+.playback-state { box-sizing: border-box; width: 17ch; overflow: hidden; text-overflow: ellipsis; text-align: center; }
 .playback-speaker { height: 58px; min-height: 58px; overflow: hidden; }
 .playback-speaker .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
