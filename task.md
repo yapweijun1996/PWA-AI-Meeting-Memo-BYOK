@@ -2,6 +2,10 @@
 
 Updated: 2026-11-06. The owner authorized the core follow-up plan, per-task commits/main merges/pushes and deployment, with final owner testing after delivery. Application code `ce8bd74` passed 85 unit tests, 102 Chromium/WebKit browser cases, both-engine PWA lifecycle and artifact checks; verification and publication succeeded in [run 42189291028](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/42189291028). Exact-build production readback passed. The transferable synthetic owner backup adds one unit test (86 passed locally). See [validation](docs/VALIDATION.md#core-follow-up-delivery--2026-11-06). Production authenticated API validation has not resumed, no new paid request or reservation occurred, and protective reservations remain US$4.85. Physical-device, billing and annotated-quality gates remain open. The four newly added group-chat/audio-reactive tasks are separate from the approved core plan and remain unchecked.
 
+## Handoff — 2026-11-09
+
+Next owner (Codex): see the 2026-11-09 handoff entries at the end of [docs/IMPLEMENTATION-LOG.md](docs/IMPLEMENTATION-LOG.md). Open items: (1) owner runs the 17.5 MB 48 kbps mono file as a new meeting and reports the speaker count and any playback shake on the deployed build; (2) suggest compressing recordings above 24 MB to 48 kbps mono at import; (3) optional browser-side global voiceprint matching across parts (prototype first: sherpa-onnx WASM or Transformers.js, measure time, memory and agreement with the offline result); (4) WebKit chunked seek precision; (5) remaining playback reviewer items: phone padding/`svh`, per-caption aria-label, roving tabindex, `captionsAtTime` memoisation, CJK `line-break`. No billing or key work was done this session.
+
 This file tracks execution. [Product requirements](docs/PRODUCT.md), [architecture](docs/ARCHITECTURE.md), [feasibility](docs/FEASIBILITY.md), [deployment](docs/DEPLOYMENT.md), and [the roadmap](docs/ROADMAP.md) define the detailed contracts. A checked task requires evidence, not just code or a proposed design.
 
 ## Working rules
