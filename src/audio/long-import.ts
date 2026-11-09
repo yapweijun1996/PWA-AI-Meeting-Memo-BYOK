@@ -10,6 +10,9 @@ import {
 const SINGLE_REQUEST_LIMIT = 24_000_000;
 const MAX_LONG_AUDIO = 4 * 1024 * 1024 * 1024;
 const MAX_CHUNK_BYTES = 20_000_000;
+// Make each part as long as the byte cap allows. Every part is transcribed on its own and numbers its speakers
+// from scratch, so more parts means more duplicate speakers for the same people.
+const TARGET_PART_SECONDS = 3600;
 
 type ImportProgress = {
   phase: "planning" | "checking-space" | "storing";
@@ -54,7 +57,7 @@ export async function importLongRecording(
 
   opts.onProgress?.({ phase: "planning", done: 0, total: 0 });
   const splitOptions = {
-    targetSeconds: opts.targetSeconds ?? 900,
+    targetSeconds: opts.targetSeconds ?? TARGET_PART_SECONDS,
     maxBytes: MAX_CHUNK_BYTES,
     minLeadInSeconds: opts.minLeadInSeconds ?? 10,
   };
