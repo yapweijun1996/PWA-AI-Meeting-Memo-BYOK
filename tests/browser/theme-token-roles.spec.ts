@@ -45,6 +45,7 @@ test("palette accents remain independent of success and speaker colors", async (
       expect(colors.focusStyle).toBe("solid");
       expect(parseFloat(colors.focusWidth)).toBeGreaterThanOrEqual(2);
       expect(colors.focusContrast, `${theme}/${palette} focus contrast`).toBeGreaterThanOrEqual(3);
+      console.log("PALETTE_DIAGNOSTIC", theme, palette, JSON.stringify(colors));
       accents.add(colors.accent);
     }
     expect(accents.size).toBe(4);

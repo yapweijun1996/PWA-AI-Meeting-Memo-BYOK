@@ -190,5 +190,6 @@ test("largest font size remains usable on a narrow screen", async ({ page }) => 
   await page.getByRole("tab", { name: "Appearance" }).click();
   await page.getByLabel("Font size", { exact: true }).selectOption("xxlarge");
   await expect(page.locator("html")).toHaveAttribute("data-font-size", "xxlarge");
+  console.log("OVERFLOW_DIAGNOSTICS", JSON.stringify(await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth, items: Array.from(document.querySelectorAll("body *")).map((el) => { const r = el.getBoundingClientRect(); return { tag: el.tagName, cls: el.className, text: (el.textContent || "").trim().slice(0, 60), left: r.left, right: r.right, width: r.width, scroll: el.scrollWidth }; }).filter((el) => el.right > innerWidth + 1).slice(0, 30) }))));
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
