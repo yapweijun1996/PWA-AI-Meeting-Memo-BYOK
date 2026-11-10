@@ -4271,3 +4271,12 @@ body:has(.audio-player) .toast-layer { bottom: calc(150px + env(safe-area-inset-
   .sidebar .pwa-check-message { position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; min-height: 0; z-index: 2; background: var(--palette-31); }
   .sidebar .pwa-check-message:empty { display: none; }
 }
+
+/* Keep the recent list scannable while retaining access to the full library. */
+.sidebar-recent-heading { display: flex; align-items: center; justify-content: space-between; gap: 4px; flex: 0 0 auto; }
+.sidebar-recent-heading .nav-label { margin-bottom: 0; }
+.sidebar-recent-all { flex: 0 0 auto; padding: 6px; color: var(--palette-18); font-size: var(--text-xs); font-weight: 600; border-radius: 6px; }
+.sidebar-recent-all:hover { background: var(--palette-16); }
+.sidebar-recent-list { margin-top: 8px; scrollbar-gutter: stable; }
+.sidebar-recent-list a:focus-visible { outline-offset: -2px; }
+@media (max-height: 600px) { .sidebar-recent-all { padding-block: 3px; } .sidebar-recent-list { margin-top: 4px; } }

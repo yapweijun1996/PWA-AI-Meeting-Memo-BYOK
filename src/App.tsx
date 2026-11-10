@@ -297,7 +297,24 @@ export default function App() {
           </label>
         </nav>
         <div className="sidebar-recent" aria-label={t("Recent meetings", "最近会议")}>
-          <p className="nav-label">{t("RECENT MEETINGS", "最近会议")}</p>
+          <div className="sidebar-recent-heading">
+            <p className="nav-label">{t("RECENT MEETINGS", "最近会议")}</p>
+            {meetings.length > 4 && (
+              <button
+                type="button"
+                className="sidebar-recent-all"
+                aria-label={t("View all meetings", "查看全部会议")}
+                onClick={() => {
+                  setFilter("all");
+                  setSearch("");
+                  setMobileNav(false);
+                  navigate("/");
+                }}
+              >
+                {t("View all", "查看全部")}
+              </button>
+            )}
+          </div>
           {meetings.length > 0 ? (
             <div className="sidebar-recent-list">
               {meetings.slice(0, 4).map((m) => {
@@ -308,6 +325,8 @@ export default function App() {
                     href={`#/meetings/${m.id}`}
                     className={current?.id === m.id ? "active" : ""}
                     aria-current={current?.id === m.id ? "page" : undefined}
+                    data-tooltip={m.title}
+                    onClick={() => setMobileNav(false)}
                   >
                     <span
                       className={`status-dot ${status.tone === "green" ? "is-ready" : status.tone === "sand" ? "is-warn" : ""}`}
