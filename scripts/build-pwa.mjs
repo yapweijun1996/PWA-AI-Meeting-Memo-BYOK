@@ -1,6 +1,17 @@
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import {
+  isDeferredSpeakerAsset,
+  listSpeakerAssetPaths,
+  prepareSpeakerAssets,
+  readSpeakerAssetManifest,
+  SPEAKER_ASSET_DIRECTORY,
+  SPEAKER_ASSET_MANIFEST_PATH,
+  validateSpeakerAssetManifest,
+  verifyPreparedSpeakerAssets,
+  writeUnavailableSpeakerManifest,
+} from "./speaker-assets.mjs";
 const base = process.env.VITE_BASE_PATH || "/PWA-AI-Meeting-Memo-BYOK/";
 if (!base.startsWith("/") || !base.endsWith("/"))
   throw new Error(
@@ -14,6 +25,52 @@ async function walk(dir) {
   }
   return out;
 }
+
+// Vite can emit the ONNX backend's fallback binary from the Transformers.js
+// dependency under dist/assets. The worker supplies the explicitly consented,
+// pinned speaker-assets/runtime URL instead, so this dependency fallback must
+// not become an app-shell download (or a second runtime copy) by accident.
+const isBundledOnnxRuntimeAsset = (relative) =>
+  /^assets\/ort-wasm-simd-threaded(?:\.[A-Za-z0-9-]+)?-[A-Za-z0-9_-]+\.(?:mjs|wasm)$/.test(
+    relative,
+  );
+
+const speakerAssetOutput = path.join("dist", SPEAKER_ASSET_DIRECTORY);
+if (process.env.SPEAKER_ASSET_SOURCE) {
+  await prepareSpeakerAssets({
+    sourceDir: process.env.SPEAKER_ASSET_SOURCE,
+    outputDir: speakerAssetOutput,
+    basePath: base,
+  });
+} else {
+  const manifestFile = path.join("dist", SPEAKER_ASSET_MANIFEST_PATH);
+  try {
+    await readFile(manifestFile, "utf8");
+  } catch {
+    await writeUnavailableSpeakerManifest(
+      speakerAssetOutput,
+      base,
+      "Speaker model assets were not prepared. Set SPEAKER_ASSET_SOURCE to the verified probe public directory for an explicit preparation step.",
+    );
+  }
+}
+
+const speakerManifest = await readSpeakerAssetManifest("dist");
+const speakerPaths = await listSpeakerAssetPaths("dist");
+validateSpeakerAssetManifest(speakerManifest, {
+  basePath: base,
+  actualPaths: speakerPaths,
+});
+await verifyPreparedSpeakerAssets("dist", speakerManifest);
+if (
+  process.env.SPEAKER_ASSETS_REQUIRED === "1" &&
+  speakerManifest.status !== "ready"
+) {
+  throw new Error(
+    "SPEAKER_ASSETS_REQUIRED=1 but verified speaker assets are unavailable; run the explicit preparation step first",
+  );
+}
+
 const manifest = {
   id: base,
   name: "Meeting Memo",
@@ -48,21 +105,30 @@ const manifest = {
   ],
 };
 await writeFile("dist/manifest.webmanifest", JSON.stringify(manifest, null, 2));
-const files = (await walk("dist"))
+const leakedOnnxRuntimeFiles = (await walk("dist")).filter((file) =>
+  isBundledOnnxRuntimeAsset(
+    path.relative("dist", file).split(path.sep).join("/"),
+  ),
+);
+await Promise.all(leakedOnnxRuntimeFiles.map((file) => unlink(file)));
+const allFiles = (await walk("dist"))
   .filter((p) => !p.endsWith("sw.js"))
   .map((file) => ({
     file,
     relative: path.relative("dist", file).split(path.sep).join("/"),
   }))
   .sort((a, b) => a.relative.localeCompare(b.relative));
-const assets = files.map(({ relative }) => base + relative);
+const shellFiles = allFiles.filter(
+  ({ relative }) => !isDeferredSpeakerAsset(relative),
+);
+const assets = shellFiles.map(({ relative }) => base + relative);
 const source = await readFile("src/pwa/worker.template.js", "utf8");
 const hash = createHash("sha256");
 hash.update(source);
 // The canonical asset list is part of the release identity. A path-only fix
 // must not reuse a cache created with a different URL set.
 hash.update(JSON.stringify(assets));
-for (const { file, relative } of files) {
+for (const { file, relative } of allFiles) {
   hash.update(relative);
   hash.update(await readFile(file));
 }
@@ -74,4 +140,7 @@ await writeFile(
     .replace("__BASE_PATH__", JSON.stringify(base))
     .replace("__PRECACHE_ASSETS__", JSON.stringify(assets)),
 );
-console.log(`PWA ${build}: ${assets.length} app-shell assets; scope ${base}`);
+console.log(
+  `PWA ${build}: ${assets.length} app-shell assets; ` +
+    `speaker assets ${speakerManifest.status}; scope ${base}`,
+);

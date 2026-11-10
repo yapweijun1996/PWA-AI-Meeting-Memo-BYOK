@@ -6,10 +6,16 @@ interface Store extends DBSchema {
   audioChunks: { key: [string, number]; value: ArrayBuffer };
   audioManifests: { key: string; value: unknown };
   chunkSpeech: { key: [string, number]; value: unknown };
+  acousticEmbeddings: { key: [string, string]; value: unknown };
+  acousticIdentities: { key: [string, string]; value: unknown };
+  acousticAssignments: { key: [string, string]; value: unknown };
+  acousticCheckpoints: { key: string; value: unknown };
+  transcriptPages: { key: [string, string, number]; value: unknown };
+  chunkAttempts: { key: [string, string, number]; value: unknown };
 }
 let pending: Promise<IDBPDatabase<Store>> | undefined;
 export function db() {
-  pending ??= openDB<Store>("meeting-memo-byok-v1", 3, {
+  pending ??= openDB<Store>("meeting-memo-byok-v1", 4, {
     upgrade(d, oldVersion) {
       if (oldVersion < 1) {
         d.createObjectStore("meetings", { keyPath: "id" });
@@ -20,6 +26,14 @@ export function db() {
         d.createObjectStore("audioManifests");
       }
       if (oldVersion < 3) d.createObjectStore("chunkSpeech");
+      if (oldVersion < 4) {
+        d.createObjectStore("acousticEmbeddings");
+        d.createObjectStore("acousticIdentities");
+        d.createObjectStore("acousticAssignments");
+        d.createObjectStore("acousticCheckpoints");
+        d.createObjectStore("transcriptPages");
+        d.createObjectStore("chunkAttempts");
+      }
     },
     blocked() {
       window.dispatchEvent(new Event("memo-storage-blocked"));
@@ -80,7 +94,10 @@ async function writeMeeting(m: Meeting, audio?: Blob | null): Promise<Meeting> {
   const encoded = audio
     ? { bytes: await audio.arrayBuffer(), type: audio.type }
     : undefined;
-  const tx = (await db()).transaction(["meetings", "audio"], "readwrite");
+  const tx = (await db()).transaction(
+    ["meetings", "audio", "acousticEmbeddings", "acousticIdentities", "acousticAssignments", "acousticCheckpoints"],
+    "readwrite",
+  );
   const previous = await tx.objectStore("meetings").get(m.id);
   if ((previous?.version ?? 0) !== m.version) {
     tx.abort();
@@ -91,6 +108,18 @@ async function writeMeeting(m: Meeting, audio?: Blob | null): Promise<Meeting> {
   if (audio === null) await tx.objectStore("audio").delete(m.id);
   else if (encoded !== undefined)
     await tx.objectStore("audio").put(encoded, m.id);
+  const previousAudioHash = previous?.audio?.hash;
+  const nextAudioHash = value.audio?.hash;
+  if (previousAudioHash !== undefined && previousAudioHash !== nextAudioHash) {
+    // Recording replacement invalidates only derived acoustic state. Historical
+    // provider pages/attempts remain immutable and are retained for citation.
+    await Promise.all([
+      tx.objectStore("acousticEmbeddings").delete(IDBKeyRange.bound([m.id, ""], [m.id, "\uffff"])),
+      tx.objectStore("acousticIdentities").delete(IDBKeyRange.bound([m.id, ""], [m.id, "\uffff"])),
+      tx.objectStore("acousticAssignments").delete(IDBKeyRange.bound([m.id, ""], [m.id, "\uffff"])),
+      tx.objectStore("acousticCheckpoints").delete(m.id),
+    ]);
+  }
   await tx.done;
   channel?.postMessage(m.id);
   return value;
@@ -106,7 +135,19 @@ export async function getAudio(id: string) {
 export async function deleteMeeting(id: string) {
   const database = await db();
   const tx = database.transaction(
-    ["meetings", "audio", "audioChunks", "audioManifests", "chunkSpeech"],
+    [
+      "meetings",
+      "audio",
+      "audioChunks",
+      "audioManifests",
+      "chunkSpeech",
+      "acousticEmbeddings",
+      "acousticIdentities",
+      "acousticAssignments",
+      "acousticCheckpoints",
+      "transcriptPages",
+      "chunkAttempts",
+    ],
     "readwrite",
   );
   const chunkRange = IDBKeyRange.bound([id, 0], [id, Infinity]);
@@ -116,6 +157,12 @@ export async function deleteMeeting(id: string) {
     tx.objectStore("audioChunks").delete(chunkRange),
     tx.objectStore("audioManifests").delete(id),
     tx.objectStore("chunkSpeech").delete(IDBKeyRange.bound([id, 0], [id, Infinity])),
+    tx.objectStore("acousticEmbeddings").delete(IDBKeyRange.bound([id, ""], [id, "\uffff"])),
+    tx.objectStore("acousticIdentities").delete(IDBKeyRange.bound([id, ""], [id, "\uffff"])),
+    tx.objectStore("acousticAssignments").delete(IDBKeyRange.bound([id, ""], [id, "\uffff"])),
+    tx.objectStore("acousticCheckpoints").delete(id),
+    tx.objectStore("transcriptPages").delete(IDBKeyRange.bound([id, "", 0], [id, "\uffff", Infinity])),
+    tx.objectStore("chunkAttempts").delete(IDBKeyRange.bound([id, "", 0], [id, "\uffff", Infinity])),
   ]);
   await tx.done;
   channel?.postMessage(id);

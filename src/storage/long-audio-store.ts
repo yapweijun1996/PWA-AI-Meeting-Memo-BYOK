@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { db } from "./repository";
+import { deleteAcousticFeatures } from "./acoustic-store";
 
 export interface ChunkMeta {
   index: number;
@@ -230,6 +231,9 @@ export async function deleteLongAudio(meetingId: string): Promise<void> {
     tx.objectStore("audioManifests").delete(meetingId),
   ]);
   await tx.done;
+  // A recording replacement invalidates local acoustic evidence and paged
+  // source state. The meeting itself remains available for a new recording.
+  await deleteAcousticFeatures(meetingId);
 }
 
 export async function cleanupIncompleteLongAudio(): Promise<number> {

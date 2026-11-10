@@ -18,6 +18,7 @@
     "check:artifact": "node scripts/check-artifact.mjs"
   },
   "dependencies": {
+    "@huggingface/transformers": "4.3.2",
     "fflate": "0.8.3",
     "idb": "8.0.4",
     "lucide-react": "1.68.0",

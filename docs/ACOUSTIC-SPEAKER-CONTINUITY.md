@@ -1,6 +1,6 @@
 # Acoustic speaker continuity for long recordings
 
-Status: proposed implementation contract, 2026-11-10. An initial desktop Chrome WASM probe has executed; meeting-audio accuracy and the integrated end-to-end workflow are not yet verified. This document concerns anonymous identities within one meeting, not cross-meeting recognition or real-person naming.
+Status: partial implementation, 2026-11-10. A local model worker, bounded sample extraction, and an existing-meeting matching workflow are implemented. A simulated browser workflow and a real model worker smoke test have passed; accuracy on meeting recordings, offline reload, and arbitrary-length processing are not yet verified. This document concerns anonymous identities within one meeting, not cross-meeting recognition or real-person naming.
 
 ## Owner requirement
 
@@ -10,7 +10,11 @@ Long-recording support means bounded processing and durable continuation across 
 
 ## Current implementation boundaries
 
-The current app imports at most 4 GiB, records at most 2,000 audio parts, and stores at most 20,000 current segments, 100 speakers, and 400 jobs in a meeting aggregate. `runChunkedSpeech` collects all completed part transcripts, merges them into that aggregate, and deletes the temporary `chunkSpeech` records after saving. These limits remain until their owning implementations and consumers are changed and tested.
+The current app imports at most 4 GiB, records at most 2,000 audio parts, and stores at most 20,000 current segments, 100 speakers, and 400 jobs in a meeting aggregate. `runChunkedSpeech` still collects and merges completed part transcripts into that aggregate. These limits remain until their owning implementations and consumers are changed and tested.
+
+For an existing chunked meeting, **Auto-match voices** runs local analysis after model-download consent. It can recover part evidence from an older provider run and retains original output, current text, and undo history. Uncertain results remain unresolved; similarity thresholds are not calibrated for this application's recordings. A new chunked transcription can also opt into matching. The model and ONNX runtime are prepared separately and are not included in the installation precache. A build without prepared assets reports matching as unavailable.
+
+For local development, run `node scripts/prepare-speaker-assets.mjs --source <verified-probe-public-directory> --output public/speaker-assets`. The command checks pinned hashes and does not download assets. For a production build, set `SPEAKER_ASSET_SOURCE` to that source directory and `SPEAKER_ASSETS_REQUIRED=1`; otherwise a build may contain an unavailable model manifest. The local asset directory is ignored by Git.
 
 Current matching-word links describe overlapping transcription evidence. They do not measure voice characteristics and cannot establish acoustic identity across arbitrary parts.
 

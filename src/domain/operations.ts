@@ -186,18 +186,23 @@ export function replaceTranscript(
   segments: Segment[],
   provider: string,
   model: string,
+  options: {
+    runId?: string;
+    originalSpeakers?: Speaker[];
+    originalSegments?: Segment[];
+  } = {},
 ): Meeting {
   return editMeeting(m, (d) => {
     d.speakers = speakers;
     d.segments = segments;
     d.speakerLinks = undefined;
     d.runs.push({
-      id: id(),
+      id: options.runId ?? id(),
       provider,
       model,
       createdAt: new Date().toISOString(),
-      speakers: structuredClone(speakers),
-      originalSegments: structuredClone(segments),
+      speakers: structuredClone(options.originalSpeakers ?? speakers),
+      originalSegments: structuredClone(options.originalSegments ?? segments),
     });
   });
 }

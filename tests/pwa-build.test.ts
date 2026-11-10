@@ -2,6 +2,7 @@
 
 import { spawnSync } from "node:child_process";
 import {
+  access,
   copyFile,
   mkdtemp,
   mkdir,
@@ -20,11 +21,11 @@ const projectRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const base = "/fixture/";
 let fixtureRoot: string | undefined;
 
-const runNodeScript = (script: string) => {
+const runNodeScript = (script: string, overrides: Record<string, string> = {}) => {
   const result = spawnSync(process.execPath, [script], {
     cwd: fixtureRoot,
     encoding: "utf8",
-    env: { ...process.env, VITE_BASE_PATH: base },
+    env: { ...process.env, VITE_BASE_PATH: base, ...overrides },
   });
   return {
     ...result,
@@ -67,6 +68,10 @@ async function createFixture() {
     path.join(projectRoot, "scripts", "check-artifact.mjs"),
     path.join(fixtureRoot, "scripts", "check-artifact.mjs"),
   );
+  await copyFile(
+    path.join(projectRoot, "scripts", "speaker-assets.mjs"),
+    path.join(fixtureRoot, "scripts", "speaker-assets.mjs"),
+  );
   await writeFile(
     path.join(fixtureRoot, "src", "pwa", "worker.template.js"),
     await readFile(path.join(projectRoot, "src", "pwa", "worker.template.js")),
@@ -103,6 +108,13 @@ it("builds canonical scoped assets and rejects Windows/dist worker paths", async
   const workerPath = path.join(fixtureRoot!, "dist", "sw.js");
   const firstWorker = await readFile(workerPath, "utf8");
   const firstAssets = assetsFromWorker(firstWorker);
+  expect(firstAssets).toContain(`${base}speaker-assets/manifest.json`);
+  expect(
+    firstAssets.some((asset) => asset.includes("speaker-assets/model/")),
+  ).toBe(false);
+  expect(
+    firstAssets.some((asset) => asset.includes("speaker-assets/runtime/")),
+  ).toBe(false);
   const expectedAssets = (await listFiles(path.join(fixtureRoot!, "dist")))
     .filter((file) => relativeFromDist(file) !== "sw.js")
     .map((file) => base + relativeFromDist(file))
@@ -117,6 +129,49 @@ it("builds canonical scoped assets and rejects Windows/dist worker paths", async
   expect(firstVersion).toBeTruthy();
   const firstCheck = runNodeScript(checkScript);
   expect(firstCheck.status, firstCheck.output).toBe(0);
+
+  const leakedRuntime = path.join(
+    fixtureRoot!,
+    "dist",
+    "assets",
+    "ort-wasm-simd-threaded.asyncify-CxOG5pUO.wasm",
+  );
+  await writeFile(leakedRuntime, "dependency fallback runtime");
+  const rebuiltWithoutLeak = runNodeScript(buildScript);
+  expect(rebuiltWithoutLeak.status, rebuiltWithoutLeak.output).toBe(0);
+  await expect(access(leakedRuntime)).rejects.toThrow();
+  const workerWithoutLeak = await readFile(workerPath, "utf8");
+  expect(workerWithoutLeak).not.toContain("ort-wasm-simd-threaded.asyncify-");
+
+  await writeFile(
+    path.join(fixtureRoot!, "dist", "assets", "artifact-secret.js"),
+    "const fixture = 'synthetic-test-only';",
+  );
+  const secretCheck = runNodeScript(checkScript);
+  expect(secretCheck.status).not.toBe(0);
+  expect(secretCheck.output).toMatch(/test fixtures|credential/i);
+  await rm(path.join(fixtureRoot!, "dist", "assets", "artifact-secret.js"), {
+    force: true,
+  });
+  const requiredCheck = runNodeScript(checkScript, { SPEAKER_ASSETS_REQUIRED: "1" });
+  expect(requiredCheck.status).not.toBe(0);
+  expect(requiredCheck.output).toMatch(/unavailable/i);
+
+  await mkdir(
+    path.join(fixtureRoot!, "dist", "speaker-assets", "runtime"),
+    { recursive: true },
+  );
+  await writeFile(
+    path.join(fixtureRoot!, "dist", "speaker-assets", "runtime", "unlisted.wasm"),
+    "not a pinned runtime",
+  );
+  const unlistedCheck = runNodeScript(checkScript);
+  expect(unlistedCheck.status).not.toBe(0);
+  expect(unlistedCheck.output).toMatch(/unexpected deferred speaker asset|allowlist/i);
+  await rm(
+    path.join(fixtureRoot!, "dist", "speaker-assets", "runtime"),
+    { recursive: true, force: true },
+  );
 
   await rename(
     path.join(fixtureRoot!, "dist", "assets", "app.js"),

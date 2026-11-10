@@ -1,6 +1,15 @@
 import { readdir, readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 import path from "node:path";
+import {
+  isAllowedSpeakerAssetPath,
+  isDeferredSpeakerAsset,
+  isSpeakerAssetManifest,
+  listSpeakerAssetPaths,
+  readSpeakerAssetManifest,
+  validateSpeakerAssetManifest,
+  verifyPreparedSpeakerAssets,
+} from "./speaker-assets.mjs";
 const base = process.env.VITE_BASE_PATH || "/PWA-AI-Meeting-Memo-BYOK/";
 assert(
   base.startsWith("/") && base.endsWith("/"),
@@ -12,17 +21,33 @@ const canonicalRelative = (file) =>
 async function inspect(dir) {
   for (const item of await readdir(dir, { withFileTypes: true })) {
     const p = path.join(dir, item.name);
+    const relative = canonicalRelative(p);
     assert(!item.isSymbolicLink(), "Artifact must not contain symlinks");
     if (item.isDirectory()) {
       await inspect(p);
       continue;
     }
-    assert(
-      /\.(html|js|css|svg|png|webmanifest)$/.test(p),
-      `Unexpected artifact file: ${p}`,
-    );
+    const deferred = isDeferredSpeakerAsset(relative);
+    if (deferred) {
+      assert(
+        isAllowedSpeakerAssetPath(relative),
+        `Unexpected deferred speaker asset: ${relative}`,
+      );
+    } else {
+      assert(
+        isSpeakerAssetManifest(relative) ||
+          /\.(html|js|css|svg|png|webmanifest)$/.test(relative),
+        `Unexpected artifact file: ${p}`,
+      );
+    }
     artifactFiles.push(p);
-    if (!p.endsWith(".png")) {
+    // Do not decode the 100 MB ONNX or 26 MB WASM as text. Their exact bytes
+    // are checked from the manifest allowlist below.
+    if (
+      !deferred &&
+      !p.endsWith(".png") &&
+      /\.(html|js|css|svg|webmanifest|json|mjs)$/.test(relative)
+    ) {
       const text = await readFile(p, "utf8");
       assert(
         !/sk-(?:proj|svcacct)-[A-Za-z0-9_-]{20,}/.test(text),
@@ -37,6 +62,21 @@ async function inspect(dir) {
   }
 }
 await inspect("dist");
+const speakerManifest = await readSpeakerAssetManifest("dist");
+const speakerPaths = await listSpeakerAssetPaths("dist");
+validateSpeakerAssetManifest(speakerManifest, {
+  basePath: base,
+  actualPaths: speakerPaths,
+});
+await verifyPreparedSpeakerAssets("dist", speakerManifest);
+if (
+  process.env.SPEAKER_ASSETS_REQUIRED === "1" &&
+  speakerManifest.status !== "ready"
+) {
+  throw new Error(
+    "SPEAKER_ASSETS_REQUIRED=1 but verified speaker assets are unavailable",
+  );
+}
 const manifest = JSON.parse(
   await readFile("dist/manifest.webmanifest", "utf8"),
 );
@@ -74,6 +114,10 @@ for (const asset of assets) {
   assert(!relative.startsWith("dist/"), `Worker asset must not include dist/: ${asset}`);
   assert(!relative.includes("//"), `Worker asset has a non-canonical path: ${asset}`);
   assert(!relative.split("/").includes(".."), `Worker asset escapes base path: ${asset}`);
+  assert(
+    !isDeferredSpeakerAsset(relative),
+    `Deferred speaker asset must not be precached: ${asset}`,
+  );
   const resolved = new URL(asset, "https://artifact.invalid");
   assert.equal(resolved.origin, "https://artifact.invalid");
   assert.equal(resolved.pathname, asset, `Worker asset is not canonical: ${asset}`);
@@ -81,6 +125,7 @@ for (const asset of assets) {
 assert(seen.has(`${base}index.html`), "ASSETS must include the app index");
 const expectedAssets = artifactFiles
   .filter((file) => canonicalRelative(file) !== "sw.js")
+  .filter((file) => !isDeferredSpeakerAsset(canonicalRelative(file)))
   .map((file) => base + canonicalRelative(file))
   .sort();
 assert.deepEqual(

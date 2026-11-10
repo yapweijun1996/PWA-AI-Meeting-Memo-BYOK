@@ -9,7 +9,7 @@ vi.stubGlobal("window", new EventTarget());
 const speech = { speakers: [], segments: [], duration: 1, requestId: null };
 
 describe("chunk speech IndexedDB store", () => {
-  it("upgrades v2 to v3 without losing meeting data and accepts legacy schema", async () => {
+  it("upgrades v2 to v4 without losing meeting data and accepts legacy schema", async () => {
     const meeting = createMeeting();
     const legacy = openDB("meeting-memo-byok-v1", 2, {
       upgrade(database) {
@@ -23,7 +23,7 @@ describe("chunk speech IndexedDB store", () => {
     await v2.put("meetings", meeting);
     v2.close();
     const upgraded = await db();
-    expect(upgraded.version).toBe(3);
+    expect(upgraded.version).toBe(4);
     expect((await upgraded.get("meetings", meeting.id))?.title).toBe(meeting.title);
     expect(upgraded.objectStoreNames.contains("chunkSpeech")).toBe(true);
     expect(MeetingSchema.safeParse(meeting).success).toBe(true);

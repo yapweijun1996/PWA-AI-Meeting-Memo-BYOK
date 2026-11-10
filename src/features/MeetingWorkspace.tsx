@@ -50,8 +50,10 @@ import { importLongRecording, isLongRecordingCandidate } from "../audio/long-imp
 import { deleteLongAudio, getLongAudioChunk, getLongAudioManifest, type LongAudioManifest } from "../storage/long-audio-store";
 import { ChunkedAudio, type PlayerLike } from "../audio/chunked-audio";
 import { getKey, getSelection, getSpeechEstimate, getUiLanguage } from "../providers/credentials";
-import { cancelProcessing, runJob, isProcessingMeeting } from "../jobs/runner";
+import { beginRequest, cancelProcessing, finishRequest, runJob, isProcessingMeeting } from "../jobs/runner";
+import { analyzeExistingMeetingAcoustics } from "../jobs/acoustic-continuity";
 import { getChunkedProgress, runChunkedSpeech } from "../jobs/chunked-runner";
+import { WavLmSpeakerEmbeddingProvider } from "../audio/speaker-embedding";
 import { Empty, Modal, Pill } from "../components/ui";
 import { CitedEvidence } from "./CitedEvidence";
 import { SpeakerReview } from "./SpeakerReview";
@@ -96,6 +98,7 @@ export function MeetingWorkspace({
     [chunkManifest, setChunkManifest] = useState<LongAudioManifest>(),
     [chunkProgress, setChunkProgress] = useState<{ total: number; done: number; nextIndex: number; blockedIndex: number | null }>(),
     [chunkProgressText, setChunkProgressText] = useState(""),
+    [acousticConsent, setAcousticConsent] = useState(false),
     [sampleRange, setSampleRange] = useState<{ start: number; end: number } | null>(null),
     [audioStopToken, setAudioStopToken] = useState(0);
   const player = useRef<PlayerLike | null>(null),
@@ -109,6 +112,7 @@ export function MeetingWorkspace({
     { key: string; phase: "pending" | "committing" } | undefined
   >(undefined);
   const [reviewedRetry, setReviewedRetry] = useState(false);
+  const [acousticConfirm, setAcousticConfirm] = useState(false);
   const [evidence, setEvidence] = useState<Segment>();
   const [confirmed, setConfirmed] = useState<{ selection: Selection; plan?: MemoPipeline | null }>();
   const [uiLanguage, setUiLanguage] = useState(getUiLanguage());
@@ -344,6 +348,7 @@ export function MeetingWorkspace({
       const selection = { ...getSelection(stage) };
       const plan = stage === "memo" ? resumablePipeline(m,selection,true) ?? planMemo(m,selection.provider,selection.model) : null;
       setReviewedRetry(false);
+      if (stage === "speech") setAcousticConsent(false);
       if (stage === "speech" && m.audio?.chunked) {
         const manifest = await getLongAudioManifest(m.id);
         if (!manifest) throw new Error("The chunk manifest is missing. Reattach or restore the long recording before transcription.");
@@ -363,10 +368,34 @@ export function MeetingWorkspace({
     setChunkProgressText("");
     if (stage === "memo") setTab("memo");
     setNotice("");
+    let acousticProvider: WavLmSpeakerEmbeddingProvider | undefined;
+    let acousticRequestController: AbortController | undefined;
     try {
+      if (stage === "speech" && m.audio?.chunked && acousticConsent) {
+        acousticRequestController = beginRequest(m.id);
+        acousticProvider = new WavLmSpeakerEmbeddingProvider();
+        await acousticProvider.load({
+          consent: true,
+          signal: acousticRequestController.signal,
+          onProgress: (progress) => {
+            const detail = progress.total ? ` ${Math.round((progress.loaded ?? 0) / progress.total * 100)}%` : "";
+            setChunkProgressText(t(`Preparing local speaker model${detail}`, `正在准备本地说话人模型${detail}`));
+          },
+        });
+        setChunkProgressText(t("Local speaker model ready; continuing with bounded processing.", "本地说话人模型已就绪；继续进行受限分块处理。"));
+      }
       const completed = stage === "speech" && m.audio?.chunked
         ? await runChunkedSpeech(m, {
             selection: confirmed!.selection,
+            requestController: acousticRequestController,
+            acoustic: acousticProvider ? {
+              provider: acousticProvider,
+              consent: true,
+              onProgress: (progress) => {
+                if (progress.phase === "sample") setChunkProgressText(t(`Analyzing local voice sample in part ${ (progress.chunkIndex ?? 0) + 1 }`, `正在分析第 ${(progress.chunkIndex ?? 0) + 1} 部分的本地声音样本`));
+                else if (progress.phase === "assignment") setChunkProgressText(t("Associating anonymous voices across parts", "正在跨部分关联匿名声音"));
+              },
+            } : undefined,
             reviewedChunks: chunkProgress?.blockedIndex != null && reviewedRetry ? [chunkProgress.blockedIndex] : undefined,
             onProgress: ({ done, total, index }) => {
               setChunkProgressText(t(`Transcribing part ${index + 1} of ${total}`, `正在转录第 ${index + 1}/${total} 部分`));
@@ -396,6 +425,49 @@ export function MeetingWorkspace({
         if (latest.audio?.chunked) setChunkProgress(await getChunkedProgress(latest));
       }
     } finally {
+      acousticProvider?.dispose();
+      if (acousticRequestController) finishRequest(acousticRequestController);
+      setProcessing(false);
+      setChunkProgressText("");
+    }
+  }
+  async function analyzeAcousticVoices() {
+    setAcousticConfirm(false);
+    setProcessing(true);
+    setChunkProgressText(t("Preparing local speaker model", "正在准备本地说话人模型"));
+    let controller: AbortController | undefined;
+    let acousticProvider: WavLmSpeakerEmbeddingProvider | undefined;
+    try {
+      const latest = await getMeeting(m.id);
+      if (!latest) throw new Error("This meeting is no longer available.");
+      const manifest = await getLongAudioManifest(latest.id);
+      if (!manifest) throw new Error("The chunk manifest is missing. Reattach or restore the long recording before local analysis.");
+      controller = beginRequest(latest.id);
+      acousticProvider = new WavLmSpeakerEmbeddingProvider();
+      const analyzed = await analyzeExistingMeetingAcoustics(latest, {
+        manifest,
+        provider: acousticProvider,
+        consent: true,
+        signal: controller.signal,
+        onProgress: (progress) => {
+          if (progress.phase === "model") {
+            const detail = progress.model?.total ? ` ${Math.round((progress.model.loaded ?? 0) / progress.model.total * 100)}%` : "";
+            setChunkProgressText(t(`Preparing local speaker model${detail}`, `正在准备本地说话人模型${detail}`));
+          } else if (progress.phase === "sample") {
+            setChunkProgressText(t(`Analyzing local voice sample in part ${(progress.chunkIndex ?? 0) + 1}`, `正在分析第 ${(progress.chunkIndex ?? 0) + 1} 部分的本地声音样本`));
+          } else {
+            setChunkProgressText(t("Associating anonymous voices across parts", "正在跨部分关联匿名声音"));
+          }
+        },
+      });
+      await persist(analyzed);
+      setTab("speakers");
+      setNotice(t("Anonymous voice continuity was updated locally. Ambiguous voices remain unresolved.", "匿名声音连续性已在本地更新。模糊声音保持未解决状态。"));
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Local speaker analysis did not complete.");
+    } finally {
+      acousticProvider?.dispose();
+      if (controller) finishRequest(controller);
       setProcessing(false);
       setChunkProgressText("");
     }
@@ -655,6 +727,15 @@ export function MeetingWorkspace({
               ? t(`Resume transcription (${chunkProgress.done} of ${chunkProgress.total} parts done)`, `恢复转录（已完成 ${chunkProgress.done}/${chunkProgress.total} 部分）`)
               : t("Transcribe", "转录")}
           </button>
+          {m.audio?.chunked && m.segments.length > 0 && (
+            <button
+              className="button secondary compact"
+              onClick={() => setAcousticConfirm(true)}
+              disabled={locked || audioMissing || !chunkManifest}
+            >
+              {t("Auto-match voices", "自动关联声音")}
+            </button>
+          )}
         </div>
       </div>
       {importProgress && <div className="notice" role="status">{t("Importing long recording", "正在导入长录音")} · {importProgress}</div>}
@@ -1559,6 +1640,28 @@ export function MeetingWorkspace({
           </select>
         </div>
       )}
+      {acousticConfirm && (
+        <Modal
+          title={t("Automatically match anonymous voices?", "自动关联匿名声音吗？")}
+          onClose={() => setAcousticConfirm(false)}
+        >
+          <div className="modal-body">
+            <div className="notice">
+              <ShieldCheck size={18} />
+              <span>
+                {t("This downloads the pinned local WavLM speaker model (about 128 MB) after you confirm. Audio is decoded in bounded windows; no audio, key or vector is sent to a provider.", "确认后会下载固定版本的本地 WavLM 说话人模型（约 128 MB）。录音只在受限窗口中解码；不会向服务商发送录音、密钥或向量。")}
+              </span>
+            </div>
+            <p className="muted">
+              {t("The model policy is uncalibrated. The app associates only sufficiently supported same-meeting voices; overlap, missing timing and conflicting evidence remain unresolved. Human names and edits are preserved and the operation can be undone as a new revision.", "模型策略尚未校准。应用只关联证据充分的同一会议声音；重叠、缺少时间或冲突证据保持未解决。人工姓名和编辑会保留，操作会作为新修订并可撤销。")}
+            </p>
+            <div className="modal-actions">
+              <button className="button secondary" onClick={() => setAcousticConfirm(false)}>{t("Cancel", "取消")}</button>
+              <button className="button primary" onClick={() => void analyzeAcousticVoices()}>{t("Download and analyze locally", "下载并在本地分析")}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {confirmStage && (
         <Modal
           title={
@@ -1634,6 +1737,21 @@ export function MeetingWorkspace({
                   </div>
                 )}
               </>
+            )}
+            {confirmStage === "speech" && m.audio?.chunked && (
+              <div className="notice" role="group" aria-label={t("Automatic speaker continuity", "自动说话人连续性")}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={acousticConsent}
+                    onChange={(event) => setAcousticConsent(event.target.checked)}
+                  />{" "}
+                  {t("Automatically associate the same anonymous voice across recording parts (downloads the pinned local model, about 128 MB, on first use).", "自动跨录音部分关联同一匿名声音（首次使用会下载约 128 MB 的固定版本本地模型）。")}
+                </label>
+                <p className="small muted">
+                  {t("Uses bounded local acoustic samples only; model thresholds are uncalibrated. Unknown or conflicting voices remain unresolved. The model and vectors stay in this browser and are not sent with the transcription request.", "仅使用受限的本地声学样本；模型阈值尚未校准。未知或冲突声音会保持未解决。模型和向量保留在此浏览器中，不会随转录请求发送。")}
+                </p>
+              </div>
             )}
             <p className="muted">
               {t("Keep this page open. Cancellation does not guarantee remote processing or billing stops. The app does not automatically retry. Review the provider's retention policy for your account.", "请保持此页面打开。取消不保证远端处理或计费停止。应用不会自动重试。请查看服务商对您账户的数据保留政策。")}

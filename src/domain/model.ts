@@ -46,12 +46,12 @@ export const MemoItemSchema = z
       "risk",
     ]),
     text,
-    ownerId: key.nullable(),
+    ownerId: transcriptId.nullable(),
     dueDate: z.string().max(80).nullable(),
     dueOriginal: z.string().max(200).nullable(),
     sources: z
       .array(
-        z.object({ id: key, revision: z.number().int().positive() }).strict(),
+        z.object({ id: transcriptId, revision: z.number().int().positive() }).strict(),
       )
       .min(1)
       .max(100),
@@ -149,7 +149,7 @@ export const MemoPipelineSchema = z
     sourceRevision: z.number().int().positive(),
     snapshot: PipelineSnapshotSchema,
     state: z.enum(["ready", "running", "paused", "blocked", "completed"]),
-    chunks: z.array(z.array(key).min(1).max(20000)).min(1).max(8),
+    chunks: z.array(z.array(transcriptId).min(1).max(20000)).min(1).max(8),
     results: z
       .array(
         z
@@ -159,7 +159,7 @@ export const MemoPipelineSchema = z
               .array(
                 z
                   .object({
-                    id: key,
+                    id: transcriptId,
                     revision: z.number().int().positive(),
                     text: z.string().max(20000),
                   })
