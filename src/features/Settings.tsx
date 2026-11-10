@@ -22,7 +22,12 @@ import {
   type Stage,
 } from "../providers/credentials";
 import { translateMessage } from "../ui-messages";
+import { saveFont, useFontChoice, type FontChoice } from "../appearance";
 export function Settings() {
+  const [activeTab, setActiveTab] = useState<"api" | "appearance">("api");
+  const font = useFontChoice();
+  const [fontError, setFontError] = useState(false);
+  const [fontSaved, setFontSaved] = useState(false);
   const [openai, setOpenai] = useState(getKey("openai")),
     [openrouter, setOpenrouter] = useState(getKey("openrouter")),
     [speech, setSpeech] = useState(getSelection("speech")),
@@ -67,6 +72,17 @@ export function Settings() {
       uiLanguage,
     }) !== baseline;
   const t = (en: string, zh: string) => uiLanguage === "zh-CN" ? zh : en;
+  function changeFont(value: FontChoice) {
+    try { saveFont(value); setFontError(false); setFontSaved(true); }
+    catch { setFontError(true); setFontSaved(false); }
+  }
+  function tabKey(event: React.KeyboardEvent<HTMLButtonElement>) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === "Home" ? "appearance" : event.key === "End" ? "api" : activeTab === "api" ? "appearance" : "api";
+    setActiveTab(next);
+    document.getElementById(`settings-tab-${next}`)?.focus();
+  }
   useEffect(() => {
     setSettingsDirty(formDirty);
     return () => setSettingsDirty(false);
@@ -173,24 +189,9 @@ export function Settings() {
         revision,
       );
       setRevision(getSettingsRevision());
-      setBaseline(
-        JSON.stringify({
-          keys: { openai: "", openrouter: "" },
-          speech: getSelection("speech"),
-          memo: getSelection("memo"),
-          speechRate: getSpeechRate()?.toString() ?? "",
-          rateSource: getSpeechRateContext()?.source ?? "",
-          rateDate: getSpeechRateContext()?.date ?? "",
-          rateFor: getSpeechRateContext() ? { provider: getSpeechRateContext()!.provider, model: getSpeechRateContext()!.model } : null,
-          uiLanguage: getUiLanguage(),
-        }),
-      );
+      setBaseline(JSON.stringify({ ...JSON.parse(baseline), keys: { openai: "", openrouter: "" } }));
       setOpenai("");
       setOpenrouter("");
-      setRateSource(getSpeechRateContext()?.source ?? "");
-      setRateDate(getSpeechRateContext()?.date ?? "");
-      setRateFor(getSpeechRateContext() ? { provider: getSpeechRateContext()!.provider, model: getSpeechRateContext()!.model } : null);
-      setUiLanguage(getUiLanguage());
       setNotice("Stored keys forgotten on this device.");
     } catch (error) {
       setSaveError(
@@ -223,10 +224,51 @@ export function Settings() {
           <h1>
             {t("Settings", "设置")}<span className="heading-dot">.</span>
           </h1>
-          <p>{t("Connect your own keys. Keep control of your conversations.", "连接您自己的密钥，掌控会议内容。")}</p>
+          <p>{t("Personalize your workspace and connect your own keys.", "个性化工作区并连接您自己的密钥。")}</p>
         </div>
       </section>
+      <div className="settings-tabs" role="tablist" aria-label={t("Settings sections", "设置分类")}>
+        {(["appearance", "api"] as const).map((name) => <button key={name} id={`settings-tab-${name}`} type="button" role="tab"
+          aria-selected={activeTab === name} aria-controls={`settings-panel-${name}`} tabIndex={activeTab === name ? 0 : -1}
+          onClick={() => setActiveTab(name)} onKeyDown={tabKey}>
+          {name === "appearance" ? t("Appearance", "外观") : t("API & models", "API 与模型")}
+        </button>)}
+      </div>
+      {formDirty && <p className="settings-dirty" role="status">{t("Unsaved settings", "设置尚未保存")}</p>}
       <section className="settings-panel">
+        <form onInvalid={(event) => {
+          if (activeTab === "appearance") {
+            event.preventDefault();
+            const target = event.target as HTMLElement;
+            setActiveTab("api");
+            setTimeout(() => target.focus(), 0);
+          }
+        }} onSubmit={(e) => { e.preventDefault(); void save(); }}>
+        <div id="settings-panel-appearance" role="tabpanel" aria-labelledby="settings-tab-appearance" hidden={activeTab !== "appearance"}>
+          <h2>{t("Appearance", "外观")}</h2>
+          <p className="muted">{t("Choose how the workspace looks on this device.", "选择此设备上的工作区外观。")}</p>
+          <label>Display language / 显示语言<select aria-label="Display language / 显示语言" value={uiLanguage} onChange={(e) => setUiLanguage(e.target.value as "en" | "zh-CN")} disabled={saving}><option value="en">English</option><option value="zh-CN">简体中文</option></select></label>
+          <p className="small muted">{t("Save settings to keep your language choice.", "请保存设置以保留语言选择。")}</p>
+          <label>{t("Font family", "字体")}
+            <select aria-label={t("Font family", "字体")} value={font} onChange={(event) => changeFont(event.target.value as FontChoice)}>
+              <option value="default">{t("Current default", "当前默认")}</option>
+              <option value="system">{t("System sans-serif", "系统无衬线")}</option>
+              <option value="segoe">Segoe UI</option>
+              <option value="georgia">Georgia</option>
+            </select>
+          </label>
+          <p className="small muted">{t("Font changes save immediately on this device. Unavailable fonts use a system fallback.", "字体更改会立即保存在此设备。不可用的字体将使用系统替代字体。")}</p>
+          {fontError && <p className="notice danger" role="alert">{t("Could not save the font on this device. The previous font is still in use.", "无法在此设备保存字体，仍使用之前的字体。")}</p>}
+          {fontSaved && !fontError && <p role="status" className="small muted">{t("Font saved on this device", "字体已保存在此设备")}</p>}
+          <div className="font-preview" aria-label={t("Font preview", "字体预览")}>
+            <strong>{t("A clearer meeting workspace", "更清晰的会议工作区")}</strong>
+            <p>Meeting notes · 1234567890 · 会议记录与说话人</p>
+            <p className="small muted">{t("Review decisions, sources and next steps.", "审阅决定、来源和下一步。")}</p>
+            <button type="button" className="button secondary compact" disabled>{t("Example button", "示例按钮")}</button>
+          </div>
+          <button type="button" className="button secondary" onClick={() => changeFont("default")}>{t("Restore default font", "恢复默认字体")}</button>
+        </div>
+        <div id="settings-panel-api" role="tabpanel" aria-labelledby="settings-tab-api" hidden={activeTab !== "api"}>
         <div className="panel-title">
           <span className="round-icon">
             <KeyRound size={22} />
@@ -244,13 +286,6 @@ export function Settings() {
             {t("Keys are stored unencrypted in this browser's IndexedDB. Other scripts on this shared website origin and anyone with access to this browser profile may be able to read them. Keys are not included in meeting backups or sent to GitHub.", "密钥以未加密方式存储在此浏览器的 IndexedDB 中。同一网站来源的其他脚本及能访问此浏览器配置的人可能读取密钥。密钥不会包含在会议备份中，也不会发送到 GitHub。")}
           </span>
         </div>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void save();
-          }}
-        >
-          <label>Display language / 显示语言<select aria-label="Display language / 显示语言" value={uiLanguage} onChange={(e) => setUiLanguage(e.target.value as "en" | "zh-CN")} disabled={saving}><option value="en">English</option><option value="zh-CN">简体中文</option></select></label>
           <div className="connection">
             <div className="connection-heading">
               <span className="provider-icon">R</span>
@@ -411,6 +446,7 @@ export function Settings() {
             <button type="button" className="button secondary" disabled={saving} onClick={() => setRateFor({ ...speech, model: speech.model.trim() })}>{t("Bind rate to selected speech model", "绑定费率到所选语音模型")}</button>
             <button type="button" className="button ghost" disabled={saving} onClick={() => { setRateSource(""); setRateDate(""); setRateFor(null); }}>{t("Clear rate provenance", "清除费率来源")}</button>
           </div>
+        </div>
           {saveError && (
             <div className="notice danger" role="alert">
               {translateMessage(saveError, uiLanguage)}
@@ -428,6 +464,7 @@ export function Settings() {
             <button
               type="button"
               className="button ghost"
+              hidden={activeTab !== "api"}
               onClick={() => void forget()}
               disabled={saving}
             >

@@ -46,6 +46,7 @@ test("cited revisions can be read together without claiming semantic verificatio
   await expect(article.getByLabel("summary note")).toHaveValue("A hypothetical 30% increase.");
   await expect(article.getByText("pending", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Settings & API keys" }).click();
+  await page.getByRole("tab", { name: "Appearance" }).click();
   await page.getByLabel("Display language / 显示语言").selectOption("zh-CN");
   await page.getByRole("button", { name: "保存设置" }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
