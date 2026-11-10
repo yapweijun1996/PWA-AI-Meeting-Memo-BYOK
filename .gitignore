@@ -7,6 +7,7 @@ public/speaker-assets/
 *.local
 *.tsbuildinfo
 test-results/
+/test-results-*/
 playwright-report/
 coverage/
 private-fixtures/
