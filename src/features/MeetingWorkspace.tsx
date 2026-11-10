@@ -942,6 +942,7 @@ export function MeetingWorkspace({
             audioAvailable={canPlay}
             duration={duration}
             position={position}
+            clock={playback.store}
             playing={playing}
             playbackStatus={playback.status}
             locked={locked}
