@@ -1087,3 +1087,93 @@ test("nothing around the captions moves or resizes while people talk, pause and 
   expect(speakerCount).toBeGreaterThan(0);
   expect(moved.slice(0, 12)).toEqual([]);
 });
+
+// A meeting shaped like a long chunked recording: 19 per-part speakers and captions from 2 to 30 words.
+function immersiveLayoutMeeting() {
+  const base = fixtureMeeting();
+  const parts = [4, 5, 3, 4, 3];
+  const ids: string[] = [];
+  const speakers = parts.flatMap((count, part) => Array.from({ length: count }, (_, i) => {
+    const index = ids.length;
+    const id = index < 2 ? speakerIds[index] : `33333333-3333-4333-8333-${String(index + 1).padStart(12, "0")}`;
+    ids.push(id);
+    return { id, name: `Speaker ${i + 1} (part ${part + 1})`, confirmed: false, sourceLabels: ["fixture"] };
+  }));
+  const words = ["I", "think", "we're", "seeing", "companies", "try", "many", "different", "things", "during", "the", "batch", "happening?", "Absolutely", "historically", "direction"];
+  const order = [0, 7, 13, 18, 2, 9, 16, 5, 11, 1, 14, 6, 17, 3];
+  const counts = [4, 22, 7, 30, 3, 16, 9, 26, 5, 18, 2, 12, 28, 6];
+  const segments = [...base.segments];
+  let time = 3;
+  let n = 0;
+  order.forEach((speakerIndex, captionIndex) => {
+    for (let word = 0; word < counts[captionIndex]; word++) {
+      const text = words[(n + word) % words.length];
+      segments.push({ id: `40000000-0000-4000-8000-${String(++n).padStart(12, "0")}`, revision: 1, start: time, end: time + 0.14, speakerIds: [ids[speakerIndex]], originalText: text, text, reviewed: false, parents: [] });
+      time += 0.14;
+    }
+    time += 0.4;
+  });
+  return { meeting: { ...base, speakers, segments }, end: time };
+}
+
+test("immersive view keeps its layout while speakers, captions and highlights change", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1550, height: 890 });
+  await page.addInitScript(() => {
+    let active: Element | null = null;
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => active });
+    HTMLElement.prototype.requestFullscreen = function () { active = document.querySelector(".immersive"); document.dispatchEvent(new Event("fullscreenchange")); return Promise.resolve(); };
+    document.exitFullscreen = () => { active = null; document.dispatchEvent(new Event("fullscreenchange")); return Promise.resolve(); };
+  });
+  const { meeting, end } = immersiveLayoutMeeting();
+  await createFixture(page, "long-fixture.wav", meeting);
+  await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".immersive-person")).toHaveCount(19);
+  const audio = page.locator("audio");
+  const measure = () => page.evaluate(() => {
+    const box = (selector: string) => document.querySelector(selector)?.getBoundingClientRect();
+    const avatars = [...document.querySelectorAll(".immersive-avatar")].map((avatar) => avatar.getBoundingClientRect().top);
+    const row = document.querySelector(".immersive-transcript-list button.is-current");
+    const fragments = row?.querySelector("span:nth-child(2)")?.children;
+    const last = fragments?.[fragments.length - 1];
+    const captions = document.querySelector(".immersive-captions");
+    const word = captions?.querySelector('[data-current="true"]');
+    const area = captions?.getBoundingClientRect();
+    const spot = word?.getBoundingClientRect();
+    return {
+      layout: [avatars[0], avatars[avatars.length - 1], box(".immersive-roster")?.height, box(".immersive-status")?.top, box(".immersive-status")?.height, box(".immersive-captions")?.top, box(".immersive-captions")?.height, box(".immersive-controls")?.top],
+      rowId: row?.getAttribute("data-immersive-caption") ?? null,
+      lastWordLeft: last && row ? last.getBoundingClientRect().left - row.getBoundingClientRect().left : null,
+      wordInCaptionArea: area && spot ? spot.bottom <= area.bottom + 1 && spot.top >= area.top - 1 : null,
+    };
+  });
+  const sweep = async () => {
+    const first = (await measure()).layout;
+    let layoutMoves = 0;
+    let wordJitter = 0;
+    let withWord = 0;
+    let wordHidden = 0;
+    let previous: Awaited<ReturnType<typeof measure>> | null = null;
+    for (let time = 3; time < end; time += 0.5) {
+      await audio.evaluate((element, value) => { const media = element as HTMLMediaElement; media.currentTime = value; media.dispatchEvent(new Event("timeupdate")); }, time);
+      const now = await measure();
+      if (now.layout.some((value, index) => Math.abs((value ?? 0) - (first[index] ?? 0)) > 0.5)) layoutMoves++;
+      if (previous && now.rowId && previous.rowId === now.rowId && now.lastWordLeft !== null && previous.lastWordLeft !== null && Math.abs(now.lastWordLeft - previous.lastWordLeft) > 0.5) wordJitter++;
+      if (now.wordInCaptionArea !== null) { withWord++; if (!now.wordInCaptionArea) wordHidden++; }
+      previous = now;
+    }
+    return { layoutMoves, wordJitter, withWord, wordHidden };
+  };
+  // The roster, status lines, captions area and controls must stay exactly where they were at the start, whichever
+  // speaker is active and however long the caption is; the highlight must not move the words after it; and the word
+  // being spoken must stay inside the captions area, which scrolls on its own.
+  await dialog.getByRole("button", { name: "Play audio" }).click();
+  const playing = await sweep();
+  expect(playing).toMatchObject({ layoutMoves: 0, wordJitter: 0, wordHidden: 0 });
+  expect(playing.withWord).toBeGreaterThan(50);
+  await dialog.getByRole("button", { name: "Pause audio" }).click();
+  const paused = await sweep();
+  expect(paused).toMatchObject({ layoutMoves: 0, wordJitter: 0, wordHidden: 0 });
+});

@@ -27,6 +27,8 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
   const opener = useRef<HTMLButtonElement>(null);
   const exitButton = useRef<HTMLButtonElement>(null);
   const transcript = useRef<HTMLDivElement>(null);
+  const captionBox = useRef<HTMLDivElement>(null);
+  const captionKey = useRef("");
   const transcriptToggle = useRef<HTMLButtonElement>(null);
   const native = useRef(false);
   const exitingFullscreen = useRef<Promise<void> | null>(null);
@@ -128,6 +130,21 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
   }, [open, panel, follow, active, start]);
 
   const textCaptions = current.length ? current : context;
+  const contextOnly = context.length > 0 && current.length === 0 && (!playing || status !== "playing");
+  const textKey = textCaptions.map((caption) => caption.id).join("|");
+
+  // The captions have a fixed-height area (so nothing around them moves) and scroll inside it. Keep the line with the
+  // word being spoken visible, and start a new caption from its top.
+  useEffect(() => {
+    const box = captionBox.current;
+    if (!open || !box) return;
+    if (captionKey.current !== textKey) { captionKey.current = textKey; box.scrollTop = 0; }
+    const word = box.querySelector<HTMLElement>('[data-current="true"]');
+    if (!word) return;
+    const area = box.getBoundingClientRect(), line = word.getBoundingClientRect();
+    if (line.bottom > area.bottom) box.scrollTop += line.bottom - area.bottom;
+    else if (line.top < area.top) box.scrollTop -= area.top - line.top;
+  }, [open, exact, textKey, showCaptions, size]);
   const state = status === "error" ? t("Playback error", "播放出错") : status === "buffering" ? t("Buffering", "缓冲中") : status === "ended" ? t("Playback ended", "播放已结束") : !playing ? t("Paused at this position", "已暂停在此位置") : current.length ? activeUnknown ? t("Unknown speaker", "未知说话人") : t("Speaking", "正在发言") : context.length ? t("Between words · context only", "词语间隙 · 仅显示上下文") : t("No attributed speech at this position", "此位置没有已归属的发言");
   const suspend = () => { setPage(start); setFollow(false); };
   return <>
@@ -142,15 +159,19 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
             <div className="immersive-roster">
               {meeting.speakers.map((speaker, index) => <div className="immersive-person" key={speaker.id} data-active={playing && status === "playing" && activeIds.has(speaker.id)}>
                 <span className="immersive-avatar" style={{ background: speakerBackground(index) }} aria-hidden="true">S{index + 1}</span><strong>{speaker.name}</strong>
-                {activeIds.has(speaker.id) && <span>{playing && status === "playing" ? t("Speaking", "正在发言") : t("At position", "当前播放位置")}</span>}
+                {/* Always present and visually hidden: a line that appears under the active speaker would change the roster height every time the speaker changes. The ring on the avatar and the status line below carry the visible state. */}
+                <span className="immersive-person-status">{activeIds.has(speaker.id) ? (playing && status === "playing" ? t("Speaking", "正在发言") : t("At position", "当前播放位置")) : ""}</span>
               </div>)}
             </div>
-            <p className="immersive-state">{state}</p>
-            {context.length > 0 && current.length === 0 && (!playing || status !== "playing") && <p className="immersive-state">{t("Between words · context only", "词语间隙 · 仅显示上下文")}</p>}
-            {!captions.length && <p className="immersive-state">{t("Speaker timing is unavailable.", "说话人时间不可用。")}</p>}
-            {showCaptions && <div className={`immersive-captions size-${size}`}>{textCaptions.map((caption) => <p key={caption.id}>
+            {/* Two fixed lines, so a status or context message appearing never moves what is below it. */}
+            <div className="immersive-status">
+              <p className="immersive-state">{state}</p>
+              <p className="immersive-state">{contextOnly ? t("Between words · context only", "词语间隙 · 仅显示上下文") : " "}</p>
+              {!captions.length && <p className="immersive-state">{t("Speaker timing is unavailable.", "说话人时间不可用。")}</p>}
+            </div>
+            {showCaptions && <div ref={captionBox} className={`immersive-captions size-${size}`}>{textCaptions.map((caption) => <p key={caption.id}>
               {(current.length > 1 || caption.speakerIds.length !== 1) && <span className="immersive-caption-speaker">{caption.speakerIds.length ? speakerName(meeting, caption.speakerIds) : t("Unknown speaker", "未知说话人")}: </span>}
-              {joinedText(caption.fragments.map((fragment) => fragment.text))}
+              {caption.fragments.map((fragment, index) => <span key={fragment.id} data-current={fragmentsAtTime([fragment], exact).length > 0 ? "true" : undefined}>{index > 0 && joinedText([caption.fragments[index - 1].text, fragment.text]) !== caption.fragments[index - 1].text + fragment.text ? " " : ""}{fragment.text}</span>)}
             </p>)}</div>}
           </section>
           {panel && <aside className="immersive-transcript" aria-label={t("Transcript", "转录")}>

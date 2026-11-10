@@ -2358,13 +2358,20 @@ details[open] > summary {
 .immersive-header button { display: inline-flex; align-items: center; gap: 8px; }
 .immersive-fallback { margin: 0; padding: 8px 20px; background: #304638; }
 .immersive-content { flex: 1; min-height: 0; display: flex; gap: 20px; padding: 20px max(20px, env(safe-area-inset-right)) 20px max(20px, env(safe-area-inset-left)); }
-.immersive-stage { flex: 1; min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; }
-.immersive-roster { display: flex; flex-wrap: wrap; justify-content: center; gap: 24px; }
-.immersive-person { display: flex; align-items: center; flex-direction: column; max-width: 170px; gap: 8px; overflow-wrap: anywhere; }
+/* Stable layout: roster, status and captions are separate blocks stacked from the top and none depends on another's height.
+   Vertical centring is deliberately avoided: with a tall roster it pushes the top out of reach and re-centres everything
+   whenever a caption changes length. The captions take the remaining height and scroll inside their own area. */
+.immersive-stage { flex: 1; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; text-align: center; gap: 16px; }
+.immersive-roster { display: flex; flex-wrap: wrap; justify-content: center; gap: 24px; flex: 0 1 auto; min-height: 0; max-height: 62%; width: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable both-edges; }
+.immersive-person { position: relative; display: flex; align-items: center; flex-direction: column; max-width: 170px; gap: 8px; overflow-wrap: anywhere; }
+.immersive-person-status { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.immersive-person[data-active="true"] strong { color: #b0ed9c; }
+.immersive-status { flex: 0 0 auto; width: 100%; }
+.immersive-status p { margin: 0; min-height: 1.4em; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .immersive-avatar { width: 92px; height: 92px; border-radius: 50%; display: grid; place-items: center; color: #142b1b; font-size: 28px; font-weight: 700; border: 3px solid transparent; }
 .immersive-person[data-active="true"] .immersive-avatar { border-color: #b0ed9c; box-shadow: 0 0 22px #8bea8580; }
-.immersive-person > span:last-child, .immersive-state { color: #c6ead1; }
-.immersive-captions { max-width: 100%; font-size: clamp(22px, 3vw, 40px); font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.immersive-state { color: #c6ead1; }
+.immersive-captions { flex: 1 1 0; min-height: 0; width: 100%; max-width: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable both-edges; font-size: clamp(22px, 3vw, 40px); font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
 .immersive-captions.size-large { font-size: clamp(28px, 4vw, 48px); }
 .immersive-captions.size-xlarge { font-size: clamp(34px, 5vw, 58px); }
 .immersive-caption-speaker { font-size: .6em; }
@@ -2375,17 +2382,20 @@ details[open] > summary {
 .immersive-transcript-list > button { display: flex; flex-direction: column; width: 100%; text-align: left; gap: 5px; margin: 7px 0; background: transparent; border-color: transparent; overflow-wrap: anywhere; }
 .immersive-transcript-list > button.is-current { background: #2b4d34; border-color: #a4e696; }
 .immersive-transcript-list > button > span:first-child { font-size: .85em; color: #c6ead1; }
-.immersive-transcript-list .is-current-fragment { font-weight: 700; text-decoration: underline; text-decoration-color: #a4e696; }
+/* No font-weight change: bold is wider, so every highlight step would move the words after it. */
+.immersive-transcript-list .is-current-fragment { background: rgba(164, 230, 150, .3); box-shadow: 0 0 0 2px rgba(164, 230, 150, .3); border-radius: 3px; text-decoration: underline; text-decoration-color: #a4e696; }
 .immersive-untimed { padding: 12px; overflow-wrap: anywhere; }
 .immersive-paging { padding-top: 8px; font-size: .85em; }
 .immersive-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 9px; padding: 12px max(18px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left)); border-top: 1px solid #526a59; background: #10231a; }
 .immersive-controls button { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; }
 .immersive-controls input { flex: 1; min-width: 120px; accent-color: #a4e696; }
+.immersive-controls span { font-variant-numeric: tabular-nums; min-width: 3.4em; text-align: center; }
 @media (max-width: 760px) {
   .immersive-content { flex-direction: column; overflow: auto; }
   .immersive-stage { min-height: 220px; overflow: visible; }
   .immersive-transcript { width: 100%; min-width: 0; min-height: 220px; max-height: 35vh; }
-  .immersive-roster { gap: 12px; }
+  .immersive-roster { gap: 12px; max-height: none; overflow: visible; }
+  .immersive-captions { flex: 0 0 auto; min-height: calc(4 * 1.35em); overflow: visible; }
   .immersive-avatar { width: 60px; height: 60px; font-size: 20px; }
   .immersive-controls input { min-width: 100px; }
 }
