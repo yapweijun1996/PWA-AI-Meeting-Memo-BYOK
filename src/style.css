@@ -1608,14 +1608,20 @@ details[open] > summary {
 }
 .settings-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
   max-width: 950px;
   margin-bottom: 22px;
   align-items: stretch;
 }
 .settings-grid > .settings-panel {
+  min-width: 0;
+  overflow-wrap: anywhere;
   margin-bottom: 0;
+}
+.settings-grid .button, .settings-grid .text-button {
+  max-width: 100%;
+  white-space: normal;
 }
 .settings-panel .notice {
   font-size: var(--text-xs);
@@ -2846,7 +2852,7 @@ details[open] > summary {
     width: 100px;
   }
   .settings-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .speaker-grid {
     padding: 16px;
@@ -3759,12 +3765,13 @@ details[open] > summary {
     padding: 10px 14px;
   }
   .memo-version {
-    padding: 8px 12px;
+    padding: 4px 12px;
   }
   .memo-list {
-    padding: 8px 12px;
+    padding: 4px 12px 8px;
   }
   .workspace-panel:has(.memo-version) > .panel-toolbar {
+    padding-block: 6px;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;

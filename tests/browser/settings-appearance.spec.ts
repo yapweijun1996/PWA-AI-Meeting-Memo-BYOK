@@ -190,5 +190,8 @@ test("largest font size remains usable on a narrow screen", async ({ page }) => 
   await page.getByRole("tab", { name: "Appearance" }).click();
   await page.getByLabel("Font size", { exact: true }).selectOption("xxlarge");
   await expect(page.locator("html")).toHaveAttribute("data-font-size", "xxlarge");
+  await page.locator(".settings-grid .settings-panel").last().locator("p.small").evaluate((element) => {
+    element.textContent = "Build 0123456789abcdef0123456789abcdef01234567";
+  });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
