@@ -23,6 +23,7 @@ export function Modal({
   useEffect(() => {
     const d = ref.current;
     d?.showModal();
+    d?.querySelector<HTMLElement>("[data-initial-focus]")?.focus();
     return () => d?.close();
   }, []);
   return (

@@ -1518,6 +1518,26 @@ details[open] > summary {
 .appearance-language-save p { margin: 0; color: var(--text-body); font-size: var(--text-sm); line-height: 1.5; }
 .font-preview-label { display: block; margin-bottom: 10px; color: var(--text-muted); font-size: var(--text-xs); font-weight: 600; }
 @media (max-width: 600px) { .appearance-fields { grid-template-columns: minmax(0, 1fr); gap: 0; } }
+.new-meeting-intro { margin: 0 0 20px; line-height: 1.5; }
+.new-meeting-form .field-description { display: block; margin-top: 5px; color: var(--text-muted); font-size: var(--text-xs); line-height: 1.4; }
+.new-meeting-source-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin: 4px 0 10px; }
+.new-meeting-source-heading strong { color: var(--text-heading); font-size: var(--text-sm); }
+.new-meeting-source-heading span { color: var(--text-muted); font-size: var(--text-xs); }
+.new-meeting-form .upload-zone { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "icon title action" "icon description action"; gap: 4px 14px; align-items: center; text-align: left; padding: 16px; margin: 6px 0 18px; }
+.new-meeting-form .upload-zone > span:first-child { grid-area: icon; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: var(--palette-14); }
+.new-meeting-form .upload-zone strong { grid-area: title; }
+.new-meeting-form .upload-zone small { grid-area: description; line-height: 1.45; }
+.new-meeting-form .upload-zone .button { grid-area: action; margin: 0; white-space: nowrap; }
+.new-meeting-details > summary { min-height: 44px; font-size: var(--text-sm); font-weight: 600; }
+.new-meeting-details > summary:focus-visible { outline: 2px solid var(--palette-18); outline-offset: 2px; }
+.new-meeting-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
+.new-meeting-footer > p { margin: 0; line-height: 1.5; }
+.new-meeting-footer .modal-actions { margin: 0 0 0 auto; }
+@media (max-width: 600px) {
+  .new-meeting-form .upload-zone { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "icon title" "icon description" "action action"; }
+  .new-meeting-form .upload-zone .button { justify-self: start; margin-top: 8px; }
+  .new-meeting-footer .modal-actions { width: 100%; }
+}
 .settings-panel > p {
   font-size: var(--text-xs);
 }
@@ -4285,3 +4305,12 @@ body:has(.audio-player) .toast-layer { bottom: calc(150px + env(safe-area-inset-
   .sidebar .pwa-check-message { position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; min-height: 0; z-index: 2; background: var(--palette-31); }
   .sidebar .pwa-check-message:empty { display: none; }
 }
+
+/* Keep the recent list scannable while retaining access to the full library. */
+.sidebar-recent-heading { display: flex; align-items: center; justify-content: space-between; gap: 4px; flex: 0 0 auto; }
+.sidebar-recent-heading .nav-label { margin-bottom: 0; }
+.sidebar-recent-all { flex: 0 0 auto; padding: 6px; color: var(--palette-18); font-size: var(--text-xs); font-weight: 600; border-radius: 6px; }
+.sidebar-recent-all:hover { background: var(--palette-16); }
+.sidebar-recent-list { margin-top: 8px; scrollbar-gutter: stable; }
+.sidebar-recent-list a:focus-visible { outline-offset: -2px; }
+@media (max-height: 600px) { .sidebar-recent-all { padding-block: 3px; } .sidebar-recent-list { margin-top: 4px; } }

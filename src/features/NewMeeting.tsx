@@ -26,6 +26,19 @@ export function NewMeeting({
 }) {
   const language = useUiLanguage();
   const t = (en: string, zh: string) => translateUi(language, en, zh);
+  const [date, setDate] = useState(() => localDate());
+  const [timezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+  const [timezones] = useState(() => {
+    try {
+      const intl = Intl as typeof Intl & { supportedValuesOf?: (key: "timeZone") => string[] };
+      return [...new Set([timezone, "UTC", ...(intl.supportedValuesOf?.("timeZone") ?? [])])];
+    } catch {
+      return [timezone, "UTC"];
+    }
+  });
+  const dateLabel = date && !Number.isNaN(Date.parse(`${date}T12:00:00Z`))
+    ? new Intl.DateTimeFormat(language, { dateStyle: "long", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`))
+    : "";
   const [file, setFile] = useState<File>(),
     [dragOver, setDragOver] = useState(false),
     [transcript, setTranscript] = useState(""),
@@ -40,10 +53,16 @@ export function NewMeeting({
     let storedChunks = false;
     try {
       const form = new FormData(e.currentTarget);
+      const selectedTimezone = String(form.get("timezone")).trim();
+      try {
+        new Intl.DateTimeFormat("en", { timeZone: selectedTimezone }).format();
+      } catch {
+        throw new Error(t("Enter a valid timezone, such as Asia/Singapore or UTC.", "请输入有效时区，例如 Asia/Singapore 或 UTC。"));
+      }
       let m = createMeeting({
         title: String(form.get("title")).trim(),
         date: String(form.get("date")),
-        timezone: String(form.get("timezone")),
+        timezone: selectedTimezone,
         languages: String(form.get("languages")),
         kind: form.get("kind") === "erp" ? "erp" : "general",
         attendees: String(form.get("attendees"))
@@ -112,9 +131,9 @@ export function NewMeeting({
         if (!busy) onClose();
       }}
     >
-      <form onSubmit={submit} className="modal-body">
+      <form onSubmit={submit} className="modal-body new-meeting-form">
         <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-        <p className="muted">
+        <p className="muted new-meeting-intro">
           {t("A recording, a transcript, or just a title to get started.", "从录音、转录或会议标题开始。")}
         </p>
         {error && (
@@ -130,6 +149,7 @@ export function NewMeeting({
             required
             maxLength={160}
             placeholder={t("e.g. ERP workflow discovery", "例如：ERP 工作流程讨论")}
+            data-initial-focus
             autoFocus
           />
         </label>
@@ -139,20 +159,32 @@ export function NewMeeting({
             <input
               type="date"
               name="date"
+              aria-label={t("Date", "日期")}
               required
-              defaultValue={localDate()}
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+              aria-describedby="meeting-date-description"
             />
+            <span id="meeting-date-description" className="field-description">{dateLabel}</span>
           </label>
           <label>
             {t("Timezone", "时区")}
             <input
               name="timezone"
+              aria-label={t("Timezone", "时区")}
               required
-              defaultValue={
-                Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
-              }
+              maxLength={80}
+              defaultValue={timezone}
+              list="meeting-timezones"
+              aria-describedby="meeting-timezone-description"
             />
+            <span id="meeting-timezone-description" className="field-description">{t("Search or enter a timezone, for example Asia/Singapore.", "搜索或输入时区，例如 Asia/Singapore。")}</span>
           </label>
+        </div>
+        <datalist id="meeting-timezones">{timezones.map((zone) => <option key={zone} value={zone} />)}</datalist>
+        <div className="new-meeting-source-heading">
+          <strong>{t("Meeting content", "会议内容")}</strong>
+          <span>{t("Optional · you can add content later", "可选 · 可稍后添加内容")}</span>
         </div>
         <label
           className={`upload-zone ${file ? "has-file" : ""} ${dragOver ? "is-dragging" : ""}`}
@@ -169,11 +201,11 @@ export function NewMeeting({
           }}
         >
           <span>{file ? <Check size={25} /> : <Upload size={25} />}</span>
-          <strong>{file ? file.name : t("Drop into a clearer workflow", "添加会议录音")}</strong>
+          <strong>{file ? file.name : t("Add a meeting recording", "添加会议录音")}</strong>
           <small>
             {file
               ? `${(file.size / 1024 / 1024).toFixed(1)} MB · ${t("stays on this device until you confirm", "确认发送前保留在本设备")}`
-              : t("Choose an audio recording · up to 4 GiB", "选择录音 · 最大 4 GiB")}
+              : t("Drag or browse · up to 4 GiB, subject to device storage", "拖放或浏览文件 · 最大 4 GiB，受设备存储限制")}
           </small>
           <input
             aria-label={t("Audio recording", "会议录音")}
@@ -186,7 +218,7 @@ export function NewMeeting({
             {file ? t("Change recording", "更换录音") : t("Browse files", "浏览文件")}
           </span>
         </label>
-        <details>
+        <details className="new-meeting-details">
           <summary>
             <FileText size={16} />
             {t("Start from a transcript instead", "使用已有转录")}
@@ -223,7 +255,7 @@ export function NewMeeting({
             {t("JSON imports transcript evidence only; use Restore backup to retain notes. Names are unconfirmed. Plain text has no audio timing; playback links are only created for real timed evidence.", "JSON 仅导入转录证据；如需保留笔记，请使用恢复备份。姓名尚未确认。纯文本没有音频时间戳；只有真实带时间的证据才会生成播放链接。")}
           </p>
         </details>
-        <details>
+        <details className="new-meeting-details">
           <summary>
             {t("Meeting context", "会议背景")} <span className="small muted">{t("optional", "可选")}</span>
           </summary>
@@ -262,6 +294,10 @@ export function NewMeeting({
             />
           </label>
         </details>
+        <div className="new-meeting-footer">
+        <p className="small muted">
+          {t("No AI request is made when you create a meeting.", "创建会议不会发送 AI 请求。")}
+        </p>
         <div className="modal-actions">
           <button
             className="button secondary"
@@ -276,9 +312,7 @@ export function NewMeeting({
             {busy ? t("Saving locally…", "正在保存到本地…") : t("Create meeting", "创建会议")}
           </button>
         </div>
-        <p className="small muted center">
-          {t("No AI request is made when you create a meeting.", "创建会议不会发送 AI 请求。")}
-        </p>
+        </div>
         </fieldset>
       </form>
     </Modal>
