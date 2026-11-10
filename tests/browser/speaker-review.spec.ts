@@ -1178,11 +1178,11 @@ test("long playback lists keep manual paging and nearest gap/end anchors", async
 test("workspace actions and count labels explain their units", async ({ page }) => {
   await createFixture(page);
   await expect(page.getByRole("button", { name: "Edit meeting details", exact: true })).toHaveAttribute(
-    "title",
+    "data-tooltip",
     "Edit meeting details",
   );
   await expect(page.getByRole("button", { name: "Delete meeting", exact: true })).toHaveAttribute(
-    "title",
+    "data-tooltip",
     "Delete meeting and local recording",
   );
   await expect(page.getByRole("group", { name: "Recording details", exact: true })).toBeVisible();

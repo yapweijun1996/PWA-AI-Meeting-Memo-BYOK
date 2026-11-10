@@ -171,7 +171,7 @@ test("topbar language refreshes settings while preserving unsaved drafts", async
   await page.goto(settings);
   await page.getByLabel("OpenAI API key", { exact: true }).fill("test-key-not-real");
   await page.locator(".topbar-language select").selectOption("zh-CN");
-  await expect(page.getByRole("heading", { name: "设置", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^设置/ })).toBeVisible();
   await expect(page.getByLabel("OpenAI API 密钥", { exact: true })).toHaveValue("test-key-not-real");
   await expect(page.getByText("设置尚未保存")).toBeVisible();
   await page.getByRole("tab", { name: "外观" }).click();

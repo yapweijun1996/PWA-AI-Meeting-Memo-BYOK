@@ -1,5 +1,5 @@
 import { translateUi } from "../i18n";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Check,
   ExternalLink,
@@ -29,6 +29,7 @@ import { saveFont, useFontChoice, saveFontSize, useFontSize, saveTheme, useTheme
 export function Settings() {
   const [activeTab, setActiveTab] = useState<"api" | "appearance">("api");
   const [displayLanguage, setDisplayLanguage] = useState(getUiLanguage());
+  const observedLanguage = useRef(getUiLanguage());
   const font = useFontChoice();
   const fontSize = useFontSize();
   const theme = useThemeChoice();
@@ -100,6 +101,8 @@ export function Settings() {
   useEffect(() => {
     const changed = () => {
       const next = getUiLanguage();
+      if (next === observedLanguage.current) return;
+      observedLanguage.current = next;
       setDisplayLanguage(next);
       if (languageDirty) return;
       setUiLanguage(next);

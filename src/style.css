@@ -3253,6 +3253,9 @@ details[open] > summary {
     flex-wrap: wrap;
     padding: 15px;
   }
+  .workspace-toolbar .toolbar-actions {
+    max-width: 100%;
+  }
   .recording-info {
     max-width: 100%;
   }
@@ -3674,7 +3677,22 @@ details[open] > summary {
   }
   .workspace-toolbar {
     padding: 9px 12px;
-    gap: 10px;
+    gap: 4px;
+  }
+  .workspace-toolbar .toolbar-actions {
+    width: 100%;
+    gap: 4px;
+  }
+  .workspace-toolbar .toolbar-actions > .button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 6px 4px;
+    gap: 4px;
+    white-space: normal;
+    text-align: center;
+  }
+  .workspace-toolbar .toolbar-actions > .button svg {
+    flex: none;
   }
   .workspace-tabs {
     margin-top: 10px;
