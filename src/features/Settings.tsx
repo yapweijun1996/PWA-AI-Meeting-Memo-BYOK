@@ -1,3 +1,4 @@
+import { translateUi } from "../i18n";
 import { useEffect, useState } from "react";
 import {
   Check,
@@ -12,6 +13,7 @@ import {
   getSpeechRate,
   getSpeechRateContext,
   getUiLanguage,
+  setUiLanguageOverride,
   getSelection,
   getSettingsRevision,
   getSettingsStorageError,
@@ -22,10 +24,16 @@ import {
   type Stage,
 } from "../providers/credentials";
 import { translateMessage } from "../ui-messages";
-import { saveFont, useFontChoice, type FontChoice } from "../appearance";
+import { saveFont, useFontChoice, saveFontSize, useFontSize, saveTheme, useThemeChoice, savePalette, usePaletteChoice, type FontChoice, type FontSize, type ThemeChoice, type PaletteChoice } from "../appearance";
 export function Settings() {
   const [activeTab, setActiveTab] = useState<"api" | "appearance">("api");
+  const [displayLanguage, setDisplayLanguage] = useState(getUiLanguage());
   const font = useFontChoice();
+  const fontSize = useFontSize();
+  const theme = useThemeChoice();
+  const palette = usePaletteChoice();
+  const [themeError, setThemeError] = useState(false);
+  const [sizeError, setSizeError] = useState(false);
   const [fontError, setFontError] = useState(false);
   const [fontSaved, setFontSaved] = useState(false);
   const [openai, setOpenai] = useState(getKey("openai")),
@@ -71,7 +79,8 @@ export function Settings() {
       rateFor,
       uiLanguage,
     }) !== baseline;
-  const t = (en: string, zh: string) => uiLanguage === "zh-CN" ? zh : en;
+  const languageDirty = uiLanguage !== (JSON.parse(baseline) as { uiLanguage: string }).uiLanguage;
+  const t = (en: string, zh: string) => translateUi(displayLanguage, en, zh);
   function changeFont(value: FontChoice) {
     try { saveFont(value); setFontError(false); setFontSaved(true); }
     catch { setFontError(true); setFontSaved(false); }
@@ -87,6 +96,17 @@ export function Settings() {
     setSettingsDirty(formDirty);
     return () => setSettingsDirty(false);
   }, [formDirty]);
+  useEffect(() => {
+    const changed = () => {
+      const next = getUiLanguage();
+      setDisplayLanguage(next);
+      if (languageDirty) return;
+      setUiLanguage(next);
+      setBaseline((previous) => JSON.stringify({ ...JSON.parse(previous), uiLanguage: next }));
+    };
+    window.addEventListener("memo-keys-changed", changed);
+    return () => window.removeEventListener("memo-keys-changed", changed);
+  }, [languageDirty]);
   useEffect(() => {
     void navigator.storage
       ?.estimate()
@@ -137,10 +157,17 @@ export function Settings() {
           memo: { ...memo, model: memo.model.trim() },
           speechRate: speechRate === "" ? null : Number(speechRate),
           speechRateContext: rateFor && rateSource.trim() && rateDate ? { ...rateFor, source: rateSource.trim(), date: rateDate } : null,
-          uiLanguage,
+          uiLanguage: uiLanguage === "ms" ? "en" : uiLanguage,
         },
         revision,
       );
+      let savedLanguage = uiLanguage;
+      try { setUiLanguageOverride(uiLanguage); }
+      catch {
+        savedLanguage = getUiLanguage();
+        setUiLanguage(savedLanguage);
+        setNotice("Settings were saved, but the language preference could not be saved on this device.");
+      }
       setRevision(getSettingsRevision());
       setBaseline(
         JSON.stringify({
@@ -151,7 +178,7 @@ export function Settings() {
           rateSource: rateSource.trim(),
           rateDate,
           rateFor,
-          uiLanguage,
+          uiLanguage: savedLanguage,
         }),
       );
       setOpenai(openai.trim());
@@ -184,7 +211,7 @@ export function Settings() {
           memo: getSelection("memo"),
           speechRate: getSpeechRate(),
           speechRateContext: getSpeechRateContext(),
-          uiLanguage: getUiLanguage(),
+          uiLanguage: getUiLanguage() === "ms" ? "en" : getUiLanguage() as "en" | "zh-CN",
         },
         revision,
       );
@@ -247,26 +274,61 @@ export function Settings() {
         <div id="settings-panel-appearance" role="tabpanel" aria-labelledby="settings-tab-appearance" hidden={activeTab !== "appearance"}>
           <h2>{t("Appearance", "外观")}</h2>
           <p className="muted">{t("Choose how the workspace looks on this device.", "选择此设备上的工作区外观。")}</p>
-          <label>Display language / 显示语言<select aria-label="Display language / 显示语言" value={uiLanguage} onChange={(e) => setUiLanguage(e.target.value as "en" | "zh-CN")} disabled={saving}><option value="en">English</option><option value="zh-CN">简体中文</option></select></label>
+          <section className="appearance-section" aria-labelledby="appearance-language-heading">
+          <h3 id="appearance-language-heading">{t("Language", "语言")}</h3>
+          <label>Display language / 显示语言<select aria-label="Display language / 显示语言" value={uiLanguage} onChange={(e) => { const next = e.target.value as "en" | "zh-CN" | "ms"; setUiLanguage(next); setDisplayLanguage(next); }} disabled={saving}><option value="en">English</option><option value="zh-CN">简体中文</option><option value="ms">Bahasa Melayu (partial)</option></select></label>
           <p className="small muted">{t("Save settings to keep your language choice.", "请保存设置以保留语言选择。")}</p>
+          {languageDirty && <div className="appearance-language-save">
+            <p role="status">{t("Language change is not saved. Saving also saves any API and model drafts.", "语言更改尚未保存。保存时也会保存 API 和模型草稿。")}</p>
+            <button type="submit" className="button primary compact" disabled={saving}>{t("Save all settings", "保存所有设置")}</button>
+          </div>}
+          {languageDirty && saveError && <div className="notice danger" role="alert">{translateMessage(saveError, displayLanguage)}</div>}
+          </section>
+          <section className="appearance-section" aria-labelledby="appearance-interface-heading">
+          <h3 id="appearance-interface-heading">{t("Interface appearance", "界面外观")}</h3>
+          <p className="small muted">{t("Theme and palette changes save immediately on this device.", "主题和配色更改会立即保存在此设备。")}</p>
+          <div className="appearance-fields">
+          <label>{t("Theme", "\u4e3b\u9898")}
+            <select aria-label={t("Theme", "\u4e3b\u9898")} value={theme} onChange={(event) => { try { saveTheme(event.target.value as ThemeChoice); setThemeError(false); } catch { setThemeError(true); } }}><option value="light">{t("Light", "\u6d45\u8272")}</option><option value="dark">{t("Dark", "\u6df1\u8272")}</option></select>
+          </label>
+          <label>{t("Color palette", "\u914d\u8272")}
+            <select aria-label={t("Color palette", "\u914d\u8272")} value={palette} onChange={(event) => { try { savePalette(event.target.value as PaletteChoice); setThemeError(false); } catch { setThemeError(true); } }}><option value="forest">{t("Forest", "\u68ee\u6797")}</option><option value="ocean">{t("Ocean", "\u6d77\u6d0b")}</option><option value="violet">{t("Violet", "\u7d2b\u7f57\u5170")}</option><option value="amber">{t("Amber", "\u7425\u73c0")}</option></select>
+          </label>
+          </div>
+          {themeError && <p className="notice danger" role="alert">{t("Could not save the theme on this device.", "\u65e0\u6cd5\u5728\u6b64\u8bbe\u5907\u4fdd\u5b58\u4e3b\u9898\u3002")}</p>}
+          </section>
+          <section className="appearance-section" aria-labelledby="appearance-text-heading">
+          <h3 id="appearance-text-heading">{t("Text and preview", "文字与预览")}</h3>
+          <div className="appearance-fields">
           <label>{t("Font family", "字体")}
             <select aria-label={t("Font family", "字体")} value={font} onChange={(event) => changeFont(event.target.value as FontChoice)}>
               <option value="default">{t("Current default", "当前默认")}</option>
               <option value="system">{t("System sans-serif", "系统无衬线")}</option>
               <option value="segoe">Segoe UI</option>
               <option value="georgia">Georgia</option>
+              <option value="arial">Arial</option><option value="verdana">Verdana</option><option value="tahoma">Tahoma</option>
+              <option value="trebuchet">Trebuchet MS</option><option value="times">Times New Roman</option><option value="courier">Courier New</option>
             </select>
           </label>
-          <p className="small muted">{t("Font changes save immediately on this device. Unavailable fonts use a system fallback.", "字体更改会立即保存在此设备。不可用的字体将使用系统替代字体。")}</p>
+          <label>{t("Font size", "\u5b57\u53f7")}
+            <select aria-label={t("Font size", "\u5b57\u53f7")} value={fontSize} onChange={(event) => { try { saveFontSize(event.target.value as FontSize); setSizeError(false); } catch { setSizeError(true); } }}>
+              <option value="small">{t("Small", "\u5c0f")}</option><option value="normal">{t("Normal", "\u6807\u51c6")}</option><option value="large">{t("Large", "\u5927")}</option><option value="xlarge">{t("Extra large", "\u7279\u5927")}</option><option value="xxlarge">{t("Largest", "\u6700\u5927")}</option>
+            </select>
+          </label>
+          </div>
+          {sizeError && <p className="notice danger" role="alert">{t("Could not save the font size on this device.", "\u65e0\u6cd5\u5728\u6b64\u8bbe\u5907\u4fdd\u5b58\u5b57\u53f7\u3002")}</p>}
+          <p className="small muted">{t("Font and size changes save immediately on this device. Unavailable fonts use a system fallback.", "字体和字号更改会立即保存在此设备。不可用的字体将使用系统替代字体。")}</p>
           {fontError && <p className="notice danger" role="alert">{t("Could not save the font on this device. The previous font is still in use.", "无法在此设备保存字体，仍使用之前的字体。")}</p>}
           {fontSaved && !fontError && <p role="status" className="small muted">{t("Font saved on this device", "字体已保存在此设备")}</p>}
           <div className="font-preview" aria-label={t("Font preview", "字体预览")}>
+            <span className="font-preview-label">{t("Font preview", "字体预览")}</span>
             <strong>{t("A clearer meeting workspace", "更清晰的会议工作区")}</strong>
             <p>Meeting notes · 1234567890 · 会议记录与说话人</p>
             <p className="small muted">{t("Review decisions, sources and next steps.", "审阅决定、来源和下一步。")}</p>
             <button type="button" className="button secondary compact" disabled>{t("Example button", "示例按钮")}</button>
           </div>
           <button type="button" className="button secondary" onClick={() => changeFont("default")}>{t("Restore default font", "恢复默认字体")}</button>
+          </section>
         </div>
         <div id="settings-panel-api" role="tabpanel" aria-labelledby="settings-tab-api" hidden={activeTab !== "api"}>
         <div className="panel-title">
@@ -447,9 +509,9 @@ export function Settings() {
             <button type="button" className="button ghost" disabled={saving} onClick={() => { setRateSource(""); setRateDate(""); setRateFor(null); }}>{t("Clear rate provenance", "清除费率来源")}</button>
           </div>
         </div>
-          {saveError && (
+          {saveError && !(activeTab === "appearance" && languageDirty) && (
             <div className="notice danger" role="alert">
-              {translateMessage(saveError, uiLanguage)}
+              {translateMessage(saveError, displayLanguage)}
             </div>
           )}
           <div className="settings-actions">
@@ -479,7 +541,7 @@ export function Settings() {
       </section>
       {notice && (
         <div className="notice" role="status">
-          {translateMessage(notice, uiLanguage)}
+          {translateMessage(notice, displayLanguage)}
         </div>
       )}
       <div className="settings-grid">
@@ -488,7 +550,7 @@ export function Settings() {
             <HardDrive size={20} />
             <h2>{t("Local storage", "本地存储")}</h2>
           </div>
-          <p>{translateMessage(usage, uiLanguage)}</p>
+          <p>{translateMessage(usage, displayLanguage)}</p>
           <p className="muted">
             {t("Meetings are saved in this browser, on this device. Clearing site data removes them. A different device or hostname has a separate library.", "会议保存在此设备的浏览器中。清除网站数据会删除这些会议。其他设备或域名使用独立的会议库。")}
           </p>

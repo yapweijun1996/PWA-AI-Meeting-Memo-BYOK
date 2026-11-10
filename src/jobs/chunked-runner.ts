@@ -39,6 +39,8 @@ type Confirmed = {
     provider: BrowserSpeakerEmbeddingProvider;
     consent: boolean;
     onProgress?: (progress: AcousticContinuityProgress) => void;
+    /** Optional, from a person: how many people spoke. */
+    expectedVoices?: number;
   };
   /** Used by the UI to include explicit model preparation in the same cancelable run. */
   requestController?: AbortController;
@@ -250,6 +252,7 @@ export async function runChunkedSpeech(m: Meeting, confirmed: Confirmed): Promis
           consent: confirmed.acoustic.consent,
           signal: requestController.signal,
           onProgress: confirmed.acoustic.onProgress,
+          expectedVoices: confirmed.acoustic.expectedVoices,
         });
       } catch (error) {
         analysisNotes.push(`Local acoustic analysis is unresolved: ${error instanceof Error ? error.message : "retry the local analysis"}`);

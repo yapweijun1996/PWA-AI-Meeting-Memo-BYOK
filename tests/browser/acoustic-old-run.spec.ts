@@ -496,7 +496,7 @@ test("re-analyzes an old completed chunked run without provider traffic or data 
   await expect(
     page.getByText(/Anonymous voice continuity was updated locally\./),
   ).toBeVisible({ timeout: 90_000 });
-  await expect(page.locator(".speaker-review-card")).toHaveCount(2);
+  await expect(page.locator(".speaker-queue-item")).toHaveCount(2);
   expect(outgoing).toEqual([]);
 
   const after = await readMeeting(page);

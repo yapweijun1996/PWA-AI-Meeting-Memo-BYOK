@@ -77,12 +77,12 @@ test("chunked transcription confirms before sequential per-part requests and mer
   await prepare(page, "Chunked transcription success");
   await page.getByRole("button", { name: "Transcribe", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByText(/recording parts/)).toBeVisible();
+  await expect(dialog.getByText(/^\d+ recording parts$/)).toBeVisible();
   await expect(dialog.getByText(/Total estimate: Unknown|Total estimate: US\$/)).toBeVisible();
   await expect(dialog).toContainText("sent one after another with your key");
   await expect(dialog).toContainText("nothing is retried automatically");
   expect(routes.count).toBe(0);
-  const totalText = await dialog.getByText(/recording parts/).textContent();
+  const totalText = await dialog.getByText(/^\d+ recording parts$/).textContent();
   const total = Number(totalText?.match(/\d+/)?.[0]);
   expect(total).toBeGreaterThanOrEqual(2);
   await dialog.getByRole("button", { name: `Confirm and send ${total} requests` }).click();
@@ -107,7 +107,7 @@ test("chunked transcription stops after a failed part and resumes only unsaved p
   await prepare(page, "Chunked transcription failure");
   await page.getByRole("button", { name: "Transcribe", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  const totalText = await dialog.getByText(/recording parts/).textContent();
+  const totalText = await dialog.getByText(/^\d+ recording parts$/).textContent();
   const total = Number(totalText?.match(/\d+/)?.[0]);
   await dialog.getByRole("button", { name: `Confirm and send ${total} requests` }).click();
   await expect(page.getByRole("alert").filter({ hasText: /Provider returned HTTP 400/ })).toBeVisible();
@@ -131,7 +131,7 @@ test("unknown chunk outcomes require account review before an explicit resend", 
   await prepare(page, "Chunked transcription unknown outcome");
   await page.getByRole("button", { name: "Transcribe", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  const totalText = await dialog.getByText(/recording parts/).textContent();
+  const totalText = await dialog.getByText(/^\d+ recording parts$/).textContent();
   const total = Number(totalText?.match(/\d+/)?.[0]);
   await dialog.getByRole("button", { name: `Confirm and send ${total} requests` }).click();
   await expect.poll(() => routes.count).toBe(1);

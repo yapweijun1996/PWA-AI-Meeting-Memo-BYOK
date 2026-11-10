@@ -109,7 +109,7 @@ test("overlap links merge as one undoable group and manual selection merges inde
   route.setManifest(manifest);
   await page.getByRole("button", { name: "Transcribe", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  const totalText = await dialog.getByText(/recording parts/).textContent();
+  const totalText = await dialog.getByText(/^\d+ recording parts$/).textContent();
   const total = Number(totalText?.match(/\d+/)?.[0]);
   await dialog.getByRole("button", { name: `Confirm and send ${total} requests` }).click();
   await expect(page.getByRole("heading", { name: "Suggested same-speaker links from overlapping audio" })).toBeVisible();
@@ -134,12 +134,12 @@ test("overlap links merge as one undoable group and manual selection merges inde
   await page.getByRole("tab", { name: /Speakers/ }).click();
   await expect(page.getByRole("heading", { name: "Suggested same-speaker links from overlapping audio" })).toBeVisible();
   await page.locator(".speaker-mode-switch").getByRole("button", { name: "Edit speakers" }).click();
-  const checkboxes = page.locator(".speaker-review-card input[type=checkbox]");
+  const checkboxes = page.locator(".speaker-queue-item input[type=checkbox]");
   await checkboxes.nth(0).check();
   await checkboxes.nth(1).check();
-  await page.getByRole("button", { name: "Merge selected" }).click();
+  await page.getByRole("button", { name: /Merge selected/ }).click();
   const mergeDialog = page.getByRole("dialog");
   await mergeDialog.getByLabel("Keep this speaker's name").selectOption({ index: 0 });
   await mergeDialog.getByRole("button", { name: "Confirm merge" }).click();
-  await expect(page.locator(".speaker-review-card")).toHaveCount(originalCount - 1);
+  await expect(page.locator(".speaker-queue-item")).toHaveCount(originalCount - 1);
 });

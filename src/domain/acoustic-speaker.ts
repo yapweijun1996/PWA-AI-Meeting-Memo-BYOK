@@ -616,6 +616,438 @@ export function chooseAcousticAssignment(
   };
 }
 
+export interface RecordingClusterResult {
+  identities: AcousticIdentity[];
+  assignments: Omit<AcousticAssignment, "id" | "updatedAt">[];
+}
+
+function crossSimilarity(
+  left: readonly AcousticEmbeddingRecord[],
+  right: readonly AcousticEmbeddingRecord[],
+  threshold: number,
+): { mean: number; minimum: number; support: number } {
+  const scores = left.flatMap((a) => right.map((b) => cosineSimilarity(a.values, b.values)));
+  if (!scores.length || scores.some((score) => !Number.isFinite(score))) {
+    return { mean: Number.NaN, minimum: Number.NaN, support: 0 };
+  }
+  return {
+    mean: scores.reduce((sum, score) => sum + score, 0) / scores.length,
+    minimum: Math.min(...scores),
+    support: scores.filter((score) => score >= threshold).length,
+  };
+}
+
+/**
+ * Group the provider speaker labels of ONE recording by voice. A provider can
+ * split one person into several labels; this joins labels only when every
+ * cross-label sample pair clears the acceptance cosine and the whole group is
+ * mutually consistent. Anything short of that (too few samples, contradiction,
+ * a chain where A~B and A~C but B!~C) is left unmerged and reported, never
+ * forced. Names, labels and transcript words are not used as evidence.
+ */
+export function clusterRecordingSources(
+  input: {
+    meetingId: string;
+    recordingHash: string;
+    sourceRevision: number;
+    embeddings: readonly AcousticEmbeddingRecord[];
+  },
+  policy: AcousticPolicy = ACOUSTIC_POLICY,
+): RecordingClusterResult {
+  const bySource = new Map<string, AcousticEmbeddingRecord[]>();
+  for (const embedding of input.embeddings) {
+    const list = bySource.get(embedding.sourceSpeakerId) ?? [];
+    list.push(embedding);
+    bySource.set(embedding.sourceSpeakerId, list);
+  }
+  const firstStart = (list: readonly AcousticEmbeddingRecord[]) =>
+    Math.min(...list.map((embedding) => embedding.sample.startSeconds));
+  const sources = [...bySource.entries()].sort(
+    (left, right) => firstStart(left[1]) - firstStart(right[1]) || left[0].localeCompare(right[0]),
+  );
+
+  const assignments: RecordingClusterResult["assignments"] = [];
+  const identities: AcousticIdentity[] = [];
+  const ready: {
+    speakerId: string;
+    evidence: AcousticEmbeddingRecord[];
+    assignment: AcousticAssignmentResult["assignment"];
+    identity: AcousticIdentity;
+  }[] = [];
+  for (const [sourceSpeakerId, list] of sources) {
+    const first = list[0];
+    if (!first) continue;
+    // Reuse the per-label gate (validation, self-consistency, minimum samples).
+    const result = chooseAcousticAssignment(
+      {
+        meetingId: input.meetingId,
+        recordingHash: input.recordingHash,
+        sourceRevision: input.sourceRevision,
+        chunkIndex: first.chunkIndex,
+        sourceSpeakerId,
+        embeddings: list,
+        expectedModelId: first.modelId,
+        expectedModelRevision: first.modelRevision,
+        expectedExtractionVersion: first.extractionVersion,
+      },
+      [],
+      policy,
+    );
+    if (!result.identity) {
+      assignments.push(result.assignment);
+      continue;
+    }
+    const ids = new Set(result.assignment.evidenceEmbeddingIds);
+    const evidence = [...new Map(list.filter((e) => ids.has(e.id)).map((e) => [e.id, e])).values()];
+    ready.push({ speakerId: sourceSpeakerId, evidence, assignment: result.assignment, identity: result.identity });
+  }
+
+  const mergeable = (a: number, b: number): boolean => {
+    const left = ready[a];
+    const right = ready[b];
+    if (!left || !right) return false;
+    const score = crossSimilarity(left.evidence, right.evidence, policy.acceptCosine);
+    return Number.isFinite(score.minimum) && score.minimum >= policy.acceptCosine;
+  };
+  const visited = new Set<number>();
+  for (let start = 0; start < ready.length; start += 1) {
+    if (visited.has(start)) continue;
+    // Connected component over "mergeable" edges.
+    const component: number[] = [];
+    const stack = [start];
+    visited.add(start);
+    while (stack.length) {
+      const current = stack.pop()!;
+      component.push(current);
+      for (let other = 0; other < ready.length; other += 1) {
+        if (!visited.has(other) && mergeable(current, other)) {
+          visited.add(other);
+          stack.push(other);
+        }
+      }
+    }
+    component.sort((left, right) => left - right);
+    const members = component.map((index) => ready[index]!);
+    if (members.length === 1) {
+      const only = members[0]!;
+      identities.push(only.identity);
+      assignments.push(only.assignment);
+      continue;
+    }
+    const isClique = component.every((a, i) => component.slice(i + 1).every((b) => mergeable(a, b)));
+    if (!isClique) {
+      for (const member of members) {
+        assignments.push({
+          ...member.assignment,
+          state: "ambiguous",
+          identityId: null,
+          scores: [],
+          reason: "This provider label resembles more than one other label, and those labels do not resemble each other; no merge was forced.",
+        });
+      }
+      continue;
+    }
+    const all = members.flatMap((member) => member.evidence);
+    const head = members[0]!;
+    const merged: AcousticIdentity = {
+      ...head.identity,
+      centroid: mean(all.map((embedding) => embedding.values)),
+      anchors: all.slice(0, policy.maxRepresentativesPerIdentity).map((embedding) => [...embedding.values]),
+      representativeEmbeddingIds: all.slice(0, policy.maxRepresentativesPerIdentity).map((embedding) => embedding.id),
+      sourceKeys: members.map((member) => member.assignment.sourceKey).slice(0, 64),
+      sourceCount: members.length,
+      sampleCount: all.length,
+    };
+    identities.push(merged);
+    members.forEach((member, position) => {
+      const score = position === 0 ? undefined : crossSimilarity(head.evidence, member.evidence, policy.acceptCosine);
+      assignments.push({
+        ...member.assignment,
+        state: position === 0 ? "new_identity" : "matched",
+        identityId: merged.id,
+        scores: score ? [{ identityId: merged.id, mean: score.mean, minimum: score.minimum, support: score.support }] : [],
+        reason: "Independent acoustic samples from different provider labels in this recording are mutually consistent; they were grouped as one anonymous voice.",
+      });
+    });
+  }
+  assignments.sort((left, right) => left.sourceKey.localeCompare(right.sourceKey));
+  return { identities, assignments };
+}
+
+/**
+ * Rules for matching provider labels across the parts of one recording, on
+ * vectors with the recording's average voice removed. Uncalibrated starting
+ * values chosen from one real recording (see docs/ACOUSTIC-SPEAKER-CONTINUITY.md);
+ * they must be measured on more meeting audio before any accuracy claim.
+ */
+export const PART_MATCH_POLICY = {
+  version: `${ACOUSTIC_POLICY.version}+one-to-one-centered-v1`,
+  /** Two labels in one part join only when their averages are nearly identical. */
+  withinPartMergeCosine: 0.9,
+  /** Least similarity between a label and a voice for them to be paired. */
+  floorCosine: 0.35,
+  /** Required lead over the label's next-best voice, otherwise it stays ambiguous. */
+  margin: 0.1,
+} as const;
+
+function averageVector(vectors: readonly (readonly number[])[]): number[] {
+  const first = vectors[0];
+  const totals = Array.from({ length: first?.length ?? 0 }, () => 0);
+  for (const vector of vectors) vector.forEach((value, index) => { totals[index] = (totals[index] ?? 0) + value / vectors.length; });
+  return totals;
+}
+
+interface MatchUnit {
+  chunkIndex: number;
+  labels: string[];
+  evidence: AcousticEmbeddingRecord[];
+  mean: number[];
+}
+
+/**
+ * Match provider labels across the parts of ONE recording. The recording's
+ * average vector is subtracted first so a shared room/channel component does
+ * not make everyone look alike. Within a part, labels are different people
+ * unless their averages are nearly identical. Across parts each unit is paired
+ * with at most one voice per part, best pairs first; a unit with no pair above
+ * the floor starts a new voice. A unit near two voices, or one whose best voice
+ * was taken by a better match, is not placed and says why. Labels with too few
+ * samples are left out.
+ */
+export function matchLabelsAcrossParts(
+  input: {
+    meetingId: string;
+    recordingHash: string;
+    sourceRevision: number;
+    embeddings: readonly AcousticEmbeddingRecord[];
+    /**
+     * Optional, supplied by a person: how many people spoke. When set, voices are
+     * grouped further, most similar first, until that many remain. Labels that share
+     * a part are avoided as partners but may still be joined, because a provider
+     * can split one person into two labels.
+     */
+    expectedVoices?: number;
+  },
+  policy: AcousticPolicy = ACOUSTIC_POLICY,
+  rules: typeof PART_MATCH_POLICY = PART_MATCH_POLICY,
+): RecordingClusterResult {
+  const base = (embedding: AcousticEmbeddingRecord, evidence: readonly AcousticEmbeddingRecord[]) => ({
+    meetingId: input.meetingId,
+    recordingHash: input.recordingHash,
+    sourceRevision: input.sourceRevision,
+    sourceKey: acousticSourceKey(embedding.chunkIndex, embedding.sourceSpeakerId),
+    chunkIndex: embedding.chunkIndex,
+    sourceSpeakerId: embedding.sourceSpeakerId,
+    evidenceEmbeddingIds: evidence.map((entry) => entry.id),
+    thresholdVersion: rules.version,
+    calibrationStatus: policy.calibrationStatus as "uncalibrated" | "calibrated",
+  });
+  const assignments: RecordingClusterResult["assignments"] = [];
+  const state = (
+    evidence: readonly AcousticEmbeddingRecord[],
+    value: Exclude<AcousticAssignmentState, "matched" | "new_identity" | "stale">,
+    reason: string,
+  ) => assignments.push({ ...base(evidence[0]!, evidence), state: value, identityId: null, scores: [], reason });
+
+  // 1. Group and validate; remove the recording's average vector.
+  const grouped = new Map<string, AcousticEmbeddingRecord[]>();
+  for (const embedding of input.embeddings) {
+    if (
+      embedding.meetingId !== input.meetingId ||
+      embedding.recordingHash !== input.recordingHash ||
+      embedding.sourceRevision !== input.sourceRevision ||
+      embedding.values.length !== policy.dimensions ||
+      embedding.values.some((value) => !Number.isFinite(value))
+    ) {
+      throw new Error("Acoustic evidence belongs to a different recording or has an invalid vector.");
+    }
+    const key = acousticSourceKey(embedding.chunkIndex, embedding.sourceSpeakerId);
+    grouped.set(key, [...(grouped.get(key) ?? []), embedding]);
+  }
+  if (!grouped.size) return { identities: [], assignments: [] };
+  const recordingAverage = averageVector([...grouped.values()].flat().map((embedding) => embedding.values));
+  const centered = (values: readonly number[]) => values.map((value, index) => value - (recordingAverage[index] ?? 0));
+  const labels = [...grouped.values()]
+    .map((list) => [...new Map(list.map((entry) => [entry.id, entry])).values()])
+    .sort(
+      (left, right) =>
+        left[0]!.chunkIndex - right[0]!.chunkIndex ||
+        Math.min(...left.map((e) => e.sample.startSeconds)) - Math.min(...right.map((e) => e.sample.startSeconds)) ||
+        left[0]!.sourceSpeakerId.localeCompare(right[0]!.sourceSpeakerId),
+    );
+  const byPart = new Map<number, { evidence: AcousticEmbeddingRecord[]; mean: number[] }[]>();
+  for (const evidence of labels) {
+    if (evidence.length < policy.minSamplesForAssignment) {
+      state(evidence, "unresolved", "Not enough independent acoustic samples for an automatic association.");
+      continue;
+    }
+    const chunkIndex = evidence[0]!.chunkIndex;
+    byPart.set(chunkIndex, [
+      ...(byPart.get(chunkIndex) ?? []),
+      { evidence, mean: averageVector(evidence.map((entry) => centered(entry.values))) },
+    ]);
+  }
+
+  // 2. Inside a part, join labels whose averages are nearly identical (one person over-split).
+  const units: MatchUnit[] = [];
+  for (const [chunkIndex, partLabels] of [...byPart.entries()].sort((a, b) => a[0] - b[0])) {
+    const parent = partLabels.map((_, index) => index);
+    const find = (x: number): number => (parent[x] === x ? x : (parent[x] = find(parent[x]!)));
+    const agree = (a: number, b: number) => cosineSimilarity(partLabels[a]!.mean, partLabels[b]!.mean) >= rules.withinPartMergeCosine;
+    for (let a = 0; a < partLabels.length; a += 1) {
+      for (let b = a + 1; b < partLabels.length; b += 1) if (agree(a, b)) parent[find(b)] = find(a);
+    }
+    const groups = new Map<number, number[]>();
+    partLabels.forEach((_, index) => groups.set(find(index), [...(groups.get(find(index)) ?? []), index]));
+    for (const members of groups.values()) {
+      if (!members.every((a, i) => members.slice(i + 1).every((b) => agree(a, b)))) {
+        for (const index of members) state(partLabels[index]!.evidence, "ambiguous", "This label resembles more than one other label in its part, and those labels do not resemble each other.");
+        continue;
+      }
+      const evidence = members.flatMap((index) => partLabels[index]!.evidence);
+      units.push({
+        chunkIndex,
+        labels: members.map((index) => partLabels[index]!.evidence[0]!.sourceSpeakerId),
+        evidence,
+        mean: averageVector(evidence.map((entry) => centered(entry.values))),
+      });
+    }
+  }
+
+  // 3. Across parts: one voice per unit, one unit per voice per part, best pairs first.
+  interface Voice { id: string; members: { unit: MatchUnit; score: number }[]; centroid: number[] }
+  const voices: Voice[] = [];
+  const expected = input.expectedVoices;
+  if (expected !== undefined && (!Number.isInteger(expected) || expected < 1 || expected > 50)) {
+    throw new RangeError("The expected number of speakers must be a whole number from 1 to 50.");
+  }
+  const deferLeftovers = expected !== undefined;
+  const deferred: MatchUnit[] = [];
+  const newVoice = (unit: MatchUnit): Voice => ({ id: crypto.randomUUID(), members: [{ unit, score: 1 }], centroid: unit.mean });
+  const labelEvidence = (unit: MatchUnit, label: string) => unit.evidence.filter((entry) => entry.sourceSpeakerId === label);
+  for (const chunkIndex of [...new Set(units.map((unit) => unit.chunkIndex))].sort((a, b) => a - b)) {
+    const partUnits = units.filter((unit) => unit.chunkIndex === chunkIndex);
+    if (!voices.length) {
+      partUnits.forEach((unit) => voices.push(newVoice(unit)));
+      continue;
+    }
+    const existing = [...voices];
+    const similarity = partUnits.map((unit) => existing.map((voice) => cosineSimilarity(unit.mean, voice.centroid)));
+    const pairs = partUnits
+      .flatMap((_, u) => existing.map((__, v) => ({ u, v, score: similarity[u]![v]! })))
+      .filter((pair) => Number.isFinite(pair.score) && pair.score >= rules.floorCosine)
+      .sort((left, right) => right.score - left.score);
+    const takenUnits = new Set<number>();
+    const takenVoices = new Set<number>();
+    const placed: { unit: MatchUnit; voice: Voice; score: number }[] = [];
+    for (const pair of pairs) {
+      if (takenUnits.has(pair.u) || takenVoices.has(pair.v)) continue;
+      takenUnits.add(pair.u);
+      takenVoices.add(pair.v);
+      const unit = partUnits[pair.u]!;
+      const runnerUp = Math.max(Number.NEGATIVE_INFINITY, ...similarity[pair.u]!.filter((score, v) => v !== pair.v && Number.isFinite(score)));
+      if (pair.score - runnerUp < rules.margin) {
+        if (deferLeftovers) deferred.push(unit);
+        else for (const label of unit.labels) state(labelEvidence(unit, label), "ambiguous", "The leading voices are too close to choose safely.");
+        continue;
+      }
+      placed.push({ unit, voice: existing[pair.v]!, score: pair.score });
+    }
+    partUnits.forEach((unit, u) => {
+      if (takenUnits.has(u)) return;
+      const best = Math.max(Number.NEGATIVE_INFINITY, ...similarity[u]!.filter((score) => Number.isFinite(score)));
+      if (!(best >= rules.floorCosine)) {
+        voices.push(newVoice(unit));
+        return;
+      }
+      if (deferLeftovers) deferred.push(unit);
+      else for (const label of unit.labels) state(labelEvidence(unit, label), "ambiguous", "A better-matching label in this part already holds the closest voice; no merge was forced.");
+    });
+    // Apply the part's placements together so earlier pairs do not shift later ones.
+    for (const { unit, voice, score } of placed) {
+      voice.members.push({ unit, score });
+      voice.centroid = averageVector(voice.members.map((member) => member.unit.mean));
+    }
+  }
+
+  if (expected !== undefined) {
+    for (const unit of deferred) voices.push(newVoice(unit));
+    // Group further, most similar first, until the expected number remain.
+    // Voices that share a part are penalised, not forbidden (a provider can over-split one person).
+    const partsOf = (voice: Voice) => new Set(voice.members.map((member) => member.unit.chunkIndex));
+    const SHARED_PART_PENALTY = 0.5;
+    while (voices.length > expected) {
+      let best: { a: number; b: number; value: number } | undefined;
+      for (let a = 0; a < voices.length; a += 1) {
+        for (let b = a + 1; b < voices.length; b += 1) {
+          const score = cosineSimilarity(voices[a]!.centroid, voices[b]!.centroid);
+          if (!Number.isFinite(score)) continue;
+          const shared = [...partsOf(voices[a]!)].some((part) => partsOf(voices[b]!).has(part));
+          const value = score - (shared ? SHARED_PART_PENALTY : 0);
+          if (!best || value > best.value) best = { a, b, value };
+        }
+      }
+      if (!best) break;
+      const keep = voices[best.a]!;
+      const drop = voices[best.b]!;
+      keep.members.push(...drop.members.map((member) => ({ unit: member.unit, score: -1 })));
+      keep.centroid = averageVector(keep.members.map((member) => member.unit.mean));
+      voices.splice(best.b, 1);
+    }
+    for (const voice of voices) {
+      // Report each joined label's similarity to its final voice.
+      voice.members = voice.members.map((member, position) => ({
+        unit: member.unit,
+        score: position === 0 ? 1 : cosineSimilarity(member.unit.mean, voice.centroid),
+      }));
+    }
+  }
+
+  // 4. Persistable voices and assignments.
+  const identities: AcousticIdentity[] = [];
+  const timestamp = now();
+  for (const voice of voices) {
+    const all = voice.members.flatMap((member) => member.unit.evidence);
+    const first = all[0]!;
+    const sourceKeys = [...new Set(all.map((entry) => acousticSourceKey(entry.chunkIndex, entry.sourceSpeakerId)))];
+    identities.push({
+      id: voice.id,
+      meetingId: input.meetingId,
+      recordingHash: input.recordingHash,
+      sourceRevision: input.sourceRevision,
+      modelRevision: first.modelRevision,
+      extractionVersion: first.extractionVersion,
+      centroid: mean(all.map((entry) => entry.values)),
+      anchors: all.slice(0, policy.maxRepresentativesPerIdentity).map((entry) => [...entry.values]),
+      representativeEmbeddingIds: all.slice(0, policy.maxRepresentativesPerIdentity).map((entry) => entry.id),
+      sourceKeys: sourceKeys.slice(0, 64),
+      sourceCount: sourceKeys.length,
+      sampleCount: all.length,
+      confirmedSpeakerId: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+    voice.members.forEach((member, position) => {
+      for (const label of member.unit.labels) {
+        const evidence = labelEvidence(member.unit, label);
+        assignments.push({
+          ...base(evidence[0]!, evidence),
+          state: position === 0 ? "new_identity" : "matched",
+          identityId: voice.id,
+          scores: position === 0 ? [] : [{ identityId: voice.id, mean: member.score, minimum: member.score, support: evidence.length }],
+          reason: position === 0
+            ? "First label of a new anonymous voice in this recording."
+            : expected !== undefined
+              ? "Joined this voice by acoustic similarity, including grouping to reach the expected number of speakers."
+              : "Paired one-to-one with this voice using acoustic similarity and a clear lead over the next candidate.",
+        });
+      }
+    });
+  }
+  assignments.sort((left, right) => left.chunkIndex - right.chunkIndex || left.sourceKey.localeCompare(right.sourceKey));
+  return { identities, assignments };
+}
+
 export function updateAcousticIdentity(
   identity: AcousticIdentity,
   embeddings: readonly AcousticEmbeddingRecord[],
@@ -643,6 +1075,11 @@ export function updateAcousticIdentity(
   };
 }
 
+/** Speaker ID used by merged chunked transcripts for a provider label in one part. */
+function partSourceId(assignment: AcousticAssignment): string {
+  return `part-${assignment.chunkIndex}:${assignment.sourceSpeakerId}`;
+}
+
 /**
  * Apply only persisted, non-ambiguous anonymous assignments to the merged
  * transcript projection. Raw provider speaker IDs remain in the paged source
@@ -654,6 +1091,9 @@ export function applyAcousticAssignments(
   identities: readonly AcousticIdentity[],
   confirmedSpeakers: readonly { id: string; name: string; confirmed: boolean; sourceLabels: string[] }[] = [],
   context?: { recordingHash: string; sourceRevision: number },
+  sourceIdOf: (assignment: AcousticAssignment) => string = partSourceId,
+  /** Current speaker id -> original source labels, for speakers an earlier run already re-keyed. */
+  aliases: ReadonlyMap<string, readonly string[]> = new Map(),
 ): NormalizedSpeech {
   const accepted = new Map<string, string>();
   const confirmedSourceIds = new Set([
@@ -662,18 +1102,50 @@ export function applyAcousticAssignments(
       .filter((speaker) => speaker.confirmed)
       .flatMap((speaker) => [speaker.id, ...speaker.sourceLabels]),
   ]);
+  const usable = (assignment: AcousticAssignment) =>
+    (assignment.state === "matched" || assignment.state === "new_identity") &&
+    Boolean(assignment.identityId) &&
+    !(context && (assignment.recordingHash !== context.recordingHash || assignment.sourceRevision !== context.sourceRevision));
+  // A human-confirmed speaker that shares a voice with other labels absorbs them,
+  // so a confirmed name follows its voice across parts. Two different confirmed
+  // speakers in one voice mean the human distinguished them: that voice is not applied.
+  const humansInVoice = new Map<string, Set<string>>();
   for (const assignment of assignments) {
-    if ((assignment.state !== "matched" && assignment.state !== "new_identity") || !assignment.identityId) continue;
-    if (context && (assignment.recordingHash !== context.recordingHash || assignment.sourceRevision !== context.sourceRevision)) continue;
-    const sourceId = `part-${assignment.chunkIndex}:${assignment.sourceSpeakerId}`;
+    if (!usable(assignment)) continue;
+    const sourceId = sourceIdOf(assignment);
+    const human = [...speech.speakers, ...confirmedSpeakers].find(
+      (speaker) => speaker.confirmed && (speaker.id === sourceId || speaker.id === assignment.sourceSpeakerId),
+    );
+    if (human) humansInVoice.set(assignment.identityId!, new Set([...(humansInVoice.get(assignment.identityId!) ?? []), human.id]));
+  }
+  // A confirmed speaker an earlier run re-keyed still belongs to the voices of its original labels.
+  const assignmentBySource = new Map(assignments.filter(usable).map((assignment) => [sourceIdOf(assignment), assignment]));
+  for (const speaker of [...speech.speakers, ...confirmedSpeakers]) {
+    if (!speaker.confirmed) continue;
+    for (const source of aliases.get(speaker.id) ?? []) {
+      const assignment = assignmentBySource.get(source);
+      if (assignment) humansInVoice.set(assignment.identityId!, new Set([...(humansInVoice.get(assignment.identityId!) ?? []), speaker.id]));
+    }
+  }
+  for (const assignment of assignments) {
+    if (!usable(assignment)) continue;
+    const sourceId = sourceIdOf(assignment);
     if (confirmedSourceIds.has(sourceId) || confirmedSourceIds.has(assignment.sourceSpeakerId)) continue;
     const identity = identities.find((candidate) => candidate.id === assignment.identityId);
     if (!identity) continue;
     if (context && (identity.recordingHash !== context.recordingHash || identity.sourceRevision !== context.sourceRevision)) continue;
-    accepted.set(
-      `part-${assignment.chunkIndex}:${assignment.sourceSpeakerId}`,
-      identity.confirmedSpeakerId ?? assignment.identityId,
-    );
+    const humans = humansInVoice.get(assignment.identityId!);
+    if (humans && humans.size > 1) continue;
+    const humanTarget = humans?.size === 1 ? [...humans][0] : undefined;
+    accepted.set(sourceId, humanTarget ?? identity.confirmedSpeakerId ?? assignment.identityId!);
+  }
+  // A speaker an earlier run already re-keyed follows its original labels' decision,
+  // but only when every one of those labels is decided to the same voice.
+  for (const [alias, sources] of aliases) {
+    if (confirmedSourceIds.has(alias) || accepted.has(alias)) continue;
+    const targets = new Set(sources.map((source) => accepted.get(source)));
+    const [target] = [...targets];
+    if (targets.size === 1 && target && target !== alias) accepted.set(alias, target);
   }
   if (!accepted.size) return speech;
   const speakersById = new Map<string, typeof speech.speakers[number]>();
@@ -712,6 +1184,7 @@ export function applyAcousticAssignmentsToMeeting(
   meeting: Meeting,
   assignments: readonly AcousticAssignment[],
   identities: readonly AcousticIdentity[],
+  sourceIdOf?: (assignment: AcousticAssignment) => string,
 ): Meeting {
   const projection: NormalizedSpeech = {
     speakers: meeting.speakers,
@@ -719,10 +1192,37 @@ export function applyAcousticAssignmentsToMeeting(
     duration: meeting.audio?.duration ?? null,
     requestId: null,
   };
+  // Speakers re-keyed by an earlier run lost their original label id. Recover it
+  // from the immutable provider run, but only when every one of the speaker's
+  // current segments has a provider original (a segment a human moved in from elsewhere is
+  // still compared, so a mixed speaker only follows when all its origins agree).
+  const aliases = new Map<string, string[]>();
+  const latestRun = [...meeting.runs].reverse().find((run) => run.originalSegments.length > 0);
+  if (latestRun) {
+    const original = new Map(latestRun.originalSegments.map((segment) => [segment.id, segment.speakerIds]));
+    const origins = new Map<string, Set<string>>();
+    const comparable = new Map<string, number>();
+    const total = new Map<string, number>();
+    for (const segment of meeting.segments) {
+      for (const id of segment.speakerIds) total.set(id, (total.get(id) ?? 0) + 1);
+      const source = original.get(segment.id);
+      if (segment.speakerIds.length !== 1 || !source || source.length !== 1) continue;
+      const current = segment.speakerIds[0]!;
+      comparable.set(current, (comparable.get(current) ?? 0) + 1);
+      origins.set(current, new Set([...(origins.get(current) ?? []), source[0]!]));
+    }
+    for (const [current, sources] of origins) {
+      // Alias only when every segment of this speaker has a provider original to compare with.
+      // A raw label id that still stands for itself needs no alias.
+      if (comparable.get(current) !== total.get(current)) continue;
+      if (sources.size === 1 && sources.has(current)) continue;
+      aliases.set(current, [...sources]);
+    }
+  }
   const mapped = applyAcousticAssignments(projection, assignments, identities, meeting.speakers, {
     recordingHash: meeting.audio?.hash ?? "",
     sourceRevision: meeting.revision,
-  });
+  }, sourceIdOf, aliases);
   const mappedById = new Map(mapped.segments.map((segment) => [segment.id, segment]));
   if (mapped.speakers.every((speaker, index) => speaker.id === meeting.speakers[index]?.id) &&
       meeting.segments.every((segment) => segment.speakerIds.join("\u0000") === mappedById.get(segment.id)?.speakerIds.join("\u0000"))) {
@@ -752,3 +1252,4 @@ export function applyAcousticAssignmentsToMeeting(
     draft.speakerLinks = undefined;
   });
 }
+

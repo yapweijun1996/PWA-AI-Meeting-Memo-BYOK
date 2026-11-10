@@ -12,7 +12,7 @@ export type PlaybackStatus =
 
 /**
  * High-resolution playhead outside React state. It is updated on every sample
- * (about 20 Hz) without rendering anything; components subscribe with
+ * (on foreground animation frames) without rendering anything; components subscribe with
  * useSyncExternalStore and a selector that only changes when they need to render.
  */
 export type PlaybackClockStore = {
@@ -54,7 +54,7 @@ type PlaybackSnapshot = Omit<PlaybackClock, "refresh" | "store">;
 
 /**
  * `position` in React state is only for coarse UI (time label, range input, speaker toolbar).
- * Sampling and timeupdate reads republish it once per bucket instead of ~20 times a second;
+ * Sampling and timeupdate reads republish it once per bucket instead of every frame;
  * every discrete event (seek, pause, rate change, ...) still publishes the exact position.
  */
 export const COARSE_POSITION_SECONDS = 0.25;
@@ -162,25 +162,20 @@ export function usePlaybackClock(
     };
     refreshRef.current = read;
     let frame: number | null = null;
-    let lastSample = -Infinity;
     const stopSampling = () => {
       if (frame !== null) cancelAnimationFrame(frame);
       frame = null;
     };
-    const sample = (timestamp: number) => {
+    const sample = () => {
       frame = null;
       if (audio.paused || audio.ended || audio.error || document.hidden) return;
-      // The frame timestamp only limits rendering work; media time is never
-      // inferred from it. Media events still handle background/seek transitions.
-      if (timestamp - lastSample >= 50) {
-        read(undefined, false, true);
-        lastSample = timestamp;
-      }
+      // Sample actual media time on each foreground frame. Boundary-based
+      // subscribers still render only when their derived interval changes.
+      read(undefined, false, true);
       frame = requestAnimationFrame(sample);
     };
     const startSampling = () => {
       if (frame === null && !audio.paused && !audio.ended && !document.hidden) {
-        lastSample = -Infinity;
         frame = requestAnimationFrame(sample);
       }
     };

@@ -595,3 +595,4 @@ export async function listSpeakerAssetPaths(distDir) {
   await walk(root);
   return paths.sort();
 }
+

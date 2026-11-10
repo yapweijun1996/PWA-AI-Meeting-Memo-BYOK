@@ -760,8 +760,9 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
     .click();
   await page.getByRole("button", { name: "Edit speakers", exact: true }).click();
   await expect(page.getByLabel("Name for speaker 1")).toHaveValue("Speaker 1");
+  await page.locator(".speaker-queue-select").filter({ hasText: "Speaker 2" }).click();
   await expect(page.getByLabel("Name for speaker 2")).toHaveValue("Speaker 2");
-  await expect(page.getByText("Needs a name", { exact: true })).toHaveCount(2);
+  await expect(page.locator(".speaker-queue-item")).toHaveCount(2);
   await page.getByRole("tab", { name: /Transcript/ }).click();
   await expect(page.getByText("Hello", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();

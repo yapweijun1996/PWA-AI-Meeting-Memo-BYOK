@@ -1,3 +1,4 @@
+import { removeMeetingAvatars, trackAvatarWrite } from "./speaker-avatars";
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import { validateMeeting, type Meeting } from "../domain/model";
 interface Store extends DBSchema {
@@ -166,6 +167,8 @@ export async function deleteMeeting(id: string) {
   ]);
   await tx.done;
   channel?.postMessage(id);
+  try { await trackAvatarWrite(removeMeetingAvatars(id)); }
+  catch { throw new Error("The meeting was deleted, but its profile images could not be removed from local storage."); }
 }
 const channel =
   typeof BroadcastChannel !== "undefined"

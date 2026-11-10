@@ -186,7 +186,8 @@ async function createFixture(
   });
   await page.getByRole("tab", { name: /Speakers/ }).click();
   await page.getByRole("button", { name: "Edit speakers", exact: true }).click();
-  await expect(page.locator(".speaker-review-card")).toHaveCount(meeting.speakers.length);
+  await expect(page.locator(".speaker-queue-item")).toHaveCount(meeting.speakers.filter((speaker) => !speaker.confirmed).length);
+  await expect(page.locator(".speaker-review-card")).toHaveCount(1);
 }
 
 async function storedMeeting(page: Page) {
@@ -266,7 +267,7 @@ test("speaker review offers long samples and explicit overlap/gap activity", asy
   await page.getByLabel("Sample length", { exact: true }).selectOption("30");
   const longRange = parseRange(await page.locator(".speaker-sample-range").first().textContent());
   expect(longRange.end - longRange.start).toBeGreaterThanOrEqual(29);
-  await expect(page.getByText("Range includes surrounding context; it may contain other voices.", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/Range includes surrounding context; it may contain other voices/).first()).toBeVisible();
   const audio = page.locator("audio");
   await page.getByRole("button", { name: "Sample 1", exact: true }).first().click();
   await expect(audio).toHaveAttribute("data-test-playing", "true");
@@ -555,8 +556,8 @@ test("immersive fallback preserves the player and restores focus", async ({ page
   await expect.poll(() => player.evaluate((element) => (element as HTMLMediaElement).currentTime)).toBe(1.5);
   await expect(dialog.locator(".immersive-captions")).toContainText("The second speaker");
   await dialog.getByRole("button", { name: "Close transcript" }).click();
-  await expect(dialog.getByRole("button", { name: "Transcript", exact: true })).toBeFocused();
-  await dialog.getByRole("button", { name: "Transcript", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "Reading", exact: true })).toBeFocused();
+  await dialog.getByRole("button", { name: "Reading", exact: true }).click();
   await dialog.getByRole("button", { name: "Back 15 seconds" }).click();
   await expect.poll(() => player.evaluate((element) => (element as HTMLMediaElement).currentTime)).toBe(0);
   await page.keyboard.press("Escape");
@@ -618,15 +619,41 @@ test("immersive playback shows overlap and remains accessible on a narrow viewpo
   await page.locator("audio").dispatchEvent("playing");
   await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  await dialog.getByRole("button", { name: "Reading", exact: true }).click();
   await expect(dialog.locator('.immersive-person[data-active="true"]')).toHaveCount(2);
   await expect(dialog.locator(".immersive-captions")).toContainText("overlap briefly");
   await expect(dialog.getByText("Timing unavailable", { exact: true })).toBeVisible();
   await dialog.locator(".immersive-transcript-list").dispatchEvent("wheel");
-  await expect(dialog.getByRole("button", { name: "Follow playback" })).toBeVisible();
-  await dialog.getByRole("button", { name: "Follow playback" }).click();
-  await expect(dialog.getByRole("button", { name: "Follow playback" })).toHaveCount(0);
+  await expect(dialog.getByText("Follow paused")).toBeVisible();
+  await dialog.getByRole("button", { name: "Jump to current" }).click();
+  await expect(dialog.getByText("Following playback")).toBeVisible();
   expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   expect((await new AxeBuilder({ page }).include(".immersive").withTags(["wcag2a", "wcag2aa"]).analyze()).violations).toEqual([]);
+});
+
+test("immersive position shows overlapping attribution while paused and keeps labels accessible", async ({ page }) => {
+  await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
+  await createFixture(page);
+  await page.locator("audio").evaluate((element) => {
+    Object.defineProperty(element, "error", { configurable: true, get: () => null });
+    (element as HTMLMediaElement).currentTime = 2;
+    element.dispatchEvent(new Event("seeked"));
+  });
+  await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  const current = dialog.locator(".immersive-current-speaker");
+  await expect(current).toHaveCount(2);
+  await expect(dialog.getByText("Paused at this position")).toHaveClass(/immersive-sr-only/);
+  await expect(dialog.locator('.immersive-current-speaker[data-active="true"]')).toHaveCount(0);
+  await expect(dialog.locator('.immersive-captions [data-current="true"]').first()).toBeVisible();
+  await dialog.getByRole("button", { name: "View labels" }).click();
+  await expect(dialog.locator(".immersive-roster")).toBeVisible();
+  await expect(dialog.locator('.immersive-person[data-position="true"]')).toHaveCount(2);
+  await dialog.getByText("Timing unavailable", { exact: true }).click();
+  await expect(dialog.locator(".immersive-untimed p").first()).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 568 });
+  expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(await dialog.locator(".immersive-current-speakers").evaluate((element) => element.getBoundingClientRect().right <= window.innerWidth)).toBe(true);
 });
 
 test("immersive transcript pages through long recordings and returns to playback", async ({ page }) => {
@@ -639,10 +666,158 @@ test("immersive transcript pages through long recordings and returns to playback
   const later = dialog.getByRole("button", { name: "Later", exact: true });
   while (await later.isEnabled()) await later.click();
   await expect(dialog.getByText("Long caption 120", { exact: true })).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Follow playback" })).toBeVisible();
-  await dialog.getByRole("button", { name: "Follow playback" }).click();
-  await expect(dialog.getByRole("button", { name: "Follow playback" })).toHaveCount(0);
+  await expect(dialog.getByText("Follow paused")).toBeVisible();
+  await dialog.getByRole("button", { name: "Jump to current" }).click();
+  await expect(dialog.getByText("Following playback")).toBeVisible();
   await expect(dialog.getByText("Long caption 120", { exact: true })).toHaveCount(0);
+});
+
+test("immersive transcript resizes, searches the full meeting and returns to playback", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
+  const fixture = longFixtureMeeting();
+  fixture.segments.push(
+    { ...fixture.segments[0], id: "60000000-0000-4000-8000-000000000001", start: 37.1, end: 37.3, speakerIds: [speakerIds[0]], text: "库存", originalText: "库存" },
+    { ...fixture.segments[0], id: "60000000-0000-4000-8000-000000000002", start: 37.3, end: 37.5, speakerIds: [speakerIds[0]], text: "流程", originalText: "流程" },
+  );
+  await createFixture(page, "speaker-review.wav", fixture);
+  await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  const panel = dialog.getByRole("complementary", { name: "Transcript" });
+  const width = panel.getByRole("slider", { name: "Transcript panel width" });
+  const original = await panel.evaluate((element) => element.getBoundingClientRect().width);
+  await width.focus();
+  await width.press("End");
+  await expect(width).toHaveValue("45");
+  expect(await panel.evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(original);
+  await width.press("Home");
+  await expect(width).toHaveValue("25");
+  const search = panel.getByLabel("Search transcript");
+  await search.fill("Long caption 120");
+  await expect(panel.getByText("Search results · follow paused")).toBeVisible();
+  await expect(panel.getByText("Caption groups 1–1 of 1")).toBeVisible();
+  await panel.getByRole("button", { name: /Long caption 120/ }).click();
+  await expect.poll(() => page.locator("audio").evaluate((element) => (element as HTMLMediaElement).currentTime)).toBeCloseTo(36.13, 2);
+  await expect(dialog.getByRole("button", { name: "Play audio" })).toBeVisible();
+  await search.fill("库存流程");
+  await expect(panel.getByRole("button", { name: /库存流程/ })).toBeVisible();
+  await search.fill("no trustworthy timing");
+  await expect(panel.locator(".immersive-untimed p")).toContainText("no trustworthy timing");
+  await expect(panel.getByText("Caption groups 0–0 of 0")).toBeVisible();
+  const jump = panel.getByRole("button", { name: "Jump to current" });
+  await jump.focus();
+  await jump.press("Enter");
+  await expect(search).toHaveValue("");
+  await expect(panel.getByText("Following playback")).toBeVisible();
+  await expect(jump).toBeFocused();
+});
+
+test("immersive responsive modes and stage shortcuts preserve playback", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
+  await createFixture(page);
+  await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  const stage = dialog.getByRole("region", { name: "Speaker and captions" });
+  await expect(dialog.getByRole("button", { name: "Focus", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(dialog.getByRole("complementary", { name: "Transcript" })).toHaveCount(0);
+  await stage.focus();
+  await stage.press("Space");
+  await expect(dialog.getByRole("button", { name: "Pause audio" })).toBeVisible();
+  await stage.press("ArrowRight");
+  await expect.poll(() => page.locator("audio").evaluate((element) => (element as HTMLMediaElement).currentTime)).toBeCloseTo(5, 1);
+  await dialog.getByRole("button", { name: "Reading", exact: true }).click();
+  const transcriptPanel = dialog.getByRole("complementary", { name: "Transcript" });
+  await expect(transcriptPanel).toBeVisible();
+  expect(await transcriptPanel.evaluate((element) => getComputedStyle(element).position)).toBe("absolute");
+  await expect(transcriptPanel.getByLabel("Transcript panel width")).toBeHidden();
+  expect(await transcriptPanel.getByLabel("Search transcript").evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
+  expect(await dialog.getByLabel("Playback speed").evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
+  expect(await transcriptPanel.locator(".immersive-transcript-list").evaluate((element) => element.clientHeight)).toBeGreaterThan(80);
+  expect(await dialog.locator(".immersive-controls").evaluate((element) => element.getBoundingClientRect().bottom <= window.innerHeight + 1)).toBe(true);
+  expect(await dialog.locator(".immersive-controls").evaluate((element) => element.getBoundingClientRect().height)).toBeLessThan(200);
+  await expect(dialog.getByRole("button", { name: "Pause audio" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("immersive-mobile.png") });
+  await dialog.getByRole("button", { name: "Focus", exact: true }).click();
+  await expect(transcriptPanel).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Pause audio" })).toBeVisible();
+  await page.setViewportSize({ width: 800, height: 900 });
+  await dialog.getByRole("button", { name: "Reading", exact: true }).click();
+  const layout = await dialog.evaluate((element) => {
+    const stageBox = element.querySelector(".immersive-stage")!.getBoundingClientRect();
+    const transcriptBox = element.querySelector(".immersive-transcript")!.getBoundingClientRect();
+    return { stageBottom: stageBox.bottom, transcriptTop: transcriptBox.top };
+  });
+  expect(layout.transcriptTop).toBeGreaterThanOrEqual(layout.stageBottom - 1);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const desktop = await dialog.evaluate((element) => {
+    const stageBox = element.querySelector(".immersive-stage")!.getBoundingClientRect();
+    const transcriptBox = element.querySelector(".immersive-transcript")!.getBoundingClientRect();
+    const caption = element.querySelector<HTMLElement>(".immersive-caption-content")!;
+    const captionBox = caption.getBoundingClientRect();
+    return { stageRight: stageBox.right, transcriptLeft: transcriptBox.left, captionTop: captionBox.top, stageCenter: stageBox.top + stageBox.height / 2, stageHeight: stageBox.height, captionHeight: caption.clientHeight, lineHeight: parseFloat(getComputedStyle(caption).lineHeight), captionWidth: caption.clientWidth, captionScrollWidth: caption.scrollWidth };
+  });
+  expect(desktop.stageRight).toBeLessThanOrEqual(desktop.transcriptLeft + 1);
+  expect(desktop.captionTop).toBeLessThan(desktop.stageCenter + desktop.stageHeight * 0.2);
+  expect(desktop.captionHeight).toBeLessThanOrEqual(desktop.lineHeight * 3 + 1);
+  expect(desktop.captionScrollWidth).toBeLessThanOrEqual(desktop.captionWidth);
+  await page.screenshot({ path: testInfo.outputPath("immersive-desktop.png") });
+});
+
+test("immersive speaker labels open the existing editor without restarting audio", async ({ page }) => {
+  await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
+  await createFixture(page);
+  await page.getByRole("button", { name: "Playback mode", exact: true }).click();
+  const audio = page.locator("audio");
+  await audio.evaluate((element) => {
+    Object.defineProperty(element, "error", { configurable: true, get: () => null });
+    (element as HTMLMediaElement).currentTime = 1.5;
+    element.dispatchEvent(new Event("seeked"));
+  });
+  await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  await dialog.getByRole("button", { name: "View labels" }).click();
+  await dialog.getByRole("button", { name: "Edit speakers", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit speakers", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => audio.evaluate((element) => (element as HTMLMediaElement).currentTime)).toBeCloseTo(1.5, 2);
+});
+
+test("immersive follow keeps a whole top row and leaves manual scrolling alone", async ({ page }) => {
+  await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
+  await createFixture(page, "speaker-review.wav", longFixtureMeeting());
+  await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  const audio = page.locator("audio");
+  const list = dialog.locator(".immersive-transcript-list");
+  const seek = async (time: number) => audio.evaluate((element, value) => {
+    Object.defineProperty(element, "error", { configurable: true, get: () => null });
+    (element as HTMLMediaElement).currentTime = value;
+    element.dispatchEvent(new Event("seeked"));
+  }, time);
+  await seek(12.15);
+  const geometry = () => list.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const rows = [...element.querySelectorAll<HTMLElement>("[data-immersive-caption]")];
+    const first = rows.find((row) => row.getBoundingClientRect().bottom > bounds.top + 1);
+    const active = element.querySelector<HTMLElement>(".is-current");
+    return { firstTop: first?.getBoundingClientRect().top ?? 0, top: bounds.top, activeBottom: active?.getBoundingClientRect().bottom ?? Infinity, bottom: bounds.bottom };
+  });
+  await expect.poll(async () => {
+    const box = await geometry();
+    return box.firstTop >= box.top - 1 && box.activeBottom <= box.bottom + 1;
+  }).toBe(true);
+  await list.dispatchEvent("wheel");
+  await list.evaluate((element) => { element.scrollTop = 30; });
+  const manualPosition = await list.evaluate((element) => element.scrollTop);
+  await seek(12.42);
+  await expect(dialog.getByText("Follow paused")).toBeVisible();
+  expect(await list.evaluate((element) => element.scrollTop)).toBe(manualPosition);
+  await dialog.getByRole("button", { name: "Jump to current" }).click();
+  await expect.poll(async () => {
+    const box = await geometry();
+    return box.firstTop >= box.top - 1 && box.activeBottom <= box.bottom + 1;
+  }).toBe(true);
 });
 
 test("immersive playback reports a failed play request", async ({ page }) => {
@@ -663,8 +838,118 @@ test("immersive playback labels between-word context while paused", async ({ pag
   await page.locator("audio").evaluate((element) => { (element as HTMLMediaElement).currentTime = 0.75; element.dispatchEvent(new Event("seeked")); });
   await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Immersive playback" });
-  await expect(dialog.getByText("Between words · context only", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Between words · context only", { exact: true })).toHaveClass(/immersive-sr-only/);
   await expect(dialog.locator('.immersive-person[data-active="true"]')).toHaveCount(0);
+  await expect(dialog.locator('.immersive-current-speaker[data-context="true"]')).toContainText("Speaker 1");
+  await expect(dialog.locator('.immersive-current-speaker[data-active="true"]')).toHaveCount(0);
+});
+
+test("immersive retains only inactive speaker context through a short same-speaker gap", async ({ page }) => {
+  await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
+  const fixture = fixtureMeeting();
+  fixture.segments[1].start = 0.8;
+  fixture.segments[2].start = 1.6;
+  await createFixture(page, "speaker-review.wav", fixture);
+  const before = sourceSnapshot(await storedMeeting(page));
+  const audio = page.locator("audio");
+  const seek = async (time: number) => audio.evaluate((element, value) => {
+    Object.defineProperty(element, "error", { configurable: true, get: () => null });
+    (element as HTMLMediaElement).currentTime = value;
+    element.dispatchEvent(new Event("seeked"));
+  }, time);
+  await seek(0.5);
+  await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  await dialog.getByRole("button", { name: "Play audio" }).click();
+  await expect(dialog.locator('.immersive-current-speaker[data-active="true"]')).toContainText("Speaker 1");
+  const activeHeight = await dialog.locator(".immersive-current-speaker").evaluate((element) => element.getBoundingClientRect().height);
+  await seek(0.75);
+  const card = dialog.locator('.immersive-current-speaker[data-context="true"]');
+  await expect(card).toContainText("Speaker 1");
+  await expect(card).toContainText("Context only");
+  await expect(dialog.getByText("Between words · context only", { exact: true })).toHaveClass(/immersive-sr-only/);
+  await expect(card.locator(".immersive-sr-only")).toHaveText("Context only");
+  expect(await card.evaluate((element) => element.getBoundingClientRect().height)).toBe(activeHeight);
+  await expect(dialog.locator('.immersive-current-speaker[data-active="true"]')).toHaveCount(0);
+  await expect(dialog.locator('.immersive-captions [data-current="true"]')).toHaveCount(0);
+  await seek(1.0);
+  await expect(dialog.locator('.immersive-current-speaker[data-active="true"]')).toContainText("Speaker 1");
+  await seek(1.5);
+  await expect(dialog.locator('.immersive-current-speaker[data-context="true"]')).toContainText("Last caption · not current speech");
+  await expect(dialog.locator(".immersive-captions")).toContainText("The opening turn continues");
+  await expect(dialog.locator('.immersive-current-speaker[data-active="true"]')).toHaveCount(0);
+  await expect(dialog.locator('.immersive-captions [data-current="true"]')).toHaveCount(0);
+  await seek(1.7);
+  await expect(dialog.locator('.immersive-current-speaker[data-active="true"]')).toContainText("Speaker 2");
+  await seek(2.0);
+  await expect(dialog.locator('.immersive-current-speaker[data-active="true"]')).toHaveCount(2);
+  await seek(3.0);
+  await expect(dialog.locator('.immersive-current-speaker[data-context="true"]')).toHaveCount(2);
+  await expect(dialog.locator(".immersive-captions")).toContainText("overlap briefly");
+  await dialog.getByRole("button", { name: "Pause audio" }).click();
+  await expect(dialog.getByText("Paused at this position")).toHaveClass(/immersive-sr-only/);
+  await seek(0);
+  await expect(dialog.locator(".immersive-current-speaker")).toHaveCount(0);
+  await expect(dialog.locator(".immersive-captions p")).toHaveCount(0);
+  expect(sourceSnapshot(await storedMeeting(page))).toBe(before);
+});
+
+test("immersive highlights follow the real media clock without timeupdate", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "This native audio clock probe uses Chromium's WAV decoder.");
+  await page.addInitScript(() => {
+    (window as Window & { nativeFixturePlay?: typeof HTMLMediaElement.prototype.play }).nativeFixturePlay = HTMLMediaElement.prototype.play;
+    HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable"));
+  });
+  const fixture = fixtureMeeting();
+  fixture.segments = Array.from({ length: 16 }, (_, index) => ({
+    ...fixture.segments[0],
+    id: index === 0 ? firstSegmentId : `50000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    start: 0.2 + index * 0.2,
+    end: 0.2 + (index + 1) * 0.2,
+    text: `word${index}`,
+    originalText: `word${index}`,
+  }));
+  await createFixture(page, "clock-fixture.wav", fixture);
+  const audio = page.locator("audio");
+  await audio.evaluate((element) => {
+    const media = element as HTMLMediaElement;
+    const nativePlay = (window as Window & { nativeFixturePlay?: typeof media.play }).nativeFixturePlay;
+    if (!nativePlay) throw new Error("Native audio play method is unavailable.");
+    media.play = nativePlay;
+    media.addEventListener("timeupdate", (event) => event.stopImmediatePropagation(), true);
+    media.currentTime = 0.2;
+    media.dispatchEvent(new Event("seeked"));
+  });
+  await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  await dialog.getByRole("button", { name: "Play audio" }).click();
+  const sample = await page.evaluate(async () => {
+    const media = document.querySelector<HTMLAudioElement>("audio")!;
+    const samples: number[] = [];
+    let frames = 0;
+    const deadline = performance.now() + 7000;
+    await new Promise<void>((resolve, reject) => {
+      const tick = () => {
+        const time = media.currentTime;
+        const index = Math.floor((time - 0.2) / 0.2);
+        const marked = document.querySelector<HTMLElement>('.immersive-captions [data-current="true"]')?.textContent?.trim();
+        if (index >= 1 && index < 14) {
+          frames += 1;
+          if (marked !== `word${index}`) samples.push(time - (0.2 + index * 0.2));
+        }
+        if (time >= 3) resolve();
+        else if (performance.now() > deadline) reject(new Error("Native audio did not advance."));
+        else requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    media.pause();
+    return { frames, mismatches: samples.length, maxSeconds: Math.max(0, ...samples) };
+  });
+  console.log(`Native synthetic highlight clock: ${JSON.stringify(sample)}`);
+  expect(sample.frames).toBeGreaterThan(20);
+  expect(sample.mismatches).toBeLessThan(sample.frames / 2);
+  expect(sample.maxSeconds).toBeLessThan(0.12);
 });
 
 test("immersive view remains usable offline with a mocked local player", async ({ page, context }) => {
@@ -709,7 +994,8 @@ test("immersive controls are available in Simplified Chinese", async ({ page }) 
   const dialog = page.getByRole("dialog", { name: "沉浸式播放" });
   await expect(dialog.getByRole("button", { name: "退出沉浸模式" })).toBeVisible();
   await expect(dialog.getByLabel("播放速度")).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "转录", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "阅读", exact: true })).toBeVisible();
+  await expect(dialog.getByLabel("搜索转录")).toBeVisible();
 });
 
 test("unsaved speaker drafts stay guarded across playback mode", async ({ page }) => {
@@ -780,10 +1066,12 @@ test("sample playback and name confirmation keep the identity review explicit", 
   const sample = page.getByRole("button", { name: "Sample 1", exact: true }).first();
   await expect(sample).toBeEnabled();
   await sample.click();
-  await expect(page.getByText("Needs a name", { exact: true })).toHaveCount(2);
+  await expect(page.locator(".speaker-queue-item")).toHaveCount(2);
   await name.fill(" Alex ");
   await page.getByRole("button", { name: "Confirm name", exact: true }).first().click();
-  await expect(page.getByText("Confirmed", { exact: true })).toHaveCount(1);
+  await expect(page.locator(".speaker-queue-item")).toHaveCount(1);
+  await expect(page.getByLabel("Name for speaker 2", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Confirmed", exact: true }).click();
   await expect(name).toHaveValue("Alex");
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
   await expect(page.getByText("Source details changed after these notes were generated.", { exact: false })).toBeVisible();
@@ -799,7 +1087,7 @@ test("sample playback and name confirmation keep the identity review explicit", 
   await page.getByRole("tab", { name: /Speakers/ }).click();
   await page.getByRole("button", { name: "Edit speakers", exact: true }).click();
   await expect(page.getByLabel("Name for speaker 1", { exact: true })).toHaveValue("Speaker 1");
-  await expect(page.getByText("Needs a name", { exact: true })).toHaveCount(2);
+  await expect(page.locator(".speaker-queue-item")).toHaveCount(2);
   await page.reload();
   await page.getByRole("tab", { name: /Speakers/ }).click();
   await page.getByRole("button", { name: "Edit speakers", exact: true }).click();
@@ -911,7 +1199,7 @@ test("filename video suggestion does not load YouTube until the user watches", a
 test("speaker review stays usable on a narrow viewport", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await createFixture(page);
-  const stage = page.locator(".speaker-stage");
+  const stage = page.locator(".speaker-review-workspace");
   const box = await stage.boundingBox();
   expect(box?.width).toBeLessThanOrEqual(390);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
@@ -1134,7 +1422,6 @@ test("immersive view keeps its layout while speakers, captions and highlights ch
   const audio = page.locator("audio");
   const measure = () => page.evaluate(() => {
     const box = (selector: string) => document.querySelector(selector)?.getBoundingClientRect();
-    const avatars = [...document.querySelectorAll(".immersive-avatar")].map((avatar) => avatar.getBoundingClientRect().top);
     const row = document.querySelector(".immersive-transcript-list button.is-current");
     const fragments = row?.querySelector("span:nth-child(2)")?.children;
     const last = fragments?.[fragments.length - 1];
@@ -1143,7 +1430,7 @@ test("immersive view keeps its layout while speakers, captions and highlights ch
     const area = captions?.getBoundingClientRect();
     const spot = word?.getBoundingClientRect();
     return {
-      layout: [avatars[0], avatars[avatars.length - 1], box(".immersive-roster")?.height, box(".immersive-status")?.top, box(".immersive-status")?.height, box(".immersive-captions")?.top, box(".immersive-captions")?.height, box(".immersive-controls")?.top],
+      layout: [box(".immersive-roster-bar")?.top, box(".immersive-current-speakers")?.top, box(".immersive-current-speakers")?.height, box(".immersive-status")?.top, box(".immersive-status")?.height, box(".immersive-captions")?.top, box(".immersive-captions")?.height, box(".immersive-controls")?.top],
       rowId: row?.getAttribute("data-immersive-caption") ?? null,
       lastWordLeft: last && row ? last.getBoundingClientRect().left - row.getBoundingClientRect().left : null,
       wordInCaptionArea: area && spot ? spot.bottom <= area.bottom + 1 && spot.top >= area.top - 1 : null,
@@ -1176,4 +1463,148 @@ test("immersive view keeps its layout while speakers, captions and highlights ch
   await dialog.getByRole("button", { name: "Pause audio" }).click();
   const paused = await sweep();
   expect(paused).toMatchObject({ layoutMoves: 0, wordJitter: 0, wordHidden: 0 });
+});
+
+test("speaker queue filters, compares samples, and preserves separate name confirmation", async ({ page }) => {
+  await createFixture(page);
+  const queue = page.getByRole("region", { name: "Speaker review queue" });
+  await expect(queue.locator(".speaker-queue-item")).toHaveCount(2);
+  await expect(page.locator(".speaker-review-card")).toHaveCount(1);
+  await page.getByLabel("Search speakers").fill(speakerIds[1]);
+  await expect(queue.locator(".speaker-queue-item")).toHaveCount(1);
+  await queue.locator(".speaker-queue-select").click();
+  await expect(page.getByLabel("Name for speaker 2", { exact: true })).toBeVisible();
+  await page.getByLabel("Search speakers").fill("");
+  await page.getByLabel("Compare with speaker").selectOption(speakerIds[0]);
+  await expect(page.locator(".speaker-comparison")).toContainText(speakerIds[0]);
+  await expect(page.locator(".speaker-comparison").getByRole("button", { name: "Sample 1" })).toBeEnabled();
+  await page.getByLabel("Name for speaker 2", { exact: true }).fill("Casey");
+  await page.getByRole("button", { name: "Save name", exact: true }).click();
+  await expect(page.locator(".speaker-identity")).toContainText("Unconfirmed");
+  await page.getByRole("button", { name: "Confirm name", exact: true }).click();
+  await expect(page.getByLabel("Name for speaker 1", { exact: true })).toBeVisible();
+  await expect(queue.locator(".speaker-queue-item")).toHaveCount(1);
+  await page.getByRole("button", { name: "Confirmed", exact: true }).click();
+  await expect(queue.locator(".speaker-queue-item")).toContainText("Casey");
+});
+
+test("speaker review columns reflow without horizontal overflow on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await createFixture(page);
+  const workspace = page.locator(".speaker-review-workspace");
+  const queue = workspace.locator(".speaker-review-queue");
+  const voice = workspace.locator(".speaker-voice-review");
+  const identity = workspace.locator(".speaker-identity");
+  const [a, b, c] = await Promise.all([queue.boundingBox(), voice.boundingBox(), identity.boundingBox()]);
+  expect(a && b && c).toBeTruthy();
+  expect(b!.y).toBeGreaterThan(a!.y);
+  expect(c!.y).toBeGreaterThan(b!.y);
+  expect(await workspace.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBeTruthy();
+  await expect(page.getByLabel("Search speakers")).toBeVisible();
+});
+
+test("persistent audio player aligns with workspace at desktop and mobile widths", async ({ page }) => {
+  await createFixture(page);
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    const panel = await page.locator(".speaker-review-panel").boundingBox();
+    const player = await page.locator(".audio-player").boundingBox();
+    expect(panel && player).toBeTruthy();
+    expect(Math.abs(panel!.x - player!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(panel!.x + panel!.width - player!.x - player!.width)).toBeLessThanOrEqual(1);
+  }
+});
+
+test("immersive captions fit the stage when transcript width and viewport change", async ({ page }) => {
+  const meeting = fixtureMeeting();
+  const text = "If you could, you would because it is that powerful. People will say I need this, and then continue with the next point.";
+  meeting.segments[0].text = text;
+  meeting.segments[0].originalText = text;
+  await createFixture(page, "speaker-review.wav", meeting);
+  await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
+  await page.getByRole("button", { name: "Immersive playback" }).click();
+  const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  await dialog.getByLabel("Playback position").fill("0.2");
+  const caption = dialog.locator(".immersive-caption-content");
+  await expect(caption).toContainText("If you could");
+  await dialog.getByLabel("Transcript panel width").fill("45");
+  await expect.poll(() => caption.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
+  const exitFullscreen = dialog.getByRole("button", { name: "Exit full screen" });
+  if (await exitFullscreen.count()) await exitFullscreen.click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => caption.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
+  expect(await caption.evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
+});
+
+test("immersive fullscreen control returns to the player without stopping playback", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "Native fullscreen is verified in Chromium; WebKit falls back when unsupported.");
+  await createFixture(page);
+  await page.getByRole("button", { name: "Immersive playback" }).click();
+  const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  await expect(dialog.getByRole("button", { name: "Exit full screen" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Exit full screen" }).click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Enter full screen" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Enter full screen" }).click();
+  await expect(dialog.getByRole("button", { name: "Exit full screen" })).toBeVisible();
+});
+
+test("speaker avatar is local, survives reload and full backup restore", async ({ page }, info) => {
+  await createFixture(page);
+  const identity = page.getByRole("region", { name: "Speaker identity" });
+  await expect(identity.locator(".speaker-avatar svg")).toBeVisible();
+  const png = await page.evaluate(() => {
+    const canvas = document.createElement("canvas"); canvas.width = 20; canvas.height = 20;
+    const context = canvas.getContext("2d")!; context.fillStyle = "#397a50"; context.fillRect(0, 0, 20, 20);
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  await page.getByLabel("Upload speaker avatar").setInputFiles({ name: "avatar.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
+  await expect(identity.locator(".speaker-avatar img")).toHaveAttribute("src", /^data:image\/jpeg;base64,/);
+  await expect(page.locator(".toast-layer")).toContainText("Speaker avatar saved locally.");
+  await page.getByRole("button", { name: "Dismiss notification" }).click();
+  await expect(page.locator(".toast-layer")).toHaveCount(0);
+  await page.reload();
+  await page.getByRole("tab", { name: /Speakers/ }).click();
+  await page.getByRole("button", { name: "Edit speakers", exact: true }).click();
+  await expect(identity.locator(".speaker-avatar img")).toBeVisible();
+  await page.getByText("Export", { exact: true }).click();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Full backup with audio" }).click();
+  const file = await download; const path = info.outputPath("avatar-backup.zip"); await file.saveAs(path);
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.locator(".nav-file input").setInputFiles(path);
+  await expect(page.getByRole("heading", { name: "Speaker UI fixture (restored)" })).toBeVisible();
+  await page.getByRole("tab", { name: /Speakers/ }).click();
+  await page.getByRole("button", { name: "Edit speakers", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Speaker identity" }).locator(".speaker-avatar img")).toBeVisible();
+});
+
+test("dark speaker workspace preserves readable controls and content", async ({ page }) => {
+  await page.addInitScript(() => { localStorage.setItem("meeting-memo:theme", "dark"); localStorage.setItem("meeting-memo:palette", "forest"); });
+  await createFixture(page);
+  const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+  expect(axe.violations).toEqual([]);
+});
+
+test("persistent player skips without changing the playback state", async ({ page }) => {
+  await createFixture(page);
+  const player = page.locator(".audio-player");
+  const audio = page.locator("audio");
+  await player.getByRole("button", { name: "Forward 15 seconds" }).click();
+  await expect.poll(() => audio.evaluate((element) => (element as HTMLMediaElement).currentTime)).toBe(15);
+  await player.getByRole("button", { name: "Back 15 seconds" }).click();
+  await expect.poll(() => audio.evaluate((element) => (element as HTMLMediaElement).currentTime)).toBe(0);
+  await expect(player.getByRole("button", { name: "Play audio" })).toBeVisible();
+});
+
+test("Chinese transcript filter keeps its checkbox and label on one line", async ({ page }) => {
+  await createFixture(page);
+  await page.getByLabel("Display language", { exact: true }).selectOption("zh-CN");
+  await page.getByRole("tab", { name: /转录/ }).click();
+  const filter = page.getByRole("checkbox", { name: "需要审阅" });
+  await expect(filter).toBeVisible();
+  const label = filter.locator("..");
+  const dimensions = await label.evaluate((element) => ({ height: element.getBoundingClientRect().height, style: getComputedStyle(element).whiteSpace }));
+  expect(dimensions.style).toBe("nowrap");
+  expect(dimensions.height).toBeLessThan(50);
 });

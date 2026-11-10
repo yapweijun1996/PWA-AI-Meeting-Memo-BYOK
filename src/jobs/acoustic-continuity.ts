@@ -2,10 +2,14 @@ import {
   ACOUSTIC_POLICY,
   acousticSourceKey,
   chooseAcousticAssignment,
+  clusterRecordingSources,
+  cosineSimilarity,
+  matchLabelsAcrossParts,
   selectAcousticSamples,
   updateAcousticIdentity,
   applyAcousticAssignmentsToMeeting,
   type AcousticAssignment,
+  type AcousticAssignmentState,
   type AcousticCheckpoint,
   type AcousticChunkInput,
   type AcousticEmbeddingRecord,
@@ -18,10 +22,13 @@ import type { LongAudioManifest } from "../storage/long-audio-store";
 import { getLongAudioChunk } from "../storage/long-audio-store";
 import { getChunkSpeech } from "../storage/chunk-speech-store";
 import {
+  deleteAcousticAssignments,
+  deleteAcousticIdentities,
   getAcousticAssignment,
   getAcousticCheckpoint,
   getAcousticEmbedding,
   listAcousticAssignments,
+  listAcousticEmbeddings,
   listAcousticIdentities,
   listTranscriptPages,
   putAcousticAssignment,
@@ -50,6 +57,10 @@ export interface AcousticContinuityOptions {
   signal?: AbortSignal;
   onProgress?: (progress: AcousticContinuityProgress) => void;
   fallbackParts?: ReadonlyMap<number, NormalizedSpeech>;
+  /** Discard saved decisions and re-decide every part; cached vectors are kept. */
+  restart?: boolean;
+  /** Optional, from a person: how many people spoke. Used only for multi-part grouping. */
+  expectedVoices?: number;
 }
 
 function now(): string {
@@ -174,7 +185,13 @@ export async function runAcousticContinuity(
   const { meetingId, manifest, provider, signal } = options;
   if (!options.consent) throw new Error("Local speaker model consent is required before acoustic analysis.");
   const existing = await getAcousticCheckpoint(meetingId);
-  const compatible = existing &&
+  if (options.restart) {
+    // An explicit re-analysis recomputes derived decisions (cached vectors for
+    // this revision are reused) so improved grouping applies to old results.
+    await deleteAcousticAssignments(meetingId);
+    await deleteAcousticIdentities(meetingId);
+  }
+  const compatible = !options.restart && existing &&
     existing.recordingHash === options.recordingHash &&
     existing.sourceRevision === options.sourceRevision &&
     existing.modelId === ACOUSTIC_POLICY.modelId &&
@@ -244,6 +261,31 @@ export async function runAcousticContinuity(
         localEmbeddings.push(embedding);
         options.onProgress?.({ phase: "sample", done: processedEmbeddingCount, total: totalChunks, chunkIndex: meta.index, sourceKey: acousticSourceKey(sample.chunkIndex, sample.sourceSpeakerId) });
       }
+      // A provider can split one person into several labels inside one part.
+      // Labels whose samples all agree (see clusterRecordingSources) are decided
+      // together: the first is the lead, the rest follow its identity.
+      const followersOf = new Map<string, string[]>();
+      const leadOf = new Map<string, string>();
+      if (localEmbeddings.length) {
+        const byIdentity = new Map<string, string[]>();
+        for (const grouped of clusterRecordingSources({
+          meetingId,
+          recordingHash: options.recordingHash,
+          sourceRevision: options.sourceRevision,
+          embeddings: localEmbeddings,
+        }).assignments) {
+          if (grouped.identityId && (grouped.state === "matched" || grouped.state === "new_identity")) {
+            byIdentity.set(grouped.identityId, [...(byIdentity.get(grouped.identityId) ?? []), grouped.sourceKey]);
+          }
+        }
+        for (const keys of byIdentity.values()) {
+          const ordered = sourceKeys.filter((key) => keys.includes(key));
+          const [lead, ...followers] = ordered;
+          if (!lead || !followers.length) continue;
+          followersOf.set(lead, followers);
+          for (const follower of followers) leadOf.set(follower, lead);
+        }
+      }
       for (const sourceKey of sourceKeys) {
         abortIfRequested(signal);
         const [chunkIndexText, ...speakerParts] = sourceKey.split(":");
@@ -267,6 +309,29 @@ export async function runAcousticContinuity(
           allAssignments.push(previous);
           continue;
         }
+        const leadKey = leadOf.get(sourceKey);
+        const leadAssignment = leadKey ? allAssignments.find((candidate) => candidate.sourceKey === leadKey) : undefined;
+        if (leadAssignment) {
+          // Follower label: same voice as the lead, so it shares the lead's decision.
+          const follower: AcousticAssignment = {
+            ...leadAssignment,
+            id: `${meetingId}:${sourceKey}`,
+            sourceKey,
+            sourceSpeakerId,
+            evidenceEmbeddingIds: embeddings.map((embedding) => embedding.id),
+            state: leadAssignment.state === "new_identity" ? "matched" : leadAssignment.state,
+            reason: "Another provider label in this part has the same voice, so both share one anonymous identity.",
+            updatedAt: now(),
+          };
+          await putAcousticAssignment(follower);
+          allAssignments.push(follower);
+          options.onProgress?.({ phase: "assignment", done: allAssignments.length, total: totalChunks, chunkIndex, sourceKey });
+          continue;
+        }
+        const followerEmbeddings = (followersOf.get(sourceKey) ?? []).flatMap((key) => {
+          const [, ...parts] = key.split(":");
+          return sourceEmbeddings(localEmbeddings, chunkIndex, parts.join(":"));
+        });
         const result = chooseAcousticAssignment(
           {
             meetingId,
@@ -293,10 +358,10 @@ export async function runAcousticContinuity(
           updatedAt: now(),
         };
         await putAcousticAssignment(assignment);
-        if (result.identity) await putAcousticIdentity(result.identity);
+        if (result.identity) await putAcousticIdentity(updateAcousticIdentity(result.identity, followerEmbeddings));
         else if (assignment.identityId && assignment.state === "matched") {
           const identity = identities.find((candidate) => candidate.id === assignment.identityId);
-          if (identity) await putAcousticIdentity(updateAcousticIdentity(identity, embeddings));
+          if (identity) await putAcousticIdentity(updateAcousticIdentity(identity, [...embeddings, ...followerEmbeddings]));
         }
         allAssignments.push(assignment);
         options.onProgress?.({ phase: "assignment", done: allAssignments.length, total: totalChunks, chunkIndex, sourceKey });
@@ -309,6 +374,44 @@ export async function runAcousticContinuity(
         processedEmbeddingCount,
       });
       await putAcousticCheckpoint(checkpoint);
+    }
+    if (totalChunks > 1) {
+      // Every part's vectors are saved now. Decide across the whole recording at
+      // once: per-part decisions above are interim and are replaced here.
+      const embeddings = (await listAcousticEmbeddings(meetingId)).filter(
+        (embedding) =>
+          embedding.recordingHash === options.recordingHash &&
+          embedding.sourceRevision === options.sourceRevision &&
+          embedding.modelId === ACOUSTIC_POLICY.modelId &&
+          embedding.modelRevision === ACOUSTIC_POLICY.modelRevision &&
+          embedding.extractionVersion === ACOUSTIC_POLICY.version,
+      );
+      // Removing the recording's average voice only helps when the recording has
+      // different voices to tell apart: some part must contain 2+ labels. With one
+      // label per part everything is the same voice, so keep the per-part decisions.
+      const labelsPerPart = new Map<number, Set<string>>();
+      for (const embedding of embeddings) {
+        labelsPerPart.set(embedding.chunkIndex, (labelsPerPart.get(embedding.chunkIndex) ?? new Set()).add(embedding.sourceSpeakerId));
+      }
+      if (embeddings.length && [...labelsPerPart.values()].some((labels) => labels.size >= 2)) {
+        const decided = matchLabelsAcrossParts({
+          meetingId,
+          recordingHash: options.recordingHash,
+          sourceRevision: options.sourceRevision,
+          embeddings,
+          expectedVoices: options.expectedVoices,
+        });
+        await deleteAcousticAssignments(meetingId);
+        await deleteAcousticIdentities(meetingId);
+        for (const identity of decided.identities) await putAcousticIdentity(identity);
+        allAssignments.length = 0;
+        for (const value of decided.assignments) {
+          const assignment: AcousticAssignment = { ...value, id: `${meetingId}:${value.sourceKey}`, updatedAt: now() };
+          await putAcousticAssignment(assignment);
+          allAssignments.push(assignment);
+        }
+        options.onProgress?.({ phase: "assignment", done: allAssignments.length, total: allAssignments.length });
+      }
     }
     checkpoint = { ...checkpoint, state: "completed", error: null, updatedAt: now() };
     await putAcousticCheckpoint(checkpoint);
@@ -323,6 +426,142 @@ export async function runAcousticContinuity(
     await putAcousticCheckpoint(checkpoint);
     throw error;
   }
+}
+
+export interface AcousticStateSummary {
+  checkpointState: string | null;
+  error: string | null;
+  /** Voice samples embedded so far. */
+  samples: number;
+  /** Provider speaker labels that have a saved decision. */
+  labels: number;
+  /** Distinct anonymous voices those labels resolved to. */
+  voices: number;
+  byState: Record<AcousticAssignmentState, number>;
+  /**
+   * For each label, the cosine to its closest label in a DIFFERENT part (mean
+   * vector per label). Shows whether the acceptance threshold or the model is
+   * the limiting factor. Not an accuracy measure: the labels are unverified.
+   */
+  crossPart: { labels: number; strong: number; middle: number; weak: number; median: number | null };
+  /**
+   * Pair similarity of samples under the SAME provider label vs different labels
+   * in the same part. If the two look alike, the vectors do not separate voices
+   * (alignment, audio or model problem); if same-label is clearly higher, a few
+   * impure labels are the issue.
+   */
+  pairs: {
+    sameLabel: { count: number; median: number | null; p10: number | null };
+    otherLabelSamePart: { count: number; median: number | null; p90: number | null };
+  };
+  /** The same two measurements after removing the recording's average vector. */
+  centered: { pairs: AcousticStateSummary["pairs"]; closestOtherPartMedian: number | null };
+}
+
+/**
+ * The same vectors after subtracting the recording's average vector. A shared
+ * channel/room component can make every voice look alike; removing it is a
+ * standard step. Diagnostic only for now: nothing is matched on these values.
+ */
+function centerEmbeddings(embeddings: readonly AcousticEmbeddingRecord[]): AcousticEmbeddingRecord[] {
+  const first = embeddings[0];
+  if (!first) return [];
+  const average = Array.from({ length: first.values.length }, () => 0);
+  for (const embedding of embeddings) embedding.values.forEach((value, index) => { average[index] = (average[index] ?? 0) + value / embeddings.length; });
+  return embeddings.map((embedding) => ({ ...embedding, values: embedding.values.map((value, index) => value - (average[index] ?? 0)) }));
+}
+
+function quantile(sorted: readonly number[], fraction: number): number | null {
+  if (!sorted.length) return null;
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(fraction * (sorted.length - 1))))] ?? null;
+}
+
+function pairStatistics(embeddings: readonly AcousticEmbeddingRecord[]): AcousticStateSummary["pairs"] {
+  const same: number[] = [];
+  const other: number[] = [];
+  for (let i = 0; i < embeddings.length; i += 1) {
+    for (let j = i + 1; j < embeddings.length; j += 1) {
+      const left = embeddings[i]!;
+      const right = embeddings[j]!;
+      if (left.chunkIndex !== right.chunkIndex) continue;
+      const score = cosineSimilarity(left.values, right.values);
+      if (!Number.isFinite(score)) continue;
+      (left.sourceSpeakerId === right.sourceSpeakerId ? same : other).push(score);
+    }
+  }
+  same.sort((a, b) => a - b);
+  other.sort((a, b) => a - b);
+  return {
+    sameLabel: { count: same.length, median: quantile(same, 0.5), p10: quantile(same, 0.1) },
+    otherLabelSamePart: { count: other.length, median: quantile(other, 0.5), p90: quantile(other, 0.9) },
+  };
+}
+
+function crossPartSimilarity(
+  embeddings: readonly AcousticEmbeddingRecord[],
+): AcousticStateSummary["crossPart"] {
+  const sums = new Map<string, { chunk: number; sum: number[] }>();
+  for (const embedding of embeddings) {
+    const key = acousticSourceKey(embedding.chunkIndex, embedding.sourceSpeakerId);
+    const entry = sums.get(key) ?? { chunk: embedding.chunkIndex, sum: Array.from({ length: embedding.values.length }, () => 0) };
+    embedding.values.forEach((value, index) => { entry.sum[index] = (entry.sum[index] ?? 0) + value; });
+    sums.set(key, entry);
+  }
+  const labels = [...sums.values()];
+  const best: number[] = [];
+  for (const left of labels) {
+    let top = Number.NEGATIVE_INFINITY;
+    for (const right of labels) {
+      if (right.chunk === left.chunk) continue;
+      const score = cosineSimilarity(left.sum, right.sum);
+      if (Number.isFinite(score) && score > top) top = score;
+    }
+    if (Number.isFinite(top)) best.push(top);
+  }
+  best.sort((a, b) => a - b);
+  const mid = Math.floor(best.length / 2);
+  return {
+    labels: best.length,
+    strong: best.filter((score) => score >= ACOUSTIC_POLICY.acceptCosine).length,
+    middle: best.filter((score) => score >= ACOUSTIC_POLICY.conflictCosine && score < ACOUSTIC_POLICY.acceptCosine).length,
+    weak: best.filter((score) => score < ACOUSTIC_POLICY.conflictCosine).length,
+    median: best.length ? (best.length % 2 ? best[mid]! : (best[mid - 1]! + best[mid]!) / 2) : null,
+  };
+}
+
+/** Read-only summary of saved local voice analysis, so results are visible after the fact. */
+export async function describeAcousticState(meetingId: string): Promise<AcousticStateSummary> {
+  const [checkpoint, assignments, allEmbeddings] = await Promise.all([
+    getAcousticCheckpoint(meetingId),
+    listAcousticAssignments(meetingId),
+    listAcousticEmbeddings(meetingId),
+  ]);
+  const current = checkpoint
+    ? allEmbeddings.filter(
+        (embedding) =>
+          embedding.recordingHash === checkpoint.recordingHash &&
+          embedding.sourceRevision === checkpoint.sourceRevision &&
+          embedding.modelRevision === checkpoint.modelRevision &&
+          embedding.extractionVersion === checkpoint.extractionVersion,
+      )
+    : [];
+  const byState: Record<AcousticAssignmentState, number> = { matched: 0, new_identity: 0, ambiguous: 0, unresolved: 0, conflict: 0, stale: 0 };
+  for (const assignment of assignments) byState[assignment.state] += 1;
+  return {
+    checkpointState: checkpoint?.state ?? null,
+    error: checkpoint?.error ?? null,
+    // Count vectors in use, not only newly computed ones (a re-run reuses cached vectors).
+    samples: current.length,
+    labels: assignments.length,
+    voices: new Set(assignments.filter((a) => a.identityId && (a.state === "matched" || a.state === "new_identity")).map((a) => a.identityId)).size,
+    byState,
+    crossPart: crossPartSimilarity(current),
+    pairs: pairStatistics(current),
+    centered: (() => {
+      const flat = centerEmbeddings(current);
+      return { pairs: pairStatistics(flat), closestOtherPartMedian: crossPartSimilarity(flat).median };
+    })(),
+  };
 }
 
 /**
@@ -343,6 +582,7 @@ export async function analyzeExistingMeetingAcoustics(
     sourceRevision: meeting.revision,
     manifest: options.manifest,
     fallbackParts,
+    restart: true,
   });
   for (const meta of options.manifest.chunks) {
     const speech = await savedPartSpeech(meeting.id, meta.index, fallbackParts);
@@ -360,3 +600,4 @@ export async function analyzeExistingMeetingAcoustics(
   // editMeeting records one undo snapshot and invalidates derived citations.
   return applyAcousticAssignmentsToMeeting(latest, assignments, identities);
 }
+

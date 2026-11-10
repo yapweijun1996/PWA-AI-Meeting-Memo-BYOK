@@ -75,3 +75,43 @@ test("mobile keeps its drawer and hides the desktop toggle", async ({ page }) =>
   expect(await sidebarWidth(page)).toBeGreaterThan(200);
   expect(await noHorizontalOverflow(page)).toBe(true);
 });
+
+test("recent meetings show their status and short sidebars keep actions reachable", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 600 });
+  await page.goto("./");
+  const sidebar = page.locator("aside.sidebar");
+  const help = sidebar.getByRole("button", { name: "How it works" });
+  const icon = await help.locator("svg").boundingBox();
+  const label = await help.locator(".nav-text").boundingBox();
+  expect(icon!.x).toBeLessThan(label!.x);
+  await help.click();
+  await page.getByRole("button", { name: "Explore a synthetic example" }).click();
+  const recent = sidebar.locator(".sidebar-recent-list a").first();
+  await expect(recent).toHaveAttribute("aria-current", "page");
+  await expect(recent.locator(".sidebar-recent-status")).not.toBeEmpty();
+  const titleBox = await recent.locator(".sidebar-recent-title").boundingBox();
+  const statusBox = await recent.locator(".sidebar-recent-status").boundingBox();
+  expect(statusBox!.y).toBeGreaterThan(titleBox!.y);
+  await sidebar.getByRole("button", { name: "Check for updates" }).scrollIntoViewIfNeeded();
+  await expect(sidebar.getByRole("button", { name: "Check for updates" })).toBeInViewport();
+  expect(await noHorizontalOverflow(page)).toBe(true);
+});
+
+test("collapsed navigation tooltip follows pointer and supports keyboard focus", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("./");
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  const target = page.getByRole("button", { name: "Needs review" });
+  const box = await target.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box!.x + 12, box!.y + 12);
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip).toHaveText("Needs review");
+  const before = await tooltip.boundingBox();
+  await page.mouse.move(box!.x + 20, box!.y + 20);
+  await expect.poll(async () => (await tooltip.boundingBox())?.x).toBeGreaterThan(before!.x);
+  await page.keyboard.press("Escape");
+  await expect(tooltip).toHaveCount(0);
+  await target.focus();
+  await expect(tooltip).toHaveText("Needs review");
+});

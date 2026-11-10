@@ -74,7 +74,7 @@ export const getMeetingWorkflow = (m: Meeting) => {
     if (m.memos.length > 0) {
       return {
         badge: label("Needs review", "需要审阅"),
-        tone: "green" as const,
+        tone: "sand" as const,
         stage: label("Draft notes", "笔记草稿"),
         cta: label("Review", "审阅"),
       };
@@ -82,7 +82,7 @@ export const getMeetingWorkflow = (m: Meeting) => {
     if (m.segments.length > 0) {
       return {
         badge: label("Needs review", "需要审阅"),
-        tone: "neutral" as const,
+        tone: "sand" as const,
         stage: label("Review transcript", "审阅转录"),
         cta: label("Review", "审阅"),
       };

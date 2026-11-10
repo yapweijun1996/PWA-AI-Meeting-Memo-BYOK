@@ -49,7 +49,13 @@ export const getSelection = (stage: Stage): Selection => ({
 });
 export const getKey = (provider: Provider) => settings.keys[provider];
 export const getSpeechRate = () => settings.speechRate;
-export const getUiLanguage = () => settings.uiLanguage ?? "en";
+const languageOverrideKey = "meeting-memo:ui-language-override";
+export const getUiLanguage = (): "en" | "zh-CN" | "ms" => {
+  try { const value = localStorage.getItem(languageOverrideKey); if (value === "en" || value === "zh-CN" || value === "ms") return value; } catch { /* Fall back to the stored settings record. */ }
+  return settings.uiLanguage ?? "en";
+};
+export function setUiLanguageOverride(language: "en" | "zh-CN" | "ms") { localStorage.setItem(languageOverrideKey, language); window.dispatchEvent(new Event("memo-keys-changed")); }
+if (typeof window !== "undefined") window.addEventListener("storage", (event) => { if (event.key === languageOverrideKey || event.key === null) window.dispatchEvent(new Event("memo-keys-changed")); });
 export const getSpeechRateContext = () => settings.speechRateContext ?? null;
 export function calculateSpeechEstimate(value: SettingsRecord, seconds: number | null | undefined) {
   const context = value.speechRateContext;
@@ -107,4 +113,9 @@ async function commitSettings(
   }
   window.dispatchEvent(new Event("memo-keys-changed"));
   channel?.postMessage("updated");
+}
+
+export async function saveUiLanguagePreference(language: "en" | "zh-CN" | "ms") {
+  if (pendingWrite) throw new Error("Wait for settings to finish saving before changing the language.");
+  setUiLanguageOverride(language);
 }

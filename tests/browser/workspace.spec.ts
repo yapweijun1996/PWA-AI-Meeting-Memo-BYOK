@@ -369,7 +369,8 @@ test("bulk reassignment, merge and split expose their scope and support undo", a
   await page
     .getByRole("button", { name: "Confirm merge", exact: true })
     .click();
-  await expect(page.locator(".speaker-card")).toHaveCount(1);
+  await page.getByRole("button", { name: "All", exact: true }).click();
+  await expect(page.locator(".speaker-queue-item")).toHaveCount(1);
   await page.getByRole("tab", { name: /Transcript/ }).click();
   await page
     .getByRole("button", { name: "Split", exact: true })

@@ -15,3 +15,5 @@
 - Apply the acceptance matrix in [docs/ROADMAP.md](docs/ROADMAP.md), including iOS standalone, safe areas, accessibility, and storage recovery. Record unsupported behavior explicitly.
 - The workflow under `docs/examples/` is inactive. Activate it only alongside a runnable app, its required checks, and authorized publication. Documentation work alone does not establish deployment success.
 - Report checks actually run and remaining limitations. Do not commit, push, or deploy without authorization from the current task or existing session instructions.
+- For the speaker voice-matching work, read [docs/HANDOFF.md](docs/HANDOFF.md) first. Do not claim matching accuracy: none is measured. Do not publish the WavLM weights until their licence is established. In a shared working tree, run long local analyses from a static build (the dev server reloads on every save), stage explicit files, and reconcile with `origin/main` in a clean worktree.
+

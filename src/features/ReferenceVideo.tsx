@@ -1,3 +1,4 @@
+import { translateUi } from "../i18n";
 import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, Eye, Save, StopCircle } from "lucide-react";
 import { useUiLanguage } from "../ui-language";
@@ -30,7 +31,7 @@ export function ReferenceVideo({
   onBeforeWatch: () => void;
 }) {
   const language = useUiLanguage();
-  const t = (en: string, zh: string) => (language === "zh-CN" ? zh : en);
+  const t = (en: string, zh: string) => (translateUi(language, en, zh));
   const [videoUrl, setVideoUrl] = useState(() =>
     value?.youtubeId ? buildYouTubeUrl(value.youtubeId) : "",
   );

@@ -1,3 +1,4 @@
+import { translateUi } from "./i18n";
 import { isMeetingCompleted, doesMeetingNeedReview, getMeetingWorkflow } from "./domain/workflow";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -8,10 +9,10 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
-  FileText,
   FolderOpen,
   HelpCircle,
   Leaf,
+  Languages,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
@@ -31,18 +32,24 @@ import {
 } from "./storage/repository";
 import { cleanupIncompleteLongAudio } from "./storage/long-audio-store";
 import { readBackup } from "./storage/backup";
-import { Brand, Empty, Modal, Pill } from "./components/ui";
+import { restoreSpeakerAvatars, trackAvatarWrite } from "./storage/speaker-avatars";
+import { Brand, Empty, Pill } from "./components/ui";
+import { TooltipLayer } from "./components/TooltipLayer";
+import { ToastLayer } from "./components/ToastLayer";
+import { LoadingPlaceholder } from "./components/LoadingPlaceholder";
 import { NewMeeting } from "./features/NewMeeting";
 import { MeetingWorkspace } from "./features/MeetingWorkspace";
 import { Settings } from "./features/Settings";
 import { isProcessing } from "./jobs/runner";
 import {
   getSettingsStorageError,
+  saveUiLanguagePreference,
   isSettingsDirty,
 } from "./providers/credentials";
 import { PwaStatus } from "./pwa/status";
 import { useSidebarCollapsed } from "./features/useSidebarCollapsed";
 import { useUiLanguage } from "./ui-language";
+import { HelpModal } from "./features/HelpModal";
 import { translateMessage } from "./ui-messages";
 export const navigate = (route: string) => {
   location.hash = route;
@@ -50,8 +57,9 @@ export const navigate = (route: string) => {
 export default function App() {
   const uiLanguage = useUiLanguage();
   const [sidebarCollapsed, toggleSidebar] = useSidebarCollapsed();
+  const [languageSaving, setLanguageSaving] = useState(false);
   const navTip = (label: string) => (sidebarCollapsed ? label : undefined);
-  const t = (en: string, zh: string) => uiLanguage === "zh-CN" ? zh : en;
+  const t = (en: string, zh: string) => translateUi(uiLanguage, en, zh);
   useEffect(() => { document.documentElement.lang = uiLanguage; }, [uiLanguage]);
   const [route, setRoute] = useState(location.hash.slice(1) || "/"),
     [meetings, setMeetings] = useState<Meeting[]>([]),
@@ -188,7 +196,12 @@ export default function App() {
         )
       )
         return;
-      await created(await saveMeeting(result.meeting, result.audio));
+      const restored = await saveMeeting(result.meeting, result.audio);
+      if (result.avatars) {
+        try { await trackAvatarWrite(restoreSpeakerAvatars(restored.id, result.avatars)); }
+        catch { setError(t("Meeting restored, but some profile images could not be restored.", "\u4f1a\u8bae\u5df2\u6062\u590d\uff0c\u4f46\u90e8\u5206\u5934\u50cf\u672a\u80fd\u6062\u590d\u3002")); }
+      }
+      await created(restored);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not restore this file.");
     }
@@ -214,6 +227,8 @@ export default function App() {
     });
   return (
     <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      <TooltipLayer />
+      <ToastLayer />
       <a
         className="skip-link"
         href="#main-content"
@@ -239,7 +254,8 @@ export default function App() {
         <nav aria-label={t("Main navigation", "主导航")}>
           <a
             href="#/"
-            title={navTip(t("Your meetings", "您的会议"))}
+            aria-current={route === "/" && filter !== "review" ? "page" : undefined}
+            data-tooltip={navTip(t("Your meetings", "您的会议"))}
             className={
               (route === "/" && filter !== "review") || route.startsWith("/meetings")
                 ? "active"
@@ -251,7 +267,7 @@ export default function App() {
             <span className="nav-text">{t("Your meetings", "您的会议")}</span><span className="nav-count">{meetings.length}</span>
           </a>
           <button
-            title={navTip(t("Needs review", "待审阅"))}
+            data-tooltip={navTip(t("Needs review", "待审阅"))}
             className={route === "/" && filter === "review" ? "active" : ""}
             onClick={() => {
               setFilter("review");
@@ -263,11 +279,11 @@ export default function App() {
             <span className="nav-text">{t("Needs review", "待审阅")}</span>
             <span className="nav-count">{needsReviewCount}</span>
           </button>
-          <button title={navTip(t("New meeting", "新建会议"))} onClick={() => setNewOpen(true)}>
+          <button data-tooltip={navTip(t("New meeting", "新建会议"))} onClick={() => setNewOpen(true)}>
             <Plus size={19} />
             <span className="nav-text">{t("New meeting", "新建会议")}</span>
           </button>
-          <label className="nav-file" title={navTip(t("Restore backup", "恢复备份"))}>
+          <label className="nav-file" data-tooltip={navTip(t("Restore backup", "恢复备份"))}>
             <Upload size={19} />
             <span className="nav-text">{t("Restore backup", "恢复备份")}</span>
             <input
@@ -291,11 +307,16 @@ export default function App() {
                     key={m.id}
                     href={`#/meetings/${m.id}`}
                     className={current?.id === m.id ? "active" : ""}
+                    aria-current={current?.id === m.id ? "page" : undefined}
                   >
                     <span
                       className={`status-dot ${status.tone === "green" ? "is-ready" : status.tone === "sand" ? "is-warn" : ""}`}
+                      aria-hidden="true"
                     />
-                    <span className="sidebar-recent-title">{m.title}</span>
+                    <span className="sidebar-recent-content">
+                      <span className="sidebar-recent-title">{m.title}</span>
+                      <span className="sidebar-recent-status">{status.badge}</span>
+                    </span>
                   </a>
                 );
               })}
@@ -309,21 +330,22 @@ export default function App() {
         <div className="sidebar-bottom">
           <a
             href="#/settings"
-            title={navTip(t("Settings & API keys", "设置与 API 密钥"))}
+            aria-current={route === "/settings" ? "page" : undefined}
+            data-tooltip={navTip(t("Settings & API keys", "设置与 API 密钥"))}
             className={route === "/settings" ? "active" : ""}
           >
             <SettingsIcon size={18} />
             <span className="nav-text">{t("Settings & API keys", "设置与 API 密钥")}</span>
           </a>
-          <button title={navTip(t("How it works", "使用说明"))} onClick={() => setHelp(true)}>
+          <button data-tooltip={navTip(t("How it works", "使用说明"))} onClick={() => setHelp(true)}>
             <HelpCircle size={18} />
             <span className="nav-text">{t("How it works", "使用说明")}</span>
-            <ArrowUpRight size={14} className="nav-trailing" />
           </button>
           <div className="local-label">
             <span className="status-dot" />
             <span className="nav-text">{t("Saved on this device · Local storage", "已保存在此设备 · 本地存储")}</span>
           </div>
+          <div id="pwa-sidebar-slot" />
         </div>
       </aside>
       <div className="main-shell">
@@ -346,7 +368,7 @@ export default function App() {
                   ? t("Expand sidebar", "展开侧边栏")
                   : t("Collapse sidebar", "收起侧边栏")
               }
-              title={
+              data-tooltip={
                 sidebarCollapsed
                   ? t("Expand sidebar", "展开侧边栏")
                   : t("Collapse sidebar", "收起侧边栏")
@@ -369,10 +391,15 @@ export default function App() {
               </Pill>
             )}
           </div>
-          <span className="privacy-top">
+          <label className="topbar-language" data-tooltip={t("Display language", "\u663e\u793a\u8bed\u8a00")}><Languages size={20} aria-hidden="true" />
+            <select aria-label={t("Display language", "\u663e\u793a\u8bed\u8a00")} value={uiLanguage} disabled={languageSaving} onChange={(event) => { setLanguageSaving(true); void saveUiLanguagePreference(event.target.value as "en" | "zh-CN" | "ms").catch(() => setError(t("Wait for settings to finish saving, or check local storage.", "请等待设置保存完成，或检查本地存储。"))).finally(() => setLanguageSaving(false)); }}>
+              <option value="en">English</option><option value="zh-CN">{"\u7b80\u4f53\u4e2d\u6587"}</option><option value="ms">Bahasa Melayu (partial)</option>
+            </select>
+          </label>
+          <span className="privacy-top" data-tooltip={t("Meetings are saved locally. AI requests use your selected provider.", "\u4f1a\u8bae\u4fdd\u5b58\u5728\u672c\u5730\u3002AI \u8bf7\u6c42\u4f7f\u7528\u60a8\u9009\u62e9\u7684\u670d\u52a1\u5546\u3002")}>
             <ShieldCheck size={15} />
             {online
-              ? t("Private by design · Local storage", "重视隐私 · 本地存储")
+              ? t("Local storage · BYOK", "\u672c\u5730\u5b58\u50a8 · BYOK")
               : t("Browser reports offline · Local storage", "浏览器显示离线 · 本地存储")}
           </span>
         </header>
@@ -410,15 +437,8 @@ export default function App() {
                 }}
                 onError={reportError}
               />
-            ) : (
-              <div className="empty">
-                <p>
-                  {loading
-                    ? t("Opening your meeting…", "正在打开会议…")
-                    : t("Choose a meeting from your library.", "请从会议库中选择会议。")}
-                </p>
-                <a href="#/">{t("Back to meetings", "返回会议列表")}</a>
-              </div>
+            ) : loading ? <LoadingPlaceholder kind="meeting" label={t("Opening your meeting...", "\u6b63\u5728\u6253\u5f00\u4f1a\u8bae...")} /> : (
+              <div className="empty"><p>{t("Choose a meeting from your library.", "\u8bf7\u4ece\u4f1a\u8bae\u5e93\u4e2d\u9009\u62e9\u4f1a\u8bae\u3002")}</p><a href="#/">{t("Back to meetings", "\u8fd4\u56de\u4f1a\u8bae\u5217\u8868")}</a></div>
             )
           ) : (
             <>
@@ -447,7 +467,7 @@ export default function App() {
                   </span>
                   <div>
                     <strong>
-                      {meetings.length.toString().padStart(2, "0")}
+                      {meetings.length}
                     </strong>
                     <span>{t("Total meetings", "会议总数")}</span>
                   </div>
@@ -457,7 +477,7 @@ export default function App() {
                     <BookOpen size={19} />
                   </span>
                   <div>
-                    <strong>{needsReviewCount.toString().padStart(2, "0")}</strong>
+                    <strong>{needsReviewCount}</strong>
                     <span>{t("Needs review", "待审阅")}</span>
                   </div>
                 </div>
@@ -466,7 +486,7 @@ export default function App() {
                     <CheckCircle2 size={19} />
                   </span>
                   <div>
-                    <strong>{completedCount.toString().padStart(2, "0")}</strong>
+                    <strong>{completedCount}</strong>
                     <span>{t("Completed notes", "已完成笔记")}</span>
                   </div>
                 </div>
@@ -535,7 +555,7 @@ export default function App() {
                 </div>
                 )}
                 {loading ? (
-                  <p role="status">{t("Opening local library…", "正在打开本地会议库…")}</p>
+                  <LoadingPlaceholder kind="library" label={t("Opening local library...", "\u6b63\u5728\u6253\u5f00\u672c\u5730\u4f1a\u8bae\u5e93...")} />
                 ) : visible.length ? (
                   <div className="meeting-grid">
                     {visible.map((m) => {
@@ -648,51 +668,18 @@ export default function App() {
         />
       )}
       {help && (
-        <Modal
-          title={t("A little clarity, step by step", "使用步骤")}
+        <HelpModal
+          t={t}
           onClose={() => setHelp(false)}
-        >
-          <div className="modal-body">
-            <ol className="tour">
-              <li>
-                <strong>{t("Bring your conversation", "添加会议内容")}</strong>
-                <p>{t("Create a meeting and import a recording or transcript.", "创建会议并导入录音或转录。")}</p>
-              </li>
-              <li>
-                <strong>{t("Review who said what", "审阅发言人和内容")}</strong>
-                <p>
-                  {t("Connect your own keys in Settings. Speaker labels are anonymous until you confirm them.", "在设置中连接自己的密钥。说话人标签在您确认之前保持匿名。")}
-                </p>
-              </li>
-              <li>
-                <strong>{t("Make your notes yours", "审阅您的笔记")}</strong>
-                <p>
-                  {t("Review suggested decisions and actions against the source. Export a full backup to keep a separate copy.", "对照来源审阅建议的决定和行动，并导出完整备份以保留副本。")}
-                </p>
-              </li>
-            </ol>
-            <div className="notice">
-              {t("Cloud AI needs a connection. Keep this page open while processing. Local storage can be cleared by your browser; backups matter.", "云端 AI 需要网络连接。处理期间请保持页面打开。浏览器可能清除本地数据，请定期备份。")}
-            </div>
-            <button
-              className="button secondary full"
-              onClick={async () => {
-                try {
-                  await created(await saveMeeting(sampleMeeting()));
-                  setHelp(false);
-                } catch {
-                  setError(t("Could not save the example.", "无法保存示例。"));
-                }
-              }}
-            >
-              <FileText size={17} />
-              {t("Explore a synthetic example", "查看模拟示例")}
-            </button>
-            <p className="small muted">
-              {t("The example contains invented text, no recorded audio and no AI-generated results.", "示例使用虚构文字，不含录音或 AI 生成结果。")}
-            </p>
-          </div>
-        </Modal>
+          onExplore={async () => {
+            try {
+              await created(await saveMeeting(sampleMeeting()));
+              setHelp(false);
+            } catch {
+              setError(t("Could not save the example.", "???????"));
+            }
+          }}
+        />
       )}
     </div>
   );

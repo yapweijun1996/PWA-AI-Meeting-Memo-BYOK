@@ -1,3 +1,4 @@
+import { translateUi } from "../i18n";
 import { planMemo, type MemoPipeline } from "../providers/memo-plan";
 import { resumablePipeline } from "../jobs/memo-pipeline";
 import type { Selection } from "../providers/credentials";
@@ -14,6 +15,8 @@ import {
   LoaderCircle,
   Pause,
   Play,
+  RotateCcw,
+  RotateCw,
   Plus,
   Settings,
   ShieldCheck,
@@ -51,7 +54,8 @@ import { deleteLongAudio, getLongAudioChunk, getLongAudioManifest, type LongAudi
 import { ChunkedAudio, type PlayerLike } from "../audio/chunked-audio";
 import { getKey, getSelection, getSpeechEstimate, getUiLanguage } from "../providers/credentials";
 import { beginRequest, cancelProcessing, finishRequest, runJob, isProcessingMeeting } from "../jobs/runner";
-import { analyzeExistingMeetingAcoustics } from "../jobs/acoustic-continuity";
+import { analyzeExistingMeetingAcoustics, describeAcousticState } from "../jobs/acoustic-continuity";
+import { analyzeSingleRecordingVoices, singleRecordingFormat } from "../jobs/single-recording-voices";
 import { getChunkedProgress, runChunkedSpeech } from "../jobs/chunked-runner";
 import { WavLmSpeakerEmbeddingProvider } from "../audio/speaker-embedding";
 import { Empty, Modal, Pill } from "../components/ui";
@@ -91,6 +95,7 @@ export function MeetingWorkspace({
     [highlight, setHighlight] = useState(""),
     [pendingOnly, setPendingOnly] = useState(false);
   const [speakerFilter, setSpeakerFilter] = useState("");
+  const [processingKind, setProcessingKind] = useState<"local" | "provider">("provider");
   const [transcriptPage, setTranscriptPage] = useState(0);
   const [expandedGroup, setExpandedGroup] = useState("");
   const [url, setUrl] = useState(""),
@@ -113,10 +118,11 @@ export function MeetingWorkspace({
   >(undefined);
   const [reviewedRetry, setReviewedRetry] = useState(false);
   const [acousticConfirm, setAcousticConfirm] = useState(false);
+  const [expectedSpeakers, setExpectedSpeakers] = useState("");
   const [evidence, setEvidence] = useState<Segment>();
   const [confirmed, setConfirmed] = useState<{ selection: Selection; plan?: MemoPipeline | null }>();
   const [uiLanguage, setUiLanguage] = useState(getUiLanguage());
-  const t = (en: string, zh: string) => uiLanguage === "zh-CN" ? zh : en;
+  const t = (en: string, zh: string) => translateUi(uiLanguage, en, zh);
   const chunkPlaybackError = t("This browser cannot play the recording. Check that the local parts are available and supported.", "此浏览器无法播放录音。请检查本地录音部分是否可用且受支持。");
   const updatePlaybackRange = useCallback(
     (range: { start: number; end: number } | null) => {
@@ -365,6 +371,7 @@ export function MeetingWorkspace({
     const stage = confirmStage;
     setConfirmStage(undefined);
     setProcessing(true);
+    setProcessingKind("provider");
     setChunkProgressText("");
     if (stage === "memo") setTab("memo");
     setNotice("");
@@ -372,6 +379,7 @@ export function MeetingWorkspace({
     let acousticRequestController: AbortController | undefined;
     try {
       if (stage === "speech" && m.audio?.chunked && acousticConsent) {
+        setProcessingKind("local");
         acousticRequestController = beginRequest(m.id);
         acousticProvider = new WavLmSpeakerEmbeddingProvider();
         await acousticProvider.load({
@@ -391,13 +399,16 @@ export function MeetingWorkspace({
             acoustic: acousticProvider ? {
               provider: acousticProvider,
               consent: true,
+              expectedVoices: /^\d{1,2}$/.test(expectedSpeakers.trim()) && Number(expectedSpeakers) >= 1 ? Number(expectedSpeakers) : undefined,
               onProgress: (progress) => {
+                setProcessingKind("local");
                 if (progress.phase === "sample") setChunkProgressText(t(`Analyzing local voice sample in part ${ (progress.chunkIndex ?? 0) + 1 }`, `正在分析第 ${(progress.chunkIndex ?? 0) + 1} 部分的本地声音样本`));
                 else if (progress.phase === "assignment") setChunkProgressText(t("Associating anonymous voices across parts", "正在跨部分关联匿名声音"));
               },
             } : undefined,
             reviewedChunks: chunkProgress?.blockedIndex != null && reviewedRetry ? [chunkProgress.blockedIndex] : undefined,
             onProgress: ({ done, total, index }) => {
+              setProcessingKind("provider");
               setChunkProgressText(t(`Transcribing part ${index + 1} of ${total}`, `正在转录第 ${index + 1}/${total} 部分`));
               setChunkProgress({ total, done, nextIndex: index + 1, blockedIndex: null });
             },
@@ -405,9 +416,21 @@ export function MeetingWorkspace({
         : await runJob(m, stage, confirmed ? {...confirmed,reviewedRetry,onCheckpoint:onUpdate} : undefined);
       onUpdate(completed);
       setViewVersion(undefined);
+      let voiceNote = "";
+      if (stage === "speech" && m.audio?.chunked && acousticConsent) {
+        voiceNote = ` ${await acousticSummaryText(m.id).catch(() => "")}`;
+      }
+      if (stage === "speech" && !m.audio?.chunked && acousticConsent) {
+        // The transcript is already saved; a failed local check must not undo it.
+        try {
+          voiceNote = ` ${await checkSingleRecordingVoices(completed)}`;
+        } catch (voiceError) {
+          voiceNote = ` ${t("The local voice check did not finish; the transcript is saved.", "本地声音检查未完成；转录已保存。")} ${voiceError instanceof Error ? voiceError.message : ""}`;
+        }
+      }
       setNotice(
         stage === "speech"
-          ? `${t("Transcript ready. Review speakers and passages before making notes.", "转录已就绪。请先审阅说话人和段落，再生成笔记.")}${m.audio?.chunked && m.audio.chunked.chunkCount > 1 ? ` ${t("Speakers are numbered per part; use the suggested links or merge manually in the Speakers tab.", "说话人编号在每个分段中独立；请使用建议链接，或在“说话人”标签页手动合并。")}` : ""}`
+          ? `${t("Transcript ready. Review speakers and passages before making notes.", "转录已就绪。请先审阅说话人和段落，再生成笔记.")}${m.audio?.chunked && m.audio.chunked.chunkCount > 1 ? ` ${t("Speakers are numbered per part; use the suggested links or merge manually in the Speakers tab.", "说话人编号在每个分段中独立；请使用建议链接，或在“说话人”标签页手动合并。")}` : ""}${voiceNote}`
           : t("New memo version ready for review.", "新版本笔记已就绪，请审阅。"),
       );
       setTab(
@@ -431,8 +454,70 @@ export function MeetingWorkspace({
       setChunkProgressText("");
     }
   }
+  async function acousticSummaryText(meetingId: string): Promise<string> {
+    const s = await describeAcousticState(meetingId);
+    if (!s.labels && !s.samples) {
+      return t("No voice samples were analysed: no clean, timed, single-speaker passages were found.", "没有分析任何声音样本：没有找到干净、带时间、单人说话的片段。");
+    }
+    const b = s.byState;
+    const c = s.crossPart;
+    const cross = c.labels
+      ? t(
+          ` Closest match to a label in another part: ${c.strong} at or above 0.86, ${c.middle} between 0.72 and 0.86, ${c.weak} below 0.72 (median ${c.median?.toFixed(2)}).`,
+          ` 与其他分段最接近的标签：${c.strong} 个 ≥0.86，${c.middle} 个在 0.72 到 0.86 之间，${c.weak} 个 <0.72（中位数 ${c.median?.toFixed(2)}）。`,
+        )
+      : "";
+    const p = s.pairs;
+    const fmt = (value: number | null) => (value === null ? "n/a" : value.toFixed(2));
+    const pairText = t(
+      ` Sample pairs: same label median ${fmt(p.sameLabel.median)} (10th percentile ${fmt(p.sameLabel.p10)}, ${p.sameLabel.count} pairs); different labels in one part median ${fmt(p.otherLabelSamePart.median)} (90th percentile ${fmt(p.otherLabelSamePart.p90)}, ${p.otherLabelSamePart.count} pairs).`,
+      ` 样本对相似度：同标签中位数 ${fmt(p.sameLabel.median)}（10% 分位 ${fmt(p.sameLabel.p10)}，${p.sameLabel.count} 对）；同段不同标签中位数 ${fmt(p.otherLabelSamePart.median)}（90% 分位 ${fmt(p.otherLabelSamePart.p90)}，${p.otherLabelSamePart.count} 对）。`,
+    );
+    const k = s.centered;
+    const centeredText = t(
+      ` After removing the recording's average voice: same label median ${fmt(k.pairs.sameLabel.median)} (10th percentile ${fmt(k.pairs.sameLabel.p10)}); different labels in one part median ${fmt(k.pairs.otherLabelSamePart.median)} (90th percentile ${fmt(k.pairs.otherLabelSamePart.p90)}); closest label in another part median ${fmt(k.closestOtherPartMedian)}.`,
+      ` 去掉整段录音的平均声音后：同标签中位数 ${fmt(k.pairs.sameLabel.median)}（10% 分位 ${fmt(k.pairs.sameLabel.p10)}）；同段不同标签中位数 ${fmt(k.pairs.otherLabelSamePart.median)}（90% 分位 ${fmt(k.pairs.otherLabelSamePart.p90)}）；其他分段最接近标签的中位数 ${fmt(k.closestOtherPartMedian)}。`,
+    );
+    return `${t(
+      `Voice check: ${s.samples} samples analysed, ${s.labels} speaker labels resolved into ${s.voices} voices (matched ${b.matched}, new ${b.new_identity}, ambiguous ${b.ambiguous}, too few samples ${b.unresolved}, conflicting ${b.conflict}).${s.error ? ` ${s.error}` : ""}`,
+      `声音检查：分析 ${s.samples} 个样本，${s.labels} 个说话人标签归为 ${s.voices} 个声音（已匹配 ${b.matched}，新建 ${b.new_identity}，存疑 ${b.ambiguous}，样本太少 ${b.unresolved}，互相矛盾 ${b.conflict}）。${s.error ? ` ${s.error}` : ""}`,
+    )}${pairText}${cross}${centeredText}`;
+  }
+  /** Local voice check for one non-chunked recording; saves the result and returns a notice. */
+  async function checkSingleRecordingVoices(source: Meeting): Promise<string> {
+    setProcessingKind("local");
+    const controller = beginRequest(source.id);
+    const provider = new WavLmSpeakerEmbeddingProvider();
+    try {
+      const single = await analyzeSingleRecordingVoices(source, {
+        provider,
+        consent: true,
+        signal: controller.signal,
+        onProgress: (progress) => {
+          if (progress.phase === "model") {
+            const detail = progress.total ? ` ${Math.round(progress.done / progress.total * 100)}%` : "";
+            setChunkProgressText(t(`Preparing local speaker model${detail}`, `正在准备本地说话人模型${detail}`));
+          } else if (progress.phase === "sample") {
+            setChunkProgressText(t(`Analyzing local voice sample ${progress.done} of ${progress.total}`, `正在分析第 ${progress.done}/${progress.total} 个本地声音样本`));
+          } else {
+            setChunkProgressText(t("Grouping anonymous voices", "正在归并匿名声音"));
+          }
+        },
+      });
+      await persist(single.meeting);
+      const { comparedLabels, mergedLabels, unresolvedLabels } = single.summary;
+      return t(
+        `Local voice check: ${comparedLabels} speaker labels compared, ${mergedLabels} merged by voice, ${unresolvedLabels} left unresolved. Undo restores the previous speakers.`,
+        `本地声音检查：比较了 ${comparedLabels} 个说话人标签，按声音合并 ${mergedLabels} 个，${unresolvedLabels} 个保持未解决。撤销可恢复之前的说话人。`,
+      );
+    } finally {
+      provider.dispose();
+      finishRequest(controller);
+    }
+  }
   async function analyzeAcousticVoices() {
     setAcousticConfirm(false);
+    setProcessingKind("local");
     setProcessing(true);
     setChunkProgressText(t("Preparing local speaker model", "正在准备本地说话人模型"));
     let controller: AbortController | undefined;
@@ -440,11 +525,19 @@ export function MeetingWorkspace({
     try {
       const latest = await getMeeting(m.id);
       if (!latest) throw new Error("This meeting is no longer available.");
+      if (!latest.audio?.chunked) {
+        const text = await checkSingleRecordingVoices(latest);
+        setTab("speakers");
+        setNotice(text);
+        return;
+      }
       const manifest = await getLongAudioManifest(latest.id);
       if (!manifest) throw new Error("The chunk manifest is missing. Reattach or restore the long recording before local analysis.");
       controller = beginRequest(latest.id);
       acousticProvider = new WavLmSpeakerEmbeddingProvider();
+      const expectedVoices = /^\d{1,2}$/.test(expectedSpeakers.trim()) && Number(expectedSpeakers) >= 1 ? Number(expectedSpeakers) : undefined;
       const analyzed = await analyzeExistingMeetingAcoustics(latest, {
+        expectedVoices,
         manifest,
         provider: acousticProvider,
         consent: true,
@@ -462,7 +555,7 @@ export function MeetingWorkspace({
       });
       await persist(analyzed);
       setTab("speakers");
-      setNotice(t("Anonymous voice continuity was updated locally. Ambiguous voices remain unresolved.", "匿名声音连续性已在本地更新。模糊声音保持未解决状态。"));
+      setNotice(`${t("Anonymous voice continuity was updated locally. Ambiguous voices remain unresolved.", "匿名声音连续性已在本地更新。模糊声音保持未解决状态。")} ${await acousticSummaryText(latest.id)}`);
     } catch (error) {
       onError(error instanceof Error ? error.message : "Local speaker analysis did not complete.");
     } finally {
@@ -621,7 +714,7 @@ export function MeetingWorkspace({
           <button
             className="icon-button"
             aria-label={t("Edit meeting details", "编辑会议资料")}
-            title={t("Edit meeting details", "编辑会议资料")}
+            data-tooltip={t("Edit meeting details", "编辑会议资料")}
             onClick={() => setMetadata(true)}
             disabled={locked}
           >
@@ -654,7 +747,7 @@ export function MeetingWorkspace({
           <button
             className="icon-button danger-text"
             aria-label={t("Delete meeting", "删除会议")}
-            title={t("Delete meeting and local recording", "删除会议及本地录音")}
+            data-tooltip={t("Delete meeting and local recording", "删除会议及本地录音")}
             disabled={locked}
             onClick={async () => {
               if (
@@ -684,7 +777,7 @@ export function MeetingWorkspace({
             <AudioLines size={21} />
           </span>
           <div>
-            <strong>{m.audio?.name || t("No recording attached", "尚未附加录音")}</strong>
+            <strong data-tooltip={m.audio?.name}>{m.audio?.name || t("No recording attached", "尚未附加录音")}</strong>
             <small>
               {m.audio
                 ? `${(m.audio.size / 1024 / 1024).toFixed(1)} MB${duration ? ` · ${formatTime(duration)}` : ""}${audioMissing ? ` · ${t("audio missing on this device", "此设备缺少录音")}` : ""}`
@@ -711,7 +804,7 @@ export function MeetingWorkspace({
           </label>
           <button
             className="button primary compact"
-            title={
+            data-tooltip={
               m.segments.length > 0
                 ? t(
                     "Re-transcription keeps previous text, corrections and evidence in history.",
@@ -727,11 +820,11 @@ export function MeetingWorkspace({
               ? t(`Resume transcription (${chunkProgress.done} of ${chunkProgress.total} parts done)`, `恢复转录（已完成 ${chunkProgress.done}/${chunkProgress.total} 部分）`)
               : t("Transcribe", "转录")}
           </button>
-          {m.audio?.chunked && m.segments.length > 0 && (
+          {m.audio?.present && m.segments.length > 0 && (
             <button
               className="button secondary compact"
               onClick={() => setAcousticConfirm(true)}
-              disabled={locked || audioMissing || !chunkManifest}
+              disabled={locked || audioMissing || (m.audio.chunked ? !chunkManifest : !url)}
             >
               {t("Auto-match voices", "自动关联声音")}
             </button>
@@ -773,12 +866,12 @@ export function MeetingWorkspace({
           </span>
           <div className="processing-copy" role="status" aria-live="polite">
             <strong>{t("Processing your request", "正在处理请求")}</strong>
-            {chunkProgressText && <strong>{chunkProgressText}</strong>}
+            {chunkProgressText && <span className="processing-current">{chunkProgressText}</span>}
             <span>
               {t("Keep this page open. Completed results are saved to this device.", "请保持此页面打开。完成的结果会保存在此设备。")}
             </span>
             <span className="processing-detail">
-              {t("Sending or waiting for your provider · Time depends on the request", "正在发送或等待服务商 · 所需时间取决于请求")}
+              {processingKind === "local" ? t("Running on this device; model download may need a connection.", "\u5728\u672c\u8bbe\u5907\u5904\u7406\uff1b\u4e0b\u8f7d\u6a21\u578b\u53ef\u80fd\u9700\u8981\u7f51\u7edc\u3002") : t("Sending or waiting for your provider · Time depends on the request", "正在发送或等待服务商 · 所需时间取决于请求")}
             </span>
           </div>
           <button
@@ -809,7 +902,7 @@ export function MeetingWorkspace({
               role="tab"
               aria-selected={tab === value}
               aria-label={accessibleLabel}
-              title={accessibleLabel}
+              data-tooltip={accessibleLabel}
               onClick={() => setTab(String(value))}
             >
               <Glyph size={17} />
@@ -824,7 +917,7 @@ export function MeetingWorkspace({
         </span>
       </div>
       {tab === "transcript" && (
-        <section className="workspace-panel">
+        <section className="workspace-panel transcript-panel">
           <header className="panel-toolbar">
             <div>
               <h2>{t("The conversation", "会议对话")}</h2>
@@ -1590,6 +1683,7 @@ export function MeetingWorkspace({
               onError={() => setNotice("This browser cannot play the recording. The provider may still support it; verify before sending.")}
             />
           )}
+          <button type="button" className="player-skip player-skip-back" aria-label={t("Back 15 seconds", "\u540e\u9000 15 \u79d2")} data-tooltip={t("Back 15 seconds", "\u540e\u9000 15 \u79d2")} disabled={!duration} onClick={() => { if (player.current) { playUntil.current = null; player.current.currentTime = Math.max(0, player.current.currentTime - 15); playback.refresh(); } }}><RotateCcw size={16} /><span>15</span></button>
           <button
             className="play-button"
             aria-label={playing ? t("Pause audio", "暂停录音") : t("Play audio", "播放录音")}
@@ -1604,12 +1698,14 @@ export function MeetingWorkspace({
           >
             {playing ? <Pause size={18} /> : <Play size={18} />}
           </button>
-          <div className="player-title">
+          <button type="button" className="player-skip player-skip-forward" aria-label={t("Forward 15 seconds", "\u524d\u8fdb 15 \u79d2")} data-tooltip={t("Forward 15 seconds", "\u524d\u8fdb 15 \u79d2")} disabled={!duration} onClick={() => { if (player.current) { playUntil.current = null; player.current.currentTime = Math.min(duration, player.current.currentTime + 15); playback.refresh(); } }}><RotateCw size={16} /><span>15</span></button>
+          <div className="player-title" data-tooltip={m.audio?.name}>
             <strong>{m.audio?.name}</strong>
             <span>{t("Original recording", "原始录音")}</span>
           </div>
-          <span className="player-time">{formatTime(position)}</span>
+          <span className="player-time player-position">{formatTime(position)}</span>
           <input
+            className="player-progress"
             aria-label={t("Playback position", "播放位置")}
             type="range"
             min="0"
@@ -1624,8 +1720,9 @@ export function MeetingWorkspace({
               }
             }}
           />
-          <span className="player-time">{formatTime(duration)}</span>
+          <span className="player-time player-duration">{formatTime(duration)}</span>
           <select
+            className="player-speed"
             aria-label={t("Playback speed", "播放速度")}
             onChange={(e) => {
               if (player.current) player.current.playbackRate = Number(e.target.value);
@@ -1655,6 +1752,25 @@ export function MeetingWorkspace({
             <p className="muted">
               {t("The model policy is uncalibrated. The app associates only sufficiently supported same-meeting voices; overlap, missing timing and conflicting evidence remain unresolved. Human names and edits are preserved and the operation can be undone as a new revision.", "模型策略尚未校准。应用只关联证据充分的同一会议声音；重叠、缺少时间或冲突证据保持未解决。人工姓名和编辑会保留，操作会作为新修订并可撤销。")}
             </p>
+            {m.audio?.chunked && (
+              <label className="checkbox-label">
+                <span>{t("How many people spoke? (optional)", "大概有几个人说话？（可选）")}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  inputMode="numeric"
+                  value={expectedSpeakers}
+                  onChange={(event) => setExpectedSpeakers(event.target.value)}
+                  style={{ width: "5em" }}
+                />
+              </label>
+            )}
+            {m.audio?.chunked && (
+              <p className="small muted">
+                {t("If you know the number, similar voices that never appear together are grouped until that many remain. Leave empty to group only when the evidence is clear.", "如果你知道人数，会把从未同时出现的相似声音继续合并，直到剩下这么多个。留空则只在证据明确时才合并。")}
+              </p>
+            )}
             <div className="modal-actions">
               <button className="button secondary" onClick={() => setAcousticConfirm(false)}>{t("Cancel", "取消")}</button>
               <button className="button primary" onClick={() => void analyzeAcousticVoices()}>{t("Download and analyze locally", "下载并在本地分析")}</button>
@@ -1738,16 +1854,32 @@ export function MeetingWorkspace({
                 )}
               </>
             )}
-            {confirmStage === "speech" && m.audio?.chunked && (
-              <div className="notice" role="group" aria-label={t("Automatic speaker continuity", "自动说话人连续性")}>
-                <label>
+            {confirmStage === "speech" && m.audio && (m.audio.chunked || singleRecordingFormat(m.audio)) && (
+              <div className="notice consent-notice" role="group" aria-label={t("Automatic speaker continuity", "自动说话人连续性")}>
+                <label className="checkbox-label">
                   <input
                     type="checkbox"
                     checked={acousticConsent}
                     onChange={(event) => setAcousticConsent(event.target.checked)}
                   />{" "}
-                  {t("Automatically associate the same anonymous voice across recording parts (downloads the pinned local model, about 128 MB, on first use).", "自动跨录音部分关联同一匿名声音（首次使用会下载约 128 MB 的固定版本本地模型）。")}
+                  {m.audio.chunked
+                    ? t("Automatically associate the same anonymous voice across recording parts (downloads the pinned local model, about 128 MB, on first use).", "自动跨录音部分关联同一匿名声音（首次使用会下载约 128 MB 的固定版本本地模型）。")
+                    : t("After transcription, automatically group speaker labels that share the same voice (downloads the pinned local model, about 128 MB, on first use). Needs a model that returns speaker labels and timestamps.", "转录后自动把声音相同的说话人标签归为一人（首次使用会下载约 128 MB 的固定版本本地模型）。需要返回说话人标签和时间戳的模型。")}
                 </label>
+                {m.audio.chunked && (
+                  <label className="checkbox-label">
+                    <span>{t("How many people spoke? (optional)", "大概有几个人说话？（可选）")}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      inputMode="numeric"
+                      value={expectedSpeakers}
+                      onChange={(event) => setExpectedSpeakers(event.target.value)}
+                      style={{ width: "5em" }}
+                    />
+                  </label>
+                )}
                 <p className="small muted">
                   {t("Uses bounded local acoustic samples only; model thresholds are uncalibrated. Unknown or conflicting voices remain unresolved. The model and vectors stay in this browser and are not sent with the transcription request.", "仅使用受限的本地声学样本；模型阈值尚未校准。未知或冲突声音会保持未解决。模型和向量保留在此浏览器中，不会随转录请求发送。")}
                 </p>
@@ -2188,7 +2320,7 @@ function OriginalNote({
   meeting: Meeting;
 }) {
   const language = useUiLanguage();
-  const t = (en: string, zh: string) => language === "zh-CN" ? zh : en;
+  const t = (en: string, zh: string) => translateUi(language, en, zh);
   return (
     <details className="original-text">
       <summary>{t("Original generated item", "原始生成项目")}</summary>

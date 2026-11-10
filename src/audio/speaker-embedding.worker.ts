@@ -135,3 +135,4 @@ workerScope.addEventListener("message", (event: MessageEvent<WorkerRequest>) => 
     }
   })();
 });
+

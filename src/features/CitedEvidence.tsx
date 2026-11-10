@@ -1,3 +1,4 @@
+import { translateUi } from "../i18n";
 import { useState } from "react";
 import type { Meeting, MemoItem, Segment } from "../domain/model";
 import { formatTime, resolveSource, speakerName } from "../domain/operations";
@@ -10,7 +11,7 @@ export function CitedEvidence({ meeting, item, onSelect }: {
 }) {
   const language = useUiLanguage();
   const [open, setOpen] = useState(false);
-  const t = (en: string, zh: string) => language === "zh-CN" ? zh : en;
+  const t = (en: string, zh: string) => translateUi(language, en, zh);
   return (
     <details className="cited-evidence" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>{t("Read cited passages together", "一起查看引用段落")} ({item.sources.length})</summary>

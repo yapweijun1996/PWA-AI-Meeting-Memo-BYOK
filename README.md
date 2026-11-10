@@ -19,6 +19,10 @@ Use **How it works → Explore a synthetic example** to try local review without
 
 Playback requires local audio and supported source timing. Long MP3 chunks play as frame-aligned, roughly 60-second mono PCM WAV windows so seeking and the playback clock do not depend on VBR byte-position estimates. A brief gap of a few tens of milliseconds can occur while switching windows; decoding is limited to the current window and one prefetched next window. Caption groups improve readability without changing original source fragments; gaps and overlapping voices remain visible. Adjust caption size in Playback mode. When browsing the playback transcript manually, following pauses; use **Follow playback** to return to the current position. Long playback transcripts render a bounded window with earlier/later navigation. The local **Immersive playback** view uses the same player and falls back to an in-page view when fullscreen is unavailable; iPhone standalone and physical-device acceptance remain open. The original correction editor remains a separate full-source view. These controls synchronize existing attribution; they do not independently recognize a person's voice or verify provider accuracy.
 
+The immersive view shows the labels attributed at the selected position, including their name-confirmation state, with the full label list available on demand. Highlighting uses the supplied source timing; untimed text remains separately accessible without a seek position. See [validation](docs/VALIDATION.md) for deployed-build evidence and remaining limits.
+
+Immersive playback offers Focus and Reading modes without restarting audio. The transcript searches timed and untimed text, supports click-to-seek for timed results, and can return to the current position. Desktop transcript width is adjustable; tablets stack the panels and phones use a dismissible transcript sheet. When the speaker stage has keyboard focus, Space toggles playback and the arrow keys skip five seconds.
+
 Speaker-name drafts remain protected when switching modes. Save or reset an unsaved video-reference draft before switching modes; the workspace keeps that editor open rather than silently discarding its URL or offset.
 
 Playback now uses a sequential group-chat view: a persistent roster of all speakers above left-aligned, timestamped bubbles. Exact source fragments are highlighted inside each bubble; overlapping speakers remain visible. Clicking a bubble seeks while preserving play/pause state. Manual scrolling pauses following until **Follow playback** is selected. Untimed text is available separately under **Timing unavailable** and has no fabricated seek position. Speaker names remain editable in **Edit speakers**. The activity glyph indicates timed attribution, not independently measured speaker volume.
@@ -43,6 +47,7 @@ Browser storage is not backup or synchronization. Export a full backup regularly
 - Requests time out after nine minutes; this stops waiting, not necessarily remote processing or billing.
 - New memo versions preserve normalized generated items separately from human edits. Older backups without that snapshot still load, with the original explicitly unavailable. Update all open tabs before reviewing newly created memo data.
 - Charges use your provider account. Speech estimates require a known duration and a user-entered rate bound to the model, with a public pricing URL and checked date; otherwise cost is unknown. OpenRouter transcription costs returned in the response are shown as provider-reported amounts; missing amounts remain unknown. Usage and totals are not an invoice.
+- Optional local voice matching (**Auto-match voices**, or the checkbox in the transcription dialog): after explicit consent a pinned WavLM model runs in a browser worker and groups the provider's speaker labels that share a voice inside one meeting, across the parts of a long recording. An optional "How many people spoke?" field lets a person supply the speaker count. Audio and vectors never leave the browser; every change is one undoable revision; human-confirmed speakers win. It needs model files that the GitHub Pages build does not include (see [Deployment](docs/DEPLOYMENT.md)), its thresholds are uncalibrated, and accuracy is unmeasured. Start with the [handoff](docs/HANDOFF.md).
 - No automatic email, ERP writes, KB writes, team sync, live meeting joining, PDF generation, or cross-meeting voiceprints.
 
 ## Development
@@ -84,6 +89,9 @@ Meeting records now use schema v2; v1 backups remain readable. Older app version
 | --- | --- |
 | [Owner acceptance pack](docs/RELEASE-ACCEPTANCE.md) | Device, billing and annotated quality procedures |
 | [Optional capability evaluation](docs/FUTURE-EVALUATION.md) | B01?B05 decisions and future entry gates |
+| [Handoff: voice matching and project state](docs/HANDOFF.md) | Start here: current state, code map, pitfalls, risks and next steps |
+| [Acoustic speaker continuity](docs/ACOUSTIC-SPEAKER-CONTINUITY.md) | Design, observations and acceptance evidence for automatic Voice IDs |
+| [Speaker model selection](docs/SPEAKER-MODEL-SELECTION.md) | Candidate models and providers, licences, metrics and open items |
 | [Implementation tasks](task.md) | Completed checkpoints and remaining acceptance gates |
 | [Product requirements](docs/PRODUCT.md) | Workflow and P0/P1/P2 scope |
 | [Browser architecture](docs/ARCHITECTURE.md) | State ownership, evidence, jobs, and PWA lifecycle |

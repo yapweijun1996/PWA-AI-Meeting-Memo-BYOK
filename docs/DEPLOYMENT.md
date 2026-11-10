@@ -80,6 +80,8 @@ Bundle scripts locally and use a tested CSP appropriate to the selected provider
 
 Actions deployment and an installed PWA update are separate events. A new site artifact may be live while an open client still uses the previous worker.
 
+When an update is confirmed and pending writes have finished, resolve the registration's current waiting worker before requesting activation. A newer waiting worker can replace the one shown when the prompt first appeared; an obsolete worker must not receive the activation request. If no current worker is waiting, either reload an already-activated update or report the activation failure without discarding drafts.
+
 The source commit appears under Settings as the public build identity; production assets are content-hashed. A waiting-worker prompt offers user-triggered activation. Active requests and open editors block activation, pending local writes must finish, and local save errors prevent reload. A rollback also needs a new build identity and a compatible storage schema; never repair an update by deleting all origin storage.
 
 Precache requests use `cache: reload` to bypass the browser HTTP cache, and navigation uses the activated release's cached index. This prevents a new worker from caching an old HTML entry under Pages' observed ten-minute HTTP freshness window. The release cache identity includes worker source as well as static assets. The cacheable-server regression and a real two-engine Pages upgrade both passed; see the validation record.
@@ -100,3 +102,16 @@ For a bad release, revert its code on `main` and pass the same pipeline. Check s
 - [Vite static deployment and pinned example](https://vite.dev/guide/static-deploy.html)
 - [Vite environment variables](https://vite.dev/guide/env-and-mode.html)
 - [Service-worker registration and scope](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerContainer/register)
+
+The sidebar displays the package version and build identity and can check the current registration for a waiting update. Manual checks do not activate a worker. Activation remains user-confirmed and uses the same draft/request guards as the main update notice. Development mode and unavailable registrations report that checks cannot be completed.
+
+## Local speaker model assets
+
+Voice matching loads a pinned WavLM model (about 101.7 MB q8 ONNX) and a single-thread ONNX WASM runtime (about 26.9 MB) from `speaker-assets/` under the app base path. They are deferred (never precached) and hash-verified against a pinned manifest before use.
+
+- `public/speaker-assets/` is git-ignored. The files are not in the repository.
+- `scripts/prepare-speaker-assets.mjs --source <verified-probe-public> --output public/speaker-assets` copies and verifies the allowlisted files locally; it does not download anything.
+- `npm run build` copies assets from `SPEAKER_ASSET_SOURCE` when it is set. Without it the build writes a manifest with `status: "unavailable"` and the feature reports itself unavailable. `SPEAKER_ASSETS_REQUIRED=1` makes a missing source a build error.
+- **The Pages workflow does not set `SPEAKER_ASSET_SOURCE`, so the published demo has no voice matching.** Transcription, review and notes are unaffected.
+- Do not publish the weights until their licence is established: the Hugging Face metadata of `microsoft/wavlm-base-plus-sv` and `Xenova/wavlm-base-plus-sv` declares none. See [SPEAKER-MODEL-SELECTION.md](SPEAKER-MODEL-SELECTION.md).
+- GitHub rejects files over 100 MiB and warns above 50 MiB. The ONNX file is about 97 MiB, so committing it is technically possible but not recommended; prefer a release asset or CI download with a pinned hash once licensing is settled.

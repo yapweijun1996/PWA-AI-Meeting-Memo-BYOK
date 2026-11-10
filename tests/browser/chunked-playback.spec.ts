@@ -19,6 +19,7 @@ test("plays long local recordings across chunk boundaries", async ({ page, brows
   const bytes = syntheticMp3();
   await page.goto(base);
   const decodes = await page.evaluate(async (data) => {
+    if (typeof AudioContext === "undefined") return false;
     const context = new AudioContext();
     const bytes = new Uint8Array(data);
     const input = new ArrayBuffer(bytes.byteLength);

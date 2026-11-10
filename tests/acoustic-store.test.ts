@@ -141,3 +141,4 @@ describe("acoustic and paged source stores", () => {
     await expect(putAcousticEmbedding({ ...embedding, meetingId: meeting.id })).rejects.toThrow();
   });
 });
+

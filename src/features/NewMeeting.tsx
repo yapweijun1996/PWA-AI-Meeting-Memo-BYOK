@@ -1,3 +1,4 @@
+import { translateUi } from "../i18n";
 import { useState, type FormEvent } from "react";
 import { FileAudio, FileText, Plus, Upload, Check } from "lucide-react";
 import {
@@ -24,7 +25,7 @@ export function NewMeeting({
   onError: (s: string) => void;
 }) {
   const language = useUiLanguage();
-  const t = (en: string, zh: string) => language === "zh-CN" ? zh : en;
+  const t = (en: string, zh: string) => translateUi(language, en, zh);
   const [file, setFile] = useState<File>(),
     [dragOver, setDragOver] = useState(false),
     [transcript, setTranscript] = useState(""),

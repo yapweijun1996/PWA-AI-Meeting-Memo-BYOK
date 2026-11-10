@@ -62,6 +62,41 @@ Use a user-initiated [Fullscreen API request](https://developer.mozilla.org/en-U
 
 The local implementation does not by itself complete device, accessibility or release acceptance. No checkbox is complete solely because a mockup, unit test, or implementation exists.
 
+## Immersive review findings — 2026-11-10
+
+Status: **open review and verification**. These observations come from a user-provided desktop screenshot and static inspection of the local working tree, including uncommitted changes. They do not establish behavior of a deployed build. No browser, performance, device or screen-reader test was run for this review.
+
+Local follow-up: the stage now presents current attributed speakers separately from a collapsible label list, includes confirmation status and visible source-fragment emphasis, and puts untimed text in its own disclosure. The follow state is visible. This is local work, not a claim of deployed or physical-device acceptance. The observations below describe the reviewed baseline; overlap visibility, keyboard behavior, performance and device acceptance remain open where not independently verified.
+
+Transcript follow-up: when automatic following needs to reposition, the local view aligns a complete preceding row where space permits and keeps a bottom margin around the current row. A clipped top row also triggers correction during follow. Manual browsing continues to suspend this adjustment; resuming follow restores it. A row taller than the viewport cannot be fully visible at once. Focused Chromium/WebKit browser tests cover whole-row alignment, manual scrolling and follow resumption; physical-device and long-row acceptance remain open.
+
+Avatar follow-up: during an existing same-caption internal gap of at most 350 ms, the local view retains the caption's speaker card as context. In other gaps or after the last timed caption, it displays the most recently completed timed caption and its speakers. Context and previous-caption descriptions are available to screen readers, while frequent status text is visually hidden at the owner's request. Neither fallback shows a speaking halo or active-fragment highlight. Buffering and playback errors remain visible. Current source intervals take precedence, overlap remains visible, and seeking before the first timed caption does not invent earlier content. This is a presentation projection; it does not change attribution or source evidence.
+
+Highlight responsiveness follow-up: foreground playback now samples the real media time on animation frames rather than throttling sampling to 50 ms; the transcript and central caption still share exact source boundaries. A native synthetic WAV probe in local Chromium, with `timeupdate` suppressed, observed 13 mismatched frames and a maximum 35.6 ms boundary mismatch before the change; one subsequent run observed none across 154 frames. These are small local samples, not guarantees of device latency or recognition accuracy. Real-recording word timestamps, long-transcript performance and physical-device audio output remain unverified. No offset or source timestamp correction is applied.
+
+Responsive redesign: the local stage centers bounded, scrollable captions under the current speaker; the dock separates the timeline from controls. Desktop transcript width is adjustable, tablet panels stack and the phone transcript opens as a sheet. Focus/Reading switches and stage-focused keyboard shortcuts preserve the shared player. Search covers timed groups and untimed passages; Jump to current clears the filter and resumes follow. These are local changes pending the associated browser and physical-device acceptance, not proof of deployment.
+
+### Observed and code-supported issues
+
+- The stage renders every meeting speaker label as a large avatar. The screenshot shows 19 part-scoped labels dominating the stage. The avatar's `S` number is its current list position, not the provider label or a stable identity. Identically named speakers from different parts cannot be assumed to be the same person. Current overlap-word suggestions are not acoustic identity evidence; automatic acoustic continuity remains a separate, unverified objective described in [the continuity plan](ACOUSTIC-SPEAKER-CONTINUITY.md).
+- A paused position retains source attribution, but the visible avatar highlight requires active playback; the position-specific label is visually hidden. The central caption normally omits the speaker name for a single attributed caption. Together these make the current speaker difficult to find while paused. Distinguish position attribution from live speech, preserve all overlapping speakers and expose unknown or unconfirmed identity honestly.
+- The current central caption fragment has a `data-current` marker used for scrolling, but no dedicated visible emphasis in the immersive CSS. The transcript does visibly emphasize the fragment. Any improvement must use only supplied source timing and avoid layout jitter or invented word timing.
+- The desktop roster scrolls when it exceeds its height limit, but does not follow the attributed speaker. An active avatar can therefore be outside the visible roster. The fixed 92px desktop avatars and wrapping roster compete with caption space; mobile removes the roster height limit and needs actual small-screen evaluation.
+- The transcript follows the first current caption during overlap; the central caption scroll also targets the first current fragment. Other concurrent evidence can be outside the visible area. Preserve all overlapping source fragments and make their availability understandable.
+- Pointer down, wheel, touch movement and any keydown within the transcript suspend following; selecting a timed row seeks but leaves follow suspended. Clarify the state and test keyboard browsing and resumption without stealing focus. Untimed entries appear after each timed window and have separate pagination, making discovery and navigation less obvious.
+- The single status text can say `Unknown speaker` when known and unknown attributions overlap, without describing both. The visible stage does not distinguish confirmed names from unconfirmed labels. Playback status changes have no explicit live announcement in this view; assess useful, non-intrusive announcements with real assistive technology.
+- A failed play-button request sets a local alert that is cleared on a later successful immersive toggle or re-entry, not explicitly on every possible recovery path. Reproduce any stale-alert scenario before changing error handling.
+
+### Risks requiring reproduction or measurement
+
+- Stress the 40-caption window with long, heavily overlapping intervals: its anchor is the first active caption, so other active captions may fall outside the rendered window. Verify access to all source evidence without inventing timing or dropping overlap.
+- Measure current/context/window scans on representative long transcripts and devices, including near the supported aggregate limit. Bounded rendered rows do not alone establish bounded per-update work or acceptable responsiveness.
+- Check long captions and active-fragment visibility in the mobile layout, where the outer content scrolls and the caption container is no longer a bounded scroll area. Test portrait, landscape, large text, safe areas and the persistent controls.
+- Exercise rapid native fullscreen entry, denial, exit and re-entry, including browser-initiated exit and component teardown. Verify final fullscreen state, focus and scroll restoration. These are race risks, not reproduced failures.
+- Test focus when automatic windows change after seeks, and verify overlapping rows, keyboard navigation and follow resumption with real screen readers. The control bar's position is updated in coarse 0.25-second buckets; measure the effect on 15-second skips before characterizing it as a user-visible defect.
+
+The screenshot alone cannot establish touch-target dimensions, contrast compliance or the meaning of the green outline on the Captions button: the interface also uses a visible focus outline. Existing synthetic tests and the local 19-speaker layout regression are evidence only when run and do not establish real-device usability or recognition accuracy.
+
 ## Acceptance and verification
 
 | Area | Required evidence |

@@ -4,6 +4,7 @@ import App from "./App";
 import { initializeSettings } from "./providers/credentials";
 import { initializeAppearance } from "./appearance";
 import "./style.css";
+import "./theme.css";
 initializeAppearance();
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
