@@ -1189,10 +1189,10 @@ test("immersive controls are available in Simplified Chinese", async ({ page }) 
   await createFixture(page);
   const meetingHash = new URL(page.url()).hash;
   await page.getByRole("link", { name: "Settings & API keys" }).click();
-  const appearance = page.getByRole("tab", { name: "Appearance", exact: true });
-  if (await appearance.count()) await appearance.click();
+  await page.getByRole("tab", { name: "Appearance", exact: true }).click();
   await page.getByLabel("Display language / 显示语言").selectOption("zh-CN");
   await page.getByRole("button", { name: "保存设置", exact: true }).click();
+  await expect(page.getByRole("button", { name: "已保存在此设备", exact: true })).toBeVisible();
   await page.evaluate((hash) => { location.hash = hash; }, meetingHash);
   await page.getByRole("tab", { name: /说话人/ }).click();
   await page.getByRole("button", { name: "沉浸式播放", exact: true }).click();
@@ -1420,6 +1420,9 @@ test("speaker review stays usable on a narrow viewport", async ({ page }) => {
     })),
   }));
   expect(result.violations.map((violation) => violation.id), JSON.stringify(violationDetails)).toEqual([]);
+  const transcript = page.getByRole("region", { name: "Related transcript", exact: true });
+  await transcript.focus();
+  await expect(transcript).toBeFocused();
   await page.getByLabel("Name for speaker 1", { exact: true }).focus();
   await expect(page.getByLabel("Name for speaker 1", { exact: true })).toBeFocused();
 });

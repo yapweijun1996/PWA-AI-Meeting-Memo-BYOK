@@ -59,6 +59,7 @@ test("font persists across reload and tabs without losing API drafts", async ({ 
   await page.getByRole("tab", { name: "API & models" }).click();
   await expect(page.getByLabel("OpenAI API key", { exact: true })).toHaveValue("test-key-not-real");
   await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(page.getByRole("button", { name: "Saved on this device" })).toBeVisible();
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-font", "georgia");
   const other = await context.newPage();

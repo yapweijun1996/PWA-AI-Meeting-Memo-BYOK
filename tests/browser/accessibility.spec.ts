@@ -8,6 +8,10 @@ test("library and settings meet the automated accessibility checks", async ({
     path: info.outputPath("library-desktop.png"),
     fullPage: true,
   });
+  // Audit the settled sidebar rather than sampling its initial opacity transition.
+  await page.locator("#app-sidebar").evaluate(async (sidebar) => {
+    await Promise.all(sidebar.getAnimations({ subtree: true }).map((animation) => animation.finished.catch(() => undefined)));
+  });
   let result = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa"])
     .analyze();
