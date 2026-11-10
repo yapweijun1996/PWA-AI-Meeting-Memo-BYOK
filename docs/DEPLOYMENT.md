@@ -107,11 +107,17 @@ The sidebar displays the package version and build identity and can check the cu
 
 ## Local speaker model assets
 
-Voice matching loads a pinned WavLM model (about 101.7 MB q8 ONNX) and a single-thread ONNX WASM runtime (about 26.9 MB) from `speaker-assets/` under the app base path. They are deferred (never precached) and hash-verified against a pinned manifest before use.
+Voice matching needs a pinned WavLM model (about 101.7 MB q8 ONNX plus three small configuration files) and a single-thread ONNX WASM runtime (about 26.9 MB). The build handles them in one of three states, written to `speaker-assets/manifest.json`:
 
-- `public/speaker-assets/` is git-ignored. The files are not in the repository.
-- `scripts/prepare-speaker-assets.mjs --source <verified-probe-public> --output public/speaker-assets` copies and verifies the allowlisted files locally; it does not download anything.
-- `npm run build` copies assets from `SPEAKER_ASSET_SOURCE` when it is set. Without it the build writes a manifest with `status: "unavailable"` and the feature reports itself unavailable. `SPEAKER_ASSETS_REQUIRED=1` makes a missing source a build error.
-- **The Pages workflow does not set `SPEAKER_ASSET_SOURCE`, so the published demo has no voice matching.** Transcription, review and notes are unaffected.
-- Do not publish the weights until their licence is established: the Hugging Face metadata of `microsoft/wavlm-base-plus-sv` and `Xenova/wavlm-base-plus-sv` declares none. See [SPEAKER-MODEL-SELECTION.md](SPEAKER-MODEL-SELECTION.md).
-- GitHub rejects files over 100 MiB and warns above 50 MiB. The ONNX file is about 97 MiB, so committing it is technically possible but not recommended; prefer a release asset or CI download with a pinned hash once licensing is settled.
+| Status | When | What ships |
+| --- | --- | --- |
+| `ready` | `SPEAKER_ASSET_SOURCE` points at a verified source directory | Runtime and model, all hash-verified |
+| `remote_model` | No source set and `onnxruntime-web` is installed (the Pages build) | **Only the runtime** (MIT, from the installed package, hash-verified). The browser downloads the weights from Hugging Face after consent |
+| `unavailable` | The runtime cannot be found or does not match the pinned hashes | Nothing; the feature reports itself unavailable |
+
+- All of `speaker-assets/` is deferred and never precached. `public/speaker-assets/` is git-ignored; the model files are not in the repository.
+- Route B (see [SPEAKER-MODEL-DOWNLOAD-DESIGN.md](SPEAKER-MODEL-DOWNLOAD-DESIGN.md)): after the user confirms, the browser fetches the four model files from `huggingface.co` at the pinned revision, verifies size and SHA-256, and stores them in an app-scoped cache that Settings can delete. The CSP `connect-src` lists `https://huggingface.co https://*.hf.co` for this. The service worker ignores cross-origin requests.
+- `scripts/prepare-speaker-assets.mjs --source <verified-probe-public> --output public/speaker-assets` prepares a full local set for development. `SPEAKER_ASSETS_REQUIRED=1` makes anything other than `ready` a build error.
+- **The published demo's voice matching is not yet verified end to end.** A CI-style local build produced `remote_model` and passed the artifact check; the download itself has not been run from the deployed site, and WebKit, offline reload and phone memory are untested.
+- The weights' licence is undeclared by the publisher. Route B does not redistribute them but does not settle end-user use terms; see [SPEAKER-MODEL-SELECTION.md](SPEAKER-MODEL-SELECTION.md).
+- The Pages artifact now carries about 27 MB of runtime files. GitHub rejects files over 100 MiB; the ONNX weights are about 97 MiB and are not committed.

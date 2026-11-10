@@ -23,7 +23,7 @@ A browser-first, speaker-aware meeting memo PWA hosted on GitHub Pages. The user
 | Human-confirmed speakers absorb their voice's other labels | Implemented and unit tested |
 | Accuracy on meeting audio | **Not measured.** No labelled ground truth exists |
 | Thresholds | Uncalibrated starting values from one recording |
-| Voice matching on the GitHub Pages demo | **Unavailable**: CI does not provide the model files (see section 8) |
+| Voice matching on the GitHub Pages demo | Route B implemented: the build ships only the runtime and the browser downloads the weights from Hugging Face after consent. **Not verified on the deployed site**; see section 8 and [SPEAKER-MODEL-DOWNLOAD-DESIGN.md](SPEAKER-MODEL-DOWNLOAD-DESIGN.md) |
 | WavLM weight licence | **Undeclared** in Hugging Face metadata; redistribution is unresolved |
 
 ## 4. How it works
@@ -119,8 +119,8 @@ From [AGENTS.md](../AGENTS.md) and the owner: acoustic evidence only (names, lab
 
 ## 8. Risks and blockers
 
-1. **Model licence.** Neither `microsoft/wavlm-base-plus-sv` nor `Xenova/wavlm-base-plus-sv` declares a licence in Hugging Face metadata. Do not publish the weights from this repository until the terms are established. See [SPEAKER-MODEL-SELECTION.md](SPEAKER-MODEL-SELECTION.md).
-2. **The Pages demo has no model.** `.github/workflows/pages.yml` does not set `SPEAKER_ASSET_SOURCE`, so the build writes an `unavailable` speaker-asset manifest and the feature reports itself unavailable there. `public/speaker-assets/` is git-ignored (about 128 MB). Everything else in the app is unaffected.
+1. **Model licence (unresolved).** Neither `microsoft/wavlm-base-plus-sv` nor `Xenova/wavlm-base-plus-sv` declares a licence, and the repositories have no LICENSE file; the WavLM code repository is MIT but states no terms for the checkpoints, and the training-data terms are not stated on the pages checked. Do not publish the weights from this repository until the owner picks a route (ask the publisher, download from the host at run time, or change model). Evidence and options: [SPEAKER-MODEL-SELECTION.md](SPEAKER-MODEL-SELECTION.md).
+2. **The demo downloads its model at run time (route B).** `.github/workflows/pages.yml` does not set `SPEAKER_ASSET_SOURCE`, so the build writes a `remote_model` manifest and ships only the ONNX Runtime; the browser fetches the 102 MB weights from `huggingface.co` after consent and caches them (Settings can delete them). Verified: a CI-style build and the artifact check. **Not verified:** the download from the deployed site, WebKit, offline reload, phone memory, resume inside one file. `public/speaker-assets/` stays git-ignored.
 3. **Thresholds are one recording's worth of evidence.** Calibrate on more meeting audio with labelled pairs before any accuracy claim.
 4. **The speaker count is a human input.** A wrong number forces wrong merges. Do not infer it silently.
 5. **Single-voice recordings** (one label per part) bypass the centered matching, because removing the average would erase the only voice; per-part decisions are kept.
@@ -129,7 +129,7 @@ From [AGENTS.md](../AGENTS.md) and the owner: acoustic evidence only (names, lab
 
 ## 9. Recommended next steps
 
-1. Resolve the weight licence (or choose a model with an explicit redistributable licence) and decide how the Pages build obtains assets.
+1. Verify route B on the deployed site (real download, WebKit, offline reload, a phone), add a Playwright test of the download flow, and resolve the weight licence question (route A: ask the publisher; or choose a model with an explicit licence).
 2. Build a small labelled evaluation (same/different pairs and, if segmenting, reference turns) from a real meeting; calibrate; compare WavLM with the sherpa-onnx route.
 3. Build the part-by-part comparison panel (play a sample per label, suggest pairings, human confirms through the existing merge and undo path); its confirmations double as ground truth.
 4. Run Chromium and WebKit browser acceptance for the voice flow and physical iOS/Android checks before any mobile claim.
@@ -141,4 +141,4 @@ Several people and agents may edit one working tree. Check `git status` and the 
 
 ## 11. Where else the context lives
 
-[ACOUSTIC-SPEAKER-CONTINUITY.md](ACOUSTIC-SPEAKER-CONTINUITY.md) (design and observations), [SPEAKER-MODEL-SELECTION.md](SPEAKER-MODEL-SELECTION.md) (candidates, licences, criteria), [DEPLOYMENT.md](DEPLOYMENT.md) (Pages, CI, assets), [IMPLEMENTATION-LOG.md](IMPLEMENTATION-LOG.md) (per-task evidence), [task.md](../task.md) (checklist), and the KB-MCP project memories for `PWA-AI-Meeting-Memo-BYOK`.
+[ACOUSTIC-SPEAKER-CONTINUITY.md](ACOUSTIC-SPEAKER-CONTINUITY.md) (design and observations), [SPEAKER-MODEL-SELECTION.md](SPEAKER-MODEL-SELECTION.md) (candidates, licences, criteria), [SPEAKER-MODEL-DOWNLOAD-DESIGN.md](SPEAKER-MODEL-DOWNLOAD-DESIGN.md) (proposal: download the model from its host at run time), [DEPLOYMENT.md](DEPLOYMENT.md) (Pages, CI, assets), [IMPLEMENTATION-LOG.md](IMPLEMENTATION-LOG.md) (per-task evidence), [task.md](../task.md) (checklist), and the KB-MCP project memories for `PWA-AI-Meeting-Memo-BYOK`.

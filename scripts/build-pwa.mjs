@@ -2,8 +2,10 @@ import { readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import {
+  findInstalledOnnxRuntimeDist,
   isDeferredSpeakerAsset,
   listSpeakerAssetPaths,
+  prepareRuntimeSpeakerAssets,
   prepareSpeakerAssets,
   readSpeakerAssetManifest,
   SPEAKER_ASSET_DIRECTORY,
@@ -47,11 +49,32 @@ if (process.env.SPEAKER_ASSET_SOURCE) {
   try {
     await readFile(manifestFile, "utf8");
   } catch {
-    await writeUnavailableSpeakerManifest(
-      speakerAssetOutput,
-      base,
-      "Speaker model assets were not prepared. Set SPEAKER_ASSET_SOURCE to the verified probe public directory for an explicit preparation step.",
-    );
+    // Without prepared weights, ship only the pinned ONNX Runtime (MIT) from the
+    // installed package and let the browser fetch the weights from their host
+    // after consent. If the runtime is missing or differs from the pinned hashes
+    // the speaker feature is declared unavailable instead.
+    let prepared = false;
+    try {
+      const runtimeDir = await findInstalledOnnxRuntimeDist();
+      if (!runtimeDir) throw new Error("onnxruntime-web is not installed");
+      await prepareRuntimeSpeakerAssets({
+        runtimeDir,
+        outputDir: speakerAssetOutput,
+        basePath: base,
+      });
+      prepared = true;
+    } catch (error) {
+      console.warn(
+        `Speaker runtime not shipped: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+    if (!prepared) {
+      await writeUnavailableSpeakerManifest(
+        speakerAssetOutput,
+        base,
+        "Speaker model assets were not prepared. Set SPEAKER_ASSET_SOURCE to the verified probe public directory for an explicit preparation step.",
+      );
+    }
   }
 }
 

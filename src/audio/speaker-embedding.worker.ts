@@ -4,6 +4,7 @@ import {
   env,
 } from "@huggingface/transformers";
 import { ACOUSTIC_POLICY, normalizeEmbedding } from "../domain/acoustic-speaker";
+import { SPEAKER_MODEL_CACHE_NAME, speakerModelCacheKey } from "./speaker-model-store";
 
 const MODEL_ID = ACOUSTIC_POLICY.modelId;
 const LOCAL_MODEL_ID = "wavlm-base-plus-sv";
@@ -11,7 +12,7 @@ const MODEL_REVISION = ACOUSTIC_POLICY.modelRevision;
 const TRANSFORMERS_VERSION = "4.3.2";
 
 type WorkerRequest =
-  | { type: "load"; requestId: number; modelPath: string; wasmPath: string }
+  | { type: "load"; requestId: number; modelPath: string; wasmPath: string; modelSource?: "assets" | "remote-cache" }
   | { type: "embed"; requestId: number; samples: Float32Array; sampleRate: number }
   | { type: "dispose"; requestId: number };
 
@@ -33,10 +34,27 @@ function reply(message: WorkerResponse, transfer: Transferable[] = []): void {
   workerScope.postMessage(message, transfer);
 }
 
+/**
+ * Serve model files that the page already downloaded and verified (SHA-256) from
+ * the app-scoped cache, so loading needs no network and no same-origin model URL.
+ * Transformers.js asks for "<localModelPath>/wavlm-base-plus-sv/<file>".
+ */
+async function matchRemoteCache(key: string): Promise<Response | undefined> {
+  const marker = `/${LOCAL_MODEL_ID}/`;
+  const text = String(key);
+  const index = text.lastIndexOf(marker);
+  if (index < 0) return undefined;
+  const relative = text.slice(index + marker.length).split("?")[0];
+  if (!relative) return undefined;
+  const cache = await caches.open(SPEAKER_MODEL_CACHE_NAME);
+  return cache.match(speakerModelCacheKey(MODEL_REVISION, relative));
+}
+
 async function ensureLoaded(
   requestId: number,
   modelPath: string,
   wasmPath: string,
+  modelSource: "assets" | "remote-cache" = "assets",
 ): Promise<void> {
   if (processor && model) return;
   loading ??= (async () => {
@@ -49,6 +67,14 @@ async function ensureLoaded(
     env.useWasmCache = true;
     env.experimental_useCrossOriginStorage = false;
     env.localModelPath = modelPath.endsWith("/") ? modelPath : `${modelPath}/`;
+    if (modelSource === "remote-cache") {
+      env.useCustomCache = true;
+      env.customCache = {
+        match: matchRemoteCache,
+        // Nothing is fetched by Transformers.js in this mode, so nothing is written either.
+        put: async () => undefined,
+      };
+    }
     const wasm = env.backends.onnx.wasm;
     if (!wasm) throw new Error("The bundled ONNX WASM backend is unavailable.");
     const wasmBase = wasmPath.endsWith("/") ? wasmPath : `${wasmPath}/`;
@@ -110,7 +136,7 @@ workerScope.addEventListener("message", (event: MessageEvent<WorkerRequest>) => 
         return;
       }
       if (request.type === "load") {
-        await ensureLoaded(request.requestId, request.modelPath, request.wasmPath);
+        await ensureLoaded(request.requestId, request.modelPath, request.wasmPath, request.modelSource);
         reply({ type: "ready", requestId: request.requestId, modelId: MODEL_ID, modelRevision: MODEL_REVISION, transformersVersion: TRANSFORMERS_VERSION });
         return;
       }

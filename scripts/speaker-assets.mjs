@@ -35,6 +35,16 @@ export const SPEAKER_RUNTIME = Object.freeze({
   numThreads: 1,
 });
 
+/**
+ * Where the browser may fetch the weights from at run time (route B in
+ * docs/SPEAKER-MODEL-DOWNLOAD-DESIGN.md). The build does not host them.
+ */
+export const SPEAKER_REMOTE_MODEL = Object.freeze({
+  host: "https://huggingface.co",
+  repository: SPEAKER_MODEL.id,
+  revision: SPEAKER_MODEL.revision,
+});
+
 export const SPEAKER_ASSET_DIRECTORY = "speaker-assets";
 export const SPEAKER_ASSET_MANIFEST_PATH =
   `${SPEAKER_ASSET_DIRECTORY}/manifest.json`;
@@ -103,6 +113,9 @@ export const SPEAKER_ASSET_SPECS = Object.freeze([
 const SPEC_BY_PATH = new Map(
   SPEAKER_ASSET_SPECS.map((spec) => [spec.path, spec]),
 );
+const RUNTIME_SPECS = SPEAKER_ASSET_SPECS.filter((spec) =>
+  spec.kind.startsWith("runtime-"),
+);
 
 export const SPEAKER_ASSET_PROVENANCE = Object.freeze({
   modelCard:
@@ -167,8 +180,8 @@ function sortedSet(values) {
   return [...new Set(values)].sort();
 }
 
-function expectedAssetPaths() {
-  return SPEAKER_ASSET_SPECS.map((spec) => spec.path).sort();
+function expectedAssetPaths(specs = SPEAKER_ASSET_SPECS) {
+  return specs.map((spec) => spec.path).sort();
 }
 
 /**
@@ -228,8 +241,14 @@ export function validateSpeakerAssetManifest(
   if (!Array.isArray(value.assets)) {
     throw new Error("Speaker asset manifest assets must be an array");
   }
-  if (value.status !== "ready" && value.status !== "unavailable") {
-    throw new Error("Speaker asset manifest status must be ready or unavailable");
+  if (
+    value.status !== "ready" &&
+    value.status !== "unavailable" &&
+    value.status !== "remote_model"
+  ) {
+    throw new Error(
+      "Speaker asset manifest status must be ready, remote_model or unavailable",
+    );
   }
   const actual =
     actualPaths === undefined
@@ -254,8 +273,27 @@ export function validateSpeakerAssetManifest(
     return value;
   }
 
-  if (value.assets.length !== SPEAKER_ASSET_SPECS.length) {
-    throw new Error("Ready speaker asset manifest has an incomplete allowlist");
+  if (value.status === "remote_model") {
+    // Only the runtime ships with the build; the weights are fetched by the
+    // browser from the pinned host after consent and verified there.
+    assertObject(value.remoteModel, "Remote-model manifest is missing remoteModel");
+    if (
+      value.remoteModel.host !== SPEAKER_REMOTE_MODEL.host ||
+      value.remoteModel.repository !== SPEAKER_REMOTE_MODEL.repository ||
+      value.remoteModel.revision !== SPEAKER_REMOTE_MODEL.revision
+    ) {
+      throw new Error("Speaker asset manifest remote model is not the pinned verified model");
+    }
+    validateListedAssets(value, RUNTIME_SPECS, actual, "Remote-model");
+    return value;
+  }
+  validateListedAssets(value, SPEAKER_ASSET_SPECS, actual, "Ready");
+  return value;
+}
+
+function validateListedAssets(value, specs, actual, label) {
+  if (value.assets.length !== specs.length) {
+    throw new Error(`${label} speaker asset manifest has an incomplete allowlist`);
   }
   const seen = new Set();
   for (const asset of value.assets) {
@@ -270,13 +308,12 @@ export function validateSpeakerAssetManifest(
       throw new Error(`Speaker asset hash mismatch: ${asset.path}`);
     }
   }
-  if (sortedSet(seen) .join("\n") !== expectedAssetPaths().join("\n")) {
-    throw new Error("Ready speaker asset manifest does not match the pinned allowlist");
+  if (sortedSet(seen).join("\n") !== expectedAssetPaths(specs).join("\n")) {
+    throw new Error(`${label} speaker asset manifest does not match the pinned allowlist`);
   }
-  if (actual && actual.join("\n") !== expectedAssetPaths().join("\n")) {
-    throw new Error("Ready speaker asset files do not match the manifest allowlist");
+  if (actual && actual.join("\n") !== expectedAssetPaths(specs).join("\n")) {
+    throw new Error(`${label} speaker asset files do not match the manifest allowlist`);
   }
-  return value;
 }
 
 export async function sha256File(file) {
@@ -297,16 +334,17 @@ export async function verifySpeakerAssetFile(file, spec) {
 }
 
 export async function verifyPreparedSpeakerAssets(rootDir, manifest) {
-  const actualPaths =
+  const specs =
     manifest.status === "ready"
-      ? SPEAKER_ASSET_SPECS.map((spec) => spec.path)
-      : [];
+      ? SPEAKER_ASSET_SPECS
+      : manifest.status === "remote_model"
+        ? RUNTIME_SPECS
+        : [];
   validateSpeakerAssetManifest(manifest, {
     basePath: manifest.appBasePath,
-    actualPaths,
+    actualPaths: specs.map((spec) => spec.path),
   });
-  if (manifest.status !== "ready") return;
-  for (const spec of SPEAKER_ASSET_SPECS) {
+  for (const spec of specs) {
     await verifySpeakerAssetFile(path.join(rootDir, spec.path), spec);
   }
 }
@@ -561,6 +599,87 @@ export async function prepareSpeakerAssets({
   } catch (error) {
     await rm(staging, { recursive: true, force: true });
     throw error;
+  }
+}
+
+/**
+ * Ship only the pinned ONNX Runtime files (MIT, from the installed
+ * onnxruntime-web package) and a manifest that names the remote weights. Every
+ * file is hash-verified against the pinned allowlist before it is installed.
+ */
+export async function prepareRuntimeSpeakerAssets({
+  runtimeDir,
+  outputDir,
+  basePath,
+}) {
+  if (typeof runtimeDir !== "string" || runtimeDir.length === 0) {
+    throw new Error("Runtime preparation requires the onnxruntime-web dist directory");
+  }
+  normalizeBasePath(basePath);
+  const { source, output } = await assertSafePreparationPaths(runtimeDir, outputDir);
+  await inspectExistingOutput(output, basePath);
+  const parent = path.dirname(output);
+  await mkdir(parent, { recursive: true });
+  const staging = await mkdtemp(path.join(parent, "speaker-assets-stage-"));
+  try {
+    for (const spec of RUNTIME_SPECS) {
+      const from = path.join(source, path.basename(spec.path));
+      await verifySpeakerAssetFile(from, spec);
+      const target = path.join(staging, spec.path.slice(SPEAKER_ASSET_PREFIX.length));
+      await mkdir(path.dirname(target), { recursive: true });
+      await copyFile(from, target);
+      await verifySpeakerAssetFile(target, spec);
+    }
+    const manifest = {
+      schemaVersion: 1,
+      status: "remote_model",
+      deferred: true,
+      precache: false,
+      appBasePath: normalizeBasePath(basePath),
+      basePath: speakerAssetBasePath(basePath),
+      model: { ...SPEAKER_MODEL },
+      runtime: { ...SPEAKER_RUNTIME },
+      remoteModel: { ...SPEAKER_REMOTE_MODEL },
+      assets: RUNTIME_SPECS.map(({ path: assetPath, kind, bytes, sha256 }) => ({
+        path: assetPath,
+        kind,
+        bytes,
+        sha256,
+      })),
+      provenance: { ...SPEAKER_ASSET_PROVENANCE },
+    };
+    validateSpeakerAssetManifest(manifest, {
+      basePath,
+      actualPaths: RUNTIME_SPECS.map((spec) => spec.path),
+    });
+    await writeFile(
+      path.join(staging, "manifest.json"),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      "utf8",
+    );
+    await replaceSpeakerAssetOutput({ staging, outputDir: output });
+    return manifest;
+  } catch (error) {
+    await rm(staging, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+/**
+ * Locate the installed onnxruntime-web dist directory by walking up from
+ * `startDir`. The package does not export its package.json, so require.resolve
+ * cannot be used. Returns undefined when it is not installed; callers verify
+ * every file against the pinned hashes before using anything found here.
+ */
+export async function findInstalledOnnxRuntimeDist(startDir = process.cwd()) {
+  let current = path.resolve(startDir);
+  for (;;) {
+    const candidate = path.join(current, "node_modules", "onnxruntime-web", "dist");
+    const info = await lstat(candidate).catch(() => undefined);
+    if (info?.isDirectory()) return candidate;
+    const parent = path.dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
   }
 }
 

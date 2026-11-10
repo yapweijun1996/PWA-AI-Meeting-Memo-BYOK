@@ -1,4 +1,11 @@
 import { ACOUSTIC_POLICY, normalizeEmbedding } from "../domain/acoustic-speaker";
+import {
+  downloadRemoteSpeakerModel,
+  isRemoteSpeakerModelInstalled,
+  SpeakerModelDownloadError,
+  type PinnedModelFile,
+  type RemoteModelSource,
+} from "./speaker-model-store";
 
 export const SPEAKER_MODEL_ASSET_MANIFEST = {
   modelId: ACOUSTIC_POLICY.modelId,
@@ -21,13 +28,27 @@ const SPEAKER_ASSET_FILES = [
   { path: "runtime/ort-wasm-simd-threaded.asyncify.wasm", bytes: 26_861_777, sha256: "49871f5a4409519797e127440868a6d1923339d9185907f301a5b2a1d90af082" },
 ] as const;
 
-async function verifySpeakerAssetManifest(base: string, signal?: AbortSignal): Promise<void> {
+const REMOTE_MODEL_DIRECTORY = "model/wavlm-base-plus-sv/";
+/** Where the pinned weights may be fetched from at run time (after consent). */
+export const SPEAKER_REMOTE_MODEL_SOURCE: RemoteModelSource = {
+  host: "https://huggingface.co",
+  repository: SPEAKER_MODEL_ASSET_MANIFEST.modelId,
+  revision: SPEAKER_MODEL_ASSET_MANIFEST.revision,
+};
+export const SPEAKER_REMOTE_MODEL_FILES: PinnedModelFile[] = SPEAKER_ASSET_FILES.filter((file) =>
+  file.path.startsWith(REMOTE_MODEL_DIRECTORY),
+).map((file) => ({ path: file.path.slice(REMOTE_MODEL_DIRECTORY.length), bytes: file.bytes, sha256: file.sha256 }));
+
+type ManifestMode = "ready" | "remote_model";
+
+async function verifySpeakerAssetManifest(base: string, signal?: AbortSignal): Promise<ManifestMode> {
   const response = await fetch(`${base}speaker-assets/manifest.json`, { cache: "force-cache", credentials: "omit", signal });
   if (!response.ok) throw new SpeakerModelUnavailableError("The local speaker asset manifest is unavailable.");
   const value: unknown = await response.json();
   if (!value || typeof value !== "object") throw new SpeakerModelUnavailableError("The local speaker asset manifest is invalid.");
-  const manifest = value as { status?: unknown; deferred?: unknown; precache?: unknown; model?: Record<string, unknown>; runtime?: Record<string, unknown>; assets?: unknown };
-  if (manifest.status !== "ready" || manifest.deferred !== true || manifest.precache !== false) {
+  const manifest = value as { status?: unknown; deferred?: unknown; precache?: unknown; model?: Record<string, unknown>; runtime?: Record<string, unknown>; assets?: unknown; remoteModel?: Record<string, unknown> };
+  const remote = manifest.status === "remote_model";
+  if ((manifest.status !== "ready" && !remote) || manifest.deferred !== true || manifest.precache !== false) {
     throw new SpeakerModelUnavailableError("Verified local speaker assets are unavailable; prepare the pinned model before use.");
   }
   if (
@@ -42,13 +63,24 @@ async function verifySpeakerAssetManifest(base: string, signal?: AbortSignal): P
   ) {
     throw new SpeakerModelUnavailableError("The local speaker asset manifest does not match the pinned runtime.");
   }
+  if (
+    remote &&
+    (manifest.remoteModel?.host !== SPEAKER_REMOTE_MODEL_SOURCE.host ||
+      manifest.remoteModel.repository !== SPEAKER_REMOTE_MODEL_SOURCE.repository ||
+      manifest.remoteModel.revision !== SPEAKER_REMOTE_MODEL_SOURCE.revision)
+  ) {
+    throw new SpeakerModelUnavailableError("The speaker asset manifest names a model source that is not the pinned one.");
+  }
+  // A remote-model build ships only the runtime; the weights are fetched and verified here.
+  const expectedFiles = remote ? SPEAKER_ASSET_FILES.filter((file) => file.path.startsWith("runtime/")) : SPEAKER_ASSET_FILES;
   const assets = manifest.assets as { path?: unknown; bytes?: unknown; sha256?: unknown }[];
-  if (assets.length !== SPEAKER_ASSET_FILES.length || assets.some((asset, index) => {
-    const expected = SPEAKER_ASSET_FILES[index];
+  if (assets.length !== expectedFiles.length || assets.some((asset, index) => {
+    const expected = expectedFiles[index];
     return !expected || asset.path !== `speaker-assets/${expected.path}` || asset.bytes !== expected.bytes || asset.sha256 !== expected.sha256;
   })) {
     throw new SpeakerModelUnavailableError("The local speaker asset manifest failed its pinned hash/size check.");
   }
+  return remote ? "remote_model" : "ready";
 }
 
 export interface SpeakerModelProgress {
@@ -72,8 +104,9 @@ export class SpeakerModelUnavailableError extends Error {
   }
 }
 
+type ModelSource = "assets" | "remote-cache";
 type WorkerRequest =
-  | { type: "load"; requestId: number; modelPath: string; wasmPath: string }
+  | { type: "load"; requestId: number; modelPath: string; wasmPath: string; modelSource?: ModelSource }
   | { type: "embed"; requestId: number; samples: Float32Array; sampleRate: number }
   | { type: "dispose"; requestId: number };
 type WorkerResponse =
@@ -82,7 +115,7 @@ type WorkerResponse =
   | { type: "embedding"; requestId: number; values: Float32Array }
   | { type: "error"; requestId: number; message: string; code: "model" | "input" | "inference" };
 type WorkerBody =
-  | { type: "load"; modelPath: string; wasmPath: string }
+  | { type: "load"; modelPath: string; wasmPath: string; modelSource?: ModelSource }
   | { type: "embed"; samples: Float32Array; sampleRate: number };
 
 interface Pending<T> {
@@ -113,9 +146,12 @@ export class WavLmSpeakerEmbeddingProvider implements BrowserSpeakerEmbeddingPro
   private readonly wasmPath: string;
   private readonly assetBase: string;
   private readonly shouldVerifyManifest: boolean;
+  private readonly allowRemoteDownload: boolean;
+  private modelSource: ModelSource = "assets";
 
-  constructor(options: { modelPath?: string; wasmPath?: string; worker?: Worker; assetBase?: string; verifyManifest?: boolean } = {}) {
+  constructor(options: { modelPath?: string; wasmPath?: string; worker?: Worker; assetBase?: string; verifyManifest?: boolean; allowRemoteDownload?: boolean } = {}) {
     const base = import.meta.env.BASE_URL || "/";
+    this.allowRemoteDownload = options.allowRemoteDownload ?? false;
     this.assetBase = options.assetBase ?? base;
     this.modelPath = options.modelPath ?? `${base}speaker-assets/model/`;
     this.wasmPath = options.wasmPath ?? `${base}speaker-assets/runtime/`;
@@ -130,12 +166,41 @@ export class WavLmSpeakerEmbeddingProvider implements BrowserSpeakerEmbeddingPro
     if (this.disposed) throw new SpeakerModelUnavailableError("Local speaker model provider is disposed.");
     if (this.loaded) return;
     if (this.shouldVerifyManifest && !this.manifestVerified) {
-      await verifySpeakerAssetManifest(this.assetBase, options.signal);
+      const mode = await verifySpeakerAssetManifest(this.assetBase, options.signal);
       this.manifestVerified = true;
+      this.modelSource = mode === "remote_model" ? "remote-cache" : "assets";
     }
-    const result = this.request<void>({ type: "load", modelPath: this.modelPath, wasmPath: this.wasmPath }, options.signal, options.onProgress);
+    if (this.modelSource === "remote-cache") await this.ensureRemoteModel(options);
+    const result = this.request<void>({ type: "load", modelPath: this.modelPath, wasmPath: this.wasmPath, modelSource: this.modelSource }, options.signal, options.onProgress);
     await result;
     this.loaded = true;
+  }
+
+  /**
+   * The build ships only the runtime. Use the verified copy stored in this
+   * browser, or (after the caller's explicit confirmation) download it from the
+   * pinned host. Nothing is requested unless allowRemoteDownload was set.
+   */
+  private async ensureRemoteModel(options: { consent: boolean; onProgress?: (progress: SpeakerModelProgress) => void; signal?: AbortSignal }): Promise<void> {
+    if (await isRemoteSpeakerModelInstalled(SPEAKER_REMOTE_MODEL_FILES, SPEAKER_REMOTE_MODEL_SOURCE)) return;
+    if (!this.allowRemoteDownload) {
+      throw new SpeakerModelUnavailableError("The speaker model has not been downloaded. Confirm the download in the voice matching dialog first.");
+    }
+    try {
+      await downloadRemoteSpeakerModel({
+        files: SPEAKER_REMOTE_MODEL_FILES,
+        source: SPEAKER_REMOTE_MODEL_SOURCE,
+        consent: options.consent,
+        signal: options.signal,
+        onProgress: (progress) => options.onProgress?.({ status: progress.status, loaded: progress.loaded, total: progress.total, file: progress.file }),
+      });
+    } catch (error) {
+      if (error instanceof SpeakerModelDownloadError) {
+        if (error.code === "aborted") throw options.signal?.reason ?? new DOMException("The operation was aborted.", "AbortError");
+        throw new SpeakerModelUnavailableError(error.message);
+      }
+      throw error;
+    }
   }
 
   async embed(samples: Float32Array, sampleRate: number, signal?: AbortSignal): Promise<number[]> {

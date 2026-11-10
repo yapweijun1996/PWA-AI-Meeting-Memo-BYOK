@@ -26,6 +26,28 @@ Published numbers use celebrity or benchmark audio. None is a statement about th
 
 - Repository record, not re-run here: [IMPLEMENTATION-LOG.md](IMPLEMENTATION-LOG.md) ("Speaker-count finding") reports an offline sherpa-onnx experiment (pyannote 3.0 segmentation plus WeSpeaker ResNet34) that found 4 voices above one minute on a 48.5-minute test recording, with no ground truth. It supports trying that route in a browser evaluation; it is not a browser result.
 
+## WavLM weight licence investigation (2026-11-10)
+
+Question: may this repository, or its GitHub Pages site, redistribute `Xenova/wavlm-base-plus-sv` (about 101.7 MB)? This is a record of evidence, not legal advice.
+
+Checked against primary sources:
+
+- Hugging Face metadata for `microsoft/wavlm-base-plus-sv` and `microsoft/wavlm-base-plus` declares **no licence** (no `license` field, no `license:` tag). Their files are `README.md`, `config.json`, `preprocessor_config.json`, `pytorch_model.bin` and `.gitattributes`; there is **no LICENSE file**. The `Xenova/wavlm-base-plus-sv` ONNX conversion declares none either and does not mention the original's terms.
+- The WavLM code lives in `microsoft/unilm`, whose root `LICENSE` is the MIT License (Copyright Microsoft Corporation). The WavLM README says the project is licensed under that file, links the pretrained checkpoints (Azure and Google Drive) and states **no separate terms for them**. Whether the MIT grant covers the checkpoints is an inference, not a statement.
+- Training data (from the model card): pretraining on Libri-Light, GigaSpeech and VoxPopuli; fine-tuning of this speaker-verification model on VoxCeleb1. The VoxCeleb1 page states no licence or commercial terms (audio is released through a request form). The GigaSpeech repository lists Apache-2.0 for its code but states no dataset licence (access by form). The pages checked do not say whether models trained on these sets carry restrictions.
+- Runtime packages, from the installed `package.json` files: `onnxruntime-web` is MIT and `@huggingface/transformers` is Apache-2.0. Both permit redistribution with their notices; the app does not yet ship those notices.
+
+**Conclusion: the redistribution terms of the WavLM weights are not established by any public source found.** Treat them as unresolved until the owner decides.
+
+| Route | What changes | Open points |
+| --- | --- | --- |
+| A. Ask the publisher | Request an explicit written licence statement for the checkpoints (issue on the Hugging Face repository or `microsoft/unilm`) | External, no date; the answer may restrict use |
+| B. Do not host the weights | Each user's browser downloads them from Hugging Face at the pinned revision after consent, SHA-256 verified before use, cached in an app-scoped cache | Code change (host allowlist, verify-before-use, disclosure that the host sees the download request); CORS, offline and cache behaviour untested; terms become the user's and the host's |
+| C. Different model | Use weights with an explicit redistributable licence | Each candidate's weight and training-data terms must be verified, then evaluated on meeting audio (criteria above) |
+| D. Keep it local | The Pages demo ships without voice matching (current behaviour); voice matching runs only where a developer prepares assets locally | No public demo of the feature |
+
+Suggested order: keep D now, design B for the demo (smallest change, no dependency on a third-party reply), pursue A in parallel, and fold C into the planned labelled evaluation.
+
 ## Reported to us, not verified
 
 - The EER table (3D-Speaker ERes2Net-large 0.52, ERes2NetV2 0.61, CAM++ 0.65, WeSpeaker r-vector 0.447, SpeechBrain ECAPA 0.80). Test sets differ (Vox1-O, Vox1-O-clean, cleaned), so the rows are not strictly comparable.
@@ -52,7 +74,7 @@ Published numbers use celebrity or benchmark audio. None is a statement about th
 
 ## Open items before any decision
 
-- Establish the WavLM weight licence (upstream repository and the Hugging Face repositories) or choose a model with an explicit, redistributable weight licence.
+- Decide the WavLM weight licence route (see the investigation above): ask the publisher, download from the host at run time, or choose a model with an explicit, redistributable licence.
 - Build a small labelled evaluation (same/different pairs and, for segmentation, reference speaker turns) from a real recording, then compare candidates by the criteria above.
 - Verify the sherpa-onnx browser build: licences, total download, load time, memory, worker, GitHub Pages path, offline reload.
 - Decide whether a cross-meeting identity feature is wanted. If so, it needs explicit consent, local storage controls, deletion and no real-world naming.
