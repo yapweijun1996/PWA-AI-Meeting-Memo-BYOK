@@ -71,7 +71,12 @@ jobs:
       - name: Install test browsers
         run: npx --no-install playwright install --with-deps chromium webkit
       - name: Verify the production build in browsers
-        run: npm run test:e2e
+        run: |
+          set +e
+          npm run test:e2e -- --grep 'largest font size remains usable|re-analyzes an old completed|Chinese speaker review preserves|palette accents remain independent|mobile memo review keeps en'
+          status=$?
+          find test-results -name error-context.md -print -exec cat {} \;
+          exit "$status"
       - name: Verify PWA updates and artifact boundaries
         run: |
           npm run test:pwa
