@@ -276,7 +276,7 @@ export function Settings() {
           <h2>{t("Appearance", "外观")}</h2>
           <p className="muted">{t("Choose how the workspace looks on this device.", "选择此设备上的工作区外观。")}</p>
           <section className="appearance-section" aria-labelledby="appearance-language-heading">
-          <h3 id="appearance-language-heading">{t("Language", "语言")}</h3>
+          <div className="appearance-section-heading"><h3 id="appearance-language-heading">{t("Language", "语言")}</h3><span className="appearance-save-hint">{t("Save required", "需要保存")}</span></div>
           <label>Display language / 显示语言<select aria-label="Display language / 显示语言" value={uiLanguage} onChange={(e) => { const next = e.target.value as "en" | "zh-CN" | "ms"; setUiLanguage(next); setDisplayLanguage(next); }} disabled={saving}><option value="en">English</option><option value="zh-CN">简体中文</option><option value="ms">Bahasa Melayu (partial)</option></select></label>
           <p className="small muted">{t("Save settings to keep your language choice.", "请保存设置以保留语言选择。")}</p>
           {languageDirty && <div className="appearance-language-save">
@@ -286,7 +286,7 @@ export function Settings() {
           {languageDirty && saveError && <div className="notice danger" role="alert">{translateMessage(saveError, displayLanguage)}</div>}
           </section>
           <section className="appearance-section" aria-labelledby="appearance-interface-heading">
-          <h3 id="appearance-interface-heading">{t("Interface appearance", "界面外观")}</h3>
+          <div className="appearance-section-heading"><h3 id="appearance-interface-heading">{t("Interface appearance", "界面外观")}</h3><span className="appearance-save-hint">{t("Saved immediately", "即时保存")}</span></div>
           <p className="small muted">{t("Theme and palette changes save immediately on this device.", "主题和配色更改会立即保存在此设备。")}</p>
           <div className="appearance-fields">
           <label>{t("Theme", "\u4e3b\u9898")}
@@ -299,7 +299,7 @@ export function Settings() {
           {themeError && <p className="notice danger" role="alert">{t("Could not save the theme on this device.", "\u65e0\u6cd5\u5728\u6b64\u8bbe\u5907\u4fdd\u5b58\u4e3b\u9898\u3002")}</p>}
           </section>
           <section className="appearance-section" aria-labelledby="appearance-text-heading">
-          <h3 id="appearance-text-heading">{t("Text and preview", "文字与预览")}</h3>
+          <div className="appearance-section-heading"><h3 id="appearance-text-heading">{t("Text and preview", "文字与预览")}</h3><span className="appearance-save-hint">{t("Saved immediately", "即时保存")}</span></div>
           <div className="appearance-fields">
           <label>{t("Font family", "字体")}
             <select aria-label={t("Font family", "字体")} value={font} onChange={(event) => changeFont(event.target.value as FontChoice)}>
@@ -321,12 +321,12 @@ export function Settings() {
           <p className="small muted">{t("Font and size changes save immediately on this device. Unavailable fonts use a system fallback.", "字体和字号更改会立即保存在此设备。不可用的字体将使用系统替代字体。")}</p>
           {fontError && <p className="notice danger" role="alert">{t("Could not save the font on this device. The previous font is still in use.", "无法在此设备保存字体，仍使用之前的字体。")}</p>}
           {fontSaved && !fontError && <p role="status" className="small muted">{t("Font saved on this device", "字体已保存在此设备")}</p>}
-          <div className="font-preview" aria-label={t("Font preview", "字体预览")}>
-            <span className="font-preview-label">{t("Font preview", "字体预览")}</span>
+          <div className="font-preview" role="region" aria-label={t("Appearance preview", "外观预览")}>
+            <span className="font-preview-label">{t("Appearance preview", "外观预览")}</span>
             <strong>{t("A clearer meeting workspace", "更清晰的会议工作区")}</strong>
             <p>Meeting notes · 1234567890 · 会议记录与说话人</p>
             <p className="small muted">{t("Review decisions, sources and next steps.", "审阅决定、来源和下一步。")}</p>
-            <button type="button" className="button secondary compact" disabled>{t("Example button", "示例按钮")}</button>
+            <div className="appearance-preview-samples"><span className="appearance-preview-action">{t("Example button", "示例按钮")}</span><span className="pill green">{t("Ready", "已就绪")}</span></div>
           </div>
           <button type="button" className="button secondary" onClick={() => changeFont("default")}>{t("Restore default font", "恢复默认字体")}</button>
           </section>

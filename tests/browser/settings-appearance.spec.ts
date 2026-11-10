@@ -4,6 +4,25 @@ import AxeBuilder from "@axe-core/playwright";
 test.use({ serviceWorkers: "block" });
 const settings = "/PWA-AI-Meeting-Memo-BYOK/#/settings";
 
+test("appearance preview reflects theme, palette and font while distinguishing save behavior", async ({ page }) => {
+  await page.goto(settings);
+  await page.getByRole("tab", { name: "Appearance" }).click();
+  const preview = page.getByRole("region", { name: "Appearance preview" });
+  await expect(page.getByText("Save required", { exact: true })).toBeVisible();
+  await expect(page.getByText("Saved immediately", { exact: true })).toHaveCount(2);
+  await expect(preview.getByText("Ready", { exact: true })).toBeVisible();
+  const surfaceBefore = await preview.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const action = preview.getByText("Example button", { exact: true });
+  const accentBefore = await action.evaluate((element) => getComputedStyle(element).backgroundColor);
+  await page.getByLabel("Color palette", { exact: true }).selectOption("ocean");
+  await expect.poll(() => action.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(accentBefore);
+  await page.getByLabel("Theme", { exact: true }).selectOption("dark");
+  await expect.poll(() => preview.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(surfaceBefore);
+  const before = await preview.locator("strong").evaluate((element) => getComputedStyle(element).fontFamily);
+  await page.getByLabel("Font family").selectOption("georgia");
+  await expect.poll(() => preview.locator("strong").evaluate((element) => getComputedStyle(element).fontFamily)).not.toBe(before);
+});
+
 test("appearance groups distinguish language drafts from immediate settings", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(settings);
@@ -96,7 +115,7 @@ test("font size persists and changes rendered typography", async ({ page }) => {
   await page.getByRole("tab", { name: "Appearance" }).click();
   await expect(page.getByLabel("Font family").locator("option")).toHaveCount(10);
   await expect(page.getByLabel("Font size").locator("option")).toHaveCount(5);
-  const preview = page.getByLabel("Font preview").locator("strong");
+  const preview = page.getByRole("region", { name: "Appearance preview" }).locator("strong");
   const before = await preview.evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
   await page.getByLabel("Font size").selectOption("large");
   await expect(page.locator("html")).toHaveAttribute("data-font-size", "large");
