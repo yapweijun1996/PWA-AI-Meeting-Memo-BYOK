@@ -26,6 +26,8 @@ A transcript-only preview can ship as an explicitly limited milestone. A speaker
 
 Capture title, meeting date, timezone, language hints, meeting type, optional attendees, and glossary. The attendee list provides naming choices; it does not establish voice identity.
 
+The new-meeting form shows the selected date in a spelled-out local UI format alongside the browser date control. It suggests timezones supported by the browser where available, accepts valid manually entered timezones, and reports an invalid timezone before importing or saving a meeting. Stored dates remain ISO calendar dates.
+
 Show audio filename, type, size, duration when obtainable, and playback before transmission. Preserve independent channels and original source metadata. Explain unsupported formats or oversized inputs before starting a paid request. Importing text remains available when audio processing is unavailable.
 
 For text-only imports, keep audio timestamps and speaker identity absent unless the import contains trustworthy mappings. Never invent time positions to make playback links appear complete.
