@@ -631,6 +631,51 @@ test("immersive playback shows overlap and remains accessible on a narrow viewpo
   expect((await new AxeBuilder({ page }).include(".immersive").withTags(["wcag2a", "wcag2aa"]).analyze()).violations).toEqual([]);
 });
 
+test("immersive speaker glow follows playback and respects reduced motion", async ({ page }) => {
+  await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
+  await createFixture(page);
+  await page.locator("audio").evaluate((element) => {
+    Object.defineProperty(element, "error", { configurable: true, get: () => null });
+    (element as HTMLMediaElement).currentTime = 2;
+    element.dispatchEvent(new Event("seeked"));
+  });
+  await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  const avatar = dialog.locator(".immersive-current-speaker .immersive-avatar").first();
+  await expect(avatar).toHaveCSS("animation-name", "none");
+  await dialog.getByRole("button", { name: "Play audio" }).click();
+  await expect(avatar).toHaveCSS("animation-name", "immersive-speaker-glow");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(avatar).toHaveCSS("animation-name", "none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await dialog.getByRole("button", { name: "Pause audio" }).click();
+  await expect(avatar).toHaveCSS("animation-name", "none");
+});
+
+test("immersive caption fade does not restart within a group and respects reduced motion", async ({ page }) => {
+  await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
+  await createFixture(page);
+  const audio = page.locator("audio");
+  const seek = async (position: number) => audio.evaluate((element, value) => {
+    Object.defineProperty(element, "error", { configurable: true, get: () => null });
+    (element as HTMLMediaElement).currentTime = value;
+    element.dispatchEvent(new Event("seeked"));
+  }, position);
+  await seek(0.2);
+  await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
+  const caption = page.locator(".immersive-caption-content p").first();
+  await expect(caption).toHaveCSS("animation-name", "immersive-caption-enter");
+  await caption.evaluate((element) => { element.dataset.testRetained = "yes"; });
+  await seek(0.8);
+  await expect(caption).toHaveAttribute("data-test-retained", "yes");
+  await seek(1.5);
+  await expect(caption).toContainText("The second speaker");
+  await expect(caption).not.toHaveAttribute("data-test-retained", "yes");
+  await expect(caption).toHaveCSS("animation-name", "immersive-caption-enter");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(caption).toHaveCSS("animation-name", "none");
+});
+
 test("immersive position shows overlapping attribution while paused and keeps labels accessible", async ({ page }) => {
   await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
   await createFixture(page);

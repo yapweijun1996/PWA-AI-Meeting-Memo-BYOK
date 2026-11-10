@@ -2386,7 +2386,7 @@ details[open] > summary {
 /* Stable layout: roster, status and captions are separate blocks stacked from the top and none depends on another's height.
    Vertical centring is deliberately avoided: with a tall roster it pushes the top out of reach and re-centres everything
    whenever a caption changes length. The captions take the remaining height and scroll inside their own area. */
-.immersive-stage { flex: 1; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 14px; border-radius: 14px; background: #12291f; text-align: center; gap: 12px; }
+.immersive-stage { flex: 1; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 14px; border-radius: 14px; background: radial-gradient(ellipse at 48% 25%, #1d4632 0%, #12291f 55%, #0d2118 100%); text-align: center; gap: 12px; }
 .immersive-roster-bar { display: flex; align-items: center; gap: 12px; flex: none; align-self: flex-start; max-width: 100%; padding: 0; text-align: left; }
 .immersive-roster { display: flex; flex-wrap: wrap; gap: 8px; flex: 0 1 auto; min-height: 0; max-height: 22%; width: 100%; overflow-y: auto; overscroll-behavior: contain; }
 .immersive-roster[hidden] { display: none; }
@@ -2400,15 +2400,29 @@ details[open] > summary {
 .immersive-status p { margin: 0; min-height: 1.4em; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .immersive .immersive-sr-only { position: absolute; width: 1px; height: 1px; min-height: 0; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .immersive-avatar { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; background: #e3eedc; color: #142b1b; font-size: 28px; font-weight: 700; border: 3px solid transparent; }
-.immersive-current-speaker[data-active="true"] .immersive-avatar { border-color: var(--immersive-accent); box-shadow: 0 0 22px #8bea8580; }
+.immersive-current-speaker[data-active="true"] .immersive-avatar { border-color: var(--immersive-accent); box-shadow: 0 0 22px #8bea8580; animation: immersive-speaker-glow 3s ease-in-out infinite; }
 .immersive-current-speaker[data-active="true"] { border-color: var(--immersive-accent); background: #173526; }
+@keyframes immersive-speaker-glow {
+  0%, 100% { box-shadow: 0 0 0 3px #a4e69624, 0 0 18px #8bea8550; }
+  50% { box-shadow: 0 0 0 8px #a4e69618, 0 0 28px #8bea8580; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .immersive-current-speaker[data-active="true"] .immersive-avatar { animation: none; }
+}
 .immersive-state { color: #c6ead1; }
 .immersive-captions { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; width: 100%; max-width: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable both-edges; font-size: clamp(22px, 3vw, 40px); font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
 .immersive-caption-content { flex: none; width: 100%; max-height: 4.05em; margin-top: clamp(0px, 2vh, 18px); margin-bottom: auto; overflow-y: auto; overscroll-behavior: contain; }
-.immersive-caption-content p { margin: 0 0 .5em; }
+.immersive-caption-content p { margin: 0 0 .5em; animation: immersive-caption-enter 180ms ease-out both; }
+@keyframes immersive-caption-enter {
+  from { opacity: .8; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .immersive-caption-content p { animation: none; }
+}
 .immersive-captions.size-large { font-size: clamp(28px, 4vw, 48px); }
 .immersive-captions.size-xlarge { font-size: clamp(34px, 5vw, 58px); }
-.immersive-captions [data-current="true"] { background: rgba(164, 230, 150, .3); border-radius: 4px; text-decoration: underline; text-decoration-color: var(--immersive-accent); }
+.immersive-captions [data-current="true"] { color: #c7f6c0; background: rgba(164, 230, 150, .16); border-radius: 4px; text-decoration: underline; text-decoration-color: var(--immersive-accent); text-shadow: 0 0 18px #a4e69655; }
 .immersive-caption-speaker { font-size: .6em; }
 .immersive-transcript { display: flex; flex: 0 0 var(--transcript-width, 32%); flex-direction: column; width: var(--transcript-width, 32%); min-width: 0; min-height: 0; border: 1px solid #526a59; border-radius: 14px; padding: 14px; background: #12251c; }
 .immersive-panel-head, .immersive-paging { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -2423,7 +2437,7 @@ details[open] > summary {
 .immersive-follow-row button { font-size: .85em; }
 .immersive-transcript-list { flex: 1; overflow: auto; min-height: 0; overscroll-behavior: contain; }
 .immersive-transcript-list > button { display: flex; flex-direction: column; width: 100%; text-align: left; gap: 5px; margin: 7px 0; background: transparent; border-color: transparent; overflow-wrap: anywhere; }
-.immersive-transcript-list > button.is-current { background: #2b4d34; border-color: var(--immersive-accent); }
+.immersive-transcript-list > button.is-current { background: #2b4d34; border-color: var(--immersive-accent); box-shadow: inset 4px 0 var(--immersive-accent); }
 .immersive-transcript-list > button > span:first-child { font-size: .85em; color: #c6ead1; }
 .immersive-row-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .immersive-row-meta strong { color: #f5f7ee; }
