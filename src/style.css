@@ -4264,4 +4264,10 @@ body:has(.audio-player) .toast-layer { bottom: calc(150px + env(safe-area-inset-
   .sidebar .local-label { margin-top: 8px; padding-top: 10px; }
   .sidebar .pwa-sidebar { margin-top: 6px; padding-top: 6px; }
 }
-@media (max-height: 520px) { .sidebar { overflow-y: auto; } .sidebar > .sidebar-recent { flex: 0 0 auto; } }
+@media (max-height: 600px) {
+  .sidebar > .nav-label { display: none; }
+  .sidebar .local-label .nav-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sidebar .pwa-sidebar { position: relative; }
+  .sidebar .pwa-check-message { position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; min-height: 0; z-index: 2; background: var(--palette-31); }
+  .sidebar .pwa-check-message:empty { display: none; }
+}

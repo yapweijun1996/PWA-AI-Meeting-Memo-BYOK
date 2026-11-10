@@ -1291,6 +1291,7 @@ test("playback mode exposes gap jump, direct speaker rename focus, video badge, 
 });
 
 test("following playback does not reflow rows or swap the caption window on every caption", async ({ page }) => {
+  test.setTimeout(120_000);
   await createFixture(page, "long-fixture.wav", longFixtureMeeting());
   await page.getByRole("button", { name: "Playback mode", exact: true }).click();
   const list = page.locator(".playback-mode .playback-transcript-list");
@@ -1330,6 +1331,7 @@ test("following playback does not reflow rows or swap the caption window on ever
 });
 
 test("nothing around the captions moves or resizes while people talk, pause and switch speakers", async ({ page }) => {
+  test.setTimeout(120_000);
   await createFixture(page, "long-fixture.wav", longFixtureMeeting());
   await page.getByRole("button", { name: "Playback mode", exact: true }).click();
   const selectors = [

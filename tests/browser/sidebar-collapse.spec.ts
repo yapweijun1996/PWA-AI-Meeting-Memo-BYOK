@@ -115,3 +115,33 @@ test("collapsed navigation tooltip follows pointer and supports keyboard focus",
   await target.focus();
   await expect(tooltip).toHaveText("Needs review");
 });
+
+test("sidebar keeps update controls visible while recent meetings use their own space", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 700 });
+  await page.goto("./");
+  await expect(page.locator(".sidebar-recent")).toBeVisible();
+  await page.evaluate(() => {
+    const recent = document.querySelector(".sidebar-recent")!;
+    let list = recent.querySelector(".sidebar-recent-list");
+    if (!list) { list = document.createElement("div"); list.className = "sidebar-recent-list"; recent.append(list); }
+    for (let index = 0; index < 8; index++) { const link = document.createElement("a"); link.href = "#/"; link.textContent = `Meeting ${index + 1}`; list.append(link); }
+  });
+  const sidebar = page.locator("aside.sidebar");
+  await expect.poll(() => sidebar.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
+  const update = sidebar.getByRole("button", { name: "Check for updates" });
+  await expect(update).toBeVisible();
+  const desktopBox = (await update.boundingBox())!;
+  expect(desktopBox.y + desktopBox.height).toBeLessThanOrEqual(700);
+  await page.setViewportSize({ width: 1280, height: 520 });
+  await expect.poll(() => sidebar.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
+  expect((await update.boundingBox())!.y + (await update.boundingBox())!.height).toBeLessThanOrEqual(520);
+  const list = sidebar.locator(".sidebar-recent-list");
+  expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await list.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  expect(await sidebar.evaluate((element) => element.scrollTop)).toBe(0);
+  await page.setViewportSize({ width: 390, height: 520 });
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  await expect.poll(() => sidebar.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
+  const mobileBox = (await update.boundingBox())!;
+  expect(mobileBox.y + mobileBox.height).toBeLessThanOrEqual(520);
+});
