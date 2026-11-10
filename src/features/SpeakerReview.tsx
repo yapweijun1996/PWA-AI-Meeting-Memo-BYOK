@@ -1,5 +1,5 @@
 import { speakerBackground } from "../components/speaker-appearance";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Check, Pause, Play, Plus } from "lucide-react";
 import type { Meeting } from "../domain/model";
 import { editMeeting, formatTime } from "../domain/operations";
@@ -9,7 +9,10 @@ import {
   captionContextAtTime,
   hasValidTimedSegments,
   fragmentsAtTime,
+  NEXT_CAPTION_LOOKAHEAD,
+  playbackBoundaries,
   playbackCaptionWindowStart,
+  snapToPlaybackInterval,
 } from "../domain/playback";
 import {
   buildSpeakerWindows,
@@ -17,9 +20,10 @@ import {
   type SpeakerWindow,
 } from "../domain/speaker-review";
 import type { SpeakerLink } from "../domain/long-audio";
-import type { PlaybackStatus } from "./usePlaybackClock";
+import type { PlaybackClockStore, PlaybackStatus } from "./usePlaybackClock";
 import { suggestVideoId } from "../domain/reference-video";
 import { Pill } from "../components/ui";
+import { ImmersivePlayback } from "./ImmersivePlayback";
 
 type Translate = (english: string, chinese: string) => string;
 
@@ -37,12 +41,16 @@ export function SpeakerReview({
   audioAvailable,
   duration,
   position,
+  clock,
   playing,
   playbackStatus,
   locked,
   onCue,
   onSeek,
   onPause,
+  onTogglePlayback,
+  onChangeRate,
+  playbackRate,
   onChange,
   onMerge,
   onMergeGroups,
@@ -55,13 +63,19 @@ export function SpeakerReview({
   meeting: Meeting;
   audioAvailable: boolean;
   duration: number;
+  /** Coarse playhead (about 4 Hz) for toolbar text and the naming-mode stage. */
   position: number;
+  /** Exact playhead; PlaybackMode subscribes to it and only renders on caption/speaker boundaries. */
+  clock: PlaybackClockStore;
   playing: boolean;
   playbackStatus: PlaybackStatus;
   locked: boolean;
   onCue: (start: number, end: number) => void;
   onSeek: (position: number) => void;
   onPause: () => void;
+  onTogglePlayback: () => Promise<void>;
+  onChangeRate: (rate: number) => void;
+  playbackRate: number;
   onChange: (fn: (meeting: Meeting) => Meeting) => Promise<void>;
   onMerge: (speakerId: string) => void;
   onMergeGroups: (groups: string[][]) => Promise<void>;
@@ -363,6 +377,9 @@ export function SpeakerReview({
               {t("Edit speakers", "编辑说话人")}
             </button>
           </div>
+          {audioAvailable && <ImmersivePlayback meeting={meeting} clock={clock} position={position} duration={duration}
+            rate={playbackRate} playing={playing} status={playbackStatus} onSeek={onSeek}
+            onTogglePlayback={onTogglePlayback} onChangeRate={onChangeRate} t={translate} />}
           {mode === "naming" && (
             <>
               <label className="small muted">
@@ -425,7 +442,7 @@ export function SpeakerReview({
       {mode === "playback" ? (
         <PlaybackMode
           meeting={meeting}
-          position={position}
+          clock={clock}
           playing={activelyPlaying}
           playbackStatus={playbackStatus}
           audioAvailable={audioAvailable}
@@ -613,9 +630,6 @@ export function SpeakerReview({
             </div>
           ) : null}
         </div>
-        {referenceVideo && (
-          <aside className="speaker-review-video">{referenceVideo}</aside>
-        )}
       </div>
       </>}
     </>
@@ -652,9 +666,19 @@ function connectedLinkGroups(links: SpeakerLink[]): { ids: string[]; links: Spea
   return groups;
 }
 
+/** Whole-second time label; re-renders once a second instead of with every playhead sample. */
+function ClockTime({ clock }: { clock: PlaybackClockStore }) {
+  const seconds = useSyncExternalStore(
+    clock.subscribe,
+    () => Math.floor(clock.getPosition()),
+    () => 0,
+  );
+  return <span>{formatTime(seconds)}</span>;
+}
+
 function PlaybackMode({
   meeting,
-  position,
+  clock,
   playing,
   playbackStatus,
   audioAvailable,
@@ -668,7 +692,7 @@ function PlaybackMode({
   referenceVideo,
 }: {
   meeting: Meeting;
-  position: number;
+  clock: PlaybackClockStore;
   playing: boolean;
   playbackStatus: PlaybackStatus;
   audioAvailable: boolean;
@@ -684,6 +708,17 @@ function PlaybackMode({
   const captions = useMemo(
     () => buildPlaybackCaptions(meeting.segments),
     [meeting.segments],
+  );
+  // Everything below depends on the playhead only through these boundaries, so subscribe to a
+  // representative time of the current boundary interval instead of the raw ~20 Hz position.
+  const boundaries = useMemo(
+    () => playbackBoundaries(meeting.segments, captions),
+    [meeting.segments, captions],
+  );
+  const position = useSyncExternalStore(
+    clock.subscribe,
+    () => snapToPlaybackInterval(boundaries, clock.getPosition()),
+    () => snapToPlaybackInterval(boundaries, 0),
   );
   const current = useMemo(
     () => captionsAtTime(captions, position),
@@ -742,7 +777,7 @@ function PlaybackMode({
   const untimed = useMemo(() => meeting.segments.filter((segment) =>
     !hasValidTimedSegments([segment])), [meeting.segments]);
   const nextCaption = useMemo(
-    () => captions.find((caption) => caption.start > position + 0.05) ?? null,
+    () => captions.find((caption) => caption.start > position + NEXT_CAPTION_LOOKAHEAD) ?? null,
     [captions, position],
   );
   const jumpTarget = nextCaption ?? captions[0] ?? null;
@@ -806,7 +841,7 @@ function PlaybackMode({
             >
               <span role="status">{statusLabel}</span>
               <span aria-hidden="true"> · </span>
-              <span>{formatTime(position)}</span>
+              <ClockTime clock={clock} />
             </span>
           </div>
           {/* Always rendered so the line never appears or disappears while someone talks; only its visibility changes. */}

@@ -22,6 +22,8 @@ flowchart LR
 
 Keep source recordings and meeting data out of Pages artifacts, Git, telemetry, and service-worker response caches. Storing user-approved meeting data in IndexedDB is a deliberate product function; it is different from indiscriminately caching network responses.
 
+The proposed [acoustic speaker continuity contract](ACOUSTIC-SPEAKER-CONTINUITY.md) covers automatic identity association across long-recording parts. It defines browser-model validation, bounded processing and the required storage evolution; it is not a claim that automatic acoustic matching is implemented.
+
 ## Stack and modules
 
 The implementation uses React/TypeScript/Vite, npm with a locked dependency tree, Zod validation, idb repositories, and a custom prompt-based app-shell worker. No application server is required. The original feature folders below map to the current `src/features/*.tsx` screens; domain, storage, providers, jobs, audio and PWA responsibilities are separate modules.
@@ -134,6 +136,8 @@ During visible playback, a cancellable animation-frame loop samples the actual m
 Caption grouping and active-speaker/transcript projection belong to the read layer. The authoritative evidence stays in original segment IDs, revisions, text, speaker arrays and nullable time ranges. Group envelopes must not turn an internal gap into attributed speech. A gap of at most 350 ms inside an existing same-speaker caption group may retain readable context, explicitly labeled "Between words / context only" with no speech halo, active-speaker flag or transcript highlight. It does not extend source intervals, bridge different speakers or change seeking. Overlapping source intervals may produce several active speakers and caption rows. Unknown timing never receives an interpolated range. Playback headings remain stable; naming/confirmation belongs to Edit Speakers. Rapid source-label alternation still requires attribution review rather than identity guessing or automatic merging.
 
 Playback following is view state, separate from memo-citation selection and correction state. Manual transcript browsing pauses following; resuming follow does not move keyboard focus. Bounded rendering must preserve navigation to every group and the existing source-inspection/editing paths. Player controls, sample cues, evidence cues and reference-video mutual exclusion retain a single audio owner. Photos or reference metadata, if added later, remain presentation metadata and must not enter provider prompts implicitly.
+
+`ImmersivePlayback` is a presentation view over the existing player and `PlaybackClockStore`; `MeetingWorkspace` continues to own playback commands, cue state and reference-video exclusion. Fullscreen state, fallback, focus restoration, caption size and transcript navigation are local view state. The immersive view uses the existing read-only caption and timing projections and does not change meeting evidence. Native fullscreen and physical-device behavior remain browser-dependent and require device acceptance.
 
 #### Group-chat playback and audio-reactive avatar architecture (planned 2026-11-06)
 

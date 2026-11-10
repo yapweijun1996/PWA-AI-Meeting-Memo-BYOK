@@ -1778,6 +1778,13 @@ details[open] > summary {
 .transcript-list {
   padding: 0 22px;
 }
+.transcript-group { border-bottom: 1px solid var(--border); }
+.transcript-group-summary { padding: 20px 0 8px; }
+.transcript-group-summary p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.transcript-group > details > summary { cursor: pointer; padding: 8px 0 16px; }
+.transcript-group > details > .single-fragment-summary { display: none; }
+.transcript-group .passage:last-child { border-bottom: 0; }
+.transcript-paging { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 20px 0; }
 .passage {
   display: flex;
   gap: 12px;
@@ -2042,19 +2049,6 @@ details[open] > summary {
   align-items: center;
   justify-content: flex-start;
   flex-wrap: wrap;
-}
-.speaker-listening-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(280px, .75fr);
-  align-items: start;
-}
-.speaker-review-video {
-  min-width: 0;
-  position: sticky;
-  top: 18px;
-}
-.speaker-review-video .reference-video {
-  margin: 18px 23px 18px 0;
 }
 .reference-video {
   margin: 18px 23px 0;
@@ -2337,6 +2331,51 @@ details[open] > summary {
 }
 .audio-player audio {
   display: none;
+}
+.immersive[hidden] { display: none; }
+.immersive, .immersive:fullscreen {
+  position: fixed; inset: 0; z-index: 10000; width: 100%; height: 100%; height: 100dvh;
+  display: flex; flex-direction: column; overflow: auto; color: #f5f7ee;
+  background: radial-gradient(ellipse at 40% 40%, #18372a 0%, #081813 65%); font-size: 15px;
+}
+.immersive button, .immersive select { color: #f5f7ee; background: #203a2c; border: 1px solid #617967; border-radius: 8px; padding: 9px 12px; font: inherit; cursor: pointer; }
+.immersive button:disabled { opacity: .5; cursor: default; }
+.immersive button:focus-visible, .immersive select:focus-visible, .immersive input:focus-visible, .immersive-transcript-list:focus-visible { outline: 3px solid #b0ed9c; outline-offset: 2px; }
+.immersive-header { display: flex; gap: 20px; align-items: center; padding: max(12px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) 12px max(18px, env(safe-area-inset-left)); border-bottom: 1px solid #526a59; }
+.immersive-header span { flex: 1; overflow-wrap: anywhere; }
+.immersive-header button { display: inline-flex; align-items: center; gap: 8px; }
+.immersive-fallback { margin: 0; padding: 8px 20px; background: #304638; }
+.immersive-content { flex: 1; min-height: 0; display: flex; gap: 20px; padding: 20px max(20px, env(safe-area-inset-right)) 20px max(20px, env(safe-area-inset-left)); }
+.immersive-stage { flex: 1; min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; }
+.immersive-roster { display: flex; flex-wrap: wrap; justify-content: center; gap: 24px; }
+.immersive-person { display: flex; align-items: center; flex-direction: column; max-width: 170px; gap: 8px; overflow-wrap: anywhere; }
+.immersive-avatar { width: 92px; height: 92px; border-radius: 50%; display: grid; place-items: center; color: #142b1b; font-size: 28px; font-weight: 700; border: 3px solid transparent; }
+.immersive-person[data-active="true"] .immersive-avatar { border-color: #b0ed9c; box-shadow: 0 0 22px #8bea8580; }
+.immersive-person > span:last-child, .immersive-state { color: #c6ead1; }
+.immersive-captions { max-width: 100%; font-size: clamp(22px, 3vw, 40px); font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.immersive-captions.size-large { font-size: clamp(28px, 4vw, 48px); }
+.immersive-captions.size-xlarge { font-size: clamp(34px, 5vw, 58px); }
+.immersive-caption-speaker { font-size: .6em; }
+.immersive-transcript { display: flex; flex-direction: column; width: min(32%, 420px); min-width: 260px; min-height: 0; border: 1px solid #526a59; border-radius: 14px; padding: 14px; background: #12251c; }
+.immersive-panel-head, .immersive-paging { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.immersive-panel-head h2 { color: inherit; margin: 0; }
+.immersive-transcript-list { flex: 1; overflow: auto; min-height: 0; overscroll-behavior: contain; }
+.immersive-transcript-list > button { display: flex; flex-direction: column; width: 100%; text-align: left; gap: 5px; margin: 7px 0; background: transparent; border-color: transparent; overflow-wrap: anywhere; }
+.immersive-transcript-list > button.is-current { background: #2b4d34; border-color: #a4e696; }
+.immersive-transcript-list > button > span:first-child { font-size: .85em; color: #c6ead1; }
+.immersive-transcript-list .is-current-fragment { font-weight: 700; text-decoration: underline; text-decoration-color: #a4e696; }
+.immersive-untimed { padding: 12px; overflow-wrap: anywhere; }
+.immersive-paging { padding-top: 8px; font-size: .85em; }
+.immersive-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 9px; padding: 12px max(18px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left)); border-top: 1px solid #526a59; background: #10231a; }
+.immersive-controls button { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; }
+.immersive-controls input { flex: 1; min-width: 120px; accent-color: #a4e696; }
+@media (max-width: 760px) {
+  .immersive-content { flex-direction: column; overflow: auto; }
+  .immersive-stage { min-height: 220px; overflow: visible; }
+  .immersive-transcript { width: 100%; min-width: 0; min-height: 220px; max-height: 35vh; }
+  .immersive-roster { gap: 12px; }
+  .immersive-avatar { width: 60px; height: 60px; font-size: 20px; }
+  .immersive-controls input { min-width: 100px; }
 }
 .play-button {
   background: var(--palette-9);
@@ -3564,15 +3603,6 @@ details[open] > summary {
   }
   .speaker-review-grid {
     padding: 15px;
-  }
-  .speaker-listening-layout {
-    display: block;
-  }
-  .speaker-review-video .reference-video {
-    margin: 0 15px 15px;
-  }
-  .speaker-review-video {
-    position: static;
   }
   .speaker-review-card .speaker-card-actions {
     align-items: stretch;

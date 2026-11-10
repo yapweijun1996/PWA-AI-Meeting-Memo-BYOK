@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import type { Meeting, MemoItem, Segment } from "../domain/model";
 import type { ReferenceVideo as ReferenceVideoValue } from "../domain/reference-video";
+import { groupTranscript } from "../domain/transcript-groups";
 import { summarizeMeetingAccounting } from "../domain/accounting";
 import { id, importTranscript } from "../domain/model";
 import {
@@ -37,6 +38,7 @@ import {
   mergeSpeakers,
   replaceTranscript,
   resolveSource,
+  reviewSegments,
   speakerName,
   splitSegment,
   undoEdit,
@@ -86,6 +88,9 @@ export function MeetingWorkspace({
     [mergeSelection, setMergeSelection] = useState<string[]>([]),
     [highlight, setHighlight] = useState(""),
     [pendingOnly, setPendingOnly] = useState(false);
+  const [speakerFilter, setSpeakerFilter] = useState("");
+  const [transcriptPage, setTranscriptPage] = useState(0);
+  const [expandedGroup, setExpandedGroup] = useState("");
   const [url, setUrl] = useState(""),
     [audioMissing, setAudioMissing] = useState(false),
     [chunkManifest, setChunkManifest] = useState<LongAudioManifest>(),
@@ -508,9 +513,20 @@ export function MeetingWorkspace({
     () => new Map(m.segments.map((seg, idx) => [seg.id, idx])),
     [m.segments],
   );
-  const segments = pendingOnly
-    ? m.segments.filter((s) => !s.reviewed)
-    : m.segments;
+  const groups = useMemo(() => {
+    const result: ReturnType<typeof groupTranscript> = [];
+    let run: Segment[] = [];
+    const flush = () => { result.push(...groupTranscript(run)); run = []; };
+    for (const segment of m.segments) {
+      if ((pendingOnly && segment.reviewed) || (speakerFilter === "unknown" ? segment.speakerIds.length !== 0 : Boolean(speakerFilter && !segment.speakerIds.includes(speakerFilter)))) flush();
+      else run.push(segment);
+    }
+    flush();
+    return result;
+  }, [m.segments, pendingOnly, speakerFilter]);
+  const pageSize = 40;
+  const page = Math.min(transcriptPage, Math.max(0, Math.ceil(groups.length / pageSize) - 1));
+  const visibleGroups = groups.slice(page * pageSize, (page + 1) * pageSize);
   return (
     <div className={canPlay ? "workspace has-player" : "workspace"}>
       <a href="#/" className="back-link">
@@ -732,7 +748,7 @@ export function MeetingWorkspace({
             <div>
               <h2>{t("The conversation", "会议对话")}</h2>
               <p>
-                {pending} {t("passages to review", "段待审阅")} · {unknown} {t("unconfirmed speakers", "位说话人未确认")}
+                {pending} {t("source fragments to review", "个来源片段待审阅")} · {unknown} {t("unconfirmed speakers", "位说话人未确认")}
               </p>
             </div>
             <div className="toolbar-actions">
@@ -740,10 +756,16 @@ export function MeetingWorkspace({
                 <input
                   type="checkbox"
                   checked={pendingOnly}
-                  onChange={(e) => setPendingOnly(e.target.checked)}
+                  onChange={(e) => { setPendingOnly(e.target.checked); setTranscriptPage(0); }}
                 />
                 {t("Needs review", "需要审阅")}
               </label>
+              <select aria-label={t("Filter by speaker", "按说话人筛选")} value={speakerFilter}
+                onChange={(e) => { setSpeakerFilter(e.target.value); setTranscriptPage(0); }}>
+                <option value="">{t("All speakers", "所有说话人")}</option>
+                <option value="unknown">{t("Unknown speaker", "未知说话人")}</option>
+                {m.speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}
+              </select>
               <button
                 className="button secondary compact"
                 disabled={locked || !m.undo.length}
@@ -805,9 +827,45 @@ export function MeetingWorkspace({
               </button>
             </div>
           )}
-          {segments.length ? (
+          {groups.length ? (
             <div className="transcript-list">
-              {segments.map((s) => (
+              <p className="small muted">{groups.length} {t("reading groups", "个阅读段落")} · {t("Original fragments remain available", "可查看原始片段")}</p>
+              {visibleGroups.map((group) => {
+                const first = group.segments[0];
+                const last = group.segments[group.segments.length - 1];
+                const reviewed = group.segments.filter((segment) => segment.reviewed).length;
+                return <div key={first.id} className="transcript-group">
+                  {group.segments.length > 1 && <div className="transcript-group-summary">
+                    <div className="passage-meta">
+                      <input type="checkbox" aria-label={t(`Select group of ${group.segments.length} source fragments`, `选择包含 ${group.segments.length} 个来源片段的段落`)}
+                        checked={group.segments.every((segment) => selected.includes(segment.id))}
+                        ref={(element) => { if (element) element.indeterminate = group.segments.some((segment) => selected.includes(segment.id)) && !group.segments.every((segment) => selected.includes(segment.id)); }}
+                        disabled={locked}
+                        onChange={(event) => {
+                          const ids = new Set(group.segments.map((segment) => segment.id));
+                          setSelected((current) => event.target.checked ? [...new Set([...current, ...ids])] : current.filter((id) => !ids.has(id)));
+                        }} />
+                      <strong>{first.speakerIds.length ? speakerName(m, first.speakerIds) : t("Unknown speaker", "未知说话人")}</strong>
+                      {first.speakerIds.length > 1 && <Pill>{t("Overlap / multiple", "重叠／多人")}</Pill>}
+                      {first.speakerIds.some((id) => !m.speakers.find((speaker) => speaker.id === id)?.confirmed) && <span className="small muted">{t("Unconfirmed", "未确认")}</span>}
+                      <button className="time-link" disabled={first.start === null || !canPlay}
+                        onClick={() => first.start !== null && cueRange(first.start, last.end)}>
+                        {first.start === null ? t("Time unknown", "时间未知") : `${formatTime(first.start)} – ${formatTime(last.end!)}`}
+                      </button>
+                    </div>
+                    <p>{group.text}</p>
+                    <div className="passage-actions">
+                      <span className="small muted">{group.segments.length} {t("source fragments", "个来源片段")} · {reviewed}/{group.segments.length} {t("reviewed", "已审阅")}</span>
+                      <button className="text-button" disabled={locked || reviewed === group.segments.length}
+                        onClick={() => void change((meeting) => reviewSegments(meeting, group.segments.map((segment) => segment.id), true))}>
+                        {t("Mark group reviewed", "标记整段已审阅")}
+                      </button>
+                    </div>
+                  </div>}
+                  <details open={group.segments.length === 1 || expandedGroup === first.id || group.segments.some((segment) => segment.id === highlight)}
+                    onToggle={(event) => { if (group.segments.length > 1) { setExpandedGroup(event.currentTarget.open ? first.id : ""); if (!event.currentTarget.open) setHighlight(""); } }}>
+                    <summary className={group.segments.length === 1 ? "single-fragment-summary" : undefined}>{t("View source fragments", "查看来源片段")}</summary>
+                    {group.segments.map((s) => (
                 <article
                   id={`segment-${s.id}`}
                   key={`${s.id}:${s.revision}`}
@@ -901,10 +959,20 @@ export function MeetingWorkspace({
                     </div>
                   </div>
                 </article>
-              ))}
+                    ))}
+                  </details>
+                </div>;
+              })}
+              {groups.length > pageSize && <nav className="transcript-paging" aria-label={t("Transcript pages", "转录分页")}>
+                <button className="button secondary compact" disabled={page === 0} onClick={() => { setTranscriptPage(page - 1); setExpandedGroup(""); }}>{t("Previous", "上一页")}</button>
+                <span>{page * pageSize + 1}–{Math.min((page + 1) * pageSize, groups.length)} / {groups.length}</span>
+                <button className="button secondary compact" disabled={(page + 1) * pageSize >= groups.length} onClick={() => { setTranscriptPage(page + 1); setExpandedGroup(""); }}>{t("Next", "下一页")}</button>
+              </nav>}
             </div>
           ) : (
-            <Empty title={t("The conversation belongs here", "会议对话将显示在这里")}>
+            m.segments.length ? <Empty title={t("No matching fragments", "没有符合条件的片段")}>
+              <p>{t("Change the filters to see other transcript fragments.", "更改筛选条件以查看其他转录片段。")}</p>
+            </Empty> : <Empty title={t("The conversation belongs here", "会议对话将显示在这里")}>
               <p>
                 {t("Transcribe a recording with your own key, or add an existing transcript. Original results and your edits are kept separately.", "使用自己的密钥转录录音，或添加已有转录。原始结果和您的修改会分别保存。")}
               </p>
@@ -942,6 +1010,7 @@ export function MeetingWorkspace({
             audioAvailable={canPlay}
             duration={duration}
             position={position}
+            clock={playback.store}
             playing={playing}
             playbackStatus={playback.status}
             locked={locked}
@@ -955,6 +1024,17 @@ export function MeetingWorkspace({
             }}
             onCue={cueRange}
             onPause={() => player.current?.pause()}
+            playbackRate={playback.rate}
+            onChangeRate={(rate) => { if (player.current) player.current.playbackRate = rate; }}
+            onTogglePlayback={async () => {
+              if (playing) player.current?.pause();
+              else {
+                setAudioStopToken((value) => value + 1);
+                playUntil.current = null;
+                try { await player.current?.play(); }
+                catch (error) { setNotice("Playback could not start."); throw error; }
+              }
+            }}
             onChange={async (fn) => {
               // Speaker edits must propagate CAS/storage failures so the
               // editor can keep its draft and expose a retryable error.
@@ -1652,6 +1732,10 @@ export function MeetingWorkspace({
                   onClick={() => {
                     const key = evidence.id;
                     setEvidence(undefined);
+                    setPendingOnly(false);
+                    setSpeakerFilter("");
+                    const targetGroup = groupTranscript(m.segments).findIndex((group) => group.segments.some((segment) => segment.id === key));
+                    setTranscriptPage(Math.max(0, Math.floor(targetGroup / pageSize)));
                     setTab("transcript");
                     setHighlight(key);
                     setTimeout(

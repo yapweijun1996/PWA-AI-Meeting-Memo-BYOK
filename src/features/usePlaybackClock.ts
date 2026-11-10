@@ -10,6 +10,35 @@ export type PlaybackStatus =
   | "ended"
   | "error";
 
+/**
+ * High-resolution playhead outside React state. It is updated on every sample
+ * (about 20 Hz) without rendering anything; components subscribe with
+ * useSyncExternalStore and a selector that only changes when they need to render.
+ */
+export type PlaybackClockStore = {
+  getPosition: () => number;
+  subscribe: (listener: () => void) => () => void;
+};
+
+export function createPlaybackClockStore(): PlaybackClockStore & { set: (position: number) => void } {
+  let position = 0;
+  const listeners = new Set<() => void>();
+  return {
+    getPosition: () => position,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    set(next) {
+      if (next === position) return;
+      position = next;
+      for (const listener of [...listeners]) listener();
+    },
+  };
+}
+
 export type PlaybackClock = {
   position: number;
   duration: number;
@@ -17,9 +46,22 @@ export type PlaybackClock = {
   playing: boolean;
   status: PlaybackStatus;
   refresh: () => void;
+  /** Exact playhead for components that should not re-render on every sample. */
+  store: PlaybackClockStore;
 };
 
-type PlaybackSnapshot = Omit<PlaybackClock, "refresh">;
+type PlaybackSnapshot = Omit<PlaybackClock, "refresh" | "store">;
+
+/**
+ * `position` in React state is only for coarse UI (time label, range input, speaker toolbar).
+ * Sampling and timeupdate reads republish it once per bucket instead of ~20 times a second;
+ * every discrete event (seek, pause, rate change, ...) still publishes the exact position.
+ */
+export const COARSE_POSITION_SECONDS = 0.25;
+
+export function samePositionBucket(a: number, b: number) {
+  return Math.floor(a / COARSE_POSITION_SECONDS) === Math.floor(b / COARSE_POSITION_SECONDS);
+}
 
 export function resolvePlaybackStatus(
   currentStatus: PlaybackStatus,
@@ -56,6 +98,7 @@ export function usePlaybackClock(
   initialDuration = 0,
 ): PlaybackClock {
   const refreshRef = useRef<() => void>(() => undefined);
+  const [store] = useState(createPlaybackClockStore);
   const [clock, setClock] = useState<PlaybackSnapshot>(() => ({
     position: 0,
     duration: finite(initialDuration, 0),
@@ -67,6 +110,7 @@ export function usePlaybackClock(
   useEffect(() => {
     if (!enabled) {
       refreshRef.current = () => undefined;
+      store.set(0);
       setClock((current) =>
         current.position === 0 && current.playing === false && current.status === "idle"
           ? current
@@ -85,11 +129,12 @@ export function usePlaybackClock(
       return;
     }
 
-    const read = (status?: PlaybackStatus, resetBuffering = false) => {
+    const read = (status?: PlaybackStatus, resetBuffering = false, coarse = false) => {
       const position = finite(audio.currentTime, 0);
       const duration = finite(audio.duration, finite(initialDuration, 0));
       const rate = finite(audio.playbackRate, 1) || 1;
       const playing = !audio.paused && !audio.ended;
+      store.set(position);
       setClock((current) => {
         const nextStatus = resolvePlaybackStatus(current.status, status, {
           error: Boolean(audio.error),
@@ -99,7 +144,7 @@ export function usePlaybackClock(
           resetBuffering,
         });
         if (
-          current.position === position &&
+          (coarse ? samePositionBucket(current.position, position) : current.position === position) &&
           current.duration === duration &&
           current.rate === rate &&
           current.playing === playing &&
@@ -128,7 +173,7 @@ export function usePlaybackClock(
       // The frame timestamp only limits rendering work; media time is never
       // inferred from it. Media events still handle background/seek transitions.
       if (timestamp - lastSample >= 50) {
-        read();
+        read(undefined, false, true);
         lastSample = timestamp;
       }
       frame = requestAnimationFrame(sample);
@@ -147,7 +192,7 @@ export function usePlaybackClock(
     const handlers: Array<[keyof HTMLMediaElementEventMap, () => void]> = [
       ["loadedmetadata", () => read(undefined, true)],
       ["durationchange", () => read(undefined, true)],
-      ["timeupdate", () => read()],
+      ["timeupdate", () => read(undefined, false, true)],
       ["seeking", () => read()],
       ["seeked", () => read()],
       ["ratechange", () => read()],
@@ -169,10 +214,10 @@ export function usePlaybackClock(
       for (const [event, handler] of handlers) audio.removeEventListener(event, handler);
       if (refreshRef.current === read) refreshRef.current = () => undefined;
     };
-  }, [audioRef, enabled, initialDuration]);
+  }, [audioRef, enabled, initialDuration, store]);
 
   const refresh = useCallback(() => {
     flushSync(() => refreshRef.current());
   }, []);
-  return { ...clock, refresh };
+  return { ...clock, refresh, store };
 }

@@ -1,6 +1,6 @@
 # Immersive playback plan
 
-Status: **planned; not implemented or device-validated**. The owner approved the visual direction on 2026-11-10. The [concept image](../fullscreen-playback-concept.png) is illustrative, not evidence of shipped functionality. This plan supplements [product requirements](PRODUCT.md), [architecture](ARCHITECTURE.md), and the [acceptance matrix](ROADMAP.md); [task.md](../task.md) tracks execution.
+Status: **implemented locally; device and release acceptance incomplete**. The owner approved the visual direction on 2026-11-10. The [concept image](../fullscreen-playback-concept.png) is illustrative, not evidence of deployment. This plan supplements [product requirements](PRODUCT.md), [architecture](ARCHITECTURE.md), and the [acceptance matrix](ROADMAP.md); [task.md](../task.md) tracks execution.
 
 ## Goal and scope
 
@@ -43,6 +43,8 @@ Provide play/pause, seek, elapsed and total time, bounded 15-second forward/back
 - Preserve original provider runs, human edits, speaker correction, undo, revision invalidation, backups and existing audio ownership. Existing reference video remains explicit-load, separate from AI input, and mutually exclusive with local audio playback; entering or leaving the new view must not silently start it or bypass that contract.
 - Existing chunked audio remains bounded. First reproduce or rule out the identified asynchronous window-switch race: a pending switch may apply an obsolete source or play intent after pause or seek. If reproduced, fix with current-operation and current-intent checks and focused regression tests before relying on it for immersive navigation. Do not claim the risk reproduced until demonstrated.
 
+Baseline investigation, 2026-11-10: controlled delayed-decode tests reproduced a boundary switch restarting after pause and replacing a newer seek. The local working-tree repair guards window operations and playback intent; `tests/chunked-audio-race.test.ts` covers these races, MP4 seeks, late play events, disposal, and aborted seek playback. These synthetic tests do not establish real-device timing or complete immersive-playback acceptance.
+
 ## Platform, accessibility and responsive behavior
 
 Use a user-initiated [Fullscreen API request](https://developer.mozilla.org/en-US/docs/Web/API/Element/requestFullscreen) with failure handling and an in-page fallback. Fullscreen availability is browser-dependent; [WebKit's non-video fullscreen issue](https://bugs.webkit.org/show_bug.cgi?id=212934) illustrates why iPhone support must not be assumed. Test the actual supported iOS versions in Safari and installed standalone mode. Do not promise hidden browser chrome or orientation locking.
@@ -58,7 +60,7 @@ Use a user-initiated [Fullscreen API request](https://developer.mozilla.org/en-U
 3. **Controls and transcript:** implement bounded seek and speed controls, captions and transcript panel, manual-follow suspension/resume, untimed handling and multilingual text display.
 4. **Adaptation and verification:** complete responsive and accessibility behavior, focused regressions, real browser and physical-device checks. Update authoritative product/architecture documentation to describe verified behavior and disclose remaining platform limits.
 
-Each phase is planned work. No checkbox is complete solely because a mockup, unit test, or implementation exists.
+The local implementation does not by itself complete device, accessibility or release acceptance. No checkbox is complete solely because a mockup, unit test, or implementation exists.
 
 ## Acceptance and verification
 

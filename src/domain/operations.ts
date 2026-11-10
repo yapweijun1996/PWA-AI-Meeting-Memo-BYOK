@@ -50,6 +50,16 @@ export function editSegment(
     );
   });
 }
+export function reviewSegments(m: Meeting, ids: string[], reviewed: boolean): Meeting {
+  const targets = new Set(ids);
+  return editMeeting(m, (draft) => {
+    draft.segments = draft.segments.map((segment) =>
+      targets.has(segment.id) && segment.reviewed !== reviewed
+        ? { ...segment, reviewed, revision: nextRevision(m, segment), parents: [ref(segment)] }
+        : segment,
+    );
+  });
+}
 export function assignSegments(
   m: Meeting,
   ids: string[],

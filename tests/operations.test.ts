@@ -6,6 +6,7 @@ import {
   undoEdit,
   mergeSpeakers,
   resolveSource,
+  reviewSegments,
   markdown,
 } from "../src/domain/operations";
 const meeting = () => ({
@@ -13,6 +14,14 @@ const meeting = () => ({
   ...importTranscript("Jamie: Check the order.\nAlex: Finance must confirm."),
 });
 describe("human revisions and provenance", () => {
+  it("reviews multiple fragments in one undoable edit", () => {
+    const original = meeting();
+    const reviewed = reviewSegments(original, original.segments.map((segment) => segment.id), true);
+    expect(reviewed.segments.every((segment) => segment.reviewed && segment.revision === 2)).toBe(true);
+    expect(reviewed.undo).toHaveLength(1);
+    expect(resolveSource(reviewed, original.segments[0])?.text).toBe(original.segments[0].text);
+    expect(undoEdit(reviewed).segments.every((segment) => !segment.reviewed)).toBe(true);
+  });
   it("retains cited evidence across edits and undo, leaving memo stale", () => {
     const m = meeting(),
       s = m.segments[0];

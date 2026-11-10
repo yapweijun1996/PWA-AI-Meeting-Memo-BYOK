@@ -156,3 +156,55 @@ export function playbackCaptionWindowStart(
 export function hasValidTimedSegments(segments: Segment[]) {
   return segments.some(timed);
 }
+
+/** How far ahead of a caption the "next speech" lookup switches over (see PlaybackMode). */
+export const NEXT_CAPTION_LOOKAHEAD = 0.05;
+
+/**
+ * Every playhead time at which something derived from the playhead can change:
+ * segment/fragment starts and ends (active speech, speakers, between-words context),
+ * the next-caption lookahead, and the midpoint between neighbouring captions (the
+ * rule that picks the transcript window anchor inside a gap). Between two
+ * neighbouring boundaries every derived value is constant, so a consumer only
+ * needs to re-render when the playhead crosses one.
+ */
+export function playbackBoundaries(segments: Segment[], captions: PlaybackCaption[]): number[] {
+  const points = new Set<number>();
+  const add = (value: number | null) => {
+    if (value !== null && Number.isFinite(value)) points.add(value);
+  };
+  for (const segment of segments) {
+    add(segment.start);
+    add(segment.end);
+  }
+  captions.forEach((caption, index) => {
+    add(caption.start - NEXT_CAPTION_LOOKAHEAD);
+    const previous = captions[index - 1];
+    if (previous) add((previous.end + caption.start) / 2);
+  });
+  return [...points].sort((a, b) => a - b);
+}
+
+/**
+ * Maps a playhead time to one representative time inside the same boundary
+ * interval, so everything derived from the playhead gives the same answer for
+ * the representative as for the real position. The result is the interior
+ * midpoint of the interval, which keeps left-closed ranges (`position >= start`)
+ * and right-open ranges (`position < end`) consistent. It is a primitive, so it
+ * can be a useSyncExternalStore snapshot that only changes on a boundary.
+ */
+export function snapToPlaybackInterval(boundaries: number[], position: number): number {
+  const count = boundaries.length;
+  if (count === 0) return 0;
+  // First boundary strictly after the position; the position is in [boundaries[next - 1], boundaries[next]).
+  let low = 0;
+  let high = count;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (boundaries[middle]! > position) high = middle;
+    else low = middle + 1;
+  }
+  if (low === 0) return boundaries[0]! - 1;
+  if (low === count) return boundaries[count - 1]! + 1;
+  return (boundaries[low - 1]! + boundaries[low]!) / 2;
+}
