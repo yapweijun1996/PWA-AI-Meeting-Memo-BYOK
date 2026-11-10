@@ -1,5 +1,17 @@
 # Implementation tasks
 
+## Immersive playback — planned 2026-11-10
+
+The owner approved the [fullscreen concept](fullscreen-playback-concept.png). The detailed [immersive playback plan](docs/IMMERSIVE-PLAYBACK-PLAN.md) defines scope, behavior, architecture, platform fallback and acceptance. This is planned work, not a claim of implementation or release. Preserve the current uncommitted workspace changes and existing playback, evidence, privacy and recovery contracts.
+
+- [ ] Establish the current player/fullscreen baseline and test the suspected asynchronous chunk-window switch race; if reproduced, correct it and verify pause, seek and stale-load handling before relying on it.
+- [ ] Add immersive entry and exit with a shared player, preserved position/rate/play state, native fullscreen when available, in-page fallback, and focus/scroll restoration.
+- [ ] Build the speaker-avatar and synchronized-caption stage with explicit pause, gap, unknown, overlap, buffering, error and untimed states; preserve source timing and multilingual fragment text.
+- [ ] Add accessible playback controls and a bounded transcript panel with seek, manual-follow suspension and explicit resume; preserve the existing reference-video exclusion and source correction paths.
+- [ ] Complete desktop, tablet and mobile responsive layouts, safe areas, zoom, keyboard, screen-reader and reduced-motion behavior.
+- [ ] Run the plan's focused unit/browser and long-recording regressions; verify real browser and physical iPhone Safari/standalone behavior, offline playback and unchanged data. Record versions, evidence and untested limitations.
+- [ ] Synchronize authoritative product and architecture documentation with verified implementation; obtain separate authorization before any commit, push or deployment.
+
 Updated: 2026-11-06. The owner authorized the core follow-up plan, per-task commits/main merges/pushes and deployment, with final owner testing after delivery. Application code `ce8bd74` passed 85 unit tests, 102 Chromium/WebKit browser cases, both-engine PWA lifecycle and artifact checks; verification and publication succeeded in [run 42189291028](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/42189291028). Exact-build production readback passed. The transferable synthetic owner backup adds one unit test (86 passed locally). See [validation](docs/VALIDATION.md#core-follow-up-delivery--2026-11-06). Production authenticated API validation has not resumed, no new paid request or reservation occurred, and protective reservations remain US$4.85. Physical-device, billing and annotated-quality gates remain open. The four newly added group-chat/audio-reactive tasks are separate from the approved core plan and remain unchecked.
 
 ## Handoff — 2026-11-09
