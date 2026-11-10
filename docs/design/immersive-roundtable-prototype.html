@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>MeetingMemo — Immersive Roundtable Prototype</title>
+  <style>
+    :root { color-scheme: dark; --accent: #a0f2a5; --text: #f5f8f0; --muted: #c4d9c9; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; background: radial-gradient(ellipse at 50% 37%, #23533e, #103326 45%, #071d16); }
+    .shell { max-width: 1500px; min-height: 100vh; margin: auto; padding: 26px clamp(16px, 3vw, 48px) 38px; display: flex; flex-direction: column; }
+    .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .brand { display: flex; align-items: center; gap: 12px; font-size: clamp(19px, 2.1vw, 28px); font-weight: 800; letter-spacing: -.04em; }
+    .brand svg { color: var(--accent); flex: none; }
+    .tag { padding: 8px 12px; border: 1px solid #48795a; border-radius: 99px; background: #173f2b; color: #d2efd9; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+    .stage { position: relative; isolation: isolate; flex: 0 0 clamp(520px, 60vh, 740px); min-height: 520px; max-height: 740px; }
+    .stage::before { content: ""; position: absolute; inset: 13% 0 0; background: radial-gradient(ellipse at 50% 75%, #3a8b5b33, transparent 64%); pointer-events: none; }
+    .table-shadow { position: absolute; left: 8%; right: 8%; top: 48%; height: 42%; border-radius: 50%; background: #020e0b; filter: blur(33px); opacity: .75; }
+    .table { position: absolute; z-index: 2; left: 9%; width: 82%; height: 43%; top: 35%; border: clamp(9px, 1.9vw, 24px) solid #785c38; border-radius: 50%; background: radial-gradient(ellipse at 49% 39%, #285b49, #163e33 52%, #102d27 75%); box-shadow: 0 11px 0 #a77c43, 0 19px 0 #3d2c1d, 0 27px 30px #020e0b99, inset 0 0 0 3px #e7bc70, inset 0 0 35px #72e4b21c; }
+    .table::after { content: ""; position: absolute; inset: 5%; border: 1px solid #e7d19a48; border-radius: 50%; }
+    .table-wave { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 7px; opacity: .65; }
+    .table-wave span, .speaker-wave span { display: block; width: 5px; height: var(--height); border-radius: 6px; background: var(--accent); animation: wave 1.2s ease-in-out infinite alternate; animation-delay: var(--delay); }
+    @keyframes wave { to { transform: scaleY(.3); opacity: .45; } }
+    .seat { position: absolute; z-index: 4; display: flex; align-items: center; flex-direction: column; gap: 7px; transform: translate(-50%, -50%); width: clamp(110px, 16vw, 195px); padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+    .seat:focus-visible { outline: 3px solid #d2ffbd; outline-offset: 8px; border-radius: 24px; }
+    .seat[data-seat="0"] { left: 30%; top: 26%; }
+    .seat[data-seat="1"] { left: 70%; top: 26%; }
+    .seat[data-seat="2"] { left: 12%; top: 65%; }
+    .seat[data-seat="3"] { left: 88%; top: 65%; }
+    .portrait { position: relative; width: clamp(82px, 11vw, 146px); aspect-ratio: 1; display: grid; place-items: center; border: 3px solid #d0e5d3; border-radius: 50%; background: linear-gradient(140deg, #356c51, #122e26); box-shadow: 0 10px 26px #0008, inset 0 0 28px #a8e4a822; transition: box-shadow .3s, border-color .3s, transform .3s; }
+    .portrait svg { width: 88%; height: 88%; filter: drop-shadow(0 6px 6px #0005); }
+    .seat[aria-pressed="true"] .portrait { border-color: #b6ffad; box-shadow: 0 0 0 7px #8af58e25, 0 0 28px 9px #62f77791, 0 0 65px #48f97665; transform: scale(1.05); }
+    .seat[aria-pressed="true"] .portrait::after { content: ""; position: absolute; inset: -12px; border: 1px solid #8aff9c8a; border-radius: 50%; animation: pulse 2.3s ease-out infinite; }
+    @keyframes pulse { 50% { transform: scale(1.08); opacity: .25; } }
+    .name { max-width: 100%; padding: 8px 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid #81b18a9c; border-radius: 99px; background: #09251df0; box-shadow: 0 7px 15px #0005; font-size: clamp(12px, 1.3vw, 17px); font-weight: 750; }
+    .seat[aria-pressed="true"] .name { border-color: #a6ffac; color: #c7ffbc; }
+    .status { display: inline-flex; align-items: center; gap: 5px; min-height: 24px; color: var(--muted); font-size: 12px; font-weight: 650; }
+    .seat[aria-pressed="true"] .status { padding: 3px 10px; border-radius: 99px; background: #173f2b; color: #d4ffd0; }
+    .speaker-wave { display: none; align-items: center; gap: 2px; height: 12px; }
+    .seat[aria-pressed="true"] .speaker-wave { display: inline-flex; }
+    .speaker-wave span { width: 2px; }
+    .seat:hover .portrait { filter: brightness(1.12); }
+    .transcript { position: relative; z-index: 5; margin-top: 5px; padding: clamp(18px, 3vw, 32px); min-height: 178px; border: 1px solid #669a76a8; border-radius: 26px; background: linear-gradient(110deg, #153c2cf5, #0b281ff5); box-shadow: 0 15px 45px #0005, inset 0 1px #b9f3b022; }
+    .transcript-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 15px; font-weight: 750; }
+    .current { color: var(--accent); }
+    .divider { height: 18px; width: 1px; background: #91bda1; }
+    .transcript-label { color: #d7e8dc; }
+    .transcript-head .tag { margin-left: auto; }
+    .line { margin-top: 22px; padding-left: clamp(13px, 2vw, 26px); border-left: 5px solid #83f29a; font-size: clamp(20px, 2.5vw, 34px); font-weight: 650; line-height: 1.55; letter-spacing: -.025em; overflow-wrap: anywhere; }
+    .word { display: inline; border-radius: 5px; transition: background .15s, color .15s; }
+    .word.past { color: #f3fff2; }
+    .word.now { background: #84ef8e; color: #102f20; box-shadow: 0 0 14px #6ee8887c; }
+    .hint { margin-top: 16px; color: #b4cebc; font-size: 12px; line-height: 1.5; }
+    @media (max-width: 700px) {
+      .shell { padding: 17px 13px 25px; }
+      .top .tag { padding: 7px 9px; font-size: 10px; }
+      .stage { flex-basis: 420px; min-height: 420px; max-height: 510px; }
+      .table { left: 5%; width: 90%; height: 34%; top: 39%; border-width: 9px; box-shadow: 0 8px 0 #a77c43, 0 15px 0 #3d2c1d, 0 20px 20px #020e0b99, inset 0 0 0 2px #e7bc70; }
+      .seat { width: 115px; gap: 5px; }
+      .portrait { width: 76px; }
+      .seat[data-seat="0"] { left: 27%; top: 22%; }
+      .seat[data-seat="1"] { left: 73%; top: 22%; }
+      .seat[data-seat="2"] { left: 18%; top: 77%; }
+      .seat[data-seat="3"] { left: 82%; top: 77%; }
+      .name { padding: 6px 10px; font-size: 12px; }
+      .status { font-size: 11px; }
+      .transcript { min-height: 205px; border-radius: 19px; }
+      .line { font-size: clamp(19px, 5vw, 26px); }
+    }
+    @media (max-width: 370px) {
+      .portrait { width: 64px; }
+      .seat { width: 92px; }
+      .stage { flex-basis: 380px; min-height: 380px; }
+      .name { font-size: 11px; }
+      .seat[data-seat="2"] { left: 17%; }
+      .seat[data-seat="3"] { left: 83%; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="top">
+      <div class="brand"><svg width="31" height="31" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M3 13v6M9 7v18M15 3v26M21 9v14M27 13v6" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg>MeetingMemo</div>
+      <div class="tag">Roundtable demo</div>
+    </header>
+    <section class="stage" aria-label="Meeting participants around an oval table">
+      <div class="table-shadow" aria-hidden="true"></div>
+      <div class="table" aria-hidden="true"><div class="table-wave"><span style="--height:9px;--delay:0s"></span><span style="--height:17px;--delay:-.3s"></span><span style="--height:30px;--delay:-.6s"></span><span style="--height:42px;--delay:-.2s"></span><span style="--height:25px;--delay:-.8s"></span><span style="--height:14px;--delay:-.5s"></span><span style="--height:8px;--delay:-.1s"></span></div></div>
+      <div id="seats"></div>
+    </section>
+    <section class="transcript" aria-label="Demo transcript">
+      <div class="transcript-head"><span class="transcript-label">✦ Transcript</span><span class="divider" aria-hidden="true"></span><span class="current" id="speaker-label">Speaker 1</span><span class="tag">Demo words</span></div>
+      <div class="line" id="line" aria-live="off"></div>
+      <div class="hint">Demo: select an avatar to change the active speaker. Seats stay fixed. Text, timing and the sound-wave animation are simulated.</div>
+    </section>
+  </main>
+  <script>
+    const speakers = [
+      { name: "Speaker 1", skin: "#e6b48e", hair: "#4b2c25", shirt: "#e9cbb5" },
+      { name: "Speaker 2", skin: "#f0c6a5", hair: "#272c30", shirt: "#789a8e" },
+      { name: "Speaker 3", skin: "#c99572", hair: "#352b27", shirt: "#7897aa" },
+      { name: "Speaker 4", skin: "#edc3a7", hair: "#654138", shirt: "#d9b7a0" },
+    ];
+    const scripts = [
+      "Now, the other macro trend is, um, I think we have a generation of current founders right now that have, uh,",
+      "I agree with that point, and I think the next step is to look at how the market is changing.",
+      "From our perspective, the most important thing is understanding what customers actually need.",
+      "That's an interesting observation. We should compare the results before making a decision.",
+    ];
+    const seats = document.getElementById("seats");
+    const line = document.getElementById("line");
+    const speakerLabel = document.getElementById("speaker-label");
+    let active = 0;
+    let wordIndex = 0;
+    function avatar(person) {
+      return `<svg viewBox="0 0 100 100" aria-hidden="true"><ellipse cx="50" cy="101" rx="44" ry="32" fill="${person.shirt}"/><rect x="42" y="61" width="16" height="18" rx="7" fill="${person.skin}"/><ellipse cx="50" cy="43" rx="27" ry="31" fill="${person.skin}"/><path d="M23 45 Q12 5 48 10 Q83 4 78 45 Q68 25 61 22 Q41 34 25 30Z" fill="${person.hair}"/><path d="M26 28 Q42 7 68 21" stroke="${person.hair}" stroke-width="10" fill="none" stroke-linecap="round"/><circle cx="40" cy="46" r="2.4" fill="#302720"/><circle cx="60" cy="46" r="2.4" fill="#302720"/><path d="M43 60 Q50 66 57 60" fill="none" stroke="#9b584c" stroke-width="2.2" stroke-linecap="round"/></svg>`;
+    }
+    seats.innerHTML = speakers.map((person, index) => `<button class="seat" data-seat="${index}" type="button" aria-label="Select ${person.name}" aria-pressed="false"><span class="portrait">${avatar(person)}</span><span class="name">${person.name}</span><span class="status"><span class="speaker-wave" aria-hidden="true"><span style="--height:6px;--delay:0s"></span><span style="--height:11px;--delay:-.4s"></span><span style="--height:7px;--delay:-.8s"></span></span><span class="status-text"></span></span></button>`).join("");
+    const buttons = [...document.querySelectorAll(".seat")];
+    function renderWords() {
+      const words = scripts[active].split(/\s+/);
+      line.replaceChildren(...words.flatMap((word, index) => {
+        const span = document.createElement("span");
+        span.className = `word ${index === wordIndex ? "now" : index < wordIndex ? "past" : ""}`;
+        span.textContent = word;
+        return index ? [document.createTextNode(" "), span] : [span];
+      }));
+    }
+    function setActive(index) {
+      active = index;
+      wordIndex = 0;
+      buttons.forEach((button, buttonIndex) => {
+        const selected = index === buttonIndex;
+        button.setAttribute("aria-pressed", String(selected));
+        button.querySelector(".status-text").textContent = selected ? "Speaking" : "Listening";
+      });
+      speakerLabel.textContent = speakers[index].name;
+      renderWords();
+    }
+    buttons.forEach((button, index) => button.addEventListener("click", () => setActive(index)));
+    setActive(0);
+    setInterval(() => { wordIndex = (wordIndex + 1) % scripts[active].split(/\s+/).length; renderWords(); }, 430);
+  </script>
+</body>
+</html>
