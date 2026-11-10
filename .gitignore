@@ -9,3 +9,4 @@ test-results/
 playwright-report/
 coverage/
 private-fixtures/
+playwright-race-check/
