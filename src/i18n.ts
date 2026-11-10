@@ -4,6 +4,7 @@ const malay: Record<string, string> = {
   "Dismiss notification": "Tutup pemberitahuan",
   "Workspace": "Ruang kerja", "Your meetings": "Mesyuarat anda", "Needs review": "Perlu semakan",
   "New meeting": "Mesyuarat baharu", "Restore backup": "Pulihkan sandaran", "RECENT MEETINGS": "MESYUARAT TERKINI",
+  "View all meetings": "Lihat semua mesyuarat", "View all": "Lihat semua",
   "WORKSPACE": "RUANG KERJA", "Settings & API keys": "Tetapan dan kunci API", "How it works": "Cara penggunaan",
   "Saved on this device · Local storage": "Disimpan pada peranti ini", "All meetings": "Semua mesyuarat",
   "Transcript": "Transkrip", "Speakers": "Penutur", "Meeting notes": "Nota mesyuarat", "Saved locally": "Disimpan secara setempat",
