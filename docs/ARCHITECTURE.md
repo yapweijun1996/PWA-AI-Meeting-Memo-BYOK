@@ -216,16 +216,13 @@ Local pyannote, self-hosted models, and persistent server jobs are separate futu
 
 To prevent visual drift, duplicated hex literals, and conflicting status labels across screens, the UI architecture follows a four-layer Single Source of Truth (SSOT) Design System protocol:
 
-1. **Layer 1 — Design Tokens (`src/style.css` `:root`)**:
-   - **Typography scale**: `--font-sans` (`Plus Jakarta Sans`), `--font-serif` (`Instrument Serif`), `--text-xs` (`0.75rem`), `--text-sm` (`0.8125rem`), `--text-base` (`0.875rem`), `--text-md` (`0.9375rem`), `--text-lg` (`1.0625rem`), `--text-xl` (`1.25rem`), `--text-2xl` (`1.5rem`), and `--text-display` (`clamp(1.75rem, 2.5vw, 2.25rem)`).
-   - **Surface, text, and border tokens**: `--bg-canvas`, `--bg-card`, `--bg-subtle`, `--bg-muted`, `--text-primary`, `--text-secondary`, `--text-muted`, `--border-subtle`, `--border-default`, and `--border-focus`.
-   - **Semantic status tokens**: `--status-green-bg` / `--status-green-fg`, `--status-sand-bg` / `--status-sand-fg`, `--status-danger-bg` / `--status-danger-fg`, and `--status-neutral-bg` / `--status-neutral-fg` (all verified at WCAG AA `>= 4.5:1` contrast).
-   - **5-Slot speaker identity palette**: `--speaker-1-bg: #e3f1e6` / `--speaker-1-fg: #244830` (forest green), `--speaker-2-bg: #ede8f8` / `--speaker-2-fg: #3b2a68` (lavender), `--speaker-3-bg: #f8eedc` / `--speaker-3-fg: #6b4710` (amber), `--speaker-4-bg: #e3f0f8` / `--speaker-4-fg: #1c4966` (sky), and `--speaker-5-bg: #f8e6ea` / `--speaker-5-fg: #6b2135` (rose).
-2. **Layer 2 — UI Primitives (`src/components/ui.tsx`)**:
-   - `<Button>`, `<Card>`, `<Pill>`, `<Dialog>`, `<Notice>`, and `<EmptyState>` own component geometry, focus rings, touch-target minimums (`44px` on coarse pointers), and `aria-*` semantics. Feature views compose these primitives rather than introducing ad-hoc button or badge classes.
-3. **Layer 3 — Shared Workflow and Speaker Semantics**:
-   - Meeting lifecycle status (`Recording`, `Transcribing`, `Needs review`, `Ready`, `Failed`), stage subtitle, and primary next-step CTA derive from a single workflow-status projection used across Dashboard cards, sidebar recent items, and the topbar breadcrumb `<Pill>`.
-   - Speaker badge numbering (`S1`–`S5`) and palette slot assignment (`--speaker-1` to `--speaker-5`) derive from a single deterministic speaker-order helper shared by `SpeakerReview` and `MeetingWorkspace`.
+1. **Layer 1 - Design tokens (`src/style.css` and `src/theme.css`)**:
+   - `src/style.css` defines base palette values, typography, surfaces, status pairs and five speaker background slots. `src/theme.css` overrides values for the selected light/dark theme and palette.
+   - `--color-accent` is the palette-dependent primary accent; `--color-accent-text` and `--color-focus` map palette values to their interaction roles. Existing numbered palette tokens remain in use elsewhere.
+   - The green status pill uses `--status-green-bg` and `--status-green-text` as a pair that changes with light/dark theme, independently of the selected palette. Other status tones use their own background and text tokens.
+   - Speaker backgrounds use `--speaker-1` through `--speaker-5`; the shared helper assigns slots by meeting presentation order, not voice identity.
+2. **Layer 2 - UI primitives (`src/components/ui.tsx`)**: Shared primitives include `Brand`, `Pill`, `Modal`, and `Empty`; views also use shared CSS classes for controls and layout.
+3. **Layer 3 - Shared workflow and speaker semantics**: Workflow status is projected centrally for meeting views. Speaker presentation uses the shared speaker background helper; its colors are separate from the selected appearance palette.
 4. **Layer 4 — Viewport and Layout Contracts**:
    - Sticky `.topbar` uses a compact `52px` desktop (`56px` mobile) height with a clickable `.breadcrumb-root` link (`Workspace -> #/`) and in-context meeting status `<Pill>`.
    - Dashboard prioritizes above-the-fold task density (`Topbar -> Page Heading -> 3 Workflow KPI Cards -> Compact Welcome Banner -> Unified .library-toolbar -> Meeting Cards`).

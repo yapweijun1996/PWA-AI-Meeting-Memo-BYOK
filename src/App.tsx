@@ -35,6 +35,7 @@ import { readBackup } from "./storage/backup";
 import { restoreSpeakerAvatars, trackAvatarWrite } from "./storage/speaker-avatars";
 import { Brand, Empty, Pill } from "./components/ui";
 import { TooltipLayer } from "./components/TooltipLayer";
+import { useBackToTopPosition } from "./components/useBackToTopPosition";
 import { ToastLayer } from "./components/ToastLayer";
 import { LoadingPlaceholder } from "./components/LoadingPlaceholder";
 import { NewMeeting } from "./features/NewMeeting";
@@ -76,6 +77,7 @@ export default function App() {
   const [online, setOnline] = useState(navigator.onLine);
   const [topHidden, setTopHidden] = useState(false),
     [showTop, setShowTop] = useState(false);
+  const backToTopRef = useBackToTopPosition(showTop);
   useEffect(() => {
     let last = scrollY;
     const onScroll = () => {
@@ -665,7 +667,8 @@ export default function App() {
       </div>
       {showTop && (
         <button
-          className={`back-to-top ${current?.audio ? "above-player" : ""}`}
+          ref={backToTopRef}
+          className="back-to-top"
           aria-label={t("Back to top", "返回顶部")}
           onClick={() =>
             scrollTo({
