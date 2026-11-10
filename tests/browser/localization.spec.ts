@@ -8,6 +8,7 @@ test("Chinese navigation and creation dialog are accessible on a narrow screen",
   page,
 }) => {
   await page.goto("/PWA-AI-Meeting-Memo-BYOK/#/settings");
+  await page.getByRole("tab", { name: "Appearance" }).click();
   await page.getByLabel("Display language / 显示语言").selectOption("zh-CN");
   await page.getByRole("button", { name: "保存设置" }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
@@ -40,6 +41,7 @@ test("Chinese history retains request billing uncertainty after reload", async (
   page,
 }) => {
   await page.goto("/PWA-AI-Meeting-Memo-BYOK/#/settings");
+  await page.getByRole("tab", { name: "Appearance" }).click();
   await page.getByLabel("Display language / 显示语言").selectOption("zh-CN");
   await page.getByRole("button", { name: "保存设置" }).click();
   await expect(

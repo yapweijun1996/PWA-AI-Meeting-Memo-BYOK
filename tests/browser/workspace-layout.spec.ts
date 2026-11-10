@@ -132,6 +132,7 @@ async function restoreMeeting(page: Page, language: "en" | "zh-CN") {
   });
   await page.goto(language === "zh-CN" ? `${base}#/settings` : base);
   if (language === "zh-CN") {
+    await page.getByRole("tab", { name: "Appearance" }).click();
     await page.getByLabel("Display language / 显示语言").selectOption(language);
     await page.getByRole("button", { name: "保存设置", exact: true }).click();
   }

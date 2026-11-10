@@ -6,6 +6,7 @@ const base = "/PWA-AI-Meeting-Memo-BYOK/";
 
 test("Chinese speaker review preserves anonymous identities and validates video links", async ({ page }) => {
   await page.goto(`${base}#/settings`);
+  await page.getByRole("tab", { name: "Appearance" }).click();
   await page.getByLabel("Display language / 显示语言").selectOption("zh-CN");
   await page.getByRole("button", { name: "保存设置", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");

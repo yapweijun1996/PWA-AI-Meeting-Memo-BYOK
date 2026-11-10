@@ -40,7 +40,9 @@ test("recommended preset starts without a request and leaves saved custom settin
   await page
     .getByRole("button", { name: "Bind rate to selected speech model" })
     .click();
+  await page.getByRole("tab", { name: "Appearance" }).click();
   await page.getByLabel("Display language / 显示语言").selectOption("zh-CN");
+  await page.getByRole("tab", { name: "API 与模型" }).click();
   await expect(page.getByRole("heading", { name: "费用估算" })).toBeVisible();
   await page.getByRole("button", { name: "保存设置" }).click();
   await expect(
@@ -87,6 +89,7 @@ test("recommended preset starts without a request and leaves saved custom settin
   ).toBeVisible();
   const meetingHash = new URL(page.url()).hash;
   await page.getByRole("link", { name: "设置与 API 密钥" }).click();
+  await page.getByRole("tab", { name: "外观" }).click();
   await page.getByLabel("Display language / 显示语言").selectOption("en");
   await page.getByRole("button", { name: "Save settings" }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");

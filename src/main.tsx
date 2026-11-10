@@ -2,7 +2,9 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { initializeSettings } from "./providers/credentials";
+import { initializeAppearance } from "./appearance";
 import "./style.css";
+initializeAppearance();
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { failed: boolean }
