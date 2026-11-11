@@ -6,6 +6,7 @@ export function TooltipLayer() {
   const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
   const active = useRef<HTMLElement | null>(null);
   useEffect(() => {
+    let dismissedByEscape: HTMLElement | null = null;
     const clear = () => {
       const element = active.current;
       if (element) {
@@ -30,16 +31,19 @@ export function TooltipLayer() {
     const over = (event: PointerEvent) => {
       if (event.pointerType === "touch") return;
       const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-tooltip]") : null;
-      if (target) show(target, event.clientX, event.clientY);
+      if (target && target !== dismissedByEscape) show(target, event.clientX, event.clientY);
     };
     const move = (event: PointerEvent) => { if (active.current && event.pointerType !== "touch") show(active.current, event.clientX, event.clientY); };
-    const out = (event: PointerEvent) => { if (active.current && !(event.relatedTarget instanceof Node && active.current.contains(event.relatedTarget))) clear(); };
+    const out = (event: PointerEvent) => {
+      if (dismissedByEscape && event.target instanceof Node && dismissedByEscape.contains(event.target) && !(event.relatedTarget instanceof Node && dismissedByEscape.contains(event.relatedTarget))) dismissedByEscape = null;
+      if (active.current && !(event.relatedTarget instanceof Node && active.current.contains(event.relatedTarget))) clear();
+    };
     const focus = (event: FocusEvent) => {
       const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-tooltip]") : null;
-      if (target) { const box = target.getBoundingClientRect(); show(target, box.left, box.bottom); }
+      if (target) { dismissedByEscape = null; const box = target.getBoundingClientRect(); show(target, box.left, box.bottom); }
     };
     const blur = (event: FocusEvent) => { if (event.target === active.current) clear(); };
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") clear(); };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { dismissedByEscape = active.current; clear(); } };
     document.addEventListener("pointerover", over);
     document.addEventListener("pointermove", move);
     document.addEventListener("pointerout", out);

@@ -112,6 +112,9 @@ test("collapsed navigation tooltip follows pointer and supports keyboard focus",
   await expect.poll(async () => (await tooltip.boundingBox())?.x).toBeGreaterThan(before!.x);
   await page.keyboard.press("Escape");
   await expect(tooltip).toHaveCount(0);
+  // A layout change can generate another pointerover without a fresh hover.
+  await target.evaluate((element) => element.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" })));
+  await expect(tooltip).toHaveCount(0);
   await target.focus();
   await expect(tooltip).toHaveText("Needs review");
 });
