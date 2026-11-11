@@ -1,3 +1,4 @@
+import { usePlayerClearance } from "./usePlayerClearance";
 import { translateUi } from "../i18n";
 import { planMemo, type MemoPipeline } from "../providers/memo-plan";
 import { resumablePipeline } from "../jobs/memo-pipeline";
@@ -130,6 +131,7 @@ export function MeetingWorkspace({
   if (m.version >= latestLocallySaved.current.version) latestLocallySaved.current = m;
   const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewedRetry, setReviewedRetry] = useState(false);
+  const [editingNotes, setEditingNotes] = useState<Set<string>>(() => new Set());
   const [memoMode, setMemoMode] = useState<"simple" | "review">("simple");
   const [priorityOnly, setPriorityOnly] = useState(false);
   const [miniPlayer, setMiniPlayer] = useState(true);
@@ -807,8 +809,9 @@ export function MeetingWorkspace({
   const page = Math.min(transcriptPage, Math.max(0, Math.ceil(groups.length / pageSize) - 1));
   const visibleGroups = groups.slice(page * pageSize, (page + 1) * pageSize);
   const evidenceHasTime = !!evidence && evidence.start !== null && evidence.end !== null && Number.isFinite(evidence.start) && Number.isFinite(evidence.end) && evidence.start >= 0 && evidence.end > evidence.start;
+  const { workspaceRef, playerBarRef } = usePlayerClearance(canPlay);
   return (
-    <div className={`${canPlay ? "workspace has-player" : "workspace"}${tab === "memo" && miniPlayer ? " memo-mini-active" : ""}`}>
+    <div ref={workspaceRef} className={`${canPlay ? "workspace has-player" : "workspace"}${tab === "memo" && miniPlayer ? " memo-mini-active" : ""}`}>
       <a href="#/" className="back-link">
         <ArrowLeft size={15} />
         {t("All meetings", "所有会议")}
@@ -1498,7 +1501,7 @@ export function MeetingWorkspace({
                     key={item.id}
                     data-note-type={item.type}
                   >
-                    {(reviewSummary?.priorityReasons[item.id]?.length ?? 0) > 0 && <span className="memo-priority small">{t("Suggested review", "建议核实")} · {reviewSummary!.priorityReasons[item.id].map(reason => priorityNames[reason]).join(" · ")} · {t("rule-based", "基于规则")}</span>}
+                    {memoMode === "review" && (reviewSummary?.priorityReasons[item.id]?.length ?? 0) > 0 && <span className="memo-priority small">{t("Suggested review", "建议核实")} · {reviewSummary!.priorityReasons[item.id].map(reason => priorityNames[reason]).join(" · ")} · {t("rule-based", "基于规则")}</span>}
                     <div className="memo-item-heading" hidden={memoMode === "simple"}>
                       <Pill
                         tone={
@@ -1513,26 +1516,33 @@ export function MeetingWorkspace({
                       </Pill>
                       <span className="small muted">{uiLanguage === "zh-CN" ? ({ pending: "待审阅", accepted: "已接受", rejected: "已拒绝", edited: "已编辑" } as const)[item.review] : item.review}</span>
                     </div>
-                    <MemoEditorField
+                    {memoMode === "simple" && !editingNotes.has(`${memo.id}:${item.id}`) ? <p className="memo-reading-text">{item.text}</p> : <MemoEditorField
                       key={`${memo.id}:${item.id}`}
                       label={uiLanguage === "zh-CN" ? `${({ summary: "摘要", discussion: "讨论", decision: "决定", action: "行动", question: "问题", risk: "风险" } as const)[item.type]}笔记` : `${item.type} note`}
                       value={item.text}
                       disabled={processing || reviewBusy || memo.id !== m.memos.at(-1)?.id}
                       showTools={memoMode === "simple"}
+                      autoFocus={memoMode === "simple"}
                       headingText={t("Insert heading", "插入标题")}
                       bulletText={t("Insert bullet", "插入项目符号")}
                       failureText={t("Save failed. Your draft is still in this field.", "保存失败，草稿仍保留在此输入框。")}
                       onSave={(text) => saveMemoEdit(memo.id, item.id, { text })}
                       onDirtyChange={(dirty) => setMemoItemDirty(item.id, dirty)}
                       onSelectionChange={(start, end, originalText) => setMemoSelection({ memoId: memo.id, itemId: item.id, start, end, originalText })}
-                    />
+                    />}
+                    {memoMode === "simple" && <div className="memo-inline-actions">
+                      {memo.id === m.memos.at(-1)?.id && <button type="button" className="text-button" disabled={processing || reviewBusy || (editingNotes.has(`${memo.id}:${item.id}`) && (dirtyMemoItems.has(item.id) || dirtyMemoItems.has(`${item.id}:due`)))} aria-label={`${editingNotes.has(`${memo.id}:${item.id}`) ? t("Finish editing", "完成编辑") : t("Edit note", "编辑笔记")} · ${item.text.slice(0, 35)}`} onClick={event => { event.currentTarget.focus(); const key = `${memo.id}:${item.id}`; setEditingNotes(previous => { const next = new Set(previous); if (next.has(key)) next.delete(key); else next.add(key); return next; }); setMemoSelection(undefined); }}>{editingNotes.has(`${memo.id}:${item.id}`) ? t("Done", "完成") : t("Edit", "编辑")}</button>}
+                      <SimpleMemoEvidence meeting={m} item={item} indexes={segmentIndexById} sourceIndex={evidenceIndex} disabled={dirtyMemoItems.size > 0} onSelect={(segment, refs) => { setEvidenceRefs(refs); evidenceTrigger.current = document.activeElement as HTMLElement | null; setEvidence(segment); }} onReview={() => setMemoMode("review")} />
+                      {(reviewSummary?.priorityReasons[item.id]?.length ?? 0) > 0 && <details className="memo-review-reason"><summary>{t("Suggested review", "建议核实")}</summary><p>{reviewSummary!.priorityReasons[item.id].map(reason => priorityNames[reason]).join(" · ")}<br />{t("Review priorities are guidance, not verification.", "审核提示仅用于安排核对，不代表内容已验证。")}</p></details>}
+                    </div>}
                     {memoSelection?.memoId === memo.id && memoSelection.itemId === item.id && memoSelection.end > memoSelection.start && <button type="button" className="text-button small" disabled={locked || memo.id !== m.memos.at(-1)?.id || memoSelection.originalText !== item.text || memoSelection.end - memoSelection.start > 4000} onMouseDown={event => event.preventDefault()} onClick={() => setAssistantSelection(memoSelection)}>{t("Improve selected text with AI", "用 AI 优化所选文字")}</button>}
                     {item.review === "edited" && <p className="memo-unverified small">{t("Edited text needs evidence review; previous citations have not verified it.", "内容已修改，原引用尚未验证此内容，请重新核对。")}</p>}
                     <div hidden={memoMode !== "review"}><OriginalNote
                       item={memo.originalItems?.find((x) => x.id === item.id)}
                       meeting={m}
                     /></div>
-                    {item.type === "action" && (
+                    {item.type === "action" && memoMode === "simple" && !editingNotes.has(`${memo.id}:${item.id}`) && <p className="memo-action-summary">{t("Owner", "负责人")}: {m.speakers.find(speaker => speaker.id === item.ownerId)?.name || t("Unspecified", "未指定")} · {t("Due date", "截止日期")}: {item.dueDate || t("Unspecified", "未指定")}</p>}
+                    {item.type === "action" && (memoMode === "review" || editingNotes.has(`${memo.id}:${item.id}`)) && (
                       <div className="action-fields">
                         <label>
                           {t("Owner", "负责人")}
@@ -1630,7 +1640,6 @@ export function MeetingWorkspace({
                         ),
                       )}
                     </div>
-                    {memoMode === "simple" && <SimpleMemoEvidence meeting={m} item={item} indexes={segmentIndexById} sourceIndex={evidenceIndex} disabled={dirtyMemoItems.size > 0} onSelect={(segment, refs) => { setEvidenceRefs(refs); evidenceTrigger.current = document.activeElement as HTMLElement | null; setEvidence(segment); }} onReview={() => setMemoMode("review")} />}
                     <div hidden={memoMode !== "review"}>
                       <EvidenceSources meeting={m} item={item} indexes={segmentIndexById} sourceIndex={evidenceIndex} onSelect={(segment, refs) => { setEvidenceRefs(refs ?? []); evidenceTrigger.current = document.activeElement as HTMLElement | null; setEvidence(segment); }} />
                       <CitedEvidence meeting={m} item={item} sourceIndex={evidenceIndex} onSelect={(segment) => { setEvidenceRefs([]); evidenceTrigger.current = document.activeElement as HTMLElement | null; setEvidence(segment); }} />
@@ -1741,7 +1750,7 @@ export function MeetingWorkspace({
         </details>
       )}
       {(url || chunkPlayer) && (
-        <div className={`audio-player${tab === "memo" ? " memo-player" : ""}${tab === "memo" && miniPlayer ? " memo-mini" : ""}`}>
+        <div ref={playerBarRef} className={`audio-player${tab === "memo" ? " memo-player" : ""}${tab === "memo" && miniPlayer ? " memo-mini" : ""}`}>
           {url && (
             <audio
               ref={(element) => {

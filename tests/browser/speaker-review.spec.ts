@@ -1794,6 +1794,18 @@ test("persistent audio player aligns with workspace at desktop and mobile widths
     expect(Math.abs(panel!.x - player!.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(panel!.x + panel!.width - player!.x - player!.width)).toBeLessThanOrEqual(1);
   }
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  for (const width of [1280, 390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const expanded of [false, true]) {
+      if (expanded) await page.getByRole("button", { name: "Expand", exact: true }).click();
+      await expect.poll(() => page.locator(".workspace").evaluate(element => {
+        const bar = document.querySelector(".audio-player")!.getBoundingClientRect();
+        return parseFloat(getComputedStyle(element).paddingBottom) - (window.innerHeight - bar.top);
+      })).toBeGreaterThanOrEqual(23);
+      if (expanded) await page.getByRole("button", { name: "Minimize", exact: true }).click();
+    }
+  }
 });
 
 test("immersive table caption card keeps long source text readable on desktop and mobile", async ({ page }) => {

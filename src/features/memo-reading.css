@@ -8,8 +8,8 @@
 .memo-document { display: block; padding: 16px 24px; }
 .memo-document-section { margin: 0 0 22px; }
 .memo-document-section > h3 { margin: 0 0 10px; color: var(--text-heading); font-size: var(--text-lg); }
-.memo-document .memo-item { border: 0; border-radius: 0; background: transparent; padding: 4px 0 12px; margin: 0; }
-.memo-document .memo-item textarea { display: block; width: 100%; min-height: 3.2em; padding: 8px 10px; border: 1px solid transparent; background: transparent; color: var(--text-body); font-size: var(--text-base); line-height: 1.65; resize: vertical; }
+.memo-document .memo-item { border: 0; border-radius: 0; background: transparent; padding: 0 0 12px; margin: 0; }
+.memo-document .memo-item textarea { display: block; width: 100%; min-height: 3.2em; padding: 8px 10px; border: 1px solid transparent; background: transparent; color: var(--text-body); font-size: var(--text-base); line-height: 1.65; resize: none; overflow: hidden; }
 .memo-document .memo-item textarea:hover { border-color: var(--border); }
 .memo-document .memo-item textarea:focus { border-color: var(--color-accent-text); background: var(--bg-surface); }
 .memo-document .memo-see-source { padding: 4px 10px; font-size: var(--text-sm); }
@@ -29,8 +29,21 @@
 .simple-memo-evidence summary { cursor: pointer; color: var(--color-accent-text); font-size: var(--text-sm); }
 .simple-evidence-preview { display: block; width: 100%; text-align: left; padding: 8px 10px; margin: 6px 0; border: 1px solid var(--border); border-radius: 8px; color: var(--text-body); background: var(--bg-surface); font-size: var(--text-base); overflow-wrap: anywhere; }
 .memo-document .memo-item:not([data-note-type="summary"]) { padding-left: 16px; position: relative; }
-.memo-document .memo-item:not([data-note-type="summary"])::before { content: "•"; position: absolute; left: 0; top: 10px; color: var(--text-muted); }
+.memo-document .memo-item:not([data-note-type="summary"])::before { content: "•"; position: absolute; left: 0; top: 2px; color: var(--text-muted); }
 @media (max-width: 600px) { .memo-document .memo-item textarea { font-size: 16px; } }
 .memo-text-tools { display: flex; gap: .75rem; margin: .15rem 0 .4rem; }
 dialog.evidence-drawer { position: fixed; margin: 0 0 0 auto; inset: 0 0 0 auto; width: min(38rem, 100vw); max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; overflow: auto; }
 @media (max-width: 600px) { dialog.evidence-drawer { width: 100vw; } }
+
+.memo-document { max-width: 980px; margin-inline: auto; width: 100%; box-sizing: border-box; }
+.memo-reading-text { margin: 0; color: var(--text-body); font-size: 16px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.memo-document .memo-inline-actions { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 2px 0 0; }
+.memo-inline-actions .text-button { padding: 4px 0; font-size: var(--text-sm); min-height: 32px; }
+.simple-memo-evidence { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 12px; margin: 0; }
+.memo-review-reason { font-size: var(--text-sm); color: var(--text-muted); }
+.memo-review-reason summary { cursor: pointer; padding-block: 4px; }
+.memo-review-reason p { max-width: 32rem; margin: 4px 0; }
+.memo-action-summary { margin: 3px 0 0; color: var(--text-muted); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.memo-document .memo-unverified { margin: 3px 0 6px; }
+.memo-document .memo-item textarea { padding: 6px 8px; border-color: var(--border); background: var(--bg-surface); font-size: 16px; }
+@media (pointer: coarse) { .memo-inline-actions .text-button, .memo-review-reason summary { min-height: 44px; } }

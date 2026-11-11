@@ -32,11 +32,9 @@ export function SimpleMemoEvidence({ item, meeting, indexes, sourceIndex, onSele
     } else groups.push({ first: segment, last: segment, lastIndex: exactCurrent ? index : undefined, text: segment.text, refs: [ref] });
     previousEligible = exactCurrent;
   }
-  return <details className="simple-memo-evidence">
-    <summary>{t("View original words", "查看原话")}</summary>
-    <p className="small muted">{t("Cited excerpts in citation order, not ranked by relevance. A citation does not prove the note.", "以下按引用顺序展示，不代表相关性排序；有引用不等于笔记已获证实。")}</p>
-    {groups.slice(0, 3).map(group => <button type="button" className="simple-evidence-preview" key={`${group.first.id}:${group.first.revision}`} onClick={event => { event.currentTarget.focus(); onSelect(group.first, group.refs); }}>{group.text.length > 180 ? `${group.text.slice(0, 180)}…` : group.text}</button>)}
-    {!groups.length && <p className="small muted">{t("Cited revisions are unavailable.", "引用版本不可用。")}</p>}
-    <button type="button" className="text-button" disabled={disabled} onClick={onReview}>{t("View all references in Evidence Review", "在证据审阅中查看全部引用")}</button>
-  </details>;
+  const first = groups[0];
+  return <span className="simple-memo-evidence">
+    <button type="button" className="text-button memo-see-source" disabled={disabled || !first} aria-label={`${t("View original words", "查看原话")} · ${item.text.slice(0, 35)}`} onClick={event => { event.currentTarget.focus(); if (first) onSelect(first.first, first.refs); }}>{t("View original words", "查看原话")}</button>
+    {item.sources.length > (first?.refs.length ?? 0) && <button type="button" className="text-button memo-all-sources" disabled={disabled} onClick={onReview}>{t("All references", "全部引用")}</button>}
+  </span>;
 }

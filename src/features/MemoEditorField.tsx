@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 type Props = {
   label: string;
@@ -6,6 +6,7 @@ type Props = {
   disabled: boolean;
   failureText: string;
   showTools: boolean;
+  autoFocus?: boolean;
   headingText: string;
   bulletText: string;
   onSave: (text: string) => Promise<void>;
@@ -14,7 +15,7 @@ type Props = {
 };
 
 /** A single source-bound paragraph; unsaved text stays visible after failures. */
-export function MemoEditorField({ label, value, disabled, failureText, showTools, headingText, bulletText, onSave, onDirtyChange, onSelectionChange }: Props) {
+export function MemoEditorField({ label, value, disabled, failureText, showTools, autoFocus = false, headingText, bulletText, onSave, onDirtyChange, onSelectionChange }: Props) {
   const [draft, setDraft] = useState(value);
   const [failed, setFailed] = useState(false);
   const [, renderSaved] = useState(0);
@@ -67,6 +68,16 @@ export function MemoEditorField({ label, value, disabled, failureText, showTools
       void flush();
     };
   }, [flush]);
+  useLayoutEffect(() => {
+    const field = input.current;
+    if (!field) return;
+    const resize = () => { field.style.height = "auto"; field.style.height = `${field.scrollHeight + 2}px`; };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(field);
+    return () => observer.disconnect();
+  }, [draft]);
+  useEffect(() => { if (autoFocus) input.current?.focus(); }, [autoFocus]);
   const dirty = draft !== saved.current || saving.current;
   function updateDraft(next: string) {
     current.current = next;

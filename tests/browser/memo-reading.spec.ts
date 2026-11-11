@@ -19,13 +19,18 @@ test("simple notes autosave, retain exact evidence and undo without claiming ver
   await page.goto(`./#/meetings/${meeting.id}`);
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
   await expect(page.getByRole("button", { name: "Simple Mode" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("textbox", { name: "summary note" })).toHaveCount(0);
+  await expect(page.locator(".memo-reading-text").filter({ hasText: "Original summary" })).toBeVisible();
+  await page.getByRole("button", { name: /^Edit note · Original summary/ }).click();
   const input = page.getByRole("textbox", { name: "summary note" });
+  await expect(input).toBeFocused();
   await input.fill("First change");
   await input.fill("Final change");
   await expect(input).not.toHaveAttribute("data-unsaved-edit", "true");
   await expect(page.getByText(/previous citations have not verified it/)).toBeVisible();
   await page.reload();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page.getByRole("button", { name: /^Edit note · Final change/ }).click();
   await expect(input).toHaveValue("Final change");
   await page.getByRole("button", { name: /undo/i }).click();
   await expect(input).toHaveValue("Original summary");
@@ -73,6 +78,7 @@ test("simple notes autosave, retain exact evidence and undo without claiming ver
       tx.oncomplete = () => db.close(); keep();
     };
   }), meeting.id);
+  await page.getByRole("button", { name: /^Edit note · Action/ }).click();
   const due = page.getByLabel("Action due date");
   await due.fill("2027-01-01");
   await expect(page.getByText("Saving…", { exact: true })).toBeVisible();
@@ -83,9 +89,7 @@ test("simple notes autosave, retain exact evidence and undo without claiming ver
   await page.evaluate(() => (window as unknown as { releaseMemoLock: () => void }).releaseMemoLock());
   await expect(due).not.toHaveAttribute("data-unsaved-edit", "true");
   await expect(due).toHaveValue("2026-12-01");
-  await page.getByText("View original words").first().click();
-  await expect(page.getByText(/citation order, not ranked/).first()).toBeVisible();
-  const sourceButton = page.locator(".simple-evidence-preview").first();
+  const sourceButton = page.getByRole("button", { name: /^View original words/ }).first();
   await sourceButton.click();
   const drawer = page.locator("dialog.evidence-drawer");
   await expect(drawer).toBeVisible();

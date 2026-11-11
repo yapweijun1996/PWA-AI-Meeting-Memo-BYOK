@@ -189,6 +189,7 @@ test("memo submissions require confirmation, preserve evidence and mark source c
   await page
     .getByRole("button", { name: "Confirm and send", exact: true })
     .click();
+  if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("action note")).toHaveValue(
     "Review inventory with finance.",
   );
@@ -208,6 +209,7 @@ test("memo submissions require confirmation, preserve evidence and mark source c
   });
   await page.getByRole("tab", { name: /Transcript/ }).click();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("action note")).toHaveValue("Blur-only draft.");
   await page.getByLabel("action note").fill("Pointer-leave draft.");
   await accept.dispatchEvent("pointerdown", {
@@ -228,11 +230,13 @@ test("memo submissions require confirmation, preserve evidence and mark source c
   });
   await page.getByRole("tab", { name: /Transcript/ }).click();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("action note")).toHaveValue(
     "Pointer-leave draft.",
   );
   await page.getByLabel("action note").fill("Human pointer review.");
   await accept.click();
+  if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("action note")).toHaveValue(
     "Human pointer review.",
   );
@@ -249,6 +253,7 @@ test("memo submissions require confirmation, preserve evidence and mark source c
   await page.getByRole("button", { name: "Save correction" }).click();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
   await expect(page.getByText(/Source details changed/)).toBeVisible();
+  if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("action note")).toHaveValue(
     "Human pointer review.",
   );
@@ -293,6 +298,7 @@ test("memo submissions require confirmation, preserve evidence and mark source c
   await page
     .getByRole("button", { name: "Confirm and send", exact: true })
     .click();
+  if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("action note")).toHaveValue(
     "Review inventory with finance.",
   );
@@ -300,6 +306,7 @@ test("memo submissions require confirmation, preserve evidence and mark source c
     2,
   );
   await page.getByLabel("Memo version").selectOption({ index: 0 });
+  if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("action note")).toHaveValue(
     "Human amended follow-up.",
   );
@@ -365,6 +372,7 @@ test.describe("touch review persistence", () => {
     await page.reload();
     await page.getByRole("tab", { name: /Meeting notes/ }).click();
     await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
+    if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
     await expect(page.getByLabel("action note")).toHaveValue(
       "Touch human action.",
     );
@@ -535,6 +543,7 @@ test("long speaker-aware memos compact transport input and restore original evid
   await page
     .getByRole("button", { name: "Confirm and send", exact: true })
     .click();
+  if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("summary note")).toHaveValue(
     "Long transcript summary with first and last evidence.",
   );
@@ -605,6 +614,7 @@ test("long speaker-aware memos compact transport input and restore original evid
     page.getByRole("heading", { name: fixture.title, exact: true }),
   ).toBeVisible();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("summary note")).toHaveValue(
     "Long transcript summary with first and last evidence.",
   );
@@ -786,6 +796,7 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
   await page
     .getByRole("button", { name: "Confirm and send", exact: true })
     .click();
+  if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("summary note")).toHaveValue(
     "A greeting was exchanged.",
   );
@@ -837,6 +848,7 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
   await page.getByRole("tab", { name: /Transcript/ }).click();
   await expect(page.getByText("Hello", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("summary note")).toHaveValue(
     "Human reviewed greeting.",
   );
@@ -1268,6 +1280,7 @@ test("default OpenAI speech and selected OpenRouter memo use their own model and
   await expect(page.getByRole("dialog")).toContainText("openai/gpt-6-luna");
   expect(memoCalls).toBe(0);
   await page.getByRole("button", { name: "Confirm and send" }).click();
+  if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("summary note")).toHaveValue("A summary.");
   expect(speechCalls).toBe(1);
   expect(memoCalls).toBe(1);
