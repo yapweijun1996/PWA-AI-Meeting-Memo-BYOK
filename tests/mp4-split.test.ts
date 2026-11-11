@@ -197,6 +197,34 @@ function samples(count: number, size = 3): Uint8Array[] {
   return Array.from({ length: count }, (_, index) => new Uint8Array(size).fill(index & 255));
 }
 
+async function fragmentedFixture(options: { gap?: boolean; badOffset?: boolean; defaults?: boolean } = {}): Promise<{ file: Blob; samples: Uint8Array[] }> {
+  const sourceSamples = samples(12, 8);
+  const original = new Uint8Array(await makeFixture({ samples: sourceSamples }).arrayBuffer());
+  const top = boxes(original, 0, original.length);
+  const ftyp = top.find(box => box.type === "ftyp")!;
+  const trex = fullBox("trex", u32(1, 1, timescale, 8, 0));
+  const init = makeBox("moov", joinBytes([
+    header("mvhd", timescale, 0),
+    audioTrack({ sizes: [], durations: [], chunkOffsets: [], samplesPerChunk: [] }),
+    makeBox("mvex", trex),
+  ]));
+  const fragments: Uint8Array[] = [];
+  for (let part = 0; part < 2; part++) {
+    const partSamples = sourceSamples.slice(part * 6, part * 6 + 6);
+    const tfhd = makeBox("tfhd", u32(0x020000, 1));
+    const tfdt = fullBox("tfdt", u32(part * 6 * timescale + (part && options.gap ? 1 : 0)));
+    const makeMoof = (offset: number) => {
+      const values = options.defaults ? [] : partSamples.flatMap(sample => [timescale, sample.length]);
+      const trun = makeBox("trun", u32(options.defaults ? 1 : 0x301, partSamples.length, offset, ...values));
+      return makeBox("moof", makeBox("traf", joinBytes([tfhd, tfdt, trun])));
+    };
+    const initial = makeMoof(0);
+    const moof = makeMoof(options.badOffset ? 1 : initial.length + 8);
+    fragments.push(moof, makeBox("mdat", joinBytes(partSamples)));
+  }
+  return { file: new Blob([original.slice(ftyp.start, ftyp.end), init, ...fragments].map(part => new Uint8Array(part))), samples: sourceSamples };
+}
+
 async function mdatPayload(blob: Blob): Promise<Uint8Array> {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const top = boxes(bytes, 0, bytes.length);
@@ -206,6 +234,25 @@ async function mdatPayload(blob: Blob): Promise<Uint8Array> {
 }
 
 describe("MP4 splitter", () => {
+  it("splits fragmented MP4 into standalone chunks with exact payload and timing", async () => {
+    for (const defaults of [false, true]) {
+      const fixture = await fragmentedFixture({ defaults });
+      const plan = await planMp4Split(fixture.file, { targetSeconds: 5, maxBytes });
+      expect(plan.totalSeconds).toBe(12);
+      expect(plan.chunks.length).toBeGreaterThan(1);
+      for (const chunk of plan.chunks) {
+        const output = await readMp4Chunk(fixture.file, plan, chunk.index);
+        const parsed = await planMp4Split(output, { targetSeconds: 3600, maxBytes });
+        expect(parsed.totalSeconds).toBeCloseTo(chunk.ownDurationSeconds + chunk.leadInSeconds);
+        expect(await mdatPayload(output)).toEqual(joinBytes(fixture.samples.slice(chunk.ownSampleStart - chunk.leadInSampleCount, chunk.ownSampleEnd)));
+      }
+    }
+  });
+
+  it("rejects fragmented sample offsets and discontinuous timestamps", async () => {
+    await expect(planMp4Split((await fragmentedFixture({ gap: true })).file, { targetSeconds: 5, maxBytes })).rejects.toThrow("timeline contains gaps");
+    await expect(planMp4Split((await fragmentedFixture({ badOffset: true })).file, { targetSeconds: 5, maxBytes })).rejects.toThrow("outside media data");
+  });
   it("plans audio-only files with moov before and after mdat, covering every sample", async () => {
     for (const afterMdat of [false, true]) {
       const source = makeFixture({ samples: samples(14), afterMdat });
@@ -302,7 +349,7 @@ describe("MP4 splitter", () => {
 
   it("rejects unsupported and malformed inputs with fixed messages", async () => {
     const fragmented = makeFixture({ samples: samples(5), fragmented: true });
-    await expect(planMp4Split(fragmented, { targetSeconds: 5, maxBytes })).rejects.toThrow("Fragmented MP4 is not supported.");
+    await expect(planMp4Split(fragmented, { targetSeconds: 5, maxBytes })).rejects.toThrow("mixed non-fragmented audio samples");
     const noAudio = makeFixture({ samples: samples(5), noAudio: true });
     await expect(planMp4Split(noAudio, { targetSeconds: 5, maxBytes })).rejects.toThrow("No audio track was found.");
     const valid = makeFixture({ samples: samples(5) });
@@ -341,7 +388,7 @@ describe("MP4 splitter", () => {
     const bytes = new Uint8Array(2 * 1024 * 1024);
     const fixture = makeFixture({ samples: [bytes] });
     const source = new CountedBlob([fixture], (size) => { readVolume += size; });
-    await planMp4Split(source, { targetSeconds: 5, maxBytes });
+    await planMp4Split(source, { targetSeconds: 5, maxBytes: 3_000_000 });
     expect(readVolume).toBeLessThan(source.size / 10);
   });
 

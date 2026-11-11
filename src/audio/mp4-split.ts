@@ -1,3 +1,4 @@
+import { readFragmentSamples } from "./mp4-fragments";
 import { boxAt, boxes, i32, joinBytes, makeBox, u32, u64, type IsoBox } from "./iso-bmff";
 
 export class Mp4SplitError extends Error {
@@ -48,6 +49,7 @@ interface Parsed {
   timescale: number;
   sampleRate: number;
   sourceSize: number;
+  maxBytes: number;
   movieTimescale: number;
 }
 
@@ -96,7 +98,7 @@ export async function planMp4Split(source: Blob, options: Mp4SplitOptions): Prom
       top.push({ type, offset: cursor, size, headerSize });
       cursor += size;
     }
-    if (top.some((box) => box.type === "moof")) throw new Mp4SplitError("Fragmented MP4 is not supported.");
+    const fragmented = top.some((box) => box.type === "moof");
     if (!top.some((box) => box.type === "ftyp")) throw new Mp4SplitError();
     const moovTop = top.find((box) => box.type === "moov");
     if (!moovTop) throw new Mp4SplitError();
@@ -105,7 +107,7 @@ export async function planMp4Split(source: Blob, options: Mp4SplitOptions): Prom
     const root = boxAt(moovData, 0);
     if (!root || root.end !== moovData.length) throw new Mp4SplitError();
     const rootChildren = boxes(moovData, root.payloadStart, root.end);
-    if (rootChildren.some((box) => box.type === "mvex")) throw new Mp4SplitError("Fragmented MP4 is not supported.");
+    if (rootChildren.some((box) => box.type === "mvex") !== fragmented) throw new Mp4SplitError("Invalid fragmented MP4 structure.");
     const mvhdBox = rootChildren.find((box) => box.type === "mvhd");
     if (!mvhdBox) throw new Mp4SplitError();
     const mvhd = copyBox(moovData, mvhdBox);
@@ -141,89 +143,110 @@ export async function planMp4Split(source: Blob, options: Mp4SplitOptions): Prom
     const co64Box = findChild(moovData, chosen.stbl, "co64");
     const offsetsBox = stcoBox ?? co64Box;
     if (stz2Box) throw new Mp4SplitError("Compact sample sizes are not supported.");
-    if (!mdhdBox || !tkhdBox || !hdlrBox || !smhdBox || !dinfBox || !stsdBox || !sttsBox || !stszBox || !stscBox || !offsetsBox) throw new Mp4SplitError();
+    if (!mdhdBox || !tkhdBox || !hdlrBox || !smhdBox || !dinfBox || !stsdBox || (!fragmented && (!sttsBox || !stszBox || !stscBox || !offsetsBox))) throw new Mp4SplitError();
     const mdhd = copyBox(moovData, mdhdBox);
     const mdhdVersion = mdhd[8]!;
     if (mdhdVersion !== 0 && mdhdVersion !== 1) throw new Mp4SplitError();
     const timescale = u32(mdhd, mdhdVersion === 1 ? 28 : 20);
     if (timescale === 0) throw new Mp4SplitError();
     const mdhdDuration = mdhdVersion === 1 ? u64(mdhd, 32) : u32(mdhd, 24);
-    if (mdhdDuration === 0) throw new Mp4SplitError();
-    if (stszBox.payloadStart + 12 > stszBox.end) throw new Mp4SplitError();
-    const sampleCount = u32(moovData, stszBox.payloadStart + 8);
-    const fixedSize = u32(moovData, stszBox.payloadStart + 4);
-    if (sampleCount === 0 || sampleCount > source.size) throw new Mp4SplitError();
-    const sizes = new Uint32Array(sampleCount);
-    if (fixedSize !== 0) sizes.fill(fixedSize);
-    else {
-      if (stszBox.end - (stszBox.payloadStart + 12) !== sampleCount * 4) throw new Mp4SplitError();
-      for (let index = 0; index < sampleCount; index += 1) sizes[index] = u32(moovData, stszBox.payloadStart + 12 + index * 4);
-    }
-
-    const durations = new Uint32Array(sampleCount);
-    const sttsCount = checkedBoxCount(moovData, sttsBox, 8);
-    let sampleCursor = 0;
-    for (let index = 0; index < sttsCount; index += 1) {
-      const at = sttsBox.payloadStart + 8 + index * 8;
-      const count = u32(moovData, at);
-      const delta = u32(moovData, at + 4);
-      if (count === 0 || delta === 0 || sampleCursor + count > sampleCount) throw new Mp4SplitError();
-      durations.fill(delta, sampleCursor, sampleCursor + count);
-      sampleCursor += count;
-    }
-    if (sampleCursor !== sampleCount) throw new Mp4SplitError();
-
-    const chunkCount = checkedBoxCount(moovData, offsetsBox, offsetsBox.type === "co64" ? 8 : 4);
-    const stscCount = checkedBoxCount(moovData, stscBox, 12);
-    if (chunkCount === 0 || stscCount === 0 || u32(moovData, stscBox.payloadStart + 8) !== 1) throw new Mp4SplitError();
-    const chunkOffsets = new Float64Array(chunkCount);
-    for (let index = 0; index < chunkCount; index += 1) {
-      chunkOffsets[index] = offsetsBox.type === "co64" ? u64(moovData, offsetsBox.payloadStart + 8 + index * 8) : u32(moovData, offsetsBox.payloadStart + 8 + index * 4);
-    }
-    const sampleOffsets = new Float64Array(sampleCount);
-    let sampleIndex = 0;
-    let stscEntry = 0;
-    let previousFirstChunk = 0;
-    for (let index = 0; index < stscCount; index += 1) {
-      const firstChunk = u32(moovData, stscBox.payloadStart + 8 + index * 12);
-      const perChunk = u32(moovData, stscBox.payloadStart + 12 + index * 12);
-      const description = u32(moovData, stscBox.payloadStart + 16 + index * 12);
-      if (firstChunk <= previousFirstChunk || firstChunk > chunkCount || perChunk === 0 || description !== 1) throw new Mp4SplitError();
-      previousFirstChunk = firstChunk;
-    }
-    for (let chunk = 1; chunk <= chunkCount; chunk += 1) {
-      while (stscEntry + 1 < stscCount && u32(moovData, stscBox.payloadStart + 8 + (stscEntry + 1) * 12) <= chunk) stscEntry += 1;
-      let byteAt = chunkOffsets[chunk - 1]!;
-      const perChunk = u32(moovData, stscBox.payloadStart + 12 + stscEntry * 12);
-      for (let inChunk = 0; inChunk < perChunk; inChunk += 1) {
-        if (sampleIndex >= sampleCount) throw new Mp4SplitError();
-        sampleOffsets[sampleIndex] = byteAt;
-        byteAt += sizes[sampleIndex]!;
-        sampleIndex += 1;
+    if (mdhdDuration === 0 && !fragmented) throw new Mp4SplitError();
+    let sampleCount: number;
+    let sizes: Uint32Array;
+    let durations: Uint32Array;
+    let sampleOffsets: Float64Array;
+    if (fragmented) {
+      if (stszBox && (stszBox.payloadStart + 12 > stszBox.end || u32(moovData, stszBox.payloadStart + 8) !== 0))
+        throw new Mp4SplitError("Unsupported fragmented MP4: mixed non-fragmented audio samples.");
+      const tkhd = copyBox(moovData, tkhdBox);
+      const trackVersion = tkhd[8];
+      if (trackVersion !== 0 && trackVersion !== 1) throw new Mp4SplitError();
+      const trackId = u32(tkhd, trackVersion === 1 ? 28 : 20);
+      let samples;
+      try { samples = await readFragmentSamples(source, top, moovData, root, trackId); }
+      catch (error) { throw new Mp4SplitError(error instanceof Error && error.message.startsWith("Unsupported fragmented MP4:") ? error.message : "Unable to parse fragmented MP4 audio."); }
+      sampleOffsets = samples.offsets;
+      sizes = samples.sizes;
+      durations = samples.durations;
+      sampleCount = sizes.length;
+    } else {
+      if (stszBox!.payloadStart + 12 > stszBox!.end) throw new Mp4SplitError();
+      sampleCount = u32(moovData, stszBox!.payloadStart + 8);
+      const fixedSize = u32(moovData, stszBox!.payloadStart + 4);
+      if (sampleCount === 0 || sampleCount > source.size) throw new Mp4SplitError();
+      sizes = new Uint32Array(sampleCount);
+      if (fixedSize !== 0) sizes.fill(fixedSize);
+      else {
+        if (stszBox!.end - (stszBox!.payloadStart + 12) !== sampleCount * 4) throw new Mp4SplitError();
+        for (let index = 0; index < sampleCount; index += 1) sizes[index] = u32(moovData, stszBox!.payloadStart + 12 + index * 4);
       }
-    }
-    if (sampleIndex !== sampleCount) throw new Mp4SplitError();
-    const mdatRanges = top.filter((box) => box.type === "mdat")
-      .map((box) => ({ start: box.offset + box.headerSize, end: box.offset + box.size }))
-      .sort((left, right) => left.start - right.start);
-    for (let index = 0; index < sampleCount; index += 1) {
-      const sampleStart = sampleOffsets[index]!;
-      const sampleEnd = sampleStart + sizes[index]!;
-      let low = 0;
-      let high = mdatRanges.length;
-      while (low < high) {
-        const middle = low + Math.floor((high - low) / 2);
-        if (mdatRanges[middle]!.start <= sampleStart) low = middle + 1;
-        else high = middle;
+
+      durations = new Uint32Array(sampleCount);
+      const sttsCount = checkedBoxCount(moovData, sttsBox!, 8);
+      let sampleCursor = 0;
+      for (let index = 0; index < sttsCount; index += 1) {
+        const at = sttsBox!.payloadStart + 8 + index * 8;
+        const count = u32(moovData, at);
+        const delta = u32(moovData, at + 4);
+        if (count === 0 || delta === 0 || sampleCursor + count > sampleCount) throw new Mp4SplitError();
+        durations.fill(delta, sampleCursor, sampleCursor + count);
+        sampleCursor += count;
       }
-      const range = mdatRanges[low - 1];
-      if (sampleEnd > source.size || !range || sampleEnd > range.end) throw new Mp4SplitError();
+      if (sampleCursor !== sampleCount) throw new Mp4SplitError();
+
+      const chunkCount = checkedBoxCount(moovData, offsetsBox!, offsetsBox!.type === "co64" ? 8 : 4);
+      const stscCount = checkedBoxCount(moovData, stscBox!, 12);
+      if (chunkCount === 0 || stscCount === 0 || u32(moovData, stscBox!.payloadStart + 8) !== 1) throw new Mp4SplitError();
+      const chunkOffsets = new Float64Array(chunkCount);
+      for (let index = 0; index < chunkCount; index += 1) {
+        chunkOffsets[index] = offsetsBox!.type === "co64" ? u64(moovData, offsetsBox!.payloadStart + 8 + index * 8) : u32(moovData, offsetsBox!.payloadStart + 8 + index * 4);
+      }
+      sampleOffsets = new Float64Array(sampleCount);
+      let sampleIndex = 0;
+      let stscEntry = 0;
+      let previousFirstChunk = 0;
+      for (let index = 0; index < stscCount; index += 1) {
+        const firstChunk = u32(moovData, stscBox!.payloadStart + 8 + index * 12);
+        const perChunk = u32(moovData, stscBox!.payloadStart + 12 + index * 12);
+        const description = u32(moovData, stscBox!.payloadStart + 16 + index * 12);
+        if (firstChunk <= previousFirstChunk || firstChunk > chunkCount || perChunk === 0 || description !== 1) throw new Mp4SplitError();
+        previousFirstChunk = firstChunk;
+      }
+      for (let chunk = 1; chunk <= chunkCount; chunk += 1) {
+        while (stscEntry + 1 < stscCount && u32(moovData, stscBox!.payloadStart + 8 + (stscEntry + 1) * 12) <= chunk) stscEntry += 1;
+        let byteAt = chunkOffsets[chunk - 1]!;
+        const perChunk = u32(moovData, stscBox!.payloadStart + 12 + stscEntry * 12);
+        for (let inChunk = 0; inChunk < perChunk; inChunk += 1) {
+          if (sampleIndex >= sampleCount) throw new Mp4SplitError();
+          sampleOffsets[sampleIndex] = byteAt;
+          byteAt += sizes[sampleIndex]!;
+          sampleIndex += 1;
+        }
+      }
+      if (sampleIndex !== sampleCount) throw new Mp4SplitError();
+      const mdatRanges = top.filter((box) => box.type === "mdat")
+        .map((box) => ({ start: box.offset + box.headerSize, end: box.offset + box.size }))
+        .sort((left, right) => left.start - right.start);
+      for (let index = 0; index < sampleCount; index += 1) {
+        const sampleStart = sampleOffsets[index]!;
+        const sampleEnd = sampleStart + sizes[index]!;
+        let low = 0;
+        let high = mdatRanges.length;
+        while (low < high) {
+          const middle = low + Math.floor((high - low) / 2);
+          if (mdatRanges[middle]!.start <= sampleStart) low = middle + 1;
+          else high = middle;
+        }
+        const range = mdatRanges[low - 1];
+        if (sampleEnd > source.size || !range || sampleEnd > range.end) throw new Mp4SplitError();
+      }
     }
 
     if (stsdBox.payloadStart + 8 > stsdBox.end || u32(moovData, stsdBox.payloadStart + 4) < 1) throw new Mp4SplitError();
     const firstEntry = boxAt(moovData, stsdBox.payloadStart + 8, stsdBox.end);
     if (!firstEntry || firstEntry.end > stsdBox.end) throw new Mp4SplitError();
     const codec = firstEntry.type;
+    if (fragmented && codec === "enca") throw new Mp4SplitError("Unsupported fragmented MP4: encrypted audio is not supported.");
     const sampleRate = codec === "mp4a" && firstEntry.end - firstEntry.payloadStart >= 28 ? u32(moovData, firstEntry.payloadStart + 24) >>> 16 : timescale;
     const warnings: string[] = [];
     if (codec !== "mp4a") warnings.push(`Codec ${codec} was not verified`);
@@ -232,10 +255,13 @@ export async function planMp4Split(source: Blob, options: Mp4SplitOptions): Prom
       const version = moovData[elst.payloadStart]!;
       const entries = u32(moovData, elst.payloadStart + 4);
       const entrySize = version === 1 ? 20 : 12;
+      if (fragmented && (version > 1 || entries > 1 || (entries > 0 && elst.payloadStart + 8 + entrySize > elst.end)))
+        throw new Mp4SplitError("Unsupported fragmented MP4: complex edit list.");
       if (entries > 0 && elst.payloadStart + 8 + entrySize <= elst.end) {
         const mediaTimeAt = elst.payloadStart + 12 + (version === 1 ? 4 : 0);
         const view = new DataView(moovData.buffer, moovData.byteOffset, moovData.byteLength);
         const mediaTime = version === 1 ? Number(view.getBigInt64(mediaTimeAt)) : i32(moovData, mediaTimeAt);
+        if (fragmented && mediaTime !== 0) throw new Mp4SplitError("Unsupported fragmented MP4: edited audio timeline.");
         if (mediaTime !== 0 && !(mediaTime > 0 && mediaTime <= 2112)) warnings.push("The first edit-list entry uses an unusual media_time.");
       }
     }
@@ -253,6 +279,8 @@ export async function planMp4Split(source: Blob, options: Mp4SplitOptions): Prom
       let lead = own;
       while (lead > 0 && (own - lead < 2 || starts[own]! - starts[lead]! < minLead * timescale)) lead -= 1;
       while (lead < own && 4096 + (own + 1 - lead) * 12 + bytePrefix[own + 1]! - bytePrefix[lead]! > options.maxBytes) { lead += 1; reducedLead = true; }
+      if (4096 + (own + 1 - lead) * 12 + bytePrefix[own + 1]! - bytePrefix[lead]! > options.maxBytes)
+        throw new Mp4SplitError("An audio sample is too large to fit within the chunk size limit.");
       let end = own + 1;
       while (end < sampleCount && starts[end]! - starts[own]! < options.targetSeconds * timescale && 4096 + (end + 1 - lead) * 12 + bytePrefix[end + 1]! - bytePrefix[lead]! <= options.maxBytes) end += 1;
       chunks.push({
@@ -273,7 +301,7 @@ export async function planMp4Split(source: Blob, options: Mp4SplitOptions): Prom
       offsets: sampleOffsets, sizes, durations, starts, stsdBox: copyBox(moovData, stsdBox), mdhd,
       hdlr: copyBox(moovData, hdlrBox), tkhd: copyBox(moovData, tkhdBox), mvhd,
       smhd: copyBox(moovData, smhdBox), dinf: copyBox(moovData, dinfBox),
-      timescale, sampleRate, sourceSize: source.size, movieTimescale,
+      timescale, sampleRate, sourceSize: source.size, maxBytes: options.maxBytes, movieTimescale,
     });
     return plan;
   } catch (error) {
@@ -341,6 +369,8 @@ export async function readMp4Chunk(source: Blob, plan: Mp4SplitPlan, index: numb
   mdatView.setUint32(0, payload.length + mdatHeader.length);
   mdatHeader.set([109, 100, 97, 116], 4);
   const fixedMoov = makeMoov(ftyp.length + moov.length + mdatHeader.length);
+  if (ftyp.length + fixedMoov.length + mdatHeader.length + payload.length > parsed.maxBytes)
+    throw new Mp4SplitError("The generated audio chunk exceeds the size limit.");
   return new Blob([ftyp, fixedMoov, mdatHeader, payload], { type: "audio/mp4" });
 }
 

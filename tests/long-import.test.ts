@@ -1,8 +1,10 @@
 import "fake-indexeddb/auto";
 import { describe, expect, it, vi } from "vitest";
+import { readFile } from "node:fs/promises";
 import { createMeeting } from "../src/domain/model";
 import { importLongRecording, isLongRecordingCandidate } from "../src/audio/long-import";
-import { getLongAudioManifest, deleteLongAudio } from "../src/storage/long-audio-store";
+import { getLongAudioManifest, getLongAudioChunk, deleteLongAudio } from "../src/storage/long-audio-store";
+import { planMp4Split } from "../src/audio/mp4-split";
 vi.stubGlobal("window", new EventTarget());
 
 function mp3Blob(frameCount = 61_000): File {
@@ -14,6 +16,21 @@ function mp3Blob(frameCount = 61_000): File {
 }
 
 describe("long recording import", () => {
+  it("stores fragmented AAC as independently readable chunks for recovery", async () => {
+    const bytes = await readFile("tests/fixtures/fragmented-aac.synthetic.m4a");
+    const file = new File([bytes], "synthetic.m4a", { type: "audio/mp4" });
+    const meeting = createMeeting();
+    const result = await importLongRecording(file, meeting.id, { targetSeconds: 5, estimate: async () => ({ usage: 0, quota: 5_000_000_000 }) });
+    const manifest = await getLongAudioManifest(meeting.id);
+    expect(manifest?.chunks.length).toBeGreaterThan(1);
+    expect(result.audio.chunked?.manifestSha256).toBe(manifest?.manifestSha256);
+    for (const chunk of manifest!.chunks) {
+      const saved = await getLongAudioChunk(meeting.id, chunk.index, { verify: true });
+      const restored = await planMp4Split(saved, { targetSeconds: 3600, maxBytes: 20_000_000 });
+      expect(restored.totalSeconds).toBeCloseTo(chunk.ownDurationSeconds + chunk.leadInSeconds);
+    }
+    await deleteLongAudio(meeting.id);
+  });
   it("stores bounded MP3 chunks with manifest-backed meeting metadata without network access", async () => {
     const file = mp3Blob();
     const meeting = createMeeting();
