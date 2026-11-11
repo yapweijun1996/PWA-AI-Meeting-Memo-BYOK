@@ -1,3 +1,4 @@
+import "./SpeakerPlayback.css";
 import { showToast } from "../components/ToastLayer";
 import { SpeakerAvatar, useSpeakerAvatars } from "../components/SpeakerAvatar";
 import { prepareAvatar, setSpeakerAvatar, trackAvatarWrite } from "../storage/speaker-avatars";
@@ -5,6 +6,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactN
 import { Check, Pause, Play, Plus } from "lucide-react";
 import type { Meeting } from "../domain/model";
 import { editMeeting, formatTime } from "../domain/operations";
+import { transcriptTextSeparator } from "../domain/transcript-groups";
 import {
   buildPlaybackCaptions,
   captionsAtTime,
@@ -470,7 +472,6 @@ export function SpeakerReview({
           duration={duration}
           locked={locked}
           onSeek={onSeek}
-          onPause={onPause}
           onSelectSpeaker={openSpeakerEditor}
           onPlaybackRangeChange={onPlaybackRangeChange}
           t={t}
@@ -614,7 +615,6 @@ function PlaybackMode({
   duration,
   locked,
   onSeek,
-  onPause,
   onSelectSpeaker,
   onPlaybackRangeChange,
   t,
@@ -629,7 +629,6 @@ function PlaybackMode({
   duration: number;
   locked: boolean;
   onSeek: (position: number) => void;
-  onPause: () => void;
   onSelectSpeaker: (speakerId: string) => void;
   onPlaybackRangeChange?: (range: { start: number; end: number } | null) => void;
   t: Translate;
@@ -774,7 +773,25 @@ function PlaybackMode({
               <ClockTime clock={clock} />
             </span>
           </div>
-          {/* Always rendered so the line never appears or disappears while someone talks; only its visibility changes. */}
+          <div className="playback-current-speakers" role="region" aria-label={t("Attribution at playback position", "播放位置的说话人归属")} tabIndex={currentIds.size ? 0 : -1}>
+            {[...currentIds].map((id) => {
+              const speaker = meeting.speakers.find((candidate) => candidate.id === id);
+              return <span className="playback-current-speaker" key={id} data-speaker-hero="true" data-speaker-active={activeIds.has(id) ? "true" : "false"}>
+                <SpeakerAvatar id={id} image={avatars[id]} />
+                <strong>{speaker?.name ?? t("Unknown speaker", "未知说话人")}</strong>
+                <span>{speaker ? `${speaker.confirmed ? t("Confirmed", "已确认") : t("Unconfirmed", "未确认")} · ` : ""}{activeIds.has(id) ? t("Speaking", "正在说话") : t("At playback position", "播放位置")}</span>
+              </span>;
+            })}
+            {current.some((caption) => caption.speakerIds.length === 0) && <span className="playback-current-speaker"><strong>{t("Unknown speaker", "未知说话人")}</strong></span>}
+          </div>
+          <div className="playback-current-content" role="region" aria-label={t("Current captions", "当前字幕")} tabIndex={0}>
+            {(current.length ? current : context).map((caption) => (
+              <div className="playback-current-caption" key={caption.id}>
+                <span className="playback-current-caption-name">{caption.speakerIds.length ? caption.speakerIds.map((id) => meeting.speakers.find((speaker) => speaker.id === id)?.name ?? t("Unknown speaker", "未知说话人")).join(" + ") : t("Unknown speaker", "未知说话人")}</span>
+                <p>{caption.fragments.map((fragment, index) => <span key={fragment.id} data-fragment-active={fragmentsAtTime([fragment], position).length ? "true" : "false"}>{index > 0 ? transcriptTextSeparator(caption.fragments[index - 1].text, fragment.text) : ""}{fragment.text}</span>)}</p>
+              </div>
+            ))}
+          </div>
           <div className="playback-gap small muted" style={{ visibility: current.length ? "hidden" : "visible" }} aria-hidden={current.length ? true : undefined}>
             <span>{betweenWords
               ? t("Between words · context only", "词间停顿 · 仅作上下文")
@@ -785,92 +802,8 @@ function PlaybackMode({
               </button>
             )}
           </div>
-          <div className="live-caption-head">
-              <label className="small muted">
-                {t("Caption size", "字幕大小")}
-                <select
-                  aria-label={t("Caption size", "字幕大小")}
-                  value={captionSize}
-                  onChange={(event) =>
-                    setCaptionSize(event.target.value as "normal" | "large" | "xlarge")
-                  }
-                >
-                  <option value="normal">{t("Normal", "标准")}</option>
-                  <option value="large">{t("Large", "大")}</option>
-                  <option value="xlarge">{t("Extra large", "特大")}</option>
-                </select>
-              </label>
-            </div>
-
-          {meeting.speakers.length > 0 && (
-            <div className="playback-roster">
-              <div className="playback-roster-head">
-                <span className="small muted">{t("Speakers in this meeting", "本场会议说话人")}</span>
-                <button
-                  type="button"
-                  className="text-button playback-edit-link"
-                  disabled={locked}
-                  onClick={() => onSelectSpeaker(meeting.speakers.find((s) => !s.confirmed)?.id ?? meeting.speakers[0].id)}
-                >
-                  {t("Edit & confirm names →", "编辑并确认姓名 →")}
-                </button>
-              </div>
-              <div className="playback-active-speakers">
-                {meeting.speakers.map((speaker, index) => {
-                  const isActive = activeIds.has(speaker.id);
-                  const atPosition = currentIds.has(speaker.id);
-                  return (
-                    <button
-                      type="button"
-                      key={speaker.id}
-                      disabled={locked}
-                      data-tooltip={t("Edit speaker name and listen to samples", "编辑此说话人姓名并试听样本")}
-                      onClick={() => onSelectSpeaker(speaker.id)}
-                      className={`playback-speaker${isActive ? " is-active" : ""}${atPosition && !isActive ? " is-at-position" : ""}`}
-                      data-speaker-active={isActive ? "true" : "false"}
-                      data-speaker-hero={atPosition ? "true" : "false"}
-                    >
-                      <SpeakerAvatar id={speaker.id} image={avatars[speaker.id]} className="speaker-avatar large" />
-                      <strong>{speaker.name}</strong>
-                      {isActive && <span className="chat-wave" aria-hidden="true">·|·|·</span>}
-                      <span className="small muted">
-                        {isActive
-                          ? t("Speaking", "正在说话")
-                          : atPosition
-                            ? (playbackStatus === "paused" || playbackStatus === "idle"
-                              ? t("Paused here", "暂停于此") : statusLabel)
-                            : t("Idle", "空闲")}
-                      </span>
-                      <span className="speaker-number" aria-hidden="true">
-                        S{index + 1}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-          <div className="playback-stage-footer" style={{ visibility: playing ? "visible" : "hidden" }}>
-            <button className="button secondary compact" onClick={onPause} tabIndex={playing ? undefined : -1}>
-              <Pause size={14} /> {t("Pause", "暂停")}
-            </button>
-          </div>
+          <div className="playback-stage-footer" aria-hidden="true" />
         </section>
-        {referenceVideo && (
-          <details className="playback-reference">
-            <summary>
-              <span>{t("Reference video", "参考视频")}</span>
-              {(hasVideoSaved || hasVideoSuggestion) && (
-                <span className="playback-reference-badge">
-                  {hasVideoSaved
-                    ? t("Linked", "已关联")
-                    : t("Video ID suggested", "检测到视频建议")}
-                </span>
-              )}
-            </summary>
-            {referenceVideo}
-          </details>
-        )}
       </div>
       <section className="playback-transcript-panel" aria-label={t("Playback transcript", "播放转录")}>
         <div className="playback-transcript-head">
@@ -879,6 +812,16 @@ function PlaybackMode({
             <p className="small muted">
               {captions.length} {t("timed caption groups", "个有时间字幕组")} · {t("source timing preserved", "保留源时间")}
             </p>
+          </div>
+          <div className="live-caption-head">
+            <label className="small muted">
+              {t("Caption size", "字幕大小")}
+              <select aria-label={t("Caption size", "字幕大小")} value={captionSize} onChange={(event) => setCaptionSize(event.target.value as "normal" | "large" | "xlarge")}>
+                <option value="normal">{t("Normal", "标准")}</option>
+                <option value="large">{t("Large", "大")}</option>
+                <option value="xlarge">{t("Extra large", "特大")}</option>
+              </select>
+            </label>
           </div>
           <span className={`playback-follow-chip${followPlayback ? " is-following" : ""}`} role="status">
             {followPlayback ? t("Following playback", "正在跟随播放") : t("Follow paused", "已暂停跟随")}
@@ -955,7 +898,7 @@ function PlaybackMode({
                         {caption.fragments.map((fragment, index) => (
                           <span key={fragment.id} data-fragment-id={fragment.id}
                             data-fragment-active={fragmentsAtTime([fragment], position).length ? "true" : "false"}>
-                            {index > 0 ? " " : ""}{fragment.text}
+                            {index > 0 ? transcriptTextSeparator(caption.fragments[index - 1].text, fragment.text) : ""}{fragment.text}
                           </span>
                         ))}
                       </span>
@@ -1001,6 +944,70 @@ function PlaybackMode({
           <button className="text-button" disabled={untimedStart + 80 >= untimed.length} onClick={() => setUntimedStart(untimedStart + 80)}>{t("Load later", "加载更晚内容")}</button>
         </details>
       )}
+          {meeting.speakers.length > 0 && (
+            <div className="playback-roster">
+              <div className="playback-roster-head">
+                <span className="small muted">{t("Speakers in this meeting", "本场会议说话人")}</span>
+                <button
+                  type="button"
+                  className="text-button playback-edit-link"
+                  disabled={locked}
+                  onClick={() => onSelectSpeaker(meeting.speakers.find((s) => !s.confirmed)?.id ?? meeting.speakers[0].id)}
+                >
+                  {t("Edit & confirm names →", "编辑并确认姓名 →")}
+                </button>
+              </div>
+              <div className="playback-active-speakers">
+                {meeting.speakers.map((speaker, index) => {
+                  const isActive = activeIds.has(speaker.id);
+                  const atPosition = currentIds.has(speaker.id);
+                  return (
+                    <button
+                      type="button"
+                      key={speaker.id}
+                      disabled={locked}
+                      data-tooltip={t("Edit speaker name and listen to samples", "编辑此说话人姓名并试听样本")}
+                      onClick={() => onSelectSpeaker(speaker.id)}
+                      className={`playback-speaker${isActive ? " is-active" : ""}${atPosition && !isActive ? " is-at-position" : ""}`}
+                      data-roster-active={isActive ? "true" : "false"}
+                      data-roster-at-position={atPosition ? "true" : "false"}
+                    >
+                      <SpeakerAvatar id={speaker.id} image={avatars[speaker.id]} className="speaker-avatar large" />
+                      <strong>{speaker.name}</strong>
+                      {isActive && <span className="chat-wave" aria-hidden="true">·|·|·</span>}
+                      <span className="small muted">
+                        {isActive
+                          ? t("Speaking", "正在说话")
+                          : atPosition
+                            ? (playbackStatus === "paused" || playbackStatus === "idle"
+                              ? t("Paused here", "暂停于此") : statusLabel)
+                            : t("Idle", "空闲")}
+                      </span>
+                      <span className="speaker-number" aria-hidden="true">
+                        S{index + 1}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        {referenceVideo && (
+          <details className="playback-reference">
+            <summary>
+              <span>{t("Reference video", "参考视频")}</span>
+              {(hasVideoSaved || hasVideoSuggestion) && (
+                <span className="playback-reference-badge">
+                  {hasVideoSaved
+                    ? t("Linked", "已关联")
+                    : t("Video ID suggested", "检测到视频建议")}
+                </span>
+              )}
+            </summary>
+            {referenceVideo}
+          </details>
+        )}
+
       {duration <= 0 && (
         <p className="notice sand">{t("Recording duration is unavailable; playback timing may be limited.", "录音时长不可用，播放时间可能受限。")}</p>
       )}

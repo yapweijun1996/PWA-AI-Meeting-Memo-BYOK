@@ -40,7 +40,6 @@ import {
   mergeSpeakerGroups,
   mergeSpeakers,
   replaceTranscript,
-  resolveSource,
   reviewSegments,
   speakerName,
   splitSegment,
@@ -60,6 +59,9 @@ import { getChunkedProgress, runChunkedSpeech } from "../jobs/chunked-runner";
 import { WavLmSpeakerEmbeddingProvider } from "../audio/speaker-embedding";
 import { Empty, Modal, Pill } from "../components/ui";
 import { CitedEvidence } from "./CitedEvidence";
+import { EvidenceSources } from "./EvidenceSources";
+import { EvidenceContext, formatEvidenceTime } from "./EvidenceContext";
+import "./evidence-layout.css";
 import { SpeakerReview } from "./SpeakerReview";
 import { ReferenceVideo } from "./ReferenceVideo";
 import { usePlaybackClock } from "./usePlaybackClock";
@@ -116,10 +118,15 @@ export function MeetingWorkspace({
   const reviewInteraction = useRef<
     { key: string; phase: "pending" | "committing" } | undefined
   >(undefined);
+  const pendingMeetingWrite = useRef<Promise<Meeting> | undefined>(undefined);
+  const reviewWriteInFlight = useRef(false);
+  const latestLocallySaved = useRef(m);
+  if (m.version >= latestLocallySaved.current.version) latestLocallySaved.current = m;
   const [reviewedRetry, setReviewedRetry] = useState(false);
   const [acousticConfirm, setAcousticConfirm] = useState(false);
   const [expectedSpeakers, setExpectedSpeakers] = useState("");
   const [evidence, setEvidence] = useState<Segment>();
+  const [evidenceRefs, setEvidenceRefs] = useState<{ id: string; revision: number }[]>([]);
   const [confirmed, setConfirmed] = useState<{ selection: Selection; plan?: MemoPipeline | null }>();
   const [uiLanguage, setUiLanguage] = useState(getUiLanguage());
   const t = (en: string, zh: string) => translateUi(uiLanguage, en, zh);
@@ -222,7 +229,12 @@ export function MeetingWorkspace({
   async function persist(next: Meeting, blob?: Blob) {
     setSaving(true);
     try {
-      const saved = await saveMeeting(next, blob);
+      const write = saveMeeting(next, blob);
+      pendingMeetingWrite.current = write;
+      let saved: Meeting;
+      try { saved = await write; }
+      finally { if (pendingMeetingWrite.current === write) pendingMeetingWrite.current = undefined; }
+      latestLocallySaved.current = saved;
       onUpdate(saved);
       return saved;
     } catch (e) {
@@ -268,27 +280,50 @@ export function MeetingWorkspace({
     article: Element | null,
   ) {
     const interactionKey = `${versionId}:${itemId}`;
-    const text = article?.querySelector("textarea")?.value;
-    const owner = (
+    const textControl = article?.querySelector("textarea");
+    const text = textControl?.value;
+    const ownerControl = (
       article?.querySelector(
         'select[data-action-owner]',
       ) as HTMLSelectElement | null
-    )?.value;
-    const due = (
+    );
+    const owner = ownerControl?.value;
+    const dueControl = (
       article?.querySelector(
         'input[data-action-due]',
       ) as HTMLInputElement | null
-    )?.value;
+    );
+    const due = dueControl?.value;
+    // Disabled controlled fields may still show the pre-save DOM value. In that
+    // case use the confirmed prior write's value instead of reapplying it.
+    const textDisabled = textControl?.disabled ?? false;
+    const ownerDisabled = ownerControl?.disabled ?? false;
+    const dueDisabled = dueControl?.disabled ?? false;
     if (state !== "rejected" && !text?.trim()) {
       if (reviewInteraction.current?.key === interactionKey)
         reviewInteraction.current = undefined;
       onError("Add note text before accepting or reviewing it.");
       return;
     }
+    if (reviewWriteInFlight.current) {
+      if (reviewInteraction.current?.key === interactionKey && reviewInteraction.current.phase === "pending") reviewInteraction.current = undefined;
+      onError(t("Wait for the current review to finish saving before reviewing another item.", "请等待当前审阅保存完成，再审阅其他项目。"));
+      return;
+    }
+    reviewWriteInFlight.current = true;
     reviewInteraction.current = { key: interactionKey, phase: "committing" };
-    void persistQuietly({
-      ...m,
-      memos: m.memos.map((v) =>
+    const pendingWrite = pendingMeetingWrite.current;
+    void (async () => {
+      // Apply this review only after our own earlier draft write succeeds. The
+      // next CAS still rejects any intervening write from another tab.
+      const base = pendingWrite ? await pendingWrite : latestLocallySaved.current;
+      if (base.revision !== m.revision) {
+        onError(t("The transcript changed while this review was waiting. Review the updated source before accepting or rejecting the note.", "等待保存时转录已更改。接受或拒绝笔记前，请先审阅更新后的来源。"));
+        return;
+      }
+      await persistQuietly({
+      ...base,
+      memos: base.memos.map((v) =>
         v.id === versionId
           ? {
               ...v,
@@ -296,20 +331,22 @@ export function MeetingWorkspace({
                 x.id === itemId
                   ? {
                       ...x,
-                      text: text?.trim() || x.text,
-                      ...(owner !== undefined
+                      text: pendingWrite && textDisabled ? x.text : text?.trim() || x.text,
+                      ...(owner !== undefined && !(pendingWrite && ownerDisabled)
                         ? { ownerId: owner || null }
                         : {}),
-                      ...(due !== undefined ? { dueDate: due || null } : {}),
+                      ...(due !== undefined && !(pendingWrite && dueDisabled) ? { dueDate: due || null } : {}),
                       review: state,
-                      reviewedRevision: m.revision,
+                      reviewedRevision: base.revision,
                     }
                   : x,
               ),
             }
           : v,
       ),
-    }).finally(() => {
+      });
+    })().catch(() => { /* the earlier save already reported its failure */ }).finally(() => {
+      reviewWriteInFlight.current = false;
       if (
         reviewInteraction.current?.key === interactionKey &&
         reviewInteraction.current.phase === "committing"
@@ -678,6 +715,14 @@ export function MeetingWorkspace({
     () => new Map(m.segments.map((seg, idx) => [seg.id, idx])),
     [m.segments],
   );
+  const evidenceIndex = useMemo(() => {
+    const result = new Map<string, Segment>();
+    for (const segment of [...m.segments, ...m.history]) {
+      const key = `${segment.id}:${segment.revision}`;
+      if (!result.has(key)) result.set(key, segment);
+    }
+    return result;
+  }, [m.segments, m.history]);
   const groups = useMemo(() => {
     const result: ReturnType<typeof groupTranscript> = [];
     let run: Segment[] = [];
@@ -692,6 +737,7 @@ export function MeetingWorkspace({
   const pageSize = 40;
   const page = Math.min(transcriptPage, Math.max(0, Math.ceil(groups.length / pageSize) - 1));
   const visibleGroups = groups.slice(page * pageSize, (page + 1) * pageSize);
+  const evidenceHasTime = !!evidence && evidence.start !== null && evidence.end !== null && Number.isFinite(evidence.start) && Number.isFinite(evidence.end) && evidence.start >= 0 && evidence.end > evidence.start;
   return (
     <div className={canPlay ? "workspace has-player" : "workspace"}>
       <a href="#/" className="back-link">
@@ -1257,7 +1303,7 @@ export function MeetingWorkspace({
         </section>
       )}
       {tab === "memo" && (
-        <section className="workspace-panel">
+        <section className="workspace-panel memo-review-panel">
           <header className="panel-toolbar">
             <div>
               <h2>{t("Meeting notes", "会议笔记")}</h2>
@@ -1478,37 +1524,17 @@ export function MeetingWorkspace({
                         )}
                       </div>
                     )}
-                    <div className="source-links">
-                      <span>{t("Source", "来源")}</span>
-                      {item.sources.map((source, n) => {
-                        const s = resolveSource(m, source);
-                        return (
-                          <button
-                            key={`${source.id}:${source.revision}`}
-                            className="source-link"
-                            onClick={() => {
-                              if (s) setEvidence(s);
-                            }}
-                          >
-                            {t("Passage", "段落")}{" "}
-                            {(segmentIndexById.get(source.id) ?? -1) + 1 ||
-                              `${n + 1} ${t("(historical)", "（历史）")}`}{" "}
-                            · r{source.revision}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <CitedEvidence meeting={m} item={item} onSelect={setEvidence} />
                     <div className="memo-actions">
                       {(["accepted", "pending", "rejected"] as const).map(
                         (state) => (
                           <button
                             key={state}
                             className={`text-button ${item.review === state ? "selected" : ""}`}
-                            disabled={locked}
+                            disabled={processing}
                             data-review-button="true"
                             onPointerDown={(event) => {
                               const interactionKey = `${memo.id}:${item.id}`;
+                              if (reviewWriteInFlight.current) return;
                               // Mouse needs focus preserved; WebKit touch needs its default click.
                               if (event.pointerType === "mouse")
                                 event.preventDefault();
@@ -1557,6 +1583,8 @@ export function MeetingWorkspace({
                         ),
                       )}
                     </div>
+                    <EvidenceSources meeting={m} item={item} indexes={segmentIndexById} sourceIndex={evidenceIndex} onSelect={(segment, refs) => { setEvidenceRefs(refs ?? []); setEvidence(segment); }} />
+                    <CitedEvidence meeting={m} item={item} sourceIndex={evidenceIndex} onSelect={(segment) => { setEvidenceRefs([]); setEvidence(segment); }} />
                   </article>
                 ))}
               </div>
@@ -1960,21 +1988,24 @@ export function MeetingWorkspace({
         >
           <div className="modal-body">
             <Pill>{t("Saved evidence revision", "已保存的证据版本")}</Pill>
-            <p className="evidence-text">{evidence.text}</p>
+            {evidenceRefs.length > 1 && <p className="small muted">{t("The cited group is highlighted below. The saved passage, time and audio controls refer to its first fragment; use individual source buttons to inspect other revisions.", "下方高亮显示引用组。已保存的段落、时间与试听仅对应首个片段；可使用单独的来源按钮检查其他版本。")}</p>}
+            <p className="evidence-text"><mark>{evidence.text}</mark></p>
+            <EvidenceContext meeting={m} evidence={evidence} citedRefs={evidenceRefs} />
             <p className="muted small">
-              {evidence.start === null
+              {!evidenceHasTime
                 ? t("Audio time unknown", "录音时间未知")
-                : `${formatTime(evidence.start)} – ${formatTime(evidence.end!)}`}{" "}
+                : `${formatEvidenceTime(evidence.start!)} – ${formatEvidenceTime(evidence.end!)}`}{" "}
               · {evidence.speakerIds.length ? speakerName(m, evidence.speakerIds) : t("Unknown speaker", "未知说话人")}
             </p>
+            <p className="small muted">{!canPlay ? t("Local audio is unavailable for playback.", "本地录音不可播放。") : !evidenceHasTime ? t("Audio time is unavailable for this passage.", "此段落没有可用的录音时间。") : t("Audio playback includes up to 3 seconds before and after the cited time.", "试听包含引用时间前后最多 3 秒的录音。")}</p>
             <div className="toolbar-actions">
               <button
                 className="button secondary"
-                disabled={!canPlay || evidence.start === null}
-                onClick={() => cue(evidence)}
+                disabled={!canPlay || !evidenceHasTime}
+                onClick={() => cueRange(Math.max(0, evidence.start! - 3), Math.min(duration || evidence.end! + 3, evidence.end! + 3))}
               >
                 <Play size={15} />
-                {t("Play source audio", "播放来源录音")}
+                {t("Play source audio with context", "播放来源录音及上下文")}
               </button>
               {m.segments.some((s) => s.id === evidence.id) && (
                 <button

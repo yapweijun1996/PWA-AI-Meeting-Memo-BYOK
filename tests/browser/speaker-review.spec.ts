@@ -398,8 +398,66 @@ test("group chat keeps a persistent speaker stage above chronological bubbles", 
     expect(mobileTranscript!.x + mobileTranscript!.width).toBeLessThanOrEqual(width);
     expect(mobileTranscript!.y).toBeGreaterThanOrEqual(mobileStage!.y + mobileStage!.height);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    const headerLayout = await playback.locator(".playback-transcript-head").evaluate((header) => {
+      const bounds = header.getBoundingClientRect();
+      const children = [...header.children].map((element) => element.getBoundingClientRect());
+      return {
+        fits: header.scrollWidth <= header.clientWidth + 1 && children.every((box) => box.left >= bounds.left - 1 && box.right <= bounds.right + 1),
+        separated: children.every((box, index) => children.slice(index + 1).every((other) => box.bottom <= other.top + 1 || other.bottom <= box.top + 1 || box.right <= other.left + 1 || other.right <= box.left + 1)),
+      };
+    });
+    expect(headerLayout).toEqual({ fits: true, separated: true });
+    await playback.locator(".playback-transcript-head").evaluate((element) => element.scrollIntoView({ block: "center" }));
+    await playback.locator(".playback-transcript-head").screenshot({ path: `test-results/transcript-header-${width}-${test.info().project.name}.png` });
   }
   await page.screenshot({ path: `test-results/group-chat-mobile-${test.info().project.name}.png` });
+});
+
+test("current captions show timed attribution without inventing activity in pauses or gaps", async ({ page }) => {
+  const meeting = fixtureMeeting();
+  const baseSegment = meeting.segments[0];
+  meeting.segments = [
+    { ...baseSegment, id: firstSegmentId, start: 0.1, end: 0.4, text: "世界", originalText: "世界" },
+    { ...baseSegment, id: "90000000-0000-4000-8000-000000000002", start: 0.4, end: 0.7, text: "灾难", originalText: "灾难" },
+    { ...baseSegment, id: "90000000-0000-4000-8000-000000000003", start: 0.7, end: 1, text: "。", originalText: "。" },
+    { ...baseSegment, id: "90000000-0000-4000-8000-000000000004", start: 0.55, end: 0.65, speakerIds: [speakerIds[1]], text: "Other voice", originalText: "Other voice" },
+    { ...baseSegment, id: "90000000-0000-4000-8000-000000000006", start: 0.57, end: 0.64, speakerIds: [], text: "Unknown voice", originalText: "Unknown voice" },
+    { ...baseSegment, id: "90000000-0000-4000-8000-000000000005", start: null, end: null, text: "Untimed source", originalText: "Untimed source" },
+  ];
+  await createFixture(page, "speaker-review.wav", meeting);
+  await page.getByRole("button", { name: "Playback mode", exact: true }).click();
+  const stage = page.locator(".playback-stage");
+  const audio = page.locator("audio");
+  const setTime = (time: number) => audio.evaluate((element, next) => {
+    const media = element as HTMLMediaElement;
+    media.currentTime = next;
+    media.dispatchEvent(new Event("seeked"));
+  }, time);
+  await setTime(0.6);
+  await expect(stage.getByRole("region", { name: "Current captions" })).toContainText("世界灾难");
+  await expect(stage.getByRole("region", { name: "Current captions" })).toContainText("Other voice");
+  await expect(stage.getByRole("region", { name: "Attribution at playback position" })).toContainText("Unknown speaker");
+  await expect(stage.locator('[data-speaker-hero="true"]')).toHaveCount(2);
+  await expect(stage.locator('[data-speaker-active="true"]')).toHaveCount(0);
+  await expect(stage.locator('[data-fragment-active="true"]')).toHaveCount(3);
+  await audio.evaluate((element) => element.addEventListener("playing", (event) => {
+    if (event.isTrusted) event.stopImmediatePropagation();
+  }, true));
+  await page.getByRole("button", { name: "Play audio", exact: true }).click();
+  await expect(stage.locator('[data-speaker-active="true"]')).toHaveCount(2);
+  await audio.dispatchEvent("waiting");
+  await expect(stage.locator('[data-playback-status="buffering"]')).toBeVisible();
+  await expect(stage.locator('[data-speaker-active="true"]')).toHaveCount(0);
+  await audio.dispatchEvent("playing");
+  await setTime(2);
+  await expect(stage.getByText("No attributed speaker at this timestamp.")).toBeVisible();
+  await expect(stage.getByRole("region", { name: "Current captions" })).toBeEmpty();
+  await page.locator(".playback-untimed summary").click();
+  await expect(page.locator(".playback-untimed")).toContainText("Untimed source");
+  const positions = await page.evaluate(() => [".playback-stage", ".playback-transcript-panel", ".playback-roster"].map(selector => document.querySelector(selector)!.getBoundingClientRect().top));
+  expect(positions[0]).toBeLessThan(positions[1]);
+  expect(positions[1]).toBeLessThan(positions[2]);
+  await expect(page.getByLabel("Caption size")).toBeVisible();
 });
 
 test("group chat preserves all identities, untimed evidence and reduced motion", async ({ page }) => {
@@ -454,7 +512,7 @@ test("speaker changes refresh without timeupdate and short word gaps retain inac
   await expect(stage.locator('[data-speaker-hero="true"]')).toHaveCount(0);
   await expect(stage.locator('[data-speaker-active="true"]')).toHaveCount(0);
   await expect(page.locator(".playback-caption-row.is-active")).toHaveCount(0);
-  await expect(stage.locator(".playback-speaker")).toHaveCount(2);
+  await expect(page.locator(".playback-roster .playback-speaker")).toHaveCount(2);
 
   await setTime(1.5);
   await expect(stage.locator('[data-speaker-hero="true"] strong')).toHaveText("Speaker 2");
@@ -1429,7 +1487,7 @@ test("speaker review stays usable on a narrow viewport", async ({ page }) => {
 
 test("speaker mode buttons retain readable contrast throughout a mode switch", async ({ page }) => {
   await createFixture(page);
-  const ratios = await page.locator(".speaker-mode-switch").evaluate(async (group) => {
+  const result = await page.locator(".speaker-mode-switch").evaluate(async (group) => {
     await Promise.all(group.getAnimations({ subtree: true }).map((animation) => animation.finished.catch(() => undefined)));
     const luminance = (values: number[]) => values.reduce((sum, value, index) => {
       const s = value / 255;
@@ -1437,30 +1495,40 @@ test("speaker mode buttons retain readable contrast throughout a mode switch", a
     }, 0);
     const rgb = (color: string) => color.match(/[\d.]+/g)!.map(Number);
     const observed: number[] = [];
+    const transitions: string[] = [];
+    const animations: string[] = [];
     const buttons = [...group.querySelectorAll("button")];
+    const sample = () => {
+      for (const button of buttons) {
+        const style = getComputedStyle(button);
+        transitions.push(style.transitionProperty);
+        animations.push(style.animationName);
+        const foreground = luminance(rgb(style.color).slice(0, 3));
+        const background = rgb(style.backgroundColor);
+        const alpha = background[3] ?? 1;
+        const behind = rgb(getComputedStyle(group).backgroundColor);
+        const blended = background.slice(0, 3).map((value, index) => value * alpha + behind[index] * (1 - alpha));
+        const back = luminance(blended);
+        observed.push((Math.max(foreground, back) + 0.05) / (Math.min(foreground, back) + 0.05));
+      }
+    };
+    sample();
     buttons[0].click();
-    await new Promise<void>((resolve) => {
-      const start = performance.now();
-      const sample = () => {
-        for (const button of buttons) {
-          const style = getComputedStyle(button);
-          const foreground = luminance(rgb(style.color).slice(0, 3));
-          const background = rgb(style.backgroundColor);
-          const alpha = background[3] ?? 1;
-          const behind = rgb(getComputedStyle(group).backgroundColor);
-          const blended = background.slice(0, 3).map((value, index) => value * alpha + behind[index] * (1 - alpha));
-          const back = luminance(blended);
-          observed.push((Math.max(foreground, back) + 0.05) / (Math.min(foreground, back) + 0.05));
-        }
-        if (performance.now() - start >= 200) resolve();
-        else requestAnimationFrame(sample);
-      };
-      requestAnimationFrame(sample);
-    });
-    return observed;
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    sample();
+    await Promise.all(group.getAnimations({ subtree: true }).map((animation) => animation.finished.catch(() => undefined)));
+    sample();
+    return { observed, transitions, animations };
   });
-  expect(ratios.length).toBeGreaterThan(2);
-  expect(Math.min(...ratios)).toBeGreaterThanOrEqual(4.5);
+  // Foreground/background change immediately; if animated colors are introduced,
+  // explicitly sample those animations rather than silently losing transition coverage.
+  expect(result.transitions.flatMap((value) => value.split(",").map((property) => property.trim()))).not.toEqual(expect.arrayContaining(["all"]));
+  expect(result.transitions.flatMap((value) => value.split(",").map((property) => property.trim()))).not.toEqual(expect.arrayContaining(["color"]));
+  expect(result.transitions.flatMap((value) => value.split(",").map((property) => property.trim()))).not.toEqual(expect.arrayContaining(["background"]));
+  expect(result.transitions.flatMap((value) => value.split(",").map((property) => property.trim()))).not.toEqual(expect.arrayContaining(["background-color"]));
+  expect(result.animations.every((value) => value === "none")).toBe(true);
+  expect(result.observed).toHaveLength(6);
+  expect(Math.min(...result.observed)).toBeGreaterThanOrEqual(4.5);
 });
 
 test("playback mode exposes gap jump, direct speaker rename focus, video badge, and WCAG AA compliance", async ({ page }) => {
@@ -1543,7 +1611,7 @@ test("nothing around the captions moves or resizes while people talk, pause and 
   await createFixture(page, "long-fixture.wav", longFixtureMeeting());
   await page.getByRole("button", { name: "Playback mode", exact: true }).click();
   const selectors = [
-    ".playback-stage", ".playback-stage-heading", ".playback-state", ".playback-gap", ".live-caption-head",
+    ".playback-stage", ".playback-stage-heading", ".playback-state", ".playback-gap", ".playback-current-content", ".live-caption-head",
     ".playback-roster", ".playback-stage-footer", ".playback-transcript-panel", ".playback-transcript-head",
     ".playback-transcript-list", ".playback-transcript-paging", ".audio-player", ".audio-player input[type=range]",
     ".audio-player .play-button", ".audio-player select",
@@ -1756,8 +1824,8 @@ test("immersive captions fit the stage when transcript width and viewport change
   const text = "If you could, you would because it is that powerful. People will say I need this, and then continue with the next point.";
   meeting.segments[0].text = text;
   meeting.segments[0].originalText = text;
-  await createFixture(page, "speaker-review.wav", meeting);
   await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
+  await createFixture(page, "speaker-review.wav", meeting);
   await page.getByRole("button", { name: "Immersive playback" }).click();
   const dialog = page.getByRole("dialog", { name: "Immersive playback" });
   await dialog.getByLabel("Playback position").fill("0.2");

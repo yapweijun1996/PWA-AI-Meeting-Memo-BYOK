@@ -80,7 +80,9 @@ The [interactive concept](design/speaker-review-prototype.html) uses invented ti
 
 Owner-approved direction, 2026-11-06: prioritize the Audio → Active Speaker → Live Caption → Transcript Highlight synchronization loop before avatar uploads or further video enhancement. Implementation and release evidence belong in [validation](VALIDATION.md); these requirements alone do not establish completion.
 
-Playback and Edit Speakers are separate views of the same meeting and recording. Switching views retains the audio position. Playback emphasizes the currently attributed speaker(s), readable captions and a synchronized transcript; Edit Speakers retains sample listening, name drafts, confirmation, merge and undo. Desktop uses a stage/transcript split when space permits; mobile stacks the content above a persistent accessible player.
+Playback and Edit Speakers are separate views of the same meeting and recording. Switching views retains the audio position. Playback presents currently attributed speaker(s) and readable captions first, followed by the synchronized transcript and then the full speaker roster. Caption size is next to the transcript heading; the persistent player controls playback. Edit Speakers retains sample listening, name drafts, confirmation, merge and undo. Mobile stacks these sections above the persistent accessible player.
+
+The current hierarchy supersedes the earlier planned top-roster layout below. It displays source attribution and timing only: a highlighted speaker or caption does not establish a person's real-world identity or prove diarization accuracy. Gaps, overlap, unconfirmed names and untimed passages remain explicit.
 
 The local immersive playback view presents the same recording and attribution in a full-screen stage, with an in-page fallback when native fullscreen is unavailable. It uses the existing player and clock, provides playback controls and a bounded transcript, and leaves speaker corrections in the existing editor. Device-specific fullscreen, iPhone standalone and physical screen-reader acceptance remain unverified.
 

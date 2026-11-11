@@ -1,0 +1,13 @@
+.evidence-context { border-left: 3px solid var(--border); padding-left: 12px; margin: 12px 0; }
+.evidence-context p { margin: 6px 0; }
+.evidence-context-text { line-height: 1.8; overflow-wrap: anywhere; }
+.evidence-context mark, .evidence-text mark { background: #ffecaa; color: #25362d; border-radius: 3px; }
+.evidence-preview { flex-basis: 100%; margin: 2px 0; line-height: 1.6; overflow-wrap: anywhere; }
+.evidence-preview button { max-width: 100%; padding: 0; color: var(--text-body); font-size: var(--text-base); font-weight: 500; line-height: 1.6; text-align: left; }
+.evidence-preview-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.evidence-pages { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 400px) {
+  .workspace-panel.memo-review-panel:has(.memo-version) > .panel-toolbar,
+  .memo-review-panel > .panel-toolbar { display: flex; flex-wrap: wrap; gap: 10px; }
+  .memo-review-panel > .panel-toolbar > div { flex: 1 1 100%; }
+}

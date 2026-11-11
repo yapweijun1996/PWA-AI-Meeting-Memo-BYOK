@@ -542,11 +542,16 @@ test("long speaker-aware memos compact transport input and restore original evid
   expect(requests).toBe(1);
   expect(capturedInput).not.toBeNull();
 
-  const tailSource = page
-    .locator("button.source-link")
-    .filter({ hasText: "Passage 360" });
-  await expect(tailSource).toHaveCount(1);
-  await tailSource.click();
+  const openTailSource = async () => {
+    const article = page.locator(".memo-item").first();
+    await article.getByRole("button", { name: "Show all 40 sources", exact: true }).click();
+    await article.getByRole("button", { name: "Next sources", exact: true }).click();
+    await article.getByRole("button", { name: "Next sources", exact: true }).click();
+    const tailSource = article.getByRole("button", { name: `Passage 360 · r${last.revision}`, exact: true });
+    await expect(tailSource).toHaveCount(1);
+    await tailSource.click();
+  };
+  await openTailSource();
   const evidence = page.getByRole("dialog");
   await expect(evidence.locator(".evidence-text")).toHaveText(last.text);
   const evidenceMetadata = evidence
@@ -599,6 +604,10 @@ test("long speaker-aware memos compact transport input and restore original evid
   await expect(page.getByLabel("summary note")).toHaveValue(
     "Long transcript summary with first and last evidence.",
   );
+  await openTailSource();
+  await expect(page.getByRole("dialog").locator(".evidence-text")).toHaveText(last.text);
+  await expect(page.getByRole("dialog").getByRole("heading", { name: `Source passage · r${last.revision}` })).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "Close dialog" }).click();
   expect(requests).toBe(1);
 });
 
