@@ -450,7 +450,7 @@ test("current captions show timed attribution without inventing activity in paus
   await expect(stage.locator('[data-speaker-active="true"]')).toHaveCount(0);
   await audio.dispatchEvent("playing");
   await setTime(2);
-  await expect(stage.getByText("No attributed speaker at this timestamp.")).toBeVisible();
+  await expect(stage.getByText("No timed caption at this position.")).toBeVisible();
   await expect(stage.getByRole("region", { name: "Current captions" })).toBeEmpty();
   await page.locator(".playback-untimed summary").click();
   await expect(page.locator(".playback-untimed")).toContainText("Untimed source");
@@ -507,9 +507,20 @@ test("speaker changes refresh without timeupdate and short word gaps retain inac
   const setTime = async (value: number) => page.locator("audio").evaluate((element, position) => {
     Object.defineProperty(element, "currentTime", { configurable: true, value: position });
   }, value);
-  await setTime(0.75);
-  await expect(stage.getByText("Between words · context only", { exact: true })).toBeVisible();
-  await expect(stage.locator('[data-speaker-hero="true"]')).toHaveCount(0);
+  const hero = stage.locator('[data-speaker-hero="true"]');
+  await hero.evaluate((element) => element.setAttribute("data-retained-node", "yes"));
+  for (const time of [0.7, 0.75, 0.84]) {
+    await setTime(time);
+    await expect(stage.locator('[data-fragment-active="true"]')).toHaveCount(0);
+    await expect(hero).toHaveAttribute("data-retained-node", "yes");
+    await expect(hero.locator("strong")).toHaveText("Speaker 1");
+    await expect(hero.getByText("Speaking", { exact: true })).toBeHidden();
+    await expect(stage.locator(".playback-gap")).toBeHidden();
+    const contextHint = stage.locator(".playback-context-only");
+    await expect(contextHint).toHaveText("Caption context during a word pause");
+    expect(await contextHint.evaluate((element) => element.getBoundingClientRect().width)).toBe(1);
+  }
+  await expect(stage.locator(".playback-current-caption-name")).toHaveCount(0);
   await expect(stage.locator('[data-speaker-active="true"]')).toHaveCount(0);
   await expect(page.locator(".playback-caption-row.is-active")).toHaveCount(0);
   await expect(page.locator(".playback-roster .playback-speaker")).toHaveCount(2);
@@ -540,6 +551,64 @@ test("speaker changes refresh without timeupdate and short word gaps retain inac
   await expect(stage.locator('[data-speaker-active="true"]')).toHaveCount(0);
   await page.locator("audio").dispatchEvent("playing");
   await expect(stage.locator('[data-speaker-hero="true"] strong')).toHaveText("Speaker 2");
+});
+
+test("caption identities stay distinct and readable with chunk labels and long confirmed names", async ({ page }) => {
+  const meeting = fixtureMeeting();
+  meeting.speakers[0].name = "Speaker 1 (part 1)";
+  meeting.speakers[1].name = "Speaker 1 (part 2)";
+  meeting.segments[1].start = 0.85;
+  meeting.segments.push({ ...meeting.segments[0], id: "90000000-0000-4000-8000-000000000007", start: 3, end: 3.5, speakerIds: [], text: "Unattributed speech", originalText: "Unattributed speech" });
+  await createFixture(page, "speaker-review.wav", meeting);
+  await page.getByRole("button", { name: "Playback mode", exact: true }).click();
+  const stage = page.locator(".playback-stage");
+  const seek = async (time: number) => {
+    await page.locator("audio").evaluate((element, value) => {
+      (element as HTMLMediaElement).currentTime = value;
+      element.dispatchEvent(new Event("seeked"));
+    }, time);
+  };
+  await seek(0.2);
+  await expect(stage.locator('[data-speaker-hero] strong')).toHaveText("Speaker 1 (part 1)");
+  await seek(1.5);
+  await expect(stage.locator('[data-speaker-hero] strong')).toHaveText("Speaker 1 (part 2)");
+  await seek(2);
+  await expect(stage.locator('[data-speaker-hero] strong')).toHaveText(["Speaker 1 (part 1)", "Speaker 1 (part 2)"]);
+  await expect(stage.locator(".playback-current-caption-name")).toHaveText("Speaker 1 (part 1) + Speaker 1 (part 2)");
+  await seek(3.2);
+  await expect(stage.locator('[data-speaker-hero]')).toHaveCount(0);
+  await expect(stage.getByRole("region", { name: "Attribution at playback position" })).toContainText("Unknown speaker");
+  await expect(stage.getByRole("region", { name: "Current captions" })).toHaveText("Unattributed speech");
+  await page.getByRole("button", { name: "Edit speakers", exact: true }).click();
+  const longName = "A confirmed speaker with a deliberately long name for narrow screens";
+  await page.getByLabel("Name for speaker 1", { exact: true }).fill(longName);
+  await page.getByRole("button", { name: "Confirm name", exact: true }).click();
+  await expect(page.getByLabel("Name for speaker 2", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Playback mode", exact: true }).click();
+  await seek(0.75);
+  await expect(stage.locator('[data-speaker-hero] strong')).toHaveText(longName);
+  await expect(stage.getByText("Name confirmed", { exact: true })).toBeVisible();
+  for (const width of [1280, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await stage.scrollIntoViewIfNeeded();
+    const sizes = await stage.evaluate((element) => ({
+      width: element.clientWidth, scrollWidth: element.scrollWidth,
+      captionHeight: element.querySelector(".playback-current-content")!.clientHeight,
+    }));
+    expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.width + 1);
+    expect(sizes.captionHeight).toBeGreaterThan(0);
+    const identities = stage.getByRole("region", { name: "Attribution at playback position" });
+    await identities.focus();
+    await expect(identities).toBeFocused();
+    const reachable = await identities.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      const box = element.getBoundingClientRect();
+      const name = element.querySelector("strong")!.getBoundingClientRect();
+      return name.bottom <= box.bottom + 1;
+    });
+    expect(reachable).toBe(true);
+    await stage.screenshot({ path: `test-results/stable-caption-${width}-${test.info().project.name}.png` });
+  }
 });
 
 test("transcript groups preserve fragment review, undo and filtering", async ({ page }) => {

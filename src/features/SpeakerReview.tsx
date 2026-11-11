@@ -700,8 +700,13 @@ function PlaybackMode({
   const activeIds = new Set(
     (playing ? activity.activeSpeakerIds : []).filter(Boolean),
   );
-  const currentIds = new Set(activity.activeSpeakerIds);
-  const betweenWords = context.length > 0;
+  // Identity follows the visible caption, not instantaneous word activity.
+  // The context contains only bounded gaps inside the same caption; it never
+  // carries the last speaker into an unrelated silence or unknown passage.
+  const displayedCaptions = current.length ? current : context;
+  const currentIds = new Set(displayedCaptions.flatMap((caption) => caption.speakerIds));
+  const showGap = displayedCaptions.length === 0;
+  const captionSpeakerName = (id: string) => meeting.speakers.find((speaker) => speaker.id === id)?.name ?? t("Unknown speaker", "未知说话人");
   const [untimedStart, setUntimedStart] = useState(0);
   const untimed = useMemo(() => meeting.segments.filter((segment) =>
     !hasValidTimedSegments([segment])), [meeting.segments]);
@@ -773,31 +778,31 @@ function PlaybackMode({
               <ClockTime clock={clock} />
             </span>
           </div>
-          <div className="playback-current-speakers" role="region" aria-label={t("Attribution at playback position", "播放位置的说话人归属")} tabIndex={currentIds.size ? 0 : -1}>
+          <div className="playback-current-speakers" role="region" aria-label={t("Attribution at playback position", "播放位置的说话人归属")} tabIndex={displayedCaptions.length ? 0 : -1}>
             {[...currentIds].map((id) => {
               const speaker = meeting.speakers.find((candidate) => candidate.id === id);
               return <span className="playback-current-speaker" key={id} data-speaker-hero="true" data-speaker-active={activeIds.has(id) ? "true" : "false"}>
                 <SpeakerAvatar id={id} image={avatars[id]} />
-                <strong>{speaker?.name ?? t("Unknown speaker", "未知说话人")}</strong>
-                <span>{speaker ? `${speaker.confirmed ? t("Confirmed", "已确认") : t("Unconfirmed", "未确认")} · ` : ""}{activeIds.has(id) ? t("Speaking", "正在说话") : t("At playback position", "播放位置")}</span>
+                <strong title={speaker?.name}>{captionSpeakerName(id)}</strong>
+                <span className="playback-identity-state">{speaker ? speaker.confirmed ? t("Name confirmed", "姓名已确认") : t("Name unconfirmed", "姓名待确认") : ""}</span>
+                <span className="playback-speaking-state" style={{ visibility: activeIds.has(id) ? "visible" : "hidden" }} aria-hidden={!activeIds.has(id)}>{t("Speaking", "正在说话")}</span>
               </span>;
             })}
-            {current.some((caption) => caption.speakerIds.length === 0) && <span className="playback-current-speaker"><strong>{t("Unknown speaker", "未知说话人")}</strong></span>}
+            {displayedCaptions.some((caption) => caption.speakerIds.length === 0) && <span className="playback-current-speaker"><span className="speaker-avatar" aria-hidden="true">?</span><strong>{t("Unknown speaker", "未知说话人")}</strong></span>}
           </div>
           <div className="playback-current-content" role="region" aria-label={t("Current captions", "当前字幕")} tabIndex={0}>
-            {(current.length ? current : context).map((caption) => (
+            {context.length > 0 && <span className="playback-context-only">{t("Caption context during a word pause", "词间停顿的字幕上下文")}</span>}
+            {displayedCaptions.map((caption) => (
               <div className="playback-current-caption" key={caption.id}>
-                <span className="playback-current-caption-name">{caption.speakerIds.length ? caption.speakerIds.map((id) => meeting.speakers.find((speaker) => speaker.id === id)?.name ?? t("Unknown speaker", "未知说话人")).join(" + ") : t("Unknown speaker", "未知说话人")}</span>
+                {(displayedCaptions.length > 1 || caption.speakerIds.length > 1) && <span className="playback-current-caption-name">{caption.speakerIds.length ? caption.speakerIds.map(captionSpeakerName).join(" + ") : t("Unknown speaker", "未知说话人")}</span>}
                 <p>{caption.fragments.map((fragment, index) => <span key={fragment.id} data-fragment-active={fragmentsAtTime([fragment], position).length ? "true" : "false"}>{index > 0 ? transcriptTextSeparator(caption.fragments[index - 1].text, fragment.text) : ""}{fragment.text}</span>)}</p>
               </div>
             ))}
           </div>
-          <div className="playback-gap small muted" style={{ visibility: current.length ? "hidden" : "visible" }} aria-hidden={current.length ? true : undefined}>
-            <span>{betweenWords
-              ? t("Between words · context only", "词间停顿 · 仅作上下文")
-              : t("No attributed speaker at this timestamp.", "此时间点没有已归属的说话人。")}</span>
+          <div className="playback-gap small muted" style={{ visibility: showGap ? "visible" : "hidden" }} aria-hidden={!showGap}>
+            <span>{t("No timed caption at this position.", "此处没有带时间的字幕。")}</span>
             {audioAvailable && jumpTarget && (
-              <button type="button" className="text-button" tabIndex={current.length ? -1 : undefined} onClick={() => onSeek(jumpTarget.start)}>
+              <button type="button" className="text-button" tabIndex={showGap ? undefined : -1} onClick={() => onSeek(jumpTarget.start)}>
                 {nextCaption ? t("Next speech", "下一段发言") : t("First speech", "首段发言")} · {formatTime(jumpTarget.start)}
               </button>
             )}
