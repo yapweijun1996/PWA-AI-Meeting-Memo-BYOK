@@ -193,6 +193,7 @@ test("memo submissions require confirmation, preserve evidence and mark source c
     "Review inventory with finance.",
   );
   expect(requests).toBe(1);
+  await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   const accept = page.getByRole("button", { name: /Accept/ }).first();
   await page.getByLabel("action note").fill("Blur-only draft.");
   await accept.dispatchEvent("pointerdown", {
@@ -333,6 +334,7 @@ test.describe("touch review persistence", () => {
       }),
     ).toBeVisible();
     await page.getByRole("tab", { name: /Meeting notes/ }).click();
+    await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
 
     const note = page.getByLabel("action note");
     const due = page.getByLabel("Action due date");
@@ -362,6 +364,7 @@ test.describe("touch review persistence", () => {
 
     await page.reload();
     await page.getByRole("tab", { name: /Meeting notes/ }).click();
+    await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
     await expect(page.getByLabel("action note")).toHaveValue(
       "Touch human action.",
     );
@@ -535,6 +538,7 @@ test("long speaker-aware memos compact transport input and restore original evid
   await expect(page.getByLabel("summary note")).toHaveValue(
     "Long transcript summary with first and last evidence.",
   );
+  await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.locator(".memo-item")).toContainText("pending");
   await expect(
     page.getByRole("button", { name: "Needs review", exact: true }),
@@ -604,6 +608,7 @@ test("long speaker-aware memos compact transport input and restore original evid
   await expect(page.getByLabel("summary note")).toHaveValue(
     "Long transcript summary with first and last evidence.",
   );
+  await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await openTailSource();
   await expect(page.getByRole("dialog").locator(".evidence-text")).toHaveText(last.text);
   await expect(page.getByRole("dialog").getByRole("heading", { name: `Source passage · r${last.revision}` })).toBeVisible();
@@ -784,6 +789,7 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
   await expect(page.getByLabel("summary note")).toHaveValue(
     "A greeting was exchanged.",
   );
+  await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await page.getByLabel("summary note").fill("Human reviewed greeting.");
   await page.getByRole("button", { name: "✓ Accept", exact: true }).click();
   for (const [label, extension] of [
@@ -834,6 +840,7 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
   await expect(page.getByLabel("summary note")).toHaveValue(
     "Human reviewed greeting.",
   );
+  await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "✓ Accept", exact: true }),
   ).toHaveClass(/selected/);

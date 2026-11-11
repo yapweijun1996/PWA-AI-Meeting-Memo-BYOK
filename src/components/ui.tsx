@@ -6,7 +6,9 @@ export function Modal({
   title,
   onClose,
   children,
+  className,
 }: {
+  className?: string;
   title: string;
   onClose: () => void;
   children: ReactNode;
@@ -27,7 +29,7 @@ export function Modal({
     return () => d?.close();
   }, []);
   return (
-    <dialog ref={ref} aria-label={title} onCancel={onClose}>
+    <dialog ref={ref} className={className} aria-label={title} onCancel={onClose}>
       <header className="modal-head">
         <h2>{title}</h2>
         <button

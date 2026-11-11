@@ -32,6 +32,7 @@ test("many exact citations remain readable, paged and unchanged", async ({ page 
   }), meeting);
   await page.goto(`./#/meetings/${meeting.id}`);
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   const article = page.locator(".memo-item").first();
   await expect(article.locator(".source-link")).toHaveCount(3);
   await expect(article.getByRole("button", { name: "Show all 85 sources" })).toBeVisible();

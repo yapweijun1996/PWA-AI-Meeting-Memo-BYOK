@@ -62,6 +62,12 @@ import { CitedEvidence } from "./CitedEvidence";
 import { EvidenceSources } from "./EvidenceSources";
 import { EvidenceContext, formatEvidenceTime } from "./EvidenceContext";
 import "./evidence-layout.css";
+import "./memo-reading.css";
+import { MemoEditorField } from "./MemoEditorField";
+import { MemoDateField } from "./MemoDateField";
+import { SimpleMemoEvidence } from "./SimpleMemoEvidence";
+import { ContextualMemoAssistant } from "./ContextualMemoAssistant";
+import { completeMemoReview, compareMemoVersions, editMemoItem, getMemoReviewCompletion, restoreMemoVersion, summarizeMemoReview, undoMemoEdit, type MemoItemEdit } from "../domain/memo-review";
 import { SpeakerReview } from "./SpeakerReview";
 import { ReferenceVideo } from "./ReferenceVideo";
 import { usePlaybackClock } from "./usePlaybackClock";
@@ -122,14 +128,34 @@ export function MeetingWorkspace({
   const reviewWriteInFlight = useRef(false);
   const latestLocallySaved = useRef(m);
   if (m.version >= latestLocallySaved.current.version) latestLocallySaved.current = m;
+  const [reviewBusy, setReviewBusy] = useState(false);
   const [reviewedRetry, setReviewedRetry] = useState(false);
+  const [memoMode, setMemoMode] = useState<"simple" | "review">("simple");
+  const [priorityOnly, setPriorityOnly] = useState(false);
+  const [miniPlayer, setMiniPlayer] = useState(true);
+  const [dirtyMemoItems, setDirtyMemoItems] = useState<Set<string>>(() => new Set());
+  const dirtyMemoItemsRef = useRef(new Set<string>());
+  const memoWriteQueue = useRef<Promise<Meeting> | undefined>(undefined);
+  const [completionStatus, setCompletionStatus] = useState<"none" | "current" | "stale">("none");
+  const [compareVersion, setCompareVersion] = useState("");
+  const [memoSelection, setMemoSelection] = useState<{ memoId: string; itemId: string; originalText: string; start: number; end: number }>();
+  const [assistantSelection, setAssistantSelection] = useState<typeof memoSelection>();
   const [acousticConfirm, setAcousticConfirm] = useState(false);
   const [expectedSpeakers, setExpectedSpeakers] = useState("");
+  const evidenceTrigger = useRef<HTMLElement | null>(null);
   const [evidence, setEvidence] = useState<Segment>();
   const [evidenceRefs, setEvidenceRefs] = useState<{ id: string; revision: number }[]>([]);
   const [confirmed, setConfirmed] = useState<{ selection: Selection; plan?: MemoPipeline | null }>();
   const [uiLanguage, setUiLanguage] = useState(getUiLanguage());
   const t = (en: string, zh: string) => translateUi(uiLanguage, en, zh);
+  function navigateTab(next: string) {
+    if (document.querySelector('[data-unsaved-edit="true"]')) {
+      onError(t("Wait for note changes to save before changing views.", "切换视图前请等待笔记更改保存。"));
+      return false;
+    }
+    setTab(next);
+    return true;
+  }
   const chunkPlaybackError = t("This browser cannot play the recording. Check that the local parts are available and supported.", "此浏览器无法播放录音。请检查本地录音部分是否可用且受支持。");
   const updatePlaybackRange = useCallback(
     (range: { start: number; end: number } | null) => {
@@ -146,7 +172,8 @@ export function MeetingWorkspace({
     window.addEventListener("memo-keys-changed", changed);
     return () => window.removeEventListener("memo-keys-changed", changed);
   }, []);
-  const locked = saving || processing;
+  const locked = saving || processing || dirtyMemoItems.size > 0;
+  const activeLocalWrites = useRef(0);
   useEffect(() => {
     const changed = () => setProcessing(isProcessingMeeting(m.id));
     addEventListener("memo-processing-changed", changed);
@@ -227,6 +254,7 @@ export function MeetingWorkspace({
     };
   }, [chunkPlayer, chunkPlaybackError]);
   async function persist(next: Meeting, blob?: Blob) {
+    activeLocalWrites.current += 1;
     setSaving(true);
     try {
       const write = saveMeeting(next, blob);
@@ -245,7 +273,8 @@ export function MeetingWorkspace({
       );
       throw e;
     } finally {
-      setSaving(false);
+      activeLocalWrites.current -= 1;
+      setSaving(activeLocalWrites.current > 0);
     }
   }
   async function persistQuietly(next: Meeting) {
@@ -255,23 +284,38 @@ export function MeetingWorkspace({
       /* preserve the last saved state and show feedback */
     }
   }
-  function memoInteractionActive(versionId: string, itemId: string) {
-    const key = reviewInteraction.current?.key;
-    return !!key && (key === `${versionId}:${itemId}` || key.startsWith(`${versionId}:${itemId}:`));
+  function setMemoItemDirty(itemId: string, dirty: boolean) {
+    const next = new Set(dirtyMemoItemsRef.current);
+    if (dirty) next.add(itemId); else next.delete(itemId);
+    dirtyMemoItemsRef.current = next;
+    setDirtyMemoItems(next);
+    window.dispatchEvent(new Event("memo-drafts-changed"));
   }
-  function persistMemoDraft(interactionKey: string, next: Meeting) {
-    // Disabling a focused editor during its first save can emit a second blur.
-    // Mark the field before starting the async CAS write so that re-entrant
-    // blur handlers do not submit the same stale revision a second time.
-    if (reviewInteraction.current?.key === interactionKey) return;
-    reviewInteraction.current = { key: interactionKey, phase: "committing" };
-    void persistQuietly(next).finally(() => {
-      if (
-        reviewInteraction.current?.key === interactionKey &&
-        reviewInteraction.current.phase === "committing"
-      )
-        reviewInteraction.current = undefined;
+  function waitForMemoDrafts(): Promise<void> {
+    if (!dirtyMemoItemsRef.current.size) return Promise.resolve();
+    if (document.querySelector("[data-memo-save-error]")) return Promise.reject(new Error("draft-save-failed"));
+    return new Promise((resolve, reject) => {
+      const cleanup = () => { window.removeEventListener("memo-drafts-changed", changed); window.removeEventListener("memo-draft-failed", failed); };
+      const changed = () => { if (!dirtyMemoItemsRef.current.size) { cleanup(); resolve(); } };
+      const failed = (event: Event) => { cleanup(); reject((event as CustomEvent<unknown>).detail ?? new Error("draft-save-failed")); };
+      window.addEventListener("memo-drafts-changed", changed);
+      window.addEventListener("memo-draft-failed", failed);
+      changed();
     });
+  }
+  async function saveMemoEdit(memoId: string, itemId: string, edit: MemoItemEdit) {
+    const previous = memoWriteQueue.current ?? pendingMeetingWrite.current;
+    const revision = m.revision;
+    const task = (async () => {
+      const base = previous ? await previous : latestLocallySaved.current;
+      if (base.revision !== revision) throw new Error(t("The transcript changed. Review the current source before saving this note.", "转录已更改。保存笔记前请检查当前来源。"));
+      const updated = editMemoItem(base, memoId, itemId, edit);
+      return updated === base ? base : await persist(updated);
+    })();
+    memoWriteQueue.current = task;
+    try { await task; }
+    catch (error) { onError(error instanceof Error ? error.message : t("Could not save the note.", "无法保存笔记。")); throw error; }
+    finally { if (memoWriteQueue.current === task) memoWriteQueue.current = undefined; }
   }
   function reviewMemoItem(
     versionId: string,
@@ -310,10 +354,15 @@ export function MeetingWorkspace({
       onError(t("Wait for the current review to finish saving before reviewing another item.", "请等待当前审阅保存完成，再审阅其他项目。"));
       return;
     }
+    const hadDirtyDrafts = dirtyMemoItemsRef.current.size > 0;
+    const draftsSaved = waitForMemoDrafts();
+    (document.activeElement as HTMLElement | null)?.blur();
     reviewWriteInFlight.current = true;
+    setReviewBusy(true);
     reviewInteraction.current = { key: interactionKey, phase: "committing" };
-    const pendingWrite = pendingMeetingWrite.current;
     void (async () => {
+      await draftsSaved;
+      const pendingWrite = memoWriteQueue.current ?? pendingMeetingWrite.current;
       // Apply this review only after our own earlier draft write succeeds. The
       // next CAS still rejects any intervening write from another tab.
       const base = pendingWrite ? await pendingWrite : latestLocallySaved.current;
@@ -331,11 +380,11 @@ export function MeetingWorkspace({
                 x.id === itemId
                   ? {
                       ...x,
-                      text: pendingWrite && textDisabled ? x.text : text?.trim() || x.text,
-                      ...(owner !== undefined && !(pendingWrite && ownerDisabled)
+                      text: hadDirtyDrafts || (pendingWrite && textDisabled) ? x.text : text?.trim() || x.text,
+                      ...(owner !== undefined && !hadDirtyDrafts && !(pendingWrite && ownerDisabled)
                         ? { ownerId: owner || null }
                         : {}),
-                      ...(due !== undefined && !(pendingWrite && dueDisabled) ? { dueDate: due || null } : {}),
+                      ...(due !== undefined && !hadDirtyDrafts && !(pendingWrite && dueDisabled) ? { dueDate: due || null } : {}),
                       review: state,
                       reviewedRevision: base.revision,
                     }
@@ -345,8 +394,9 @@ export function MeetingWorkspace({
           : v,
       ),
       });
-    })().catch(() => { /* the earlier save already reported its failure */ }).finally(() => {
+    })().catch((error: unknown) => { onError(`${t("The draft could not be saved, so the item was not reviewed. Your draft remains available.", "草稿保存失败，项目未被审阅。草稿仍保留。")}${error instanceof Error && error.message !== "draft-save-failed" ? ` ${error.message}` : ""}`); }).finally(() => {
       reviewWriteInFlight.current = false;
+      setReviewBusy(false);
       if (
         reviewInteraction.current?.key === interactionKey &&
         reviewInteraction.current.phase === "committing"
@@ -410,7 +460,7 @@ export function MeetingWorkspace({
     setProcessing(true);
     setProcessingKind("provider");
     setChunkProgressText("");
-    if (stage === "memo") setTab("memo");
+    if (stage === "memo") navigateTab("memo");
     setNotice("");
     let acousticProvider: WavLmSpeakerEmbeddingProvider | undefined;
     let acousticRequestController: AbortController | undefined;
@@ -470,7 +520,7 @@ export function MeetingWorkspace({
           ? `${t("Transcript ready. Review speakers and passages before making notes.", "转录已就绪。请先审阅说话人和段落，再生成笔记.")}${m.audio?.chunked && m.audio.chunked.chunkCount > 1 ? ` ${t("Speakers are numbered per part; use the suggested links or merge manually in the Speakers tab.", "说话人编号在每个分段中独立；请使用建议链接，或在“说话人”标签页手动合并。")}` : ""}${voiceNote}`
           : t("New memo version ready for review.", "新版本笔记已就绪，请审阅。"),
       );
-      setTab(
+      navigateTab(
         stage === "speech"
           ? completed.speakers.length
             ? "speakers"
@@ -564,7 +614,7 @@ export function MeetingWorkspace({
       if (!latest) throw new Error("This meeting is no longer available.");
       if (!latest.audio?.chunked) {
         const text = await checkSingleRecordingVoices(latest);
-        setTab("speakers");
+        navigateTab("speakers");
         setNotice(text);
         return;
       }
@@ -591,7 +641,7 @@ export function MeetingWorkspace({
         },
       });
       await persist(analyzed);
-      setTab("speakers");
+      navigateTab("speakers");
       setNotice(`${t("Anonymous voice continuity was updated locally. Ambiguous voices remain unresolved.", "匿名声音连续性已在本地更新。模糊声音保持未解决状态。")} ${await acousticSummaryText(latest.id)}`);
     } catch (error) {
       onError(error instanceof Error ? error.message : "Local speaker analysis did not complete.");
@@ -711,6 +761,25 @@ export function MeetingWorkspace({
     unknown = m.speakers.filter((s) => !s.confirmed).length,
     pending = m.segments.filter((s) => !s.reviewed).length,
     accounting = summarizeMeetingAccounting(m.jobs);
+  const reviewSummary = useMemo(() => memo ? summarizeMemoReview(m, memo.id) : undefined, [m, memo]);
+  const sectionTypes = ["summary", "discussion", "decision", "action", "question", "risk"] as const;
+  const sectionNames = {
+    summary: t("Summary", "会议摘要"), discussion: t("Highlights", "讨论重点"), decision: t("Decisions", "决定"),
+    action: t("Action items", "行动事项"), question: t("Open questions", "待确认"), risk: t("Risks", "风险"),
+  };
+  const priorityNames = {
+    decision: t("Decision", "决定"), action: t("Action", "行动"), question: t("Question", "问题"), risk: t("Risk", "风险"),
+    source_changed: t("Source changed", "来源已更改"), edited: t("Edited text needs checking", "修改内容待核对"),
+    many_sources: t("Many citations", "引用较多"), missing_owner: t("Owner unspecified", "负责人未指定"), missing_due: t("Due date unspecified", "截止日期未指定"),
+  };
+  const priorityPending = memo && reviewSummary ? memo.items.filter(item => reviewSummary.priorityItemIds.includes(item.id) &&
+    (item.review !== "accepted" && item.review !== "rejected" || memo.sourceRevision !== m.revision && item.reviewedRevision !== m.revision)).length : 0;
+  useEffect(() => {
+    let cancelled = false;
+    if (!memo) { setCompletionStatus("none"); return; }
+    void getMemoReviewCompletion(m, memo.id).then(status => { if (!cancelled) setCompletionStatus(status); }).catch(() => { if (!cancelled) setCompletionStatus("stale"); });
+    return () => { cancelled = true; };
+  }, [m, memo]);
   const segmentIndexById = useMemo(
     () => new Map(m.segments.map((seg, idx) => [seg.id, idx])),
     [m.segments],
@@ -739,7 +808,7 @@ export function MeetingWorkspace({
   const visibleGroups = groups.slice(page * pageSize, (page + 1) * pageSize);
   const evidenceHasTime = !!evidence && evidence.start !== null && evidence.end !== null && Number.isFinite(evidence.start) && Number.isFinite(evidence.end) && evidence.start >= 0 && evidence.end > evidence.start;
   return (
-    <div className={canPlay ? "workspace has-player" : "workspace"}>
+    <div className={`${canPlay ? "workspace has-player" : "workspace"}${tab === "memo" && miniPlayer ? " memo-mini-active" : ""}`}>
       <a href="#/" className="back-link">
         <ArrowLeft size={15} />
         {t("All meetings", "所有会议")}
@@ -949,7 +1018,10 @@ export function MeetingWorkspace({
               aria-selected={tab === value}
               aria-label={accessibleLabel}
               data-tooltip={accessibleLabel}
-              onClick={() => setTab(String(value))}
+              onClick={() => {
+                if (dirtyMemoItems.size > 0) { onError(t("Wait for note changes to save before changing views.", "切换视图前请等待笔记更改保存。")); return; }
+                navigateTab(String(value));
+              }}
             >
               <Glyph size={17} />
               {String(label)}
@@ -959,7 +1031,7 @@ export function MeetingWorkspace({
         })}
         <span className="save-state">
           <span className="status-dot" />
-          {saving ? t("Saving…", "正在保存…") : t("Saved locally", "已保存在本地")}
+          {saving ? t("Saving…", "正在保存…") : dirtyMemoItems.size ? t("Unsaved changes", "更改尚未保存") : t("Saved locally", "已保存在本地")}
         </span>
       </div>
       {tab === "transcript" && (
@@ -1309,12 +1381,12 @@ export function MeetingWorkspace({
               <h2>{t("Meeting notes", "会议笔记")}</h2>
               <p>
                 {memo
-                  ? t(`${m.memos.length} saved version${m.memos.length === 1 ? "" : "s"} · Review required`, `已保存 ${m.memos.length} 个版本 · 每一项都需要审阅`)
+                  ? t(`${reviewSummary?.pending ?? 0} items need confirmation`, `${reviewSummary?.pending ?? 0} 项待确认`)
                   : t("A first draft, grounded in your transcript.", "根据转录生成的初稿。")}
               </p>
             </div>
             <button
-              className="button primary compact"
+              className={`button ${memo ? "secondary" : "primary"} compact`}
               title={t(
                 "Creates a separate version; provider charges may apply.",
                 "创建独立版本；服务商可能收取费用。",
@@ -1328,6 +1400,10 @@ export function MeetingWorkspace({
           </header>
           {memo ? (
             <>
+              <div className="memo-view-switch" role="group" aria-label={t("Notes view", "笔记视图")}>
+                <button type="button" aria-pressed={memoMode === "simple"} disabled={dirtyMemoItems.size > 0} onClick={() => setMemoMode("simple")}>{t("Simple Mode", "简洁模式")}</button>
+                <button type="button" aria-pressed={memoMode === "review"} disabled={dirtyMemoItems.size > 0} onClick={() => setMemoMode("review")}>{t("Evidence Review", "证据审阅")}</button>
+              </div>
               <div className="memo-version">
                 <History size={15} />
                 <label>
@@ -1335,20 +1411,58 @@ export function MeetingWorkspace({
                   <select
                     aria-label={t("Memo version", "笔记版本")}
                     value={memo.id}
+                    disabled={locked}
                     onChange={(e) => {
                       setViewVersion(e.target.value);
                     }}
                   >
                     {m.memos.map((v, i) => (
                       <option key={v.id} value={v.id}>
-                        {t("Version", "版本")} {i + 1} ·{" "}
-                        {new Date(v.createdAt).toLocaleString()}
+                        {i === m.memos.length - 1 ? t("Current version", "当前版本") : `${t("Historical version", "历史版本")} ${i + 1}`}
                       </option>
                     ))}
                   </select>
                 </label>
                 <span>{memo.model}</span>
               </div>
+              <div className="memo-progress" role="status">
+                {t(`${reviewSummary?.reviewed ?? 0} of ${reviewSummary?.total ?? 0} individually reviewed · ${reviewSummary?.pending ?? 0} still need confirmation`, `逐条已确认 ${reviewSummary?.reviewed ?? 0} / ${reviewSummary?.total ?? 0} · ${reviewSummary?.pending ?? 0} 项仍待确认`)}
+                {` · ${t(`${priorityPending} priority items need attention`, `${priorityPending} 项重点待核对`)}`}
+                {dirtyMemoItems.size > 0 && ` · ${t("Unsaved note changes", "笔记更改尚未保存")}`}
+                {completionStatus === "current" && ` · ${t("Review session completed", "已完成本次复核")}`}
+                {completionStatus === "stale" && ` · ${t("Review session needs updating", "复核状态需要更新")}`}
+              </div>
+              {memo.id !== m.memos.at(-1)?.id && <p className="small muted">{t("Historical versions are read-only. Restore this version as a new version to edit it.", "历史版本为只读。请先恢复为新版本再编辑。")}</p>}
+              <div className="memo-document-tools">
+                {memoMode === "review" && <label className="checkbox-label"><input type="checkbox" checked={priorityOnly} disabled={dirtyMemoItems.size > 0} onChange={event => setPriorityOnly(event.target.checked)} /> {t("Priority items only", "只看重点项目")}</label>}
+                <button className="button secondary compact" disabled={locked || memo.id !== m.memos.at(-1)?.id || !(memo.editUndo?.length)} onClick={() => void (async () => {
+                  try { await persist(undoMemoEdit(m, memo.id)); }
+                  catch (error) { onError(error instanceof Error ? error.message : t("Could not undo the note edit.", "无法撤销笔记修改。")); }
+                })()}>{t("Undo note edit", "撤销笔记修改")}</button>
+                <button className="button secondary compact" disabled={locked || memo.id !== m.memos.at(-1)?.id || !reviewSummary?.total} onClick={() => void (async () => {
+                  const scope = reviewSummary?.priorityItemIds.length ? { kind: "priority" as const, itemIds: reviewSummary.priorityItemIds } : { kind: "all" as const, itemIds: memo.items.map(item => item.id) };
+                  const text = t(`Finish this review session for ${scope.itemIds.length} ${scope.kind === "priority" ? "priority" : "total"} items? ${reviewSummary?.pending ?? 0} items still need individual confirmation. Their states will not change.`, `完成本次复核（${scope.itemIds.length} 项${scope.kind === "priority" ? "重点项目" : "全部项目"}）？仍有 ${reviewSummary?.pending ?? 0} 项待逐条确认，其状态不会改变。`);
+                  if (!confirm(text)) return;
+                  try { await persist(await completeMemoReview(m, memo.id, scope)); }
+                  catch (error) { onError(error instanceof Error ? error.message : t("Could not finish the review.", "无法完成复核。")); }
+                })()}>{t("Finish review", "完成复核")}</button>
+                {memo.id !== m.memos.at(-1)?.id && <button className="button secondary compact" disabled={locked || dirtyMemoItems.size > 0} onClick={() => void (async () => {
+                  if (!confirm(t("Restore this version as a new version? Existing versions remain unchanged; the copy needs review.", "将此版本恢复为新版本？现有版本保持不变，新副本需要审阅。"))) return;
+                  try { const saved = await persist(restoreMemoVersion(m, memo.id)); setViewVersion(saved.memos.at(-1)?.id); }
+                  catch (error) { onError(error instanceof Error ? error.message : t("Could not restore this version.", "无法恢复此版本。")); }
+                })()}>{t("Restore as new version", "恢复为新版本")}</button>}
+                {m.memos.length > 1 && <label>{t("Compare with", "比较版本")} <select value={compareVersion} onChange={event => setCompareVersion(event.target.value)} aria-label={t("Compare with version", "选择比较版本")}>
+                  <option value="">{t("Choose a version", "选择版本")}</option>
+                  {m.memos.filter(v => v.id !== memo.id).map((v) => <option key={v.id} value={v.id}>{t("Version", "版本")} {m.memos.findIndex(candidate => candidate.id === v.id) + 1}</option>)}
+                </select></label>}
+              </div>
+              {compareVersion && compareVersion !== memo.id && m.memos.some(v => v.id === compareVersion) && <div className="memo-compare" role="region" aria-label={t("Version comparison", "版本比较")}>
+                <p className="small muted">{t("Comparison matches only identical item IDs. Newly generated items are not assumed to be equivalent.", "比较仅匹配相同项目 ID，不会假定新生成项目等价。")}</p>
+                {compareMemoVersions(m, compareVersion, memo.id).changes.map(row => <div className="memo-compare-row" key={row.id}>
+                  <div><strong>{t("Earlier", "旧版本")}</strong><p>{row.left?.text ?? "—"}</p></div>
+                  <div><strong>{t("Selected", "所选版本")}</strong><p>{row.right?.text ?? "—"}</p></div>
+                </div>)}
+              </div>}
               {memo.sourceRevision !== m.revision &&
                 memo.items.some((i) => i.reviewedRevision !== m.revision) && (
                   <div className="notice sand stale-notes-warning" role="alert">
@@ -1358,7 +1472,7 @@ export function MeetingWorkspace({
                     <div className="notice-actions">
                       <button
                         className="text-button"
-                        onClick={() => setTab("transcript")}
+                        onClick={() => navigateTab("transcript")}
                       >
                         {t("View current transcript", "查看当前转录")}
                       </button>
@@ -1372,13 +1486,20 @@ export function MeetingWorkspace({
                     </div>
                   </div>
                 )}
-              <div className="memo-list">
-                {memo.items.map((item) => (
+              <div className={`memo-list ${memoMode === "simple" ? "memo-document" : ""}`}>
+                {sectionTypes.map((sectionType) => {
+                  const sectionItems = memo.items.filter(item => item.type === sectionType && (memoMode === "review" || item.review !== "rejected") && !(memoMode === "review" && priorityOnly && !reviewSummary?.priorityItemIds.includes(item.id)));
+                  if (!sectionItems.length) return null;
+                  return <section className="memo-document-section" key={sectionType}>
+                    <h3>{sectionNames[sectionType]}</h3>
+                    {sectionItems.map((item) => (
                   <article
                     className={`memo-item ${item.review === "rejected" ? "rejected" : ""}`}
                     key={item.id}
+                    data-note-type={item.type}
                   >
-                    <div className="memo-item-heading">
+                    {(reviewSummary?.priorityReasons[item.id]?.length ?? 0) > 0 && <span className="memo-priority small">{t("Suggested review", "建议核实")} · {reviewSummary!.priorityReasons[item.id].map(reason => priorityNames[reason]).join(" · ")} · {t("rule-based", "基于规则")}</span>}
+                    <div className="memo-item-heading" hidden={memoMode === "simple"}>
                       <Pill
                         tone={
                           item.type === "action"
@@ -1392,51 +1513,25 @@ export function MeetingWorkspace({
                       </Pill>
                       <span className="small muted">{uiLanguage === "zh-CN" ? ({ pending: "待审阅", accepted: "已接受", rejected: "已拒绝", edited: "已编辑" } as const)[item.review] : item.review}</span>
                     </div>
-                    <textarea
-                      aria-label={uiLanguage === "zh-CN" ? `${({ summary: "摘要", discussion: "讨论", decision: "决定", action: "行动", question: "问题", risk: "风险" } as const)[item.type]}笔记` : `${item.type} note`}
-                      defaultValue={item.text}
-                      rows={Math.max(
-                        2,
-                        Math.min(6, Math.ceil(item.text.length / 90)),
-                      )}
-                      disabled={locked}
-                      onBlur={(e) => {
-                        if (memoInteractionActive(memo.id, item.id))
-                          return;
-                        if (
-                          e.relatedTarget instanceof Element &&
-                          e.relatedTarget.closest("[data-review-button]")
-                        )
-                          return;
-                        if (
-                          e.target.value.trim() &&
-                          e.target.value !== item.text
-                        )
-                          persistMemoDraft(`${memo.id}:${item.id}:text`, {
-                            ...m,
-                            memos: m.memos.map((v) =>
-                              v.id === memo.id
-                                ? {
-                                    ...v,
-                                    items: v.items.map((x) =>
-                                      x.id === item.id
-                                        ? {
-                                            ...x,
-                                            text: e.target.value,
-                                            review: "edited",
-                                          }
-                                        : x,
-                                    ),
-                                  }
-                                : v,
-                            ),
-                          });
-                      }}
+                    <MemoEditorField
+                      key={`${memo.id}:${item.id}`}
+                      label={uiLanguage === "zh-CN" ? `${({ summary: "摘要", discussion: "讨论", decision: "决定", action: "行动", question: "问题", risk: "风险" } as const)[item.type]}笔记` : `${item.type} note`}
+                      value={item.text}
+                      disabled={processing || reviewBusy || memo.id !== m.memos.at(-1)?.id}
+                      showTools={memoMode === "simple"}
+                      headingText={t("Insert heading", "插入标题")}
+                      bulletText={t("Insert bullet", "插入项目符号")}
+                      failureText={t("Save failed. Your draft is still in this field.", "保存失败，草稿仍保留在此输入框。")}
+                      onSave={(text) => saveMemoEdit(memo.id, item.id, { text })}
+                      onDirtyChange={(dirty) => setMemoItemDirty(item.id, dirty)}
+                      onSelectionChange={(start, end, originalText) => setMemoSelection({ memoId: memo.id, itemId: item.id, start, end, originalText })}
                     />
-                    <OriginalNote
+                    {memoSelection?.memoId === memo.id && memoSelection.itemId === item.id && memoSelection.end > memoSelection.start && <button type="button" className="text-button small" disabled={locked || memo.id !== m.memos.at(-1)?.id || memoSelection.originalText !== item.text || memoSelection.end - memoSelection.start > 4000} onMouseDown={event => event.preventDefault()} onClick={() => setAssistantSelection(memoSelection)}>{t("Improve selected text with AI", "用 AI 优化所选文字")}</button>}
+                    {item.review === "edited" && <p className="memo-unverified small">{t("Edited text needs evidence review; previous citations have not verified it.", "内容已修改，原引用尚未验证此内容，请重新核对。")}</p>}
+                    <div hidden={memoMode !== "review"}><OriginalNote
                       item={memo.originalItems?.find((x) => x.id === item.id)}
                       meeting={m}
-                    />
+                    /></div>
                     {item.type === "action" && (
                       <div className="action-fields">
                         <label>
@@ -1445,30 +1540,10 @@ export function MeetingWorkspace({
                             aria-label={t("Action owner", "行动负责人")}
                             data-action-owner="true"
                             value={item.ownerId || ""}
-                            disabled={locked}
-                            onChange={(e) =>
-                              void persistQuietly({
-                                ...m,
-                                memos: m.memos.map((v) =>
-                                  v.id === memo.id
-                                    ? {
-                                        ...v,
-                                        items: v.items.map((x) =>
-                                          x.id === item.id
-                                            ? {
-                                                ...x,
-                                                ownerId: e.target.value || null,
-                                                review: "edited",
-                                              }
-                                            : x,
-                                        ),
-                                      }
-                                    : v,
-                                ),
-                              })
-                            }
+                            disabled={locked || memo.id !== m.memos.at(-1)?.id}
+                            onChange={(e) => { void saveMemoEdit(memo.id, item.id, { ownerId: e.target.value || null }).catch(() => undefined); }}
                           >
-                            <option value="">{t("To confirm", "待确认")}</option>
+                            <option value="">{t("Unspecified", "未指定")}</option>
                             {m.speakers.map((s) => (
                               <option value={s.id} key={s.id}>
                                 {s.name}
@@ -1479,44 +1554,16 @@ export function MeetingWorkspace({
                         </label>
                         <label>
                           {t("Due date", "截止日期")}
-                          <input
-                            aria-label={t("Action due date", "行动截止日期")}
-                            data-action-due="true"
-                            type="date"
-                            defaultValue={item.dueDate || ""}
-                            disabled={locked}
-                            onBlur={(e) => {
-                              if (memoInteractionActive(memo.id, item.id))
-                                return;
-                              if (
-                                e.relatedTarget instanceof Element &&
-                                e.relatedTarget.closest("[data-review-button]")
-                              )
-                                return;
-                              if (e.target.value !== (item.dueDate || ""))
-                                persistMemoDraft(`${memo.id}:${item.id}:due`, {
-                                  ...m,
-                                  memos: m.memos.map((v) =>
-                                    v.id === memo.id
-                                      ? {
-                                          ...v,
-                                          items: v.items.map((x) =>
-                                            x.id === item.id
-                                              ? {
-                                                  ...x,
-                                                  dueDate:
-                                                    e.target.value || null,
-                                                  review: "edited",
-                                                }
-                                              : x,
-                                          ),
-                                        }
-                                      : v,
-                                  ),
-                                });
-                            }}
+                          <MemoDateField
+                            label={t("Action due date", "行动截止日期")}
+                            value={item.dueDate || ""}
+                            disabled={processing || reviewBusy || memo.id !== m.memos.at(-1)?.id}
+                            failureText={t("Save failed. Your date is still in this field.", "保存失败，日期仍保留在此输入框。")}
+                            onDirtyChange={dirty => setMemoItemDirty(`${item.id}:due`, dirty)}
+                            onSave={date => saveMemoEdit(memo.id, item.id, { dueDate: date || null })}
                           />
                         </label>
+                        {!item.dueDate && <span className="small muted">{t("Unspecified", "未指定")}</span>}
                         {item.dueOriginal && (
                           <span className="small muted">
                             {t("Said", "原文")}: {item.dueOriginal}
@@ -1524,13 +1571,13 @@ export function MeetingWorkspace({
                         )}
                       </div>
                     )}
-                    <div className="memo-actions">
+                    <div className="memo-actions" hidden={memoMode !== "review"}>
                       {(["accepted", "pending", "rejected"] as const).map(
                         (state) => (
                           <button
                             key={state}
                             className={`text-button ${item.review === state ? "selected" : ""}`}
-                            disabled={processing}
+                            disabled={processing || memo.id !== m.memos.at(-1)?.id}
                             data-review-button="true"
                             onPointerDown={(event) => {
                               const interactionKey = `${memo.id}:${item.id}`;
@@ -1583,10 +1630,15 @@ export function MeetingWorkspace({
                         ),
                       )}
                     </div>
-                    <EvidenceSources meeting={m} item={item} indexes={segmentIndexById} sourceIndex={evidenceIndex} onSelect={(segment, refs) => { setEvidenceRefs(refs ?? []); setEvidence(segment); }} />
-                    <CitedEvidence meeting={m} item={item} sourceIndex={evidenceIndex} onSelect={(segment) => { setEvidenceRefs([]); setEvidence(segment); }} />
+                    {memoMode === "simple" && <SimpleMemoEvidence meeting={m} item={item} indexes={segmentIndexById} sourceIndex={evidenceIndex} disabled={dirtyMemoItems.size > 0} onSelect={(segment, refs) => { setEvidenceRefs(refs); evidenceTrigger.current = document.activeElement as HTMLElement | null; setEvidence(segment); }} onReview={() => setMemoMode("review")} />}
+                    <div hidden={memoMode !== "review"}>
+                      <EvidenceSources meeting={m} item={item} indexes={segmentIndexById} sourceIndex={evidenceIndex} onSelect={(segment, refs) => { setEvidenceRefs(refs ?? []); evidenceTrigger.current = document.activeElement as HTMLElement | null; setEvidence(segment); }} />
+                      <CitedEvidence meeting={m} item={item} sourceIndex={evidenceIndex} onSelect={(segment) => { setEvidenceRefs([]); evidenceTrigger.current = document.activeElement as HTMLElement | null; setEvidence(segment); }} />
+                    </div>
                   </article>
-                ))}
+                    ))}
+                  </section>;
+                })}
               </div>
             </>
           ) : (
@@ -1689,7 +1741,7 @@ export function MeetingWorkspace({
         </details>
       )}
       {(url || chunkPlayer) && (
-        <div className="audio-player">
+        <div className={`audio-player${tab === "memo" ? " memo-player" : ""}${tab === "memo" && miniPlayer ? " memo-mini" : ""}`}>
           {url && (
             <audio
               ref={(element) => {
@@ -1763,6 +1815,7 @@ export function MeetingWorkspace({
             <option value="1.5">1.5×</option>
             <option value="2">2×</option>
           </select>
+          {tab === "memo" && <button type="button" className="player-expand text-button" aria-expanded={!miniPlayer} onClick={() => setMiniPlayer(value => !value)}>{miniPlayer ? t("Expand", "展开") : t("Minimize", "收起")}</button>}
         </div>
       )}
       {acousticConfirm && (
@@ -1981,10 +2034,18 @@ export function MeetingWorkspace({
           </div>
         </Modal>
       )}
+      {assistantSelection && <ContextualMemoAssistant meeting={m} selection={assistantSelection} onMeetingUpdate={saved => { latestLocallySaved.current = saved; onUpdate(saved); }} onClose={() => setAssistantSelection(undefined)} onOpenEvidence={() => {
+        const selectedItem = m.memos.find(version => version.id === assistantSelection.memoId)?.items.find(item => item.id === assistantSelection.itemId);
+        const ref = selectedItem?.sources.find(source => evidenceIndex.has(`${source.id}:${source.revision}`));
+        const source = ref && evidenceIndex.get(`${ref.id}:${ref.revision}`);
+        if (source && ref) { evidenceTrigger.current = Array.from(document.querySelectorAll<HTMLElement>(".contextual-memo button")).find(button => button.textContent?.trim() === t("Check original sources", "核实原话")) ?? null; setEvidenceRefs([ref]); setEvidence(source); }
+        else onError(t("No saved cited passage is available for this note.", "此笔记没有可用的已保存引用段落。"));
+      }} />}
       {evidence && (
         <Modal
+          className="evidence-drawer"
           title={`${t("Source passage", "来源段落")} · r${evidence.revision}`}
-          onClose={() => setEvidence(undefined)}
+          onClose={() => { setEvidence(undefined); requestAnimationFrame(() => evidenceTrigger.current?.focus()); }}
         >
           <div className="modal-body">
             <Pill>{t("Saved evidence revision", "已保存的证据版本")}</Pill>
@@ -2011,13 +2072,13 @@ export function MeetingWorkspace({
                 <button
                   className="button primary"
                   onClick={() => {
+                    if (!navigateTab("transcript")) return;
                     const key = evidence.id;
                     setEvidence(undefined);
                     setPendingOnly(false);
                     setSpeakerFilter("");
                     const targetGroup = groupTranscript(m.segments).findIndex((group) => group.segments.some((segment) => segment.id === key));
                     setTranscriptPage(Math.max(0, Math.floor(targetGroup / pageSize)));
-                    setTab("transcript");
                     setHighlight(key);
                     setTimeout(
                       () =>

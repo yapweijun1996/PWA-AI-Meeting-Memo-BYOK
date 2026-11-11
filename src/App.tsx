@@ -1,6 +1,6 @@
 import { translateUi } from "./i18n";
 import { isMeetingCompleted, doesMeetingNeedReview, getMeetingWorkflow } from "./domain/workflow";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   ArrowUp,
@@ -66,6 +66,8 @@ export default function App() {
     [meetings, setMeetings] = useState<Meeting[]>([]),
     [current, setCurrent] = useState<Meeting>(),
     [loading, setLoading] = useState(true);
+  const currentRoute = useRef(route);
+  currentRoute.current = route;
   const [error, setError] = useState(getSettingsStorageError()),
     [search, setSearch] = useState(""),
     [filter, setFilter] = useState("all"),
@@ -104,12 +106,17 @@ export default function App() {
   }, []);
   useEffect(() => {
     const fn = () => {
+      if (document.querySelector('[data-unsaved-edit="true"]')) {
+        history.pushState(null, "", `${location.pathname}${location.search}#${currentRoute.current}`);
+        setError(uiLanguage === "zh-CN" ? "离开会议前请保存或处理未保存的笔记。" : "Save or resolve your unsaved note before leaving this meeting.");
+        return;
+      }
       setRoute(location.hash.slice(1) || "/");
       setMobileNav(false);
     };
     addEventListener("hashchange", fn);
     return () => removeEventListener("hashchange", fn);
-  }, []);
+  }, [uiLanguage]);
   useEffect(() => {
     setLoading(true);
     void refresh()
@@ -174,7 +181,7 @@ export default function App() {
   }, [route]);
   useEffect(() => {
     const guard = (e: BeforeUnloadEvent) => {
-      if (isProcessing() || isSettingsDirty()) {
+      if (isProcessing() || isSettingsDirty() || document.querySelector('[data-unsaved-edit="true"]')) {
         e.preventDefault();
         e.returnValue = "";
       }

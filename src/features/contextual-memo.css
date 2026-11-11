@@ -1,0 +1,8 @@
+.contextual-memo { display: grid; gap: 12px; }
+.contextual-memo h3, .contextual-memo p { margin: 0; }
+.contextual-memo label:not(.contextual-review) { display: grid; gap: 6px; }
+.contextual-destination, .contextual-text { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; overflow-wrap: anywhere; }
+.contextual-text { white-space: pre-wrap; max-height: 200px; overflow: auto; }
+.contextual-review { display: flex; align-items: flex-start; gap: 8px; }
+.contextual-comparison { display: grid; gap: 8px; }
+.contextual-actions { display: flex; gap: 8px; flex-wrap: wrap; }

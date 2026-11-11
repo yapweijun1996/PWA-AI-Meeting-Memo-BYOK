@@ -132,6 +132,18 @@ export const JobSchema = z
       .optional(),
     pipelineId: key.optional(),
     stepIndex: z.number().int().min(0).max(8).optional(),
+    contextual: z.object({
+      action: z.enum(["simplify", "rewrite", "shorten"]),
+      memoId: key,
+      itemId: key,
+      start: z.number().int().nonnegative(),
+      end: z.number().int().positive(),
+      originalText: text,
+      selectedText: z.string().min(1).max(4000),
+      sourceRevision: z.number().int().positive(),
+      sources: z.array(z.object({ id: transcriptId, revision: z.number().int().positive() }).strict()).min(1).max(100),
+      suggestion: z.string().max(8000).nullable(),
+    }).strict().refine(value => value.end > value.start && value.end <= value.originalText.length && value.selectedText.trim().length > 0 && value.originalText.slice(value.start, value.end) === value.selectedText, "Invalid contextual selection." ).optional(),
   })
   .strict();
 const PipelineSnapshotSchema = SnapshotSchema.extend({
@@ -228,6 +240,17 @@ export const MeetingSchema = z
             model: z.string().max(100),
             items: z.array(MemoItemSchema).max(500),
             originalItems: z.array(MemoItemSchema).max(500).optional(),
+            restoredFrom: key.optional(),
+            reviewCompletion: z.object({
+              kind: z.enum(["all", "priority"]),
+              itemIds: z.array(key).min(1).max(500),
+              sourceRevision: z.number().int().positive(),
+              completedAt: z.string().max(80),
+              fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+              reviewed: z.number().int().nonnegative().max(500),
+              pending: z.number().int().nonnegative().max(500),
+            }).strict().optional(),
+            editUndo: z.array(z.object({ before: MemoItemSchema, after: MemoItemSchema }).strict()).max(10).optional(),
           })
           .strict(),
       )
@@ -284,6 +307,11 @@ export function validateMeeting(value: unknown): Meeting {
     immutable.set(ref(s), value);
   }
   const refs = new Set([...m.history, ...m.segments].map(ref));
+  if (m.memos.some(v => (v.editUndo ?? []).some(entry => entry.before.id !== entry.after.id || !v.items.some(item => item.id === entry.before.id) || [...entry.before.sources, ...entry.after.sources].some(source => !refs.has(ref(source))))))
+    throw new Error("Invalid memo edit undo history.");
+  if (m.jobs.some(job => job.contextual && job.stage !== "memo")) throw new Error("Contextual jobs require the memo stage.");
+  if (m.schemaVersion === 1 && (m.memos.some(v => v.reviewCompletion || v.editUndo || v.restoredFrom) || m.jobs.some(job => job.contextual)))
+    throw new Error("Memo review data requires meeting schema version 2.");
   if (
     m.memos.some((v) =>
       [...v.items, ...(v.originalItems || [])].some((i) =>

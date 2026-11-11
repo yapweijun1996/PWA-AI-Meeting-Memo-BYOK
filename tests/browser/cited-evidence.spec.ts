@@ -28,6 +28,7 @@ test("cited revisions can be read together without claiming semantic verificatio
   }), meeting);
   await page.goto(`/PWA-AI-Meeting-Memo-BYOK/#/meetings/${meeting.id}`);
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   const article = page.locator(".memo-item").first();
   await expect(article.getByText("pending", { exact: true })).toBeVisible();
   await article.getByText("Read cited passages together").click();
@@ -52,6 +53,7 @@ test("cited revisions can be read together without claiming semantic verificatio
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
   await page.evaluate((id) => { location.hash = `#/meetings/${id}`; }, meeting.id);
   await page.getByRole("tab", { name: /会议笔记/ }).click();
+  await page.getByRole("button", { name: "证据审阅", exact: true }).click();
   await page.getByText("一起查看引用段落").click();
   await expect(page.getByText(/引用有效不代表笔记内容有证据支持/)).toBeVisible();
   await expect(page.locator(".cited-evidence-text button").first()).toHaveText(first.text);

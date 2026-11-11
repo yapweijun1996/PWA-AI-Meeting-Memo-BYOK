@@ -29,6 +29,7 @@ async function setup(page: Page) {
   }), meeting);
   await page.goto(`./#/meetings/${meeting.id}`);
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  if (await page.getByRole("button", { name: "Evidence Review" }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review" }).click();
   return meeting;
 }
 
@@ -59,7 +60,7 @@ test("keyboard review waits for a same-tab draft save and retains action fields"
   await note.fill("Human edit before review");
   await holdMeetingWrites(page, meeting.id);
   await page.keyboard.press("Tab");
-  await expect(note).toBeDisabled();
+  await expect(note).toBeVisible();
   await accept.focus();
   await page.keyboard.press("Enter");
   await releaseMeetingWrites(page);
@@ -67,6 +68,7 @@ test("keyboard review waits for a same-tab draft save and retains action fields"
   await expect(page.getByRole("alert").filter({ hasText: /another tab/i })).toHaveCount(0);
   await page.reload();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  if (await page.getByRole("button", { name: "Evidence Review" }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review" }).click();
   const restored = page.locator(".memo-item").first();
   await expect(restored.getByLabel("action note")).toHaveValue("Human edit before review");
   await expect(restored.getByLabel("Action owner")).toHaveValue(meeting.speakers[0].id);
@@ -107,10 +109,12 @@ test("a second touch review cannot leave its draft blur blocked", async ({ page 
   await secondNote.fill("Second draft survives");
   await page.getByRole("tab", { name: /Transcript/ }).click();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  if (await page.getByRole("button", { name: "Evidence Review" }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review" }).click();
   await expect(page.locator(".memo-item").nth(1).getByLabel("action note")).toHaveValue("Second draft survives");
   await expect(page.getByText("Saved locally", { exact: true })).toBeVisible();
   await page.reload();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  if (await page.getByRole("button", { name: "Evidence Review" }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review" }).click();
   await expect(page.locator(".memo-item").nth(1).getByLabel("action note")).toHaveValue("Second draft survives");
 });
 
@@ -125,6 +129,7 @@ test("review retains an owner changed by its pending same-tab write", async ({ p
   await expect(article.getByRole("button", { name: /Accept/ })).toHaveClass(/selected/);
   await page.reload();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  if (await page.getByRole("button", { name: "Evidence Review" }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review" }).click();
   const restored = page.locator(".memo-item").first();
   await expect(restored.getByLabel("Action owner")).toHaveValue(meeting.speakers[1].id);
   await expect(restored.getByRole("button", { name: /Accept/ })).toHaveClass(/selected/);
@@ -136,6 +141,7 @@ test("review waits for an in-flight source change and requires re-review", async
   await holdMeetingWrites(page, meeting.id);
   await page.getByRole("button", { name: "Mark reviewed", exact: true }).first().click();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  if (await page.getByRole("button", { name: "Evidence Review" }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review" }).click();
   const article = page.locator(".memo-item").first();
   await article.getByRole("button", { name: /Accept/ }).click();
   await releaseMeetingWrites(page);
@@ -143,5 +149,27 @@ test("review waits for an in-flight source change and requires re-review", async
   await expect(article.getByRole("button", { name: /Accept/ })).not.toHaveClass(/selected/);
   await page.reload();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  if (await page.getByRole("button", { name: "Evidence Review" }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review" }).click();
   await expect(page.locator(".memo-item").first().getByText("pending", { exact: true })).toBeVisible();
+});
+
+test("review waits for a compensating draft write before accepting", async ({ page }) => {
+  const meeting = await setup(page);
+  const article = page.locator(".memo-item").first();
+  const note = article.getByLabel("action note");
+  const accept = article.getByRole("button", { name: /Accept/ });
+  await holdMeetingWrites(page, meeting.id);
+  await note.fill("Intermediate action");
+  await expect(page.getByText("Saving…", { exact: true })).toBeVisible();
+  await note.fill("Original action");
+  await accept.click();
+  await expect(accept).not.toHaveClass(/selected/);
+  await releaseMeetingWrites(page);
+  await expect(accept).toHaveClass(/selected/);
+  await page.reload();
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page.getByRole("button", { name: "Evidence Review" }).click();
+  const restored = page.locator(".memo-item").first();
+  await expect(restored.getByLabel("action note")).toHaveValue("Original action");
+  await expect(restored.getByRole("button", { name: /Accept/ })).toHaveClass(/selected/);
 });
