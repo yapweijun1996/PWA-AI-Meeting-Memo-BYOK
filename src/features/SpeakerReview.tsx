@@ -895,6 +895,7 @@ function PlaybackMode({
                       type="button"
                       data-caption-id={caption.id}
                       className={`playback-caption-row${active ? " is-active" : ""}`}
+                      aria-current={active ? "true" : undefined}
                       onClick={() => onSeek(caption.start)}
                       disabled={!audioAvailable}
                     >

@@ -29,7 +29,7 @@
 .playback-current-caption + .playback-current-caption { margin-top: 8px; }
 .playback-current-caption-name { color: var(--text-muted); font-size: var(--text-xs); font-weight: 700; }
 .playback-current-caption p { margin: 2px 0 0; font-size: var(--text-lg); line-height: 1.45; overflow-wrap: anywhere; }
-.playback-current-caption [data-fragment-active="true"] { background: #ffe9a8; color: #26382f; border-radius: 2px; }
+.playback-current-caption [data-fragment-active="true"] { background: var(--caption-highlight-bg); color: var(--caption-highlight-text); text-decoration: underline; text-underline-offset: .15em; border-radius: 2px; }
 .playback-stage-footer { display: none; }
 .playback-mode > .playback-roster {
   border: 1px solid var(--border);

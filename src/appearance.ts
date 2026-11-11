@@ -10,7 +10,7 @@ let currentTheme: ThemeChoice = "light";
 let currentPalette: PaletteChoice = "forest";
 const parseTheme = (value: string | null): ThemeChoice => value === "dark" ? "dark" : "light";
 const parsePalette = (value: string | null): PaletteChoice => value === "ocean" || value === "violet" || value === "amber" ? value : "forest";
-function applyTheme(value: ThemeChoice) { currentTheme = value; document.documentElement.dataset.theme = value; document.querySelector('meta[name="theme-color"]')?.setAttribute("content", value === "dark" ? "#131d18" : "#f7f8f5"); listeners.forEach((listener) => listener()); }
+function applyTheme(value: ThemeChoice) { currentTheme = value; document.documentElement.dataset.theme = value; document.querySelector('meta[name="theme-color"]')?.setAttribute("content", value === "dark" ? "#15191f" : "#f7f8fa"); listeners.forEach((listener) => listener()); }
 function applyPalette(value: PaletteChoice) { currentPalette = value; document.documentElement.dataset.palette = value; listeners.forEach((listener) => listener()); }
 export type FontSize = "small" | "normal" | "large" | "xlarge" | "xxlarge";
 let currentSize: FontSize = "normal";

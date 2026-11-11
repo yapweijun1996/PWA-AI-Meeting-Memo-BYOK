@@ -611,6 +611,128 @@ test("caption identities stay distinct and readable with chunk labels and long c
   }
 });
 
+test("real playback colors follow every palette with readable semantic states", async ({ page, context }) => {
+  test.setTimeout(120_000);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await createFixture(page);
+  await page.getByRole("button", { name: "Playback mode", exact: true }).click();
+  const audio = page.locator("audio");
+  const seek = async (time: number) => audio.evaluate((element, value) => {
+    (element as HTMLMediaElement).currentTime = value;
+    element.dispatchEvent(new Event("seeked"));
+  }, time);
+  await seek(0.2);
+  const slider = page.getByRole("slider", { name: "Playback position" });
+  await slider.focus();
+  await slider.press("ArrowRight");
+  await expect(slider).toHaveValue("0.3");
+  await expect.poll(() => audio.evaluate(element => (element as HTMLMediaElement).currentTime)).toBeCloseTo(0.3, 1);
+  await expect(slider).toHaveCSS("--player-progress", "0.75%");
+  await seek(0.2);
+  await expect(page.locator(".playback-caption-row.is-active")).toHaveCount(1);
+  const settings = await context.newPage();
+  await settings.goto(`${base}#/settings`);
+  await settings.getByRole("tab", { name: "Appearance" }).click();
+  for (const theme of ["light", "dark"]) {
+    await settings.getByLabel("Theme", { exact: true }).selectOption(theme);
+    let fixed: { avatar: string; review: string } | undefined;
+    const accents = new Set<string>();
+    const highlights = new Set<string>();
+    for (const palette of ["forest", "ocean", "violet", "amber"]) {
+      await settings.getByLabel("Color palette", { exact: true }).selectOption(palette);
+      await expect(page.locator("html")).toHaveAttribute("data-palette", palette);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await page.mouse.move(0, 0);
+      await page.bringToFront();
+      await page.locator(".player-skip-back").focus();
+      await page.keyboard.press("Tab");
+      await expect(page.locator(".audio-player .play-button")).toBeFocused();
+      const colors = await page.evaluate(() => {
+        const rgb = (value: string) => value.match(/[\d.]+/g)!.map(Number);
+        const blend = (top: number[], bottom: number[]) => {
+          const alpha = top[3] ?? 1;
+          return top.slice(0, 3).map((value, index) => value * alpha + bottom[index] * (1 - alpha));
+        };
+        const background = (element: Element | null): number[] => element
+          ? blend(rgb(getComputedStyle(element).backgroundColor), background(element.parentElement))
+          : [255, 255, 255];
+        const luminance = (color: number[]) => {
+          const c = color.slice(0, 3).map(value => value / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+          return c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722;
+        };
+        const contrast = (a: number[], b: number[]) => {
+          const [hi, lo] = [luminance(a), luminance(b)].sort((a, b) => b - a);
+          return (hi + 0.05) / (lo + 0.05);
+        };
+        const get = (selector: string) => document.querySelector(selector)!;
+        const style = (selector: string) => getComputedStyle(get(selector));
+        const selectors = [".speaker-mode-switch .button.primary", ".audio-player .play-button", ".playback-current-content", ".playback-identity-state", ".playback-caption-row.is-active .playback-caption-time", ".playback-current-caption [data-fragment-active=true]", ".playback-caption-row [data-fragment-active=true]", ".playback-follow-chip", ".playback-state", ".audio-player .player-speed", ".speaker-mode-switch .button.secondary", ".sidebar nav .active", ".sidebar-recent-list a.active"];
+        const text = selectors.map(selector => ({ selector, ratio: contrast(rgb(style(selector).color), background(get(selector))) }));
+        const play = style(".audio-player .play-button");
+        const mode = style(".speaker-mode-switch .button.primary");
+        const stage = style(".playback-stage");
+        const row = style(".playback-caption-row.is-active");
+        const fill = style(".player-progress").accentColor;
+        const avatar = style(".playback-current-speaker .speaker-avatar").backgroundColor;
+        const review = style(".breadcrumb .pill, .pill.sand");
+        return {
+          text, mode: mode.backgroundColor, play: play.backgroundColor, stage: stage.backgroundColor,
+          row: row.backgroundColor, rowBorder: contrast(rgb(row.borderTopColor), background(get(".playback-caption-row.is-active"))),
+          highlight: style(".playback-current-caption [data-fragment-active=true]").backgroundColor,
+          focus: contrast(rgb(play.outlineColor), background(get(".audio-player"))),
+          focusStyle: play.outlineStyle, focusWidth: parseFloat(play.outlineWidth),
+          progress: contrast(rgb(fill), background(get(".audio-player"))),
+          avatar, review: `${review.color}/${review.backgroundColor}`,
+        };
+      });
+      expect(colors.play, `${theme}/${palette} play and mode`).toBe(colors.mode);
+      for (const item of colors.text) expect(item.ratio, `${theme}/${palette} ${item.selector}`).toBeGreaterThanOrEqual(4.5);
+      expect(colors.rowBorder, `${theme}/${palette} current row border`).toBeGreaterThanOrEqual(3);
+      expect(colors.focus, `${theme}/${palette} keyboard focus`).toBeGreaterThanOrEqual(3);
+      expect(colors.focusStyle).toBe("solid");
+      expect(colors.focusWidth).toBeGreaterThanOrEqual(2);
+      expect(colors.progress, `${theme}/${palette} native range accent`).toBeGreaterThanOrEqual(3);
+      fixed ??= { avatar: colors.avatar, review: colors.review };
+      expect(colors.avatar).toBe(fixed.avatar);
+      expect(colors.review).toBe(fixed.review);
+      await page.locator(".play-button").hover();
+      const playHover = await page.locator(".play-button").evaluate(element => getComputedStyle(element).backgroundColor);
+      await page.locator(".speaker-mode-switch .button.primary").hover();
+      const modeHover = await page.locator(".speaker-mode-switch .button.primary").evaluate(element => getComputedStyle(element).backgroundColor);
+      expect(playHover).toBe(modeHover);
+      expect(playHover).not.toBe(colors.play);
+      await page.mouse.move(0, 0);
+      accents.add(colors.play);
+      highlights.add(colors.highlight);
+      if (palette === "violet") {
+        for (const width of [1280, 390, 320]) {
+          await page.setViewportSize({ width, height: 1000 });
+          await page.locator(".playback-stage").scrollIntoViewIfNeeded();
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+          await page.screenshot({ path: `test-results/playback-tokens-${theme}-${width}-${test.info().project.name}.png` });
+        }
+        await page.setViewportSize({ width: 1280, height: 1000 });
+      }
+    }
+    expect(accents.size).toBe(4);
+    expect(highlights.size).toBe(4);
+  }
+  await settings.close();
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).toHaveAttribute("data-palette", "amber");
+  await page.getByRole("tab", { name: /Speakers/ }).click();
+  await page.getByRole("button", { name: "Playback mode", exact: true }).click();
+  await seek(0.2);
+  const hero = page.locator('[data-speaker-hero=true]');
+  await hero.evaluate(element => element.setAttribute("data-retained-color-node", "yes"));
+  await page.getByRole("button", { name: "Play audio", exact: true }).click();
+  await expect(page.locator('.playback-state[data-playback-status="playing"]')).toBeVisible();
+  await expect(hero).toHaveAttribute("data-retained-color-node", "yes");
+  await page.getByRole("button", { name: "Pause audio", exact: true }).click();
+  await expect(page.locator('.playback-state[data-playback-status="paused"]')).toBeVisible();
+});
+
 test("transcript groups preserve fragment review, undo and filtering", async ({ page }) => {
   const fixture = fixtureMeeting();
   const template = fixture.segments[0];

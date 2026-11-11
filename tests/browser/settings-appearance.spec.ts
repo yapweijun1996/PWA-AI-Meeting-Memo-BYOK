@@ -129,12 +129,15 @@ test("font size persists and changes rendered typography", async ({ page }) => {
 test("theme and palette persist with readable dark surfaces", async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto(settings);
+  await page.locator("#app-sidebar").evaluate(async sidebar => {
+    await Promise.all(sidebar.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => undefined)));
+  });
   await page.getByRole("tab", { name: "Appearance" }).click();
   await page.getByLabel("Theme", { exact: true }).selectOption("dark");
   await page.getByLabel("Color palette", { exact: true }).selectOption("ocean");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(page.locator("html")).toHaveAttribute("data-palette", "ocean");
-  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#131d18");
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#15191f");
   for (const mode of ["light", "dark"]) {
     await page.getByLabel("Theme", { exact: true }).selectOption(mode);
     for (const palette of ["forest", "ocean", "violet", "amber"]) {

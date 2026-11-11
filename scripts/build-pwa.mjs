@@ -103,8 +103,8 @@ const manifest = {
   start_url: base,
   scope: base,
   display: "standalone",
-  background_color: "#f7f8f5",
-  theme_color: "#f6f7f3",
+  background_color: "#f7f8fa",
+  theme_color: "#f7f8fa",
   lang: "en",
   icons: [
     {

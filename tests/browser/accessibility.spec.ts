@@ -55,3 +55,21 @@ test("manifest and worker use the project path", async ({ page, request }) => {
   );
   expect(scope).toBe(new URL("/PWA-AI-Meeting-Memo-BYOK/", page.url()).href);
 });
+
+test("neutral theme roles keep the library and new meeting dialog readable", async ({ page }, info) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const theme of ["light", "dark"]) {
+    await page.goto("/PWA-AI-Meeting-Memo-BYOK/#/settings");
+    await page.getByRole("tab", { name: "Appearance" }).click();
+    await page.getByLabel("Theme", { exact: true }).selectOption(theme);
+    await page.getByLabel("Color palette", { exact: true }).selectOption("violet");
+    await page.getByRole("link", { name: "Workspace", exact: true }).click();
+    expect((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze()).violations).toEqual([]);
+    await page.screenshot({ path: info.outputPath(`library-${theme}.png`) });
+    await page.locator("main").getByRole("button", { name: /^(New meeting|Create your first meeting)$/ }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    expect((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze()).violations).toEqual([]);
+    await page.screenshot({ path: info.outputPath(`new-meeting-${theme}.png`) });
+    await page.keyboard.press("Escape");
+  }
+});

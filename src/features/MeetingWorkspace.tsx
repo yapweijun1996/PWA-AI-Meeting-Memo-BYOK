@@ -4,7 +4,7 @@ import { planMemo, type MemoPipeline } from "../providers/memo-plan";
 import { resumablePipeline } from "../jobs/memo-pipeline";
 import type { Selection } from "../providers/credentials";
 import { speakerBackground } from "../components/speaker-appearance";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   ArrowLeft,
   AudioLines,
@@ -1795,6 +1795,7 @@ export function MeetingWorkspace({
           <span className="player-time player-position">{formatTime(position)}</span>
           <input
             className="player-progress"
+            style={{ "--player-progress": `${duration > 0 ? Math.min(100, Math.max(0, position / duration * 100)) : 0}%` } as CSSProperties}
             aria-label={t("Playback position", "播放位置")}
             type="range"
             min="0"
