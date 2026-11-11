@@ -59,6 +59,7 @@ test("font persists across reload and tabs without losing API drafts", async ({ 
   await page.getByRole("tab", { name: "API & models" }).click();
   await expect(page.getByLabel("OpenAI API key", { exact: true })).toHaveValue("test-key-not-real");
   await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(page.getByRole("button", { name: "Saved on this device" })).toBeVisible();
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-font", "georgia");
   const other = await context.newPage();
@@ -189,5 +190,8 @@ test("largest font size remains usable on a narrow screen", async ({ page }) => 
   await page.getByRole("tab", { name: "Appearance" }).click();
   await page.getByLabel("Font size", { exact: true }).selectOption("xxlarge");
   await expect(page.locator("html")).toHaveAttribute("data-font-size", "xxlarge");
+  await page.locator(".settings-grid .settings-panel").last().locator("p.small").evaluate((element) => {
+    element.textContent = "Build 0123456789abcdef0123456789abcdef01234567";
+  });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

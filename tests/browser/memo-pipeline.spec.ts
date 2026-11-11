@@ -37,6 +37,7 @@ test("Chinese long memo confirmation is readable and sends nothing before confir
   await page.getByRole("tab", { name: "Appearance" }).click();
   await page.getByLabel("Display language / 显示语言").selectOption("zh-CN");
   await page.getByRole("button", { name: "保存设置", exact: true }).click();
+  await expect(page.getByRole("button", { name: "已保存在此设备", exact: true })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(base + hash);
   await page.getByRole("tab", { name: /会议笔记/ }).click();

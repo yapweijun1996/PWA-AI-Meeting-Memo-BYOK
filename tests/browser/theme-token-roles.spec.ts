@@ -19,6 +19,10 @@ test("palette accents remain independent of success and speaker colors", async (
       await page.getByTestId("color-fixture").locator(".button.primary").focus();
       await page.keyboard.press("Tab");
       await expect(page.getByTestId("color-fixture").locator(".player-skip")).toBeFocused();
+      await page.getByTestId("color-fixture").locator(".button.primary").evaluate(async (button) => {
+        void getComputedStyle(button).backgroundColor;
+        await Promise.all(button.getAnimations().map((animation) => animation.finished.catch(() => undefined)));
+      });
       const colors = await page.getByTestId("color-fixture").evaluate((fixture) => {
         const pill = getComputedStyle(fixture.querySelector(".pill")!);
         const button = getComputedStyle(fixture.querySelector("button")!);

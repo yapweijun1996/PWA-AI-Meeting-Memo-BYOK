@@ -1208,6 +1208,7 @@ test("default OpenAI speech and selected OpenRouter memo use their own model and
   await page
     .getByLabel("Attach audio", { exact: true })
     .setInputFiles({ name: "test.wav", mimeType: "audio/wav", buffer: wav });
+  await expect(page.locator(".recording-info")).toContainText("test.wav");
   const hash = new URL(page.url()).hash;
   await page.getByRole("link", { name: "Settings & API keys" }).click();
   await expect(page.getByLabel("Transcription provider")).toHaveValue(
