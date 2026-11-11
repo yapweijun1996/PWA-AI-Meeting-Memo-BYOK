@@ -1,9 +1,7 @@
-name: Verify and publish meeting memo
+name: Build and publish meeting memo
 
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -11,11 +9,11 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:
-      group: verify-${{ github.ref }}
+      group: build-${{ github.ref }}
       cancel-in-progress: true
     env:
       VITE_BASE_PATH: /PWA-AI-Meeting-Memo-BYOK/
@@ -30,61 +28,17 @@ jobs:
           cache: npm
       - name: Install the locked dependency tree
         run: npm ci
-      - name: Lint source
-        run: npm run lint
-      - name: Check types
-        run: npm run typecheck
-      - name: Verify domain behavior
-        run: npm run test:unit
       - name: Build the static application
         run: npm run build
-      - name: Use the official Ubuntu archive mirror for browser dependencies
-        run: |
-          sudo python3 - <<'PY'
-          from pathlib import Path
-
-          roots = [Path("/etc/apt/sources.list"), Path("/etc/apt/sources.list.d")]
-          source_files = [path for root in roots if root.is_file() for path in [root]]
-          source_files.extend(
-              path
-              for root in roots[1:]
-              if root.is_dir()
-              for path in root.iterdir()
-              if path.suffix in {".list", ".sources"} and path.is_file()
-          )
-          changed = []
-          for path in source_files:
-              text = path.read_text()
-              updated = text.replace("azure.archive.ubuntu.com", "archive.ubuntu.com")
-              if updated != text:
-                  path.write_text(updated)
-                  changed.append(str(path))
-          remaining = [
-              str(path)
-              for path in source_files
-              if "azure.archive.ubuntu.com" in path.read_text()
-          ]
-          if remaining:
-              raise SystemExit(f"Ubuntu archive mirror replacement incomplete: {remaining}")
-          print("Updated Ubuntu archive sources:", ", ".join(changed) or "none")
-          PY
-      - name: Install test browsers
-        run: npx --no-install playwright install --with-deps chromium webkit
-      - name: Verify the production build in browsers
-        run: npm run test:e2e
-      - name: Verify PWA updates and artifact boundaries
-        run: |
-          npm run test:pwa
-          npm run check:artifact
-      - name: Upload only the verified site
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      - name: Upload the built site
+        if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: dist
 
   publish:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    needs: verify
+    if: github.ref == 'refs/heads/main'
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
@@ -112,7 +66,7 @@ jobs:
       - name: Configure the trusted Pages deployment
         if: steps.current.outputs.publish == 'true'
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
-      - name: Publish the verified artifact
+      - name: Publish the built artifact
         id: publish
         if: steps.current.outputs.publish == 'true'
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5

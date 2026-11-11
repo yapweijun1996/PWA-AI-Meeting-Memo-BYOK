@@ -34,9 +34,9 @@ Use a static Vite build producing `dist/`, an npm lockfile, and the same pinned 
 
 The E2E script must start a static preview server and shut it down, with Playwright configured for the same base path. Offline/update flows need dedicated tests; a dev-server run is insufficient. These scripts and Playwright tests are present; `test:pwa` additionally checks update activation and `check:artifact` checks the release boundary.
 
-The active workflow was copied from [the example](examples/github-pages.yml) after these prerequisites passed. It checks pull requests, builds on `main`, and publishes only successful trusted-main runs. Manual dispatch from other branches never deploys. The `github-pages` environment was rechecked through the API and permits only the `main` branch.
+The active workflow builds on `main` and publishes successful builds. It does not run the automated test suite or check pull requests; run the relevant checks locally before publication. `npm run build` still includes TypeScript compilation. Manual dispatch from other branches never deploys. The `github-pages` environment was rechecked through the API and permits only the `main` branch. The workflow under [examples](examples/github-pages.yml) remains an inactive reference and does not describe the current publication pipeline.
 
-The browser-dependency step rewrites only the Ubuntu runner's `azure.archive.ubuntu.com` entries to the official `archive.ubuntu.com` mirror before Playwright installs Chromium and WebKit system packages. It preserves the runner's signed suites, components, security source and the existing install command; it does not disable APT signature checks or bypass browser tests. This is an ephemeral CI-network workaround, not an application or deployment-host configuration.
+Browser and PWA tests run locally rather than in the publication workflow; the publication runner does not install test browsers.
 
 The example uses action commit pins taken from the official Vite deployment guidance and checked for existence against their official repositories on 2026-11-04. Review pin updates and transitive dependencies normally; a resolvable commit alone is not a security audit.
 
