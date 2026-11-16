@@ -1,20 +1,10 @@
 {
   "version": 1,
   "files": {
-    "index.html": {
-      "color": 1
-    },
-    "src/appearance.ts": {
-      "color": 2
-    },
     "src/components/SpeakerAvatar.tsx": {
       "color": 12
     },
     "src/features/contextual-memo.css": {
-      "radius": 1
-    },
-    "src/features/evidence-layout.css": {
-      "color": 2,
       "radius": 1
     },
     "src/features/memo-reading.css": {
@@ -27,11 +17,11 @@
       "radius": 2
     },
     "src/style.css": {
-      "color": 149,
+      "color": 139,
       "font-size": 26,
       "radius": 122,
-      "shadow": 35,
-      "z-index": 24
+      "shadow": 29,
+      "z-index": 13
     }
   },
   "selectorOwners": {

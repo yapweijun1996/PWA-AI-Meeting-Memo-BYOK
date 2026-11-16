@@ -1,7 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { browserChromePlugin } from "./scripts/browser-chrome.mjs";
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), browserChromePlugin()],
   base: process.env.VITE_BASE_PATH || "/PWA-AI-Meeting-Memo-BYOK/",
   define: {
     __BUILD_ID__: JSON.stringify(

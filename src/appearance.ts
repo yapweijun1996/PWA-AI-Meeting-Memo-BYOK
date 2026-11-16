@@ -10,8 +10,12 @@ let currentTheme: ThemeChoice = "light";
 let currentPalette: PaletteChoice = "forest";
 const parseTheme = (value: string | null): ThemeChoice => value === "dark" ? "dark" : "light";
 const parsePalette = (value: string | null): PaletteChoice => value === "ocean" || value === "violet" || value === "amber" ? value : "forest";
-function applyTheme(value: ThemeChoice) { currentTheme = value; document.documentElement.dataset.theme = value; document.querySelector('meta[name="theme-color"]')?.setAttribute("content", value === "dark" ? "#15191f" : "#f7f8fa"); listeners.forEach((listener) => listener()); }
-function applyPalette(value: PaletteChoice) { currentPalette = value; document.documentElement.dataset.palette = value; listeners.forEach((listener) => listener()); }
+function syncBrowserChrome() {
+  const background = getComputedStyle(document.documentElement).getPropertyValue("--bg-app").trim();
+  if (background) document.querySelector('meta[name="theme-color"]')?.setAttribute("content", background);
+}
+function applyTheme(value: ThemeChoice) { currentTheme = value; document.documentElement.dataset.theme = value; syncBrowserChrome(); listeners.forEach((listener) => listener()); }
+function applyPalette(value: PaletteChoice) { currentPalette = value; document.documentElement.dataset.palette = value; syncBrowserChrome(); listeners.forEach((listener) => listener()); }
 export type FontSize = "small" | "normal" | "large" | "xlarge" | "xxlarge";
 let currentSize: FontSize = "normal";
 const parseSize = (value: string | null): FontSize => value === "small" || value === "large" || value === "xlarge" || value === "xxlarge" ? value : "normal";

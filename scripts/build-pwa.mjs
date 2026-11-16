@@ -1,6 +1,8 @@
 import { readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import process from "node:process";
+import console from "node:console";
 import {
   findInstalledOnnxRuntimeDist,
   isDeferredSpeakerAsset,
@@ -94,6 +96,11 @@ if (
   );
 }
 
+// Vite has already resolved the authoritative CSS role into the static HTML.
+const html = await readFile("dist/index.html", "utf8");
+const themeMetas = [...html.matchAll(/<meta\b(?=[^>]*\bname=["']theme-color["'])[^>]*>/gi)];
+const chromeColor = themeMetas.length === 1 ? themeMetas[0][0].match(/\bcontent=["'](#[\da-f]{6})["']/i)?.[1] : undefined;
+if (!chromeColor) throw new Error("Built HTML requires one resolved browser theme-color meta");
 const manifest = {
   id: base,
   name: "Meeting Memo",
@@ -103,8 +110,8 @@ const manifest = {
   start_url: base,
   scope: base,
   display: "standalone",
-  background_color: "#f7f8fa",
-  theme_color: "#f7f8fa",
+  background_color: chromeColor,
+  theme_color: chromeColor,
   lang: "en",
   icons: [
     {

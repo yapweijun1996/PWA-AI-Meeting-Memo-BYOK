@@ -78,7 +78,7 @@ async function createFixture() {
   );
   await writeFile(
     path.join(fixtureRoot, "dist", "index.html"),
-    "<!doctype html><html><head></head><body>fixture</body></html>",
+    '<!doctype html><html><head><meta name="theme-color" content="#123456"></head><body>fixture</body></html>',
   );
   await writeFile(
     path.join(fixtureRoot, "dist", "assets", "app.js"),
@@ -98,12 +98,27 @@ afterEach(async () => {
   fixtureRoot = undefined;
 });
 
+it.each([
+  ["missing", "<html><head></head></html>"],
+  ["ambiguous", '<html><head><meta name="theme-color" content="#123456"><meta name="theme-color" content="#654321"></head></html>'],
+])("rejects %s resolved browser chrome before emitting a manifest", async (_case, html) => {
+  await createFixture();
+  await writeFile(path.join(fixtureRoot!, "dist", "index.html"), html);
+  const result = runNodeScript(path.join(fixtureRoot!, "scripts", "build-pwa.mjs"));
+  expect(result.status).toBe(1);
+  expect(result.output).toContain("Built HTML requires one resolved browser theme-color meta");
+  await expect(access(path.join(fixtureRoot!, "dist", "manifest.webmanifest"))).rejects.toThrow();
+});
+
 it("builds canonical scoped assets and rejects Windows/dist worker paths", async () => {
   await createFixture();
   const buildScript = path.join(fixtureRoot!, "scripts", "build-pwa.mjs");
   const checkScript = path.join(fixtureRoot!, "scripts", "check-artifact.mjs");
   const firstBuild = runNodeScript(buildScript);
   expect(firstBuild.status, firstBuild.output).toBe(0);
+  const manifest = JSON.parse(await readFile(path.join(fixtureRoot!, "dist", "manifest.webmanifest"), "utf8"));
+  expect(manifest.background_color).toBe("#123456");
+  expect(manifest.theme_color).toBe("#123456");
 
   const workerPath = path.join(fixtureRoot!, "dist", "sw.js");
   const firstWorker = await readFile(workerPath, "utf8");

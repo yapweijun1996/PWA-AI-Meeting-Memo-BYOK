@@ -1,53 +1,46 @@
-/* Central theme tokens: components consume semantic colors from these roots. */
-:root { --review-selection-bg: #edf5e8; --review-selection-border: #34714a; --processing-bg: #f0f8ed; --processing-border: #b9d8bd; --processing-accent: #3c8052; --processing-icon-bg: #d5ead5; --processing-icon-text: #246b3f; --processing-button-bg: #fff; --sample-current-bg: #dcedd8; }
-:root[data-palette="ocean"] { --color-accent: #285b70; --palette-13: #285b70; --palette-18: #245d75; --palette-19: #2d718b; --palette-21: #5b98a7; }
-:root[data-palette="violet"] { --color-accent: #5d4a79; --palette-13: #5d4a79; --palette-18: #5e477a; --palette-19: #755d91; --palette-21: #9a82ac; }
-:root[data-palette="amber"] { --color-accent: #745225; --palette-13: #745225; --palette-18: #75521d; --palette-19: #916b2f; --palette-21: #b09156; }
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --text-body: #d9e6db; --text-heading: #f0f7f1; --text-muted: #b3c5b7; --border-default: #405548; --bg-app: #131d18; --bg-surface: #202d25;
-  --status-neutral-bg: #34453a; --status-neutral-text: #d2e2d4; --status-green-bg: #294736; --status-green-text: #b5eac2; --status-sand-bg: #554528; --status-sand-text: #f5d99a; --status-light-bg: #34453a; --status-light-text: #d2e2d4; --status-danger-bg: #51322e; --status-danger-text: #ffd2ca; --status-danger: #f3b1a5;
-  --palette-8: #a8c7af; --palette-9: #b9dfc2; --palette-11: #1b2720; --palette-12: #b3c5b7; --palette-13: #315c40; --palette-14: #2c4031; --palette-15: #a8d9b3; --palette-16: #304538; --palette-17: #405747; --palette-18: #b3e7bf; --palette-19: #9cd9aa; --palette-20: #efc477; --palette-21: #a6ce91; --palette-22: #97ad99;
-  --palette-24: #c0e6c7; --palette-25: #405548; --palette-26: #bdcdbd; --palette-27: #29382d; --palette-28: #b4d9bc; --palette-29: #2c3a30; --palette-30: #b5dcbd; --palette-31: #2d3b31; --palette-32: #c0d0c0; --palette-33: #294736; --palette-34: #554528; --palette-35: #405548; --palette-36: #34453a;
-  --palette-37: #405548; --palette-38: #2e3f32; --palette-39: #2d3e31; --palette-40: #334332; --palette-41: #455946; --palette-42: #394d3c; --palette-43: #202d25; --palette-44: #405548; --palette-46: #b4c7b6; --palette-47: #304033; --palette-48: #789879; --palette-49: #405a44; --palette-50: #3e4f41;
-  --palette-51: #364d39; --palette-52: #3b4e3d; --palette-55: #2b3c30; --palette-56: #cfdfd1; --palette-57: #3e3548; --palette-58: #493d2e; --palette-59: #3e5343; --palette-60: #2e4032; --palette-61: #314436; --palette-62: #405146; --palette-63: #43574a; --palette-64: #2e4032; --palette-65: #405447; --palette-66: #405447; --palette-67: #2c3d30; --palette-68: #26342a; --palette-69: #344637; --palette-70: #ebf5ec;
-  --palette-72: #2e4032; --palette-73: #2d3d31; --palette-74: #455c4a; --palette-75: #263a2b; --palette-76: #43584a; --palette-79: #536a59; --palette-80: #526a55; --palette-81: #26352a; --palette-82: #304536; --palette-83: #92bda0; --palette-84: #435a48; --palette-85: #2c3e31; --palette-86: #405546; --palette-87: #51322e; --palette-88: #86544b; --palette-89: #514329; --palette-90: #776342; --palette-91: #2e4533; --palette-92: #333c4a; --palette-93: #304535;
-  --palette-95: #2c3e31; --palette-96: #43584a; --palette-97: #304135; --palette-98: #405548; --palette-99: #3b4c40; --palette-100: #344a37; --palette-102: #d9e6db; --palette-103: #334538; --palette-104: #9cbb8c; --palette-105: #c2dda9; --palette-106: #e8bd73; --palette-107: #52452b; --palette-108: #26352a; --palette-109: #f3f7f3; --palette-110: #28372c; --palette-111: #aec3ae; --palette-112: #c0d4c2; --palette-113: #405a44; --palette-114: #374d3b; --palette-115: #29392d; --palette-117: #4a6650; --palette-118: #273a2d; --palette-120: #385541; --palette-121: #d1e6d4; --palette-122: #2c3e31; --palette-123: #34483a; --palette-124: #35583e; --palette-125: #b7e5c2; --palette-126: #426c4b; --palette-127: #54725a; --palette-128: #25352a; --palette-129: #c0d4c1; --palette-130: #405a46; --palette-131: #a6d6ae; --palette-132: #26392b; --palette-133: #a6dcb0; --palette-134: #537f5c; --palette-135: #93b792; --palette-136: #89ad91; --palette-137: #31513a;
-  --color-accent: #315c40; --review-selection-bg: #304a36; --review-selection-border: #9dd3a5; --processing-bg: #263c2c; --processing-border: #53755a; --processing-accent: #82bd90; --processing-icon-bg: #385c42; --processing-icon-text: #c4ead0; --processing-button-bg: #25382c; --sample-current-bg: #3f684a;
-}
-:root[data-theme="dark"][data-palette="ocean"] { --color-accent: #285b70; --palette-13: #285b70; --palette-18: #a8d9ec; --palette-19: #a8d9ec; }
-:root[data-theme="dark"][data-palette="violet"] { --color-accent: #5d4a79; --palette-13: #5d4a79; --palette-18: #e0cdf3; --palette-19: #e0cdf3; }
-:root[data-theme="dark"][data-palette="amber"] { --color-accent: #745225; --palette-13: #745225; --palette-18: #f3d19a; --palette-19: #f3d19a; }
-:root[data-theme="dark"] .topbar { background: var(--bg-surface); }
-:root[data-theme="dark"] .speaker-queue-item.is-selected { background: var(--review-selection-bg); border-color: var(--review-selection-border); }
-:root[data-theme="dark"] .processing-card { background: var(--processing-bg); border-color: var(--processing-border); border-left-color: var(--processing-accent); }
-:root[data-theme="dark"] .processing-indicator { background: var(--processing-icon-bg); color: var(--processing-icon-text); }
-:root[data-theme="dark"] .processing-card > button { background: var(--processing-button-bg); }
-:root[data-theme="dark"] .speaker-sample-transcript .is-current { background: var(--sample-current-bg); }
-:root[data-theme="dark"] .processing-copy strong { color: var(--text-muted); }
-:root[data-theme="dark"] .workspace-tabs > button[aria-selected="true"] { color: var(--color-accent-text); border-bottom-color: var(--color-accent-text); }
-:root[data-theme="dark"] .green-text, :root[data-theme="dark"] .breadcrumb-root:hover { color: var(--color-accent-text); }
-
-:root { --immersive-accent: #a4e696; }
-:root[data-palette="ocean"] { --immersive-accent: #9bdcef; }
-:root[data-palette="violet"] { --immersive-accent: #d8bef3; }
-:root[data-palette="amber"] { --immersive-accent: #f3d098; }
-
-
-/* Semantic roles shared by every palette. Status and speaker colors remain
-   independent; the numbered primitives above support unmigrated components. */
+/* Semantic roles have one base owner here. Theme/palette scopes deliberately
+   override those roles and the numbered primitives consumed by legacy views.
+   style.css owns the base palette, speaker slots and typography axes. */
 :root {
-  --bg-app: #f7f8fa;
-  --bg-surface: #ffffff;
+  --status-neutral-bg: #eceff3;
+  --status-neutral-text: #465362;
+  --status-green-bg: var(--palette-33);
+  --status-green-text: #26603a;
+  --color-accent-text: var(--palette-18);
+  --color-focus: var(--palette-18);
+  --status-sand-bg: var(--palette-34);
+  --status-sand-text: var(--palette-32);
+  --status-light-bg: var(--palette-36);
+  --status-light-text: var(--palette-32);
+  --status-danger-bg: var(--palette-87);
+  --status-danger-text: var(--status-danger);
   --text-body: #27313c;
+  --color-accent: #385e45;
   --text-heading: #18212c;
   --text-muted: #52606e;
   --border-default: #dce1e7;
+  --bg-surface: #ffffff;
+  --status-danger: #a54d42;
+  --green: var(--color-accent);
+  --ink: var(--text-heading);
+  --muted: var(--text-muted);
+  --border: var(--border-default);
+  --surface: var(--bg-surface);
+  --radius: 14px;
+  --review-selection-bg: #edf5e8;
+  --review-selection-border: #34714a;
+  --processing-bg: #f0f8ed;
+  --processing-border: #b9d8bd;
+  --processing-accent: #3c8052;
+  --processing-icon-bg: #d5ead5;
+  --processing-icon-text: #246b3f;
+  --processing-button-bg: #fff;
+  --sample-current-bg: #dcedd8;
+  --immersive-accent: #a4e696;
+  --bg-app: #f7f8fa;
   --surface-panel: var(--bg-surface);
   --surface-subtle: #f0f2f5;
   --border-control: #788492;
-  --status-neutral-bg: #eceff3;
-  --status-neutral-text: #465362;
   --action-primary-bg: var(--color-accent);
   --action-primary-text: #ffffff;
   --action-primary-hover: #2c4c36;
@@ -63,8 +56,37 @@
   --player-track: #788492;
   --shadow-player: 0 5px 22px #1118271a;
   --shadow-action: 0 3px 5px #11182714;
+  --evidence-highlight-bg: #ffecaa;
+  --evidence-highlight-text: #25362d;
+  --radius-evidence: 3px;
+  --tooltip-bg: #243a2d;
+  --tooltip-text: #fff;
+  --shadow-tooltip: 0 4px 14px #142b2330;
+  --shadow-toast: 0 6px 22px #142b2330;
+  --shadow-processing: 0 5px 18px rgba(44, 94, 57, .10);
+  --shadow-processing-indicator: 0 0 0 7px rgba(76, 147, 88, .09);
+  --processing-sweep-accent: #4b945d;
+  --surface-topbar: rgba(252, 252, 250, 0.94);
+  --shadow-dialog: 0 20px 80px var(--palette-77);
+  --backdrop-dialog: var(--palette-78);
+  --layer-menu: 5;
+  --layer-topbar: 10;
+  --layer-back-to-top: 14;
+  --layer-player: 15;
+  --layer-nav-scrim: 19;
+  --layer-sidebar: 20;
+  --layer-skip-link: 100;
+  --layer-immersive: 10000;
+  --layer-tooltip: 11000;
+  --layer-toast: 12000;
 }
 :root[data-palette="ocean"] {
+  --color-accent: #285b70;
+  --palette-13: #285b70;
+  --palette-18: #245d75;
+  --palette-19: #2d718b;
+  --palette-21: #5b98a7;
+  --immersive-accent: #9bdcef;
   --action-primary-hover: #204b5e;
   --action-selected-bg: #eaf3f8;
   --action-selected-text: #245d75;
@@ -73,6 +95,12 @@
   --caption-highlight-text: #193e50;
 }
 :root[data-palette="violet"] {
+  --color-accent: #5d4a79;
+  --palette-13: #5d4a79;
+  --palette-18: #5e477a;
+  --palette-19: #755d91;
+  --palette-21: #9a82ac;
+  --immersive-accent: #d8bef3;
   --action-primary-hover: #4b3964;
   --action-selected-bg: #f2edf8;
   --action-selected-text: #5e477a;
@@ -81,6 +109,12 @@
   --caption-highlight-text: #442b60;
 }
 :root[data-palette="amber"] {
+  --color-accent: #745225;
+  --palette-13: #745225;
+  --palette-18: #75521d;
+  --palette-19: #916b2f;
+  --palette-21: #b09156;
+  --immersive-accent: #f3d098;
   --action-primary-hover: #5e401b;
   --action-selected-bg: #faf1e2;
   --action-selected-text: #75521d;
@@ -89,17 +123,155 @@
   --caption-highlight-text: #513a18;
 }
 :root[data-theme="dark"] {
-  --bg-app: #15191f;
-  --bg-surface: #20262f;
+  color-scheme: dark;
   --text-body: #dce2eb;
   --text-heading: #f3f5f8;
   --text-muted: #b5c0ce;
   --border-default: #495462;
+  --bg-surface: #20262f;
+  --status-neutral-bg: #303844;
+  --status-neutral-text: #d5dbe4;
+  --status-green-bg: #294736;
+  --status-green-text: #b5eac2;
+  --status-sand-bg: #554528;
+  --status-sand-text: #f5d99a;
+  --status-light-bg: #34453a;
+  --status-light-text: #d2e2d4;
+  --status-danger-bg: #51322e;
+  --status-danger-text: #ffd2ca;
+  --status-danger: #f3b1a5;
+  --palette-8: #a8c7af;
+  --palette-9: #b9dfc2;
+  --palette-11: #1b2720;
+  --palette-12: #b3c5b7;
+  --palette-13: #315c40;
+  --palette-14: #2c4031;
+  --palette-15: #a8d9b3;
+  --palette-16: #304538;
+  --palette-17: #405747;
+  --palette-18: #b3e7bf;
+  --palette-19: #9cd9aa;
+  --palette-20: #efc477;
+  --palette-21: #a6ce91;
+  --palette-22: #97ad99;
+  --palette-24: #c0e6c7;
+  --palette-25: #405548;
+  --palette-26: #bdcdbd;
+  --palette-27: #29382d;
+  --palette-28: #b4d9bc;
+  --palette-29: #2c3a30;
+  --palette-30: #b5dcbd;
+  --palette-31: #2d3b31;
+  --palette-32: #c0d0c0;
+  --palette-33: #294736;
+  --palette-34: #554528;
+  --palette-35: #405548;
+  --palette-36: #34453a;
+  --palette-37: #405548;
+  --palette-38: #2e3f32;
+  --palette-39: #2d3e31;
+  --palette-40: #334332;
+  --palette-41: #455946;
+  --palette-42: #394d3c;
+  --palette-43: #202d25;
+  --palette-44: #405548;
+  --palette-46: #b4c7b6;
+  --palette-47: #304033;
+  --palette-48: #789879;
+  --palette-49: #405a44;
+  --palette-50: #3e4f41;
+  --palette-51: #364d39;
+  --palette-52: #3b4e3d;
+  --palette-55: #2b3c30;
+  --palette-56: #cfdfd1;
+  --palette-57: #3e3548;
+  --palette-58: #493d2e;
+  --palette-59: #3e5343;
+  --palette-60: #2e4032;
+  --palette-61: #314436;
+  --palette-62: #405146;
+  --palette-63: #43574a;
+  --palette-64: #2e4032;
+  --palette-65: #405447;
+  --palette-66: #405447;
+  --palette-67: #2c3d30;
+  --palette-68: #26342a;
+  --palette-69: #344637;
+  --palette-70: #ebf5ec;
+  --palette-72: #2e4032;
+  --palette-73: #2d3d31;
+  --palette-74: #455c4a;
+  --palette-75: #263a2b;
+  --palette-76: #43584a;
+  --palette-79: #536a59;
+  --palette-80: #526a55;
+  --palette-81: #26352a;
+  --palette-82: #304536;
+  --palette-83: #92bda0;
+  --palette-84: #435a48;
+  --palette-85: #2c3e31;
+  --palette-86: #405546;
+  --palette-87: #51322e;
+  --palette-88: #86544b;
+  --palette-89: #514329;
+  --palette-90: #776342;
+  --palette-91: #2e4533;
+  --palette-92: #333c4a;
+  --palette-93: #304535;
+  --palette-95: #2c3e31;
+  --palette-96: #43584a;
+  --palette-97: #304135;
+  --palette-98: #405548;
+  --palette-99: #3b4c40;
+  --palette-100: #344a37;
+  --palette-102: #d9e6db;
+  --palette-103: #334538;
+  --palette-104: #9cbb8c;
+  --palette-105: #c2dda9;
+  --palette-106: #e8bd73;
+  --palette-107: #52452b;
+  --palette-108: #26352a;
+  --palette-109: #f3f7f3;
+  --palette-110: #28372c;
+  --palette-111: #aec3ae;
+  --palette-112: #c0d4c2;
+  --palette-113: #405a44;
+  --palette-114: #374d3b;
+  --palette-115: #29392d;
+  --palette-117: #4a6650;
+  --palette-118: #273a2d;
+  --palette-120: #385541;
+  --palette-121: #d1e6d4;
+  --palette-122: #2c3e31;
+  --palette-123: #34483a;
+  --palette-124: #35583e;
+  --palette-125: #b7e5c2;
+  --palette-126: #426c4b;
+  --palette-127: #54725a;
+  --palette-128: #25352a;
+  --palette-129: #c0d4c1;
+  --palette-130: #405a46;
+  --palette-131: #a6d6ae;
+  --palette-132: #26392b;
+  --palette-133: #a6dcb0;
+  --palette-134: #537f5c;
+  --palette-135: #93b792;
+  --palette-136: #89ad91;
+  --palette-137: #31513a;
+  --color-accent: #315c40;
+  --review-selection-bg: #304a36;
+  --review-selection-border: #9dd3a5;
+  --processing-bg: #263c2c;
+  --processing-border: #53755a;
+  --processing-accent: #82bd90;
+  --processing-icon-bg: #385c42;
+  --processing-icon-text: #c4ead0;
+  --processing-button-bg: #25382c;
+  --sample-current-bg: #3f684a;
+  --bg-app: #15191f;
   --surface-subtle: #292f39;
   --border-control: #a2acb9;
   --player-track: #8995a5;
-  --status-neutral-bg: #303844;
-  --status-neutral-text: #d5dbe4;
   --action-selected-bg: #243b2c;
   --action-selected-text: #b3e7bf;
   --action-selected-border: #88bd96;
@@ -109,6 +281,10 @@
   --shadow-action: 0 3px 5px #00000033;
 }
 :root[data-theme="dark"][data-palette="ocean"] {
+  --color-accent: #285b70;
+  --palette-13: #285b70;
+  --palette-18: #a8d9ec;
+  --palette-19: #a8d9ec;
   --action-selected-bg: #203742;
   --action-selected-text: #a8d9ec;
   --action-selected-border: #79b4cc;
@@ -116,6 +292,10 @@
   --caption-highlight-text: #dff4fc;
 }
 :root[data-theme="dark"][data-palette="violet"] {
+  --color-accent: #5d4a79;
+  --palette-13: #5d4a79;
+  --palette-18: #e0cdf3;
+  --palette-19: #e0cdf3;
   --action-selected-bg: #352b45;
   --action-selected-text: #e0cdf3;
   --action-selected-border: #b69aca;
@@ -123,9 +303,24 @@
   --caption-highlight-text: #f3eafa;
 }
 :root[data-theme="dark"][data-palette="amber"] {
+  --color-accent: #745225;
+  --palette-13: #745225;
+  --palette-18: #f3d19a;
+  --palette-19: #f3d19a;
   --action-selected-bg: #403322;
   --action-selected-text: #f3d19a;
   --action-selected-border: #c4a16b;
   --caption-highlight-bg: #644b2b;
   --caption-highlight-text: #fff1d9;
 }
+
+/* Theme-specific component adaptations. */
+:root[data-theme="dark"] .topbar { background: var(--bg-surface); }
+:root[data-theme="dark"] .speaker-queue-item.is-selected { background: var(--review-selection-bg); border-color: var(--review-selection-border); }
+:root[data-theme="dark"] .processing-card { background: var(--processing-bg); border-color: var(--processing-border); border-left-color: var(--processing-accent); }
+:root[data-theme="dark"] .processing-indicator { background: var(--processing-icon-bg); color: var(--processing-icon-text); }
+:root[data-theme="dark"] .processing-card > button { background: var(--processing-button-bg); }
+:root[data-theme="dark"] .speaker-sample-transcript .is-current { background: var(--sample-current-bg); }
+:root[data-theme="dark"] .processing-copy strong { color: var(--text-muted); }
+:root[data-theme="dark"] .workspace-tabs > button[aria-selected="true"] { color: var(--color-accent-text); border-bottom-color: var(--color-accent-text); }
+:root[data-theme="dark"] .green-text, :root[data-theme="dark"] .breadcrumb-root:hover { color: var(--color-accent-text); }
