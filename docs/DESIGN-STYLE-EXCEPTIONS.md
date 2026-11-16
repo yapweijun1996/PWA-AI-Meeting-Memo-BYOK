@@ -1,6 +1,6 @@
 # Scoped literal-style exceptions
 
-Reviewed source scope for the DS01 implementation checkpoint. This register describes the retained literals; it does not add checker exclusions or establish complete behavioral acceptance. Remaining verification is tracked in `VALIDATION.md` and `../task.md`.
+Reviewed source scope for the DS01 implementation checkpoint. This register describes the retained literals; it does not add checker exclusions or establish complete behavioral acceptance. Remaining verification is tracked in [validation](VALIDATION.md) and [tasks](../task.md).
 
 `src/style.css` and `src/theme.css` remain the authoritative primitive and semantic-token sources. Functional controls, captions, focus/selection states, active-speaker status rings, surfaces and local layers must consume their owning roles. Shared numeric values alone do not establish shared semantics.
 

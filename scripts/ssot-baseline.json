@@ -4,24 +4,18 @@
     "src/components/SpeakerAvatar.tsx": {
       "color": 12
     },
-    "src/features/contextual-memo.css": {
-      "radius": 1
-    },
     "src/features/memo-reading.css": {
-      "font-size": 3,
-      "radius": 5,
-      "shadow": 1
+      "font-size": 1
     },
     "src/features/SpeakerPlayback.css": {
-      "font-size": 1,
-      "radius": 2
+      "font-size": 1
     },
     "src/style.css": {
-      "color": 139,
-      "font-size": 26,
-      "radius": 122,
-      "shadow": 29,
-      "z-index": 13
+      "color": 48,
+      "font-size": 6,
+      "radius": 24,
+      "shadow": 8,
+      "z-index": 7
     }
   },
   "selectorOwners": {
