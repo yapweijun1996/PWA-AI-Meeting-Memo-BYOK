@@ -5,6 +5,8 @@ import {
   planMemo,
   extractionInput,
   synthesisInput,
+  captureExtraction,
+  extractionInstructions,
 } from "../src/providers/memo-plan";
 import {
   runMemoPipeline,
@@ -219,4 +221,93 @@ test("editing source during generation preserves captured revisions and marks fi
   expect(result.memos[0].sourceRevision).toBe(1);
   expect(result.memos[0].items.every((i) => i.review === "pending")).toBe(true);
   expect(result.memos[0].items[0].sources[0].revision).toBe(1);
+});
+
+function incidentMeeting() {
+  const m = createMeeting({ title: "Synthetic 12,584-fragment incident" });
+  m.synthetic = true;
+  m.segments = Array.from({ length: 12584 }, (_, i) => ({
+    ...segment("Budget item."), start: i / 4, end: (i + 1) / 4,
+  }));
+  return m;
+}
+
+test("word-level incident saves oversized extractions and completes exactly three extractions and one synthesis", async () => {
+  vi.stubGlobal("window", new EventTarget());
+  vi.stubGlobal("navigator", {});
+  const m = await saveMeeting(incidentMeeting());
+  const p = planMemo(m, selection.provider, selection.model)!;
+  expect(p.chunks).toHaveLength(3);
+  const fetch = vi.fn(async (_url: unknown, options: { body: string }) => {
+    const request = JSON.parse(options.body);
+    const input = JSON.parse(request.input);
+    if (input.facts) {
+      const first = input.facts[0].items[0];
+      expect(Object.keys(first).sort()).toEqual(["id", "type", "text", "ownerId", "dueDate", "dueOriginal", "quote"].sort());
+      expect(first.quote).toEqual(Array(100).fill("Budget item."));
+      expect(input.facts[0]).not.toHaveProperty("quotes");
+      const saved = (await getMeeting(m.id))!;
+      expect(saved.memoPipelines![0].results.every(r => JSON.stringify(r).length > 8000)).toBe(true);
+    } else {
+      expect(request.instructions).toContain("24666");
+      expect(request.instructions).toContain("at most 100");
+      expect(request.text.format.schema.properties.items.maxItems).toBe(100);
+    }
+    const reply = await response(options.body).json();
+    if (!input.facts) {
+      const item = JSON.parse(reply.output[0].content[0].text).items[0];
+      item.source_segment_ids = input.segments.slice(0, 5).map((s: { id: string }) => s.id);
+      reply.output[0].content[0].text = JSON.stringify({items: Array.from({length: 6}, () => ({...item}))});
+    }
+    return new Response(JSON.stringify(reply));
+  });
+  vi.stubGlobal("fetch", fetch);
+  const result = await runMemoPipeline(m, selection, p);
+  expect(fetch).toHaveBeenCalledTimes(4);
+  expect(result.memoPipelines![0].state).toBe("completed");
+  expect(result.jobs.every(j => j.state === "completed")).toBe(true);
+  expect(result.memos[0].items[0].sources).toEqual(m.segments.slice(0, 100).map(({id, revision}) => ({id, revision})));
+  expect(result.segments).toEqual(m.segments);
+  expect(validateMeeting(JSON.parse(JSON.stringify(result))).memoPipelines).toEqual(result.memoPipelines);
+  const restored = await readBackup(new File([JSON.stringify(result)], "incident.json"));
+  expect(restored.meeting.memoPipelines).toEqual(result.memoPipelines);
+});
+
+test("oversized synthesis keeps paid successes, blocks locally and never submits or retries synthesis", async () => {
+  vi.stubGlobal("window", new EventTarget());
+  vi.stubGlobal("navigator", {});
+  const m = await saveMeeting(longMeeting());
+  const p = planMemo(m, selection.provider, selection.model)!;
+  const fetch = vi.fn(async (_url: unknown, options: {body: string}) => {
+    const reply = await response(options.body).json();
+    const item = JSON.parse(reply.output[0].content[0].text).items[0];
+    item.text = "x".repeat(20000);
+    reply.output[0].content[0].text = JSON.stringify({items: Array.from({length: 5}, () => ({...item}))});
+    return new Response(JSON.stringify(reply));
+  });
+  vi.stubGlobal("fetch", fetch);
+  await expect(runMemoPipeline(m, selection, p)).rejects.toThrow("No synthesis request was sent");
+  const saved = (await getMeeting(m.id))!;
+  expect(fetch).toHaveBeenCalledTimes(p.chunks.length);
+  expect(saved.memoPipelines![0].state).toBe("blocked");
+  expect(saved.memoPipelines![0].results.every(Boolean)).toBe(true);
+  expect(saved.jobs).toHaveLength(p.chunks.length);
+  expect(saved.jobs.every(j => j.state === "completed")).toBe(true);
+  expect(resumablePipeline(saved, selection)).toBeUndefined();
+  await expect(runMemoPipeline(saved, selection, saved.memoPipelines![0], true)).rejects.toThrow("No synthesis request was sent");
+  expect(fetch).toHaveBeenCalledTimes(p.chunks.length);
+  expect((await getMeeting(m.id))!.memoPipelines![0].results).toEqual(saved.memoPipelines![0].results);
+});
+
+test("the largest valid extraction fact count retains exact ordered quotes without the former size cap", () => {
+  const m = incidentMeeting();
+  const refs = m.segments.slice(0, 100).map(({id, revision}) => ({id, revision}));
+  const items = Array.from({length: 100}, () => ({id: crypto.randomUUID(), type: "summary" as const, text: "Review", ownerId: null, dueDate: null, dueOriginal: null, sources: refs, review: "pending" as const}));
+  const result = captureExtraction(m, items);
+  expect(result.items).toHaveLength(100);
+  expect(result.quotes).toHaveLength(100);
+  expect(JSON.stringify(result).length).toBeGreaterThan(8000);
+  const p = planMemo(m, selection.provider, selection.model)!;
+  expect(extractionInstructions(p)).toContain("at most 100");
+  expect(() => captureExtraction(m, [{...items[0], sources: [{...refs[0], revision: 2}]}])).toThrow("source is invalid");
 });

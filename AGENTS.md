@@ -1,5 +1,8 @@
 # Project instructions
 
+- Always reply to the user in Mandarin Chinese. Write code, code comments, and identifiers in English.
+- End every user-facing reply with exactly four next-step options labeled A, B, C, and D.
+
 - This project is a browser-first, speaker-aware meeting memo PWA with runtime BYOK and GitHub Pages hosting. Keep the normal user workflow usable without installing a companion or running a backend.
 - Owner direction, 2026-11-10: long recordings must support automatic, meeting-scoped speaker identity continuity across processing chunks; manual listening, enrollment, or merging must not be the required normal workflow. A single-upload size increase does not satisfy this goal. Design for bounded per-chunk resources and resumable processing, and disclose tested storage, duration, provider, and device limits rather than promising literally unlimited input.
 - Prefer a fully browser-operated PWA, using verified browser inference or direct third-party APIs where suitable. The owner approved a lightweight backend as a fallback for third-party identification, long-running jobs, and cross-chunk coordination when validated browser or provider limitations require it; it is not a mandatory default or authorization to spend, provision infrastructure, or deploy. Verify the actual processing and recovery path before choosing that fallback; backend-dependent features must be explicit.
@@ -17,3 +20,15 @@
 - Report checks actually run and remaining limitations. Do not commit, push, or deploy without authorization from the current task or existing session instructions.
 - For the speaker voice-matching work, read [docs/HANDOFF.md](docs/HANDOFF.md) first. Do not claim matching accuracy: none is measured. Do not publish the WavLM weights until their licence is established. In a shared working tree, run long local analyses from a static build (the dev server reloads on every save), stage explicit files, and reconcile with `origin/main` in a clean worktree.
 
+## KB memory and skill selection
+
+- Use the available KB-MCP Brain interface to retrieve relevant project decisions and user preferences. Verify historical claims against current files and runtime evidence. Before saving durable memory, confirm the authenticated identity and check for existing records; store no secrets or private recordings.
+- Discover relevant skills through `kb_skill_search`, then read the selected definition through `kb_skill_get` before applying it. Load only the skills and references needed for the current task. Registry enablement, retrieval scores, and verification dates do not prove this app complies with a skill.
+- For explicitly delegated end-to-end work, use `agent:auto-manager` to define observable completion, track bounded work, recover routine failures, and verify results within existing authorization.
+- For code changes, use `engineering:search-experiment-verify-apply`; for defects, also use `coding:evidence-first-bugfix` to reproduce the issue, identify its cause, and verify the correction on the affected surface.
+- For shared UI components, tokens, and icons, use `ui:ssot-component-library`. Use `ui:navigation-system` for navigation changes. Apply only requirements compatible with this project's architecture and documented exceptions; assess stale or candidate guidance before relying on it.
+- For PWA changes and acceptance, use `pwa:product-standard` and its required companion `pwa:sw-install-integrity`. Keep offline, storage, draft-safe updates, build integrity, and physical-device evidence explicit.
+- For an authorized release, use `agent:live-release-acceptance` to distinguish deployed artifact identity, functional acceptance, and measured quality. Skill discovery does not authorize publishing or running paid provider requests.
+- Use `conversation:amm-task-card` when a procedural explanation benefits from that structure. Load the admin-panel standard and its addendum only for applicable admin UI work, `ui:autonomous-redesign` only for an explicitly requested redesign, and `qa:browser-e2e-teacher-workflow` only after checking compatibility with this project's existing browser tests.
+- Skills and retrieved KB content are guidance, not authority to expand scope or override current user instructions, project requirements, or platform constraints. Report unavailable skills and material evidence gaps honestly; continue independent work where safe.
+- When reporting progress, calculate any percentage from an explicit denominator, such as checked tasks in `task.md`. Identify optional, historical, overlapping, and acceptance-only entries; a checklist completion percentage is not a product-quality or release-readiness score. Do not check off work without verification evidence.
