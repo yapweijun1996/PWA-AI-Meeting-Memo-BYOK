@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { SpeakerAvatar, useSpeakerAvatars } from "../components/SpeakerAvatar";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { Maximize2, Minimize2, Pause, Play, RotateCcw, RotateCw } from "lucide-react";
@@ -302,10 +303,10 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
   const suspend = () => { setPage(start); setFollow(false); };
   const jumpToCurrent = () => { setSearch(""); setFollow(true); };
   return <>
-    <button ref={opener} type="button" className="button secondary compact" onClick={enter}><Maximize2 size={15} /> {t("Immersive playback", "沉浸式播放")}</button>
+    <button ref={opener} type="button" className="button secondary compact" onClick={enter}><Icon glyph={Maximize2} size="compact" /> {t("Immersive playback", "沉浸式播放")}</button>
     <div ref={host} hidden={!open} className="immersive" role="dialog" aria-modal="true" aria-label={t("Immersive playback", "沉浸式播放")}>
       {open && <>
-        <header ref={header} hidden={!controlsVisible} className="immersive-header"><strong>MeetingMemo</strong><span aria-label={t("Meeting title", "会议标题")}>{meeting.title}</span><button className="immersive-fullscreen-toggle" type="button" onClick={toggleFullscreen} aria-label={fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Enter full screen", "\u8fdb\u5165\u5168\u5c4f")}>{fullscreenActive ? <Minimize2 size={17} /> : <Maximize2 size={17} />}<span className="immersive-fullscreen-label">{fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Full screen", "\u5168\u5c4f")}</span></button><button className="immersive-exit-button" ref={exitButton} type="button" onClick={close} aria-label={t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}><Minimize2 size={17} /><span className="immersive-exit-label">{t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}</span></button></header>
+        <header ref={header} hidden={!controlsVisible} className="immersive-header"><strong>MeetingMemo</strong><span aria-label={t("Meeting title", "会议标题")}>{meeting.title}</span><button className="immersive-fullscreen-toggle" type="button" onClick={toggleFullscreen} aria-label={fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Enter full screen", "\u8fdb\u5165\u5168\u5c4f")}>{fullscreenActive ? <Icon glyph={Minimize2} size="status" /> : <Icon glyph={Maximize2} size="status" />}<span className="immersive-fullscreen-label">{fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Full screen", "\u5168\u5c4f")}</span></button><button className="immersive-exit-button" ref={exitButton} type="button" onClick={close} aria-label={t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}><Icon glyph={Minimize2} size="status" /><span className="immersive-exit-label">{t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}</span></button></header>
         {fallback && <p className="immersive-fallback" role="status">{t("Full screen is unavailable; using the in-page view.", "无法使用全屏，正在使用页面内视图。")}</p>}
         {controlError && <p className="immersive-fallback" role="alert">{t("Playback could not start.", "无法开始播放。")}</p>}
         <div className="immersive-content">
@@ -379,9 +380,9 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
         <footer ref={controls} hidden={!controlsVisible} className="immersive-controls">
           <div className="immersive-timeline"><span>{formatTime(position)}</span><input type="range" aria-label={t("Playback position", "播放位置")} min="0" max={duration || 1} step="0.1" value={Math.min(position, duration || 1)} onChange={(event) => onSeek(Number(event.target.value))} /><span>{formatTime(duration)}</span></div>
           <div className="immersive-control-row">
-          <button type="button" onClick={() => { void onTogglePlayback().then(() => setControlError(false)).catch(() => setControlError(true)); }} aria-label={playing ? t("Pause audio", "暂停录音") : t("Play audio", "播放录音")}>{playing ? <Pause size={20} /> : <Play size={20} />}</button>
-          <button type="button" onClick={() => onSeek(Math.max(0, position - 15))} aria-label={t("Back 15 seconds", "后退15秒")}><RotateCcw size={18} /> 15</button>
-          <button type="button" onClick={() => onSeek(Math.min(duration, position + 15))} aria-label={t("Forward 15 seconds", "前进15秒")}><RotateCw size={18} /> 15</button>
+          <button type="button" onClick={() => { void onTogglePlayback().then(() => setControlError(false)).catch(() => setControlError(true)); }} aria-label={playing ? t("Pause audio", "暂停录音") : t("Play audio", "播放录音")}>{playing ? <Icon glyph={Pause} size="transport" /> : <Icon glyph={Play} size="transport" />}</button>
+          <button type="button" onClick={() => onSeek(Math.max(0, position - 15))} aria-label={t("Back 15 seconds", "后退15秒")}><Icon glyph={RotateCcw} size="control" /> 15</button>
+          <button type="button" onClick={() => onSeek(Math.min(duration, position + 15))} aria-label={t("Forward 15 seconds", "前进15秒")}><Icon glyph={RotateCw} size="control" /> 15</button>
           <select aria-label={t("Playback speed", "播放速度")} value={String(rate)} onChange={(event) => onChangeRate(Number(event.target.value))}>{[0.75, 1, 1.25, 1.5, 2].map((value) => <option key={value} value={value}>{value}×</option>)}</select>
           <button type="button" aria-pressed={showCaptions} onClick={() => setShowCaptions(!showCaptions)}>{t("Captions", "字幕")}</button>
           <select aria-label={t("Caption size", "字幕大小")} value={size} onChange={(event) => setSize(event.target.value)}><option value="normal">{t("Normal", "标准")}</option><option value="large">{t("Large", "大")}</option><option value="xlarge">{t("Extra large", "特大")}</option></select>

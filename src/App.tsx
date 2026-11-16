@@ -1,3 +1,4 @@
+import { Icon } from "./components/Icon";
 import { translateUi } from "./i18n";
 import { isMeetingCompleted, doesMeetingNeedReview, getMeetingWorkflow } from "./domain/workflow";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -272,7 +273,7 @@ export default function App() {
             }
             onClick={() => setFilter("all")}
           >
-            <FolderOpen size={19} />
+            <Icon glyph={FolderOpen} size="navigation" />
             <span className="nav-text">{t("Your meetings", "您的会议")}</span><span className="nav-count">{meetings.length}</span>
           </a>
           <button
@@ -284,16 +285,16 @@ export default function App() {
               setMobileNav(false);
             }}
           >
-            <Clock size={19} />
+            <Icon glyph={Clock} size="navigation" />
             <span className="nav-text">{t("Needs review", "待审阅")}</span>
             <span className="nav-count">{needsReviewCount}</span>
           </button>
           <button data-tooltip={navTip(t("New meeting", "新建会议"))} onClick={() => setNewOpen(true)}>
-            <Plus size={19} />
+            <Icon glyph={Plus} size="navigation" />
             <span className="nav-text">{t("New meeting", "新建会议")}</span>
           </button>
           <label className="nav-file" data-tooltip={navTip(t("Restore backup", "恢复备份"))}>
-            <Upload size={19} />
+            <Icon glyph={Upload} size="navigation" />
             <span className="nav-text">{t("Restore backup", "恢复备份")}</span>
             <input
               type="file"
@@ -362,11 +363,11 @@ export default function App() {
             data-tooltip={navTip(t("Settings & API keys", "设置与 API 密钥"))}
             className={route === "/settings" ? "active" : ""}
           >
-            <SettingsIcon size={18} />
+            <Icon glyph={SettingsIcon} size="control" />
             <span className="nav-text">{t("Settings & API keys", "设置与 API 密钥")}</span>
           </a>
           <button data-tooltip={navTip(t("How it works", "使用说明"))} onClick={() => setHelp(true)}>
-            <HelpCircle size={18} />
+            <Icon glyph={HelpCircle} size="control" />
             <span className="nav-text">{t("How it works", "使用说明")}</span>
           </button>
           <div className="local-label">
@@ -384,7 +385,7 @@ export default function App() {
               onClick={() => setMobileNav(true)}
               aria-label={t("Open navigation", "打开导航")}
             >
-              <Menu size={22} />
+              <Icon glyph={Menu} size="heading" />
             </button>
             <button
               className="icon-button sidebar-toggle"
@@ -402,12 +403,12 @@ export default function App() {
                   : t("Collapse sidebar", "收起侧边栏")
               }
             >
-              {sidebarCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
+              {sidebarCollapsed ? <Icon glyph={PanelLeftOpen} size="transport" /> : <Icon glyph={PanelLeftClose} size="transport" />}
             </button>
             <a className="breadcrumb-root" href="#/">
               {t("Workspace", "工作空间")}
             </a>
-            <ChevronRight size={14} />
+            <Icon glyph={ChevronRight} size="small" />
             <strong>
               {route === "/settings"
                 ? t("Settings", "设置")
@@ -419,13 +420,13 @@ export default function App() {
               </Pill>
             )}
           </div>
-          <label className="topbar-language" data-tooltip={t("Display language", "\u663e\u793a\u8bed\u8a00")}><Languages size={20} aria-hidden="true" />
+          <label className="topbar-language" data-tooltip={t("Display language", "\u663e\u793a\u8bed\u8a00")}><Icon glyph={Languages} size="transport" aria-hidden="true" />
             <select aria-label={t("Display language", "\u663e\u793a\u8bed\u8a00")} value={uiLanguage} disabled={languageSaving} onChange={(event) => { setLanguageSaving(true); void saveUiLanguagePreference(event.target.value as "en" | "zh-CN" | "ms").catch(() => setError(t("Wait for settings to finish saving, or check local storage.", "请等待设置保存完成，或检查本地存储。"))).finally(() => setLanguageSaving(false)); }}>
               <option value="en">English</option><option value="zh-CN">{"\u7b80\u4f53\u4e2d\u6587"}</option><option value="ms">Bahasa Melayu (partial)</option>
             </select>
           </label>
           <span className="privacy-top" data-tooltip={t("Meetings are saved locally. AI requests use your selected provider.", "\u4f1a\u8bae\u4fdd\u5b58\u5728\u672c\u5730\u3002AI \u8bf7\u6c42\u4f7f\u7528\u60a8\u9009\u62e9\u7684\u670d\u52a1\u5546\u3002")}>
-            <ShieldCheck size={15} />
+            <Icon glyph={ShieldCheck} size="compact" />
             {online
               ? t("Local storage · BYOK", "\u672c\u5730\u5b58\u50a8 · BYOK")
               : t("Browser reports offline · Local storage", "浏览器显示离线 · 本地存储")}
@@ -440,7 +441,7 @@ export default function App() {
                 onClick={() => setError("")}
                 aria-label={t("Dismiss error", "关闭错误提示")}
               >
-                <X size={17} />
+                <Icon glyph={X} size="status" />
               </button>
             </div>
           )}
@@ -482,7 +483,7 @@ export default function App() {
                     className="button primary"
                     onClick={() => setNewOpen(true)}
                   >
-                    <Plus size={18} />
+                    <Icon glyph={Plus} size="control" />
                     {t("New meeting", "新建会议")}
                   </button>
                 )}
@@ -491,7 +492,7 @@ export default function App() {
               <section className="stats" aria-label={t("Library summary", "会议库摘要")}>
                 <div>
                   <span className="stat-icon">
-                    <FolderOpen size={19} />
+                    <Icon glyph={FolderOpen} size="navigation" />
                   </span>
                   <div>
                     <strong>
@@ -502,7 +503,7 @@ export default function App() {
                 </div>
                 <div>
                   <span className="stat-icon sand">
-                    <BookOpen size={19} />
+                    <Icon glyph={BookOpen} size="navigation" />
                   </span>
                   <div>
                     <strong>{needsReviewCount}</strong>
@@ -511,7 +512,7 @@ export default function App() {
                 </div>
                 <div>
                   <span className="stat-icon lavender">
-                    <CheckCircle2 size={19} />
+                    <Icon glyph={CheckCircle2} size="navigation" />
                   </span>
                   <div>
                     <strong>{completedCount}</strong>
@@ -547,7 +548,7 @@ export default function App() {
                   </div>
                   <div className="library-controls">
                     <label className="search">
-                      <Search size={16} />
+                      <Icon glyph={Search} size="inline" />
                       <input
                         aria-label={t("Search meetings", "搜索会议")}
                         placeholder={t("Search meetings", "搜索会议")}
@@ -561,7 +562,7 @@ export default function App() {
                           aria-label={t("Clear search", "清除搜索")}
                           onClick={() => setSearch("")}
                         >
-                          <X size={15} />
+                          <Icon glyph={X} size="compact" />
                         </button>
                       )}
                     </label>
@@ -596,7 +597,7 @@ export default function App() {
                         >
                           <div className="card-top">
                             <span className="card-icon">
-                              <AudioLines size={20} />
+                              <Icon glyph={AudioLines} size="transport" />
                             </span>
                             <Pill tone={status.tone}>{status.badge}</Pill>
                           </div>
@@ -614,7 +615,7 @@ export default function App() {
                             </span>
                             <span className="card-cta">
                               {status.cta}
-                              <ArrowUpRight size={15} />
+                              <Icon glyph={ArrowUpRight} size="compact" />
                             </span>
                           </footer>
                         </a>
@@ -638,7 +639,7 @@ export default function App() {
                       className="text-button"
                       onClick={() => setNewOpen(true)}
                     >
-                      <Plus size={16} />
+                      <Icon glyph={Plus} size="inline" />
                       {t("Create your first meeting", "创建第一个会议")}
                     </button>
                   </Empty>
@@ -647,7 +648,7 @@ export default function App() {
               <section className="bottom-note">
                 <div>
                   <span className="round-icon">
-                    <ShieldCheck size={21} />
+                    <Icon glyph={ShieldCheck} size="section" />
                   </span>
                   <div>
                     <strong>{t("A workspace that puts you in control.", "让您掌控自己的工作空间。")}</strong>
@@ -658,13 +659,13 @@ export default function App() {
                 </div>
                 <button className="text-button" onClick={() => setHelp(true)}>
                   {t("A quick tour", "快速了解")}
-                  <ArrowUpRight size={16} />
+                  <Icon glyph={ArrowUpRight} size="inline" />
                 </button>
               </section>
               <footer className="page-footer">
                 <span>{t("Made for more mindful meetings.", "让会议更加专注。")}</span>
                 <span>
-                  <Leaf size={13} />
+                  <Icon glyph={Leaf} size="tiny" />
                   {t("Less busywork. More clarity.", "减少繁琐工作，理清重点。")}
                 </span>
               </footer>
@@ -686,7 +687,7 @@ export default function App() {
             })
           }
         >
-          <ArrowUp size={18} />
+          <Icon glyph={ArrowUp} size="control" />
         </button>
       )}
       {newOpen && (

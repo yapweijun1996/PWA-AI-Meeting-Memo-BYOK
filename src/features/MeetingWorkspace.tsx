@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { memoLanguageName, type MemoOutputLanguage } from "../domain/memo-language";
 import { usePlayerClearance } from "./usePlayerClearance";
 import { translateUi } from "../i18n";
@@ -892,7 +893,7 @@ export function MeetingWorkspace({
   return (
     <div ref={workspaceRef} className={`${canPlay ? "workspace has-player" : "workspace"}${tab === "memo" && miniPlayer ? " memo-mini-active" : ""}`}>
       <a href="#/" className="back-link">
-        <ArrowLeft size={15} />
+        <Icon glyph={ArrowLeft} size="compact" />
         {t("All meetings", "所有会议")}
       </a>
       <section className="page-heading meeting-heading">
@@ -915,13 +916,13 @@ export function MeetingWorkspace({
             onClick={() => setMetadata(true)}
             disabled={locked}
           >
-            <Settings size={19} />
+            <Icon glyph={Settings} size="navigation" />
           </button>
           <details className="export-menu">
             <summary className="button secondary">
-              <Download size={16} />
+              <Icon glyph={Download} size="inline" />
               {t("Export", "导出")}
-              <ChevronDown size={14} />
+              <Icon glyph={ChevronDown} size="small" />
             </summary>
             <div>
               {(["md", "txt", "json", "zip"] as const).map((f) => (
@@ -960,7 +961,7 @@ export function MeetingWorkspace({
               }
             }}
           >
-            <Trash2 size={18} />
+            <Icon glyph={Trash2} size="control" />
           </button>
         </div>
       </section>
@@ -971,7 +972,7 @@ export function MeetingWorkspace({
           aria-label={t("Recording details", "录音详情")}
         >
           <span className="round-icon">
-            <AudioLines size={21} />
+            <Icon glyph={AudioLines} size="section" />
           </span>
           <div>
             <strong data-tooltip={m.audio?.name}>{m.audio?.name || t("No recording attached", "尚未附加录音")}</strong>
@@ -989,7 +990,7 @@ export function MeetingWorkspace({
         </div>
         <div className="toolbar-actions">
           <label className="button secondary compact">
-            <Upload size={15} />
+            <Icon glyph={Upload} size="compact" />
             {m.audio ? t("Reattach source", "重新附加原录音") : t("Attach audio", "附加录音")}
             <input
               aria-label={t("Attach audio", "附加录音")}
@@ -1012,7 +1013,7 @@ export function MeetingWorkspace({
             onClick={() => void prepareConfirmation("speech")}
             disabled={locked || (m.audio?.chunked ? audioMissing || !chunkManifest : !url)}
           >
-            <AudioLines size={15} />
+            <Icon glyph={AudioLines} size="compact" />
             {m.audio?.chunked && chunkProgress && chunkProgress.done > 0 && chunkProgress.done < chunkProgress.total
               ? t(`Resume transcription (${chunkProgress.done} of ${chunkProgress.total} parts done)`, `恢复转录（已完成 ${chunkProgress.done}/${chunkProgress.total} 部分）`)
               : t("Transcribe", "转录")}
@@ -1059,7 +1060,7 @@ export function MeetingWorkspace({
       {processing && (
         <section className="processing-card" aria-label={t("Processing request", "正在处理请求")}>
           <span className="processing-indicator" aria-hidden="true">
-            <LoaderCircle size={22} strokeWidth={2} />
+            <Icon glyph={LoaderCircle} size="heading" strokeWidth={2} />
           </span>
           <div className="processing-copy" role="status" aria-live="polite">
             <strong>{t("Processing your request", "正在处理请求")}</strong>
@@ -1084,8 +1085,8 @@ export function MeetingWorkspace({
           ["transcript", t("Transcript", "转录"), FileText, m.segments.length],
           ["speakers", t("Speakers", "说话人"), Users, m.speakers.length],
           ["memo", t("Meeting notes", "会议笔记"), Sparkles, memo?.items.length || 0],
-        ].map(([value, label, Icon, count]) => {
-          const Glyph = Icon as typeof FileText;
+        ].map(([value, label, SourceIcon, count]) => {
+          const Glyph = SourceIcon as typeof FileText;
           const unit =
             value === "transcript"
               ? t("passages", "段落")
@@ -1105,7 +1106,7 @@ export function MeetingWorkspace({
                 navigateTab(String(value));
               }}
             >
-              <Glyph size={17} />
+              <Icon glyph={Glyph} size="status" />
               {String(label)}
               <span aria-hidden="true">{String(count)}</span>
             </button>
@@ -1145,7 +1146,7 @@ export function MeetingWorkspace({
                 disabled={locked || !m.undo.length}
                 onClick={() => void change(undoEdit)}
               >
-                <Undo2 size={15} />
+                <Icon glyph={Undo2} size="compact" />
                 {t("Undo", "撤销")}
               </button>
               <button
@@ -1153,7 +1154,7 @@ export function MeetingWorkspace({
                 onClick={() => setAddText(true)}
                 disabled={locked}
               >
-                <Plus size={15} />
+                <Icon glyph={Plus} size="compact" />
                 {t("Add transcript", "添加转录")}
               </button>
             </div>
@@ -1292,7 +1293,7 @@ export function MeetingWorkspace({
                           ? t("Time unknown", "时间未知")
                           : `${formatTime(s.start)} – ${formatTime(s.end!)}`}
                       </button>
-                      {s.reviewed && <Check size={14} className="green-text" />}
+                      {s.reviewed && <Icon glyph={Check} size="small" className="green-text" />}
                     </div>
                     <p>{s.text}</p>
                     {s.text !== s.originalText && (
@@ -1354,7 +1355,7 @@ export function MeetingWorkspace({
                 className="button secondary"
                 onClick={() => setAddText(true)}
               >
-                <Plus size={16} />
+                <Icon glyph={Plus} size="inline" />
                 {t("Add transcript", "添加转录")}
               </button>
             </Empty>
@@ -1482,7 +1483,7 @@ export function MeetingWorkspace({
               disabled={locked || !m.segments.length}
               onClick={() => prepareConfirmation("memo")}
             >
-              <Sparkles size={15} />
+              <Icon glyph={Sparkles} size="compact" />
               {memo ? t("Generate new version", "生成新版本") : t("Generate meeting notes", "生成会议笔记")}
             </button>
           </header>
@@ -1493,7 +1494,7 @@ export function MeetingWorkspace({
                 <button type="button" aria-pressed={memoMode === "review"} disabled={dirtyMemoItems.size > 0} onClick={() => setMemoMode("review")}>{t("Evidence Review", "证据审阅")}</button>
               </div>
               <div className="memo-version">
-                <History size={15} />
+                <Icon glyph={History} size="compact" />
                 <label>
                   {t("Version", "版本")}
                   <select
@@ -1742,7 +1743,7 @@ export function MeetingWorkspace({
               </p>
               <a href="#/settings" className="text-button">
                 {t("Connect your API key", "连接 API 密钥")}
-                <ArrowLeft size={15} />
+                <Icon glyph={ArrowLeft} size="compact" />
               </a>
             </Empty>
           )}
@@ -1758,7 +1759,7 @@ export function MeetingWorkspace({
       {(m.jobs.length > 0 || m.runs.length > 0) && (
         <details className="history-panel">
           <summary>
-            <History size={16} />
+            <Icon glyph={History} size="inline" />
             {t("Processing history", "处理记录")} <span>{m.jobs.length} {t("requests", "次请求")}</span>
           </summary>
           <p className="small muted">
@@ -1858,7 +1859,7 @@ export function MeetingWorkspace({
               onError={() => setNotice("This browser cannot play the recording. The provider may still support it; verify before sending.")}
             />
           )}
-          <button type="button" className="player-skip player-skip-back" aria-label={t("Back 15 seconds", "\u540e\u9000 15 \u79d2")} data-tooltip={t("Back 15 seconds", "\u540e\u9000 15 \u79d2")} disabled={!duration} onClick={() => { if (player.current) { playUntil.current = null; player.current.currentTime = Math.max(0, player.current.currentTime - 15); playback.refresh(); } }}><RotateCcw size={16} /><span>15</span></button>
+          <button type="button" className="player-skip player-skip-back" aria-label={t("Back 15 seconds", "\u540e\u9000 15 \u79d2")} data-tooltip={t("Back 15 seconds", "\u540e\u9000 15 \u79d2")} disabled={!duration} onClick={() => { if (player.current) { playUntil.current = null; player.current.currentTime = Math.max(0, player.current.currentTime - 15); playback.refresh(); } }}><Icon glyph={RotateCcw} size="inline" /><span>15</span></button>
           <button
             className="play-button"
             aria-label={playing ? t("Pause audio", "暂停录音") : t("Play audio", "播放录音")}
@@ -1871,9 +1872,9 @@ export function MeetingWorkspace({
               }
             }}
           >
-            {playing ? <Pause size={18} /> : <Play size={18} />}
+            {playing ? <Icon glyph={Pause} size="control" /> : <Icon glyph={Play} size="control" />}
           </button>
-          <button type="button" className="player-skip player-skip-forward" aria-label={t("Forward 15 seconds", "\u524d\u8fdb 15 \u79d2")} data-tooltip={t("Forward 15 seconds", "\u524d\u8fdb 15 \u79d2")} disabled={!duration} onClick={() => { if (player.current) { playUntil.current = null; player.current.currentTime = Math.min(duration, player.current.currentTime + 15); playback.refresh(); } }}><RotateCw size={16} /><span>15</span></button>
+          <button type="button" className="player-skip player-skip-forward" aria-label={t("Forward 15 seconds", "\u524d\u8fdb 15 \u79d2")} data-tooltip={t("Forward 15 seconds", "\u524d\u8fdb 15 \u79d2")} disabled={!duration} onClick={() => { if (player.current) { playUntil.current = null; player.current.currentTime = Math.min(duration, player.current.currentTime + 15); playback.refresh(); } }}><Icon glyph={RotateCw} size="inline" /><span>15</span></button>
           <div className="player-title" data-tooltip={m.audio?.name}>
             <strong>{m.audio?.name}</strong>
             <span>{t("Original recording", "原始录音")}</span>
@@ -1921,7 +1922,7 @@ export function MeetingWorkspace({
         >
           <div className="modal-body">
             <div className="notice">
-              <ShieldCheck size={18} />
+              <Icon glyph={ShieldCheck} size="control" />
               <SpeakerModelNotice t={t} context="local-analysis" />
             </div>
             <p className="muted">
@@ -1964,7 +1965,7 @@ export function MeetingWorkspace({
         >
           <div className="modal-body">
             <div className="notice">
-              <ShieldCheck size={18} />
+              <Icon glyph={ShieldCheck} size="control" />
               <span>
                 {t("You choose what leaves this device. Nothing is sent until you confirm.", "您决定发送哪些数据。确认之前不会发送任何内容。")}
               </span>
@@ -2161,7 +2162,7 @@ export function MeetingWorkspace({
                 disabled={!canPlay || !evidenceHasTime}
                 onClick={() => cueRange(Math.max(0, evidence.start! - 3), Math.min(duration || evidence.end! + 3, evidence.end! + 3))}
               >
-                <Play size={15} />
+                <Icon glyph={Play} size="compact" />
                 {t("Play source audio with context", "播放来源录音及上下文")}
               </button>
               {m.segments.some((s) => s.id === evidence.id) && (

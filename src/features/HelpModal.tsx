@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { FileText } from "lucide-react";
 import { Modal } from "../components/ui";
 
@@ -26,7 +27,7 @@ export function HelpModal({ t, onClose, onExplore }: {
         </div>
         <div className="help-example">
           <button className="button secondary full" onClick={onExplore}>
-            <FileText size={17} aria-hidden="true" />
+            <Icon glyph={FileText} size="status" aria-hidden="true" />
             {t("Explore a synthetic example", "查看模拟示例")}
           </button>
           <p className="small muted">{t("The example contains invented text, no recorded audio and no AI-generated results.", "示例使用虚构文字，不含录音或 AI 生成结果。")}</p>

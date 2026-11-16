@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { translateUi } from "../i18n";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -227,21 +228,21 @@ export function PwaStatus() {
       {sidebarSlot && createPortal(<div className="pwa-sidebar">
         <span className="pwa-version" data-tooltip={__BUILD_ID__}>{t("Version", "\u7248\u672c")} {appVersion} - {displayBuild}</span>
         {confirmation.open && confirmation.origin === "sidebar" && !updating ? <div className="pwa-sidebar-actions">
-          <button ref={confirmButton} type="button" className="pwa-sidebar-button pwa-sidebar-confirm" aria-label={t("Confirm update", "确认更新")} onClick={() => void update()}><Check size={15} />{t("Confirm update", "确认更新")}</button>
-          <button type="button" className="pwa-sidebar-button pwa-sidebar-cancel" aria-label={t("Cancel", "取消")} data-tooltip={t("Cancel", "取消")} onClick={cancelUpdate}><X size={15} /></button>
-        </div> : (waiting || refreshReady) ? <button ref={sidebarUpdateButton} type="button" className="pwa-sidebar-button" aria-label={t("Open update confirmation", "\u6253\u5f00\u66f4\u65b0\u786e\u8ba4")} onClick={() => requestUpdate("sidebar")} disabled={updating}><RefreshCw size={15} />{updating ? t("Updating...", "\u6b63\u5728\u66f4\u65b0...") : t("Update now", "\u7acb\u5373\u66f4\u65b0")}</button>
-          : <button type="button" className="pwa-sidebar-button" onClick={() => void checkForUpdates()} disabled={checking}><RefreshCw size={15} className={checking ? "pwa-check-spin" : undefined} />{checking ? t("Checking...", "\u6b63\u5728\u68c0\u67e5...") : t("Check for updates", "\u68c0\u67e5\u66f4\u65b0")}</button>}
-        <span className={`pwa-check-message${sidebarError ? " pwa-update-error" : ""}`} role="status" data-tooltip={sidebarError ? errorText : undefined} tabIndex={sidebarError ? 0 : undefined}>{sidebarError ? <><AlertTriangle size={15} /><span>{errorText}</span></> : checkMessage}</span>
+          <button ref={confirmButton} type="button" className="pwa-sidebar-button pwa-sidebar-confirm" aria-label={t("Confirm update", "确认更新")} onClick={() => void update()}><Icon glyph={Check} size="compact" />{t("Confirm update", "确认更新")}</button>
+          <button type="button" className="pwa-sidebar-button pwa-sidebar-cancel" aria-label={t("Cancel", "取消")} data-tooltip={t("Cancel", "取消")} onClick={cancelUpdate}><Icon glyph={X} size="compact" /></button>
+        </div> : (waiting || refreshReady) ? <button ref={sidebarUpdateButton} type="button" className="pwa-sidebar-button" aria-label={t("Open update confirmation", "\u6253\u5f00\u66f4\u65b0\u786e\u8ba4")} onClick={() => requestUpdate("sidebar")} disabled={updating}><Icon glyph={RefreshCw} size="compact" />{updating ? t("Updating...", "\u6b63\u5728\u66f4\u65b0...") : t("Update now", "\u7acb\u5373\u66f4\u65b0")}</button>
+          : <button type="button" className="pwa-sidebar-button" onClick={() => void checkForUpdates()} disabled={checking}><Icon glyph={RefreshCw} size="compact" className={checking ? "pwa-check-spin" : undefined} />{checking ? t("Checking...", "\u6b63\u5728\u68c0\u67e5...") : t("Check for updates", "\u68c0\u67e5\u66f4\u65b0")}</button>}
+        <span className={`pwa-check-message${sidebarError ? " pwa-update-error" : ""}`} role="status" data-tooltip={sidebarError ? errorText : undefined} tabIndex={sidebarError ? 0 : undefined}>{sidebarError ? <><Icon glyph={AlertTriangle} size="compact" /><span>{errorText}</span></> : checkMessage}</span>
       </div>, sidebarSlot)}
       {offline && (
         <div className="notice">
-          <WifiOff size={17} />
+          <Icon glyph={WifiOff} size="status" />
           {t("Browser reports offline · review, edit, and export saved meetings. Cloud AI needs a connection.", "浏览器显示离线 · 您仍可查看、编辑和导出已保存的会议。云端 AI 需要网络连接。")}
         </div>
       )}
       {(waiting || refreshReady) && (
         <div className="notice update" role="status">
-          <RefreshCw size={17} className={updating ? "pwa-check-spin" : undefined} />
+          <Icon glyph={RefreshCw} size="status" className={updating ? "pwa-check-spin" : undefined} />
           <span>{t("A new version is ready. Save your work before updating.", "新版本已准备好。更新前请先保存工作。")}</span>
           {confirmation.open && confirmation.origin === "banner" && !updating ? (
             <>
@@ -266,7 +267,7 @@ export function PwaStatus() {
       )}
       {install && (
         <div className="notice install">
-          <Download size={17} />
+          <Icon glyph={Download} size="status" />
           <span>{t("Make this workspace feel at home on your device.", "将此工作空间安装到您的设备。")}</span>
           <button
             className="button secondary compact"

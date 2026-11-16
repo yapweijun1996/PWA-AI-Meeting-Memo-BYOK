@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { translateUi } from "../i18n";
 import { useState, type FormEvent } from "react";
 import { FileAudio, FileText, Plus, Upload, Check } from "lucide-react";
@@ -200,7 +201,7 @@ export function NewMeeting({
             if (dropped) setFile(dropped);
           }}
         >
-          <span>{file ? <Check size={25} /> : <Upload size={25} />}</span>
+          <span>{file ? <Icon glyph={Check} size="upload" /> : <Icon glyph={Upload} size="upload" />}</span>
           <strong>{file ? file.name : t("Add a meeting recording", "添加会议录音")}</strong>
           <small>
             {file
@@ -214,13 +215,13 @@ export function NewMeeting({
             onChange={(e) => setFile(e.target.files?.[0])}
           />
           <span className="button secondary compact">
-            <FileAudio size={15} />
+            <Icon glyph={FileAudio} size="compact" />
             {file ? t("Change recording", "更换录音") : t("Browse files", "浏览文件")}
           </span>
         </label>
         <details className="new-meeting-details">
           <summary>
-            <FileText size={16} />
+            <Icon glyph={FileText} size="inline" />
             {t("Start from a transcript instead", "使用已有转录")}
           </summary>
           <label className="text-file">
@@ -308,7 +309,7 @@ export function NewMeeting({
             {t("Cancel", "取消")}
           </button>
           <button className="button primary" disabled={busy} type="submit">
-            <Plus size={17} />
+            <Icon glyph={Plus} size="status" />
             {busy ? t("Saving locally…", "正在保存到本地…") : t("Create meeting", "创建会议")}
           </button>
         </div>

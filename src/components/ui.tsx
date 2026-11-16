@@ -1,3 +1,4 @@
+import { Icon } from "./Icon";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { X, FileAudio, MessageSquareText } from "lucide-react";
 import { useUiLanguage } from "../ui-language";
@@ -57,7 +58,7 @@ export function Modal({
           onClick={onClose}
           aria-label={language === "zh-CN" ? "关闭对话框" : "Close dialog"}
         >
-          <X size={20} />
+          <Icon glyph={X} size="transport" />
         </button>
       </header>
       {error && (
@@ -74,7 +75,7 @@ export function Brand({ small = false }: { small?: boolean }) {
   return (
     <div className={`brand ${small ? "brand-small" : ""}`}>
       <span className="brand-mark">
-        <MessageSquareText size={22} />
+        <Icon glyph={MessageSquareText} size="heading" />
       </span>
       <span>
         Meeting<span className="brand-light">Memo</span>
@@ -93,7 +94,7 @@ export function Empty({
   return (
     <section className="empty">
       <div className="empty-symbol">
-        <FileAudio size={32} strokeWidth={1.5} />
+        <Icon glyph={FileAudio} size="empty" strokeWidth={1.5} />
       </div>
       <h2>{title}</h2>
       {children}

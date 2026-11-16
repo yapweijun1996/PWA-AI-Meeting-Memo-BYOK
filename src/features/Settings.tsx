@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import type { MemoLanguagePreference } from "../domain/memo-language";
 import { translateUi } from "../i18n";
 import { useEffect, useRef, useState } from "react";
@@ -346,7 +347,7 @@ export function Settings() {
         <div id="settings-panel-api" role="tabpanel" aria-labelledby="settings-tab-api" hidden={activeTab !== "api"}>
         <div className="panel-title">
           <span className="round-icon">
-            <KeyRound size={22} />
+            <Icon glyph={KeyRound} size="heading" />
           </span>
           <div>
             <h2>{t("Your API connections", "您的 API 连接")}</h2>
@@ -356,7 +357,7 @@ export function Settings() {
           </div>
         </div>
         <div className="notice">
-          <LockKeyhole size={18} />
+          <Icon glyph={LockKeyhole} size="control" />
           <span>
             {t("Keys are stored unencrypted in this browser's IndexedDB. Other scripts on this shared website origin and anyone with access to this browser profile may be able to read them. Keys are not included in meeting backups or sent to GitHub.", "密钥以未加密方式存储在此浏览器的 IndexedDB 中。同一网站来源的其他脚本及能访问此浏览器配置的人可能读取密钥。密钥不会包含在会议备份中，也不会发送到 GitHub。")}
           </span>
@@ -374,7 +375,7 @@ export function Settings() {
                 rel="noreferrer"
                 aria-label={t("Open OpenRouter API keys", "打开 OpenRouter API 密钥页面")}
               >
-                <ExternalLink size={16} />
+                <Icon glyph={ExternalLink} size="inline" />
               </a>
             </div>
             <label>
@@ -405,7 +406,7 @@ export function Settings() {
                 rel="noreferrer"
                 aria-label={t("Open OpenAI API keys", "打开 OpenAI API 密钥页面")}
               >
-                <ExternalLink size={16} />
+                <Icon glyph={ExternalLink} size="inline" />
               </a>
             </div>
             <label>
@@ -542,9 +543,9 @@ export function Settings() {
           <div className="settings-actions">
             <button type="submit" className="button primary" disabled={saving}>
               {saved && !formDirty ? (
-                <Check size={16} />
+                <Icon glyph={Check} size="inline" />
               ) : (
-                <KeyRound size={16} />
+                <Icon glyph={KeyRound} size="inline" />
               )}{" "}
               {saved && !formDirty ? t("Saved on this device", "已保存在此设备") : t("Save settings", "保存设置")}
             </button>
@@ -555,7 +556,7 @@ export function Settings() {
               onClick={() => void forget()}
               disabled={saving}
             >
-              <Trash2 size={16} />
+              <Icon glyph={Trash2} size="inline" />
               {t("Forget keys", "清除密钥")}
             </button>
           </div>
@@ -572,7 +573,7 @@ export function Settings() {
       <div className="settings-grid">
         <section className="settings-panel">
           <div className="panel-title">
-            <HardDrive size={20} />
+            <Icon glyph={HardDrive} size="transport" />
             <h2>{t("Local storage", "本地存储")}</h2>
           </div>
           <p>{translateMessage(usage, displayLanguage)}</p>
@@ -597,7 +598,7 @@ export function Settings() {
             rel="noreferrer"
           >
             {t("Source & verification notes", "源代码与验证记录")}
-            <ExternalLink size={15} />
+            <Icon glyph={ExternalLink} size="compact" />
           </a>
           <p className="small muted">{t("Build", "构建版本")} {__BUILD_ID__}</p>
         </section>

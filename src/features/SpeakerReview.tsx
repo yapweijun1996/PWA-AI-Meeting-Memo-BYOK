@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import "./SpeakerPlayback.css";
 import { showToast } from "../components/ToastLayer";
 import { SpeakerAvatar, useSpeakerAvatars } from "../components/SpeakerAvatar";
@@ -460,7 +461,7 @@ export function SpeakerReview({
               </label>
               {playing ? (
                 <button className="button secondary compact" onClick={onPause}>
-                  <Pause size={14} /> {t("Pause", "暂停")}
+                  <Icon glyph={Pause} size="small" /> {t("Pause", "暂停")}
                 </button>
               ) : null}
               <button
@@ -468,7 +469,7 @@ export function SpeakerReview({
                 disabled={locked}
                 onClick={onAdd}
               >
-                <Plus size={14} /> {t("Add speaker", "添加说话人")}
+                <Icon glyph={Plus} size="small" /> {t("Add speaker", "添加说话人")}
               </button>
             </>
           )}
@@ -553,7 +554,7 @@ export function SpeakerReview({
           const draft = drafts[speaker.id] ?? speaker.name;
           const stats = speakerStats.get(speaker.id);
           const sampleList = (item: typeof speaker) => (windowsBySpeaker.get(item.id) ?? []).map((window, sampleIndex) => <article className="speaker-sample" key={`${item.id}:${window.start}`}>
-            <button className="button secondary compact" disabled={!audioAvailable || locked} onClick={() => { setSampleFocus({ speakerId: item.id, start: window.start }); onCue(window.start, window.end); }}><Play size={12} /> {t("Sample", "\u6837\u672c")} {sampleIndex + 1}</button>
+            <button className="button secondary compact" disabled={!audioAvailable || locked} onClick={() => { setSampleFocus({ speakerId: item.id, start: window.start }); onCue(window.start, window.end); }}><Icon glyph={Play} size="micro" /> {t("Sample", "\u6837\u672c")} {sampleIndex + 1}</button>
             <span className="speaker-sample-range">{formatTime(window.start)} - {formatTime(window.end)}</span>
           </article>);
           const selectedWindows = windowsBySpeaker.get(speaker.id) ?? [];
@@ -601,8 +602,8 @@ export function SpeakerReview({
                       {candidate.sharesPart && <p className="small muted">{t("Both speak in the same recording part, which usually means two different people.", "两者在同一录音部分都有发言，通常表示是两个人。")}</p>}
                       {candidate.fewSamples && <p className="small muted">{t("Based on very few samples.", "基于很少的样本。")}</p>}
                       <div className="voice-suggestion-actions">
-                        <button className="button secondary compact" disabled={!audioAvailable || locked || !onCueSequence} onClick={() => { setSampleFocus(null); onCueSequence?.([own.sample, candidate.sample]); }}><Play size={12} /> {t("Play both", "连续播放两段")}</button>
-                        <button className="button primary compact" disabled={locked} onClick={() => void mergeVoiceSuggestion(speaker.id, candidate)}><Check size={12} /> {t("Same person", "是同一人")}</button>
+                        <button className="button secondary compact" disabled={!audioAvailable || locked || !onCueSequence} onClick={() => { setSampleFocus(null); onCueSequence?.([own.sample, candidate.sample]); }}><Icon glyph={Play} size="micro" /> {t("Play both", "连续播放两段")}</button>
+                        <button className="button primary compact" disabled={locked} onClick={() => void mergeVoiceSuggestion(speaker.id, candidate)}><Icon glyph={Check} size="micro" /> {t("Same person", "是同一人")}</button>
                         <button className="text-button" disabled={locked && Boolean(onMarkDifferent)} onClick={() => (onMarkDifferent ? onMarkDifferent(speaker.id, candidate.speakerId) : setDismissedVoicePairs((current) => new Set([...current, voicePairKey(speaker.id, candidate.speakerId)])))}>{t("Not the same", "不是同一人")}</button>
                       </div>
                     </article>;
@@ -635,7 +636,7 @@ export function SpeakerReview({
               <p className="small muted">{stats?.count ?? 0} {t("transcript fragments", "段转录片段")} · {formatTime(stats?.timed ?? 0)} {t("timed intervals", "有时间记录的片段时长")}</p>
               <p className="small muted">{t("Overlapping intervals may be counted more than once.", "重叠片段可能重复计入时长。")}</p>
               <div className="speaker-card-actions"><button className="button secondary compact" disabled={locked || !draft.trim() || draft === speaker.name} data-unsaved-edit={draft !== speaker.name ? "true" : "false"} onClick={() => void saveSpeaker(speaker.id, "save")}>{t("Save name", "保存姓名")}</button>
-                <button className="button primary compact" disabled={locked || !draft.trim()} onClick={() => void saveSpeaker(speaker.id, speaker.confirmed ? "toggle" : "confirm")}><Check size={15} />{speaker.confirmed ? t("Leave unconfirmed", "取消姓名确认") : t("Confirm name", "确认姓名")}</button>
+                <button className="button primary compact" disabled={locked || !draft.trim()} onClick={() => void saveSpeaker(speaker.id, speaker.confirmed ? "toggle" : "confirm")}><Icon glyph={Check} size="compact" />{speaker.confirmed ? t("Leave unconfirmed", "取消姓名确认") : t("Confirm name", "确认姓名")}</button>
                 <button className="text-button" onClick={() => onMerge(speaker.id)} disabled={locked || meeting.speakers.length < 2}>{t("Merge\u2026", "\u5408\u5e76\u2026")}</button></div>
             </section>
           </>;

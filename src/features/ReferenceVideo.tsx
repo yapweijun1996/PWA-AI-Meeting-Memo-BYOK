@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { translateUi } from "../i18n";
 import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, Eye, Save, StopCircle } from "lucide-react";
@@ -214,7 +215,7 @@ export function ReferenceVideo({
               onClick={() => setActive(null)}
               aria-label={t("Stop reference video", "停止参考视频")}
             >
-              <StopCircle size={14} /> {t("Stop", "停止")}
+              <Icon glyph={StopCircle} size="small" /> {t("Stop", "停止")}
             </button>
           </div>
           <iframe
@@ -285,7 +286,7 @@ export function ReferenceVideo({
           onClick={() => void saveDraft()}
           disabled={disabled || !isDraftDifferent}
         >
-          <Save size={15} /> {t("Save reference", "保存参考")}
+          <Icon glyph={Save} size="compact" /> {t("Save reference", "保存参考")}
         </button>
         <button
           type="button"
@@ -293,7 +294,7 @@ export function ReferenceVideo({
           onClick={() => void watchSample()}
           disabled={disabled || !draftId}
         >
-          <Eye size={15} /> {t("Watch this sample", "观看此样本")}
+          <Icon glyph={Eye} size="compact" /> {t("Watch this sample", "观看此样本")}
         </button>
         {external && (
           <a
@@ -302,7 +303,7 @@ export function ReferenceVideo({
             target="_blank"
             rel="noreferrer noopener"
           >
-            <ExternalLink size={14} /> {t("Open on YouTube", "在 YouTube 打开")}
+            <Icon glyph={ExternalLink} size="small" /> {t("Open on YouTube", "在 YouTube 打开")}
           </a>
         )}
       </div>

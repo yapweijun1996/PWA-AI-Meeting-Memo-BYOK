@@ -1,3 +1,5 @@
+import { Check } from "lucide-react";
+import { Icon, ICON_SIZES, type IconSize } from "../src/components/Icon";
 import { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Brand, Empty, Modal, Pill } from "../src/components/ui";
@@ -115,6 +117,12 @@ function Catalogue() {
             <p className="catalogue-copy">A short local transition displays the library placeholder while its preview state is loading.</p>
             <button type="button" className="button secondary" onClick={simulateLocalLoad} disabled={loading}>Simulate local loading</button>
             {loading && <LoadingPlaceholder kind="library" label="Loading local catalogue preview" />}
+          </section>
+
+          <section className="catalogue-card" aria-labelledby="icon-title">
+            <div className="catalogue-section-heading"><div><p className="catalogue-kicker">src/components/Icon.tsx</p><h2 id="icon-title">Shared icon sizes</h2></div></div>
+            <p>Lucide owns glyphs; the shared API preserves existing physical dimensions. Controls own accessible names.</p>
+            <div className="catalogue-row">{Object.entries(ICON_SIZES).map(([size, pixels]) => <span key={size}><Icon glyph={Check} size={size as IconSize} aria-hidden="true" /> {size} ({pixels}px)</span>)}</div>
           </section>
 
           <section className="catalogue-card" aria-labelledby="avatar-title">
