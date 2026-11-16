@@ -1,6 +1,8 @@
+import { runInNewContext } from "node:vm";
+import preferences from "../src/appearance-preferences.json";
 import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
-import { readBrowserChromeColors } from "../scripts/browser-chrome.mjs";
+import { readBrowserChromeColors, createAppearanceBootstrap } from "../scripts/browser-chrome.mjs";
 import { transform } from "lightningcss";
 
 const required = ':root { --bg-app: #f7f8fa; } :root[data-theme="dark"] { --bg-app: #15191f; }';
@@ -58,4 +60,32 @@ it("keeps base token ownership disjoint and semantic declarations unique", () =>
   expect(semantics).toContain("--layer-tooltip");
   expect(primitives).toContain("--speaker-1");
   expect(primitives).toContain("--text-base");
+});
+
+
+it.each([
+  ["dark", "ocean", "dark", "ocean"],
+  ["light", "amber", "light", "amber"],
+  [null, null, "light", "forest"],
+  ["invalid", "<script>invalid</script>", "light", "forest"],
+])("early appearance validates %s/%s and reads only its own preference keys", (theme, palette, expectedTheme, expectedPalette) => {
+  const reads: string[] = [];
+  const dataset: Record<string, string> = {};
+  let chrome = "";
+  runInNewContext(createAppearanceBootstrap({light: "#f7f8fa", dark: "#15191f"}, preferences), {
+    document: {documentElement: {dataset}, querySelector: () => ({setAttribute: (_key: string, value: string) => { chrome = value; }})},
+    localStorage: {getItem: (key: string) => { reads.push(key); return key === preferences.theme.key ? theme : palette; }},
+  });
+  expect(reads).toEqual([preferences.theme.key, preferences.palette.key]);
+  expect(dataset).toEqual({theme: expectedTheme, palette: expectedPalette});
+  expect(chrome).toBe(expectedTheme === "dark" ? "#15191f" : "#f7f8fa");
+});
+
+it("early appearance survives denied storage without writes or database access", () => {
+  const dataset: Record<string, string> = {};
+  runInNewContext(createAppearanceBootstrap({light: "#f7f8fa", dark: "#15191f"}, preferences), {
+    document: {documentElement: {dataset}, querySelector: () => null},
+    get localStorage() { throw new Error("denied"); },
+  });
+  expect(dataset).toEqual({theme: "light", palette: "forest"});
 });

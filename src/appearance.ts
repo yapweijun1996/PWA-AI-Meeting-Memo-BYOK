@@ -1,15 +1,16 @@
+import preferences from "./appearance-preferences.json";
 import { useSyncExternalStore } from "react";
 
 const key = "meeting-memo:font-family";
 const sizeKey = "meeting-memo:font-size";
-const themeKey = "meeting-memo:theme";
-const paletteKey = "meeting-memo:palette";
+const themeKey = preferences.theme.key;
+const paletteKey = preferences.palette.key;
 export type ThemeChoice = "light" | "dark";
 export type PaletteChoice = "forest" | "ocean" | "violet" | "amber";
 let currentTheme: ThemeChoice = "light";
 let currentPalette: PaletteChoice = "forest";
-const parseTheme = (value: string | null): ThemeChoice => value === "dark" ? "dark" : "light";
-const parsePalette = (value: string | null): PaletteChoice => value === "ocean" || value === "violet" || value === "amber" ? value : "forest";
+const parseTheme = (value: string | null): ThemeChoice => (preferences.theme.values.includes(value ?? "") ? value : preferences.theme.default) as ThemeChoice;
+const parsePalette = (value: string | null): PaletteChoice => (preferences.palette.values.includes(value ?? "") ? value : preferences.palette.default) as PaletteChoice;
 function syncBrowserChrome() {
   const background = getComputedStyle(document.documentElement).getPropertyValue("--bg-app").trim();
   if (background) document.querySelector('meta[name="theme-color"]')?.setAttribute("content", background);

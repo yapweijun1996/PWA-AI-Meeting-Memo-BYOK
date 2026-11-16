@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { Buffer } from "node:buffer";
@@ -43,21 +44,52 @@ export function readBrowserChromeColors(css) {
   return { light: colors.light, dark: colors.dark };
 }
 
+/** Parser-blocking, same-origin script: no inline-script CSP exception or key/database access. */
+export function createAppearanceBootstrap(colors, preferences) {
+  return `(()=>{const p=${JSON.stringify(preferences)},colors=${JSON.stringify(colors)},root=document.documentElement;let theme=p.theme.default,palette=p.palette.default;try{const t=localStorage.getItem(p.theme.key),c=localStorage.getItem(p.palette.key);if(p.theme.values.includes(t))theme=t;if(p.palette.values.includes(c))palette=c}catch{}root.dataset.theme=theme;root.dataset.palette=palette;document.querySelector('meta[name="theme-color"]')?.setAttribute('content',colors[theme])})();`;
+}
+
 export function browserChromePlugin() {
-  let themeFile;
+  let themeFile, preferencesFile, base;
+  const asset = () => {
+    const colors = readBrowserChromeColors(readFileSync(themeFile, "utf8"));
+    const preferences = JSON.parse(readFileSync(preferencesFile, "utf8"));
+    const source = createAppearanceBootstrap(colors, preferences);
+    const hash = createHash("sha256").update(source).digest("hex").slice(0, 16);
+    return { source, fileName: `assets/appearance-init-${hash}.js`, colors };
+  };
   return {
     name: "meeting-memo-browser-chrome",
-    configResolved(config) { themeFile = path.resolve(config.root, "src/theme.css"); },
+    configResolved(config) {
+      themeFile = path.resolve(config.root, "src/theme.css");
+      preferencesFile = path.resolve(config.root, "src/appearance-preferences.json");
+      base = config.base;
+    },
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        if (!request.url?.startsWith(`${base}assets/appearance-init-`)) return next();
+        const prepared = asset();
+        if (request.url?.split("?")[0] !== `${base}${prepared.fileName}`) return next();
+        response.setHeader("Content-Type", "text/javascript; charset=utf-8");
+        response.setHeader("Cache-Control", "no-store");
+        response.end(prepared.source);
+      });
+    },
+    generateBundle() {
+      const prepared = asset();
+      this.emitFile({type: "asset", fileName: prepared.fileName, source: prepared.source});
+    },
     transformIndexHtml: {
-      order: "pre",
+      order: "post",
       handler(html) {
-        const colors = readBrowserChromeColors(readFileSync(themeFile, "utf8"));
+        const prepared = asset();
         if (html.split(placeholder).length !== 2) throw new Error("HTML requires one browser chrome placeholder");
-        return html.replace(placeholder, colors.light);
+        const script = `<script src="${base}${prepared.fileName}"></script>`;
+        return html.replace(placeholder, prepared.colors.light).replace("</head>", `${script}</head>`);
       },
     },
     handleHotUpdate(context) {
-      if (path.resolve(context.file) !== themeFile) return;
+      if (![themeFile, preferencesFile].includes(path.resolve(context.file))) return;
       readBrowserChromeColors(readFileSync(themeFile, "utf8"));
       // CSS edits must refresh the static meta value as well as the stylesheet.
       context.server.ws.send({ type: "full-reload" });

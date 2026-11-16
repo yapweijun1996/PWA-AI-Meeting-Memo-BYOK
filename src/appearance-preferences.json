@@ -1,0 +1,12 @@
+{
+  "theme": {
+    "key": "meeting-memo:theme",
+    "default": "light",
+    "values": ["light", "dark"]
+  },
+  "palette": {
+    "key": "meeting-memo:palette",
+    "default": "forest",
+    "values": ["forest", "ocean", "violet", "amber"]
+  }
+}
