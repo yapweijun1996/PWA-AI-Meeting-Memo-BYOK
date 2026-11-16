@@ -6,6 +6,24 @@ Speaker review redesign: implemented a single searchable, filterable queue, sele
 
 # Implementation tasks
 
+## SSOT and PWA gap follow-up — 2026-11-16
+
+Current assessment: **partially aligned, not fully compliant**. [gap.md](gap.md) owns the versioned KB source references, applicability decisions, evidence, priorities and acceptance criteria. This section owns execution status. Historical checked SSOT work below remains a checkpoint, not evidence of complete current compliance. These tasks are follow-up recommendations; this documentation update does not authorize deployment or wholesale UI migration.
+
+- [x] Assess the relevant KB token/component standards against current local code and record evidence-backed gaps and project-specific exceptions in `gap.md`.
+- [ ] REL01 — Make verification a required publication dependency; cover PR checks, failing-check publication refusal and current-main artifact eligibility.
+- [ ] DS05 — Add a scoped SSOT violation ratchet with reviewed exceptions, regression tests and CI integration.
+- [ ] DS01/DS02 — Inventory literals and repeated roles; choose the authoritative token source model, centralize semantic roles and browser-chrome values, and verify synchronization if generation is adopted.
+- [ ] DS04 — Document component owners, variants, accessibility and interaction contracts with an actual-component catalogue.
+- [ ] DS03 — Consolidate repeated interactive patterns incrementally; preserve dialog focus, keyboard/touch, memo drafts and review behavior.
+- [ ] DS06 — Expand theme/palette contrast and screenshot acceptance across representative workflows and 390/768/1440 viewports.
+- [ ] DS07 — Reproduce or rule out cold-launch theme flash, then implement and verify early restoration if required.
+- [ ] DS08 — Define shared icon sizing and explicit artwork exceptions without duplicating the Lucide registry or changing speaker identity semantics.
+- [ ] DS09 — Decide whether system theme, density and design kits are product requirements; document deferrals or verify adopted axes independently.
+- [ ] REL02 — Complete pinned Node 22 release checks and physical iOS/Android installed, offline, suspension, safe-area and screen-reader acceptance.
+- [ ] REL03 — Close speaker-model licensing/delivery, labelled matching evaluation and deployed download/offline/mobile recovery gates; retain separate accuracy limitations.
+- [ ] DOC01 — Reconcile historical and current checklists against owning code and verified evidence; preserve task history without treating it as current compliance.
+
 ## Immersive playback — local implementation 2026-11-10
 
 The owner approved the [fullscreen concept](fullscreen-playback-concept.png). The detailed [immersive playback plan](docs/IMMERSIVE-PLAYBACK-PLAN.md) defines scope, behavior, architecture, platform fallback and acceptance. The local implementation remains under validation and is not a claim of release. Preserve the current uncommitted workspace changes and existing playback, evidence, privacy and recovery contracts.
