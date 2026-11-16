@@ -2468,7 +2468,8 @@ details[open] > summary {
 }
 .immersive-state { color: var(--immersive-text-muted); }
 .immersive-captions { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; width: 100%; max-width: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable both-edges; font-size: var(--font-size-immersive-caption); font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
-.immersive-caption-content { flex: none; width: 100%; max-height: 4.05em; margin-top: clamp(0px, 2vh, 18px); margin-bottom: auto; overflow-y: auto; overscroll-behavior: contain; }
+/* Responsive layouts can place scrolling on an ancestor; a zero-range caption must not trap input. */
+.immersive-caption-content { flex: none; width: 100%; max-height: 4.05em; margin-top: clamp(0px, 2vh, 18px); margin-bottom: auto; overflow-y: auto; overscroll-behavior: auto; }
 .immersive-caption-content p { margin: 0 0 .5em; animation: immersive-caption-enter 180ms ease-out both; }
 @keyframes immersive-caption-enter {
   from { opacity: .8; }

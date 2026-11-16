@@ -1,0 +1,203 @@
+{
+  "format": "meeting-memo-synthetic-playback-benchmark",
+  "version": 1,
+  "date": "2026-11-16T14:04:41.325Z",
+  "runtime": "v22.23.3",
+  "platform": "darwin",
+  "arch": "arm64",
+  "cpu": "Apple M4 (Virtual)",
+  "visibleMemoryBytes": 6442450944,
+  "sourceSha256": "b2ed7b0057fdfea32c9c816a15ab3604424f81f94b26e77597b463bc3d3b93c5",
+  "scope": "In-process synthetic caption preparation and projection. Timings exclude DOM, paint, IndexedDB, decoding, audio output, device suspension and physical safe areas. No provider requests or private data.",
+  "cases": [
+    {
+      "kind": "sequential",
+      "segments": 1000,
+      "labels": 100,
+      "characters": 67893,
+      "durationSeconds": 249.95,
+      "captions": 1000,
+      "boundaries": 3000,
+      "preparationMs": 1.4749,
+      "projectionMs": {
+        "median": 0.0268,
+        "p95": 0.0873,
+        "max": 0.2077
+      },
+      "samples": 200,
+      "maxActiveCaptions": 1,
+      "maxRelevantLabels": 1,
+      "maxRenderedTranscriptRows": 40,
+      "maxActiveOutsideTranscriptWindow": 0,
+      "reachableCaptions": 1000
+    },
+    {
+      "kind": "overlap-100",
+      "segments": 1000,
+      "labels": 100,
+      "characters": 67893,
+      "durationSeconds": 235,
+      "captions": 1000,
+      "boundaries": 49,
+      "preparationMs": 0.5653,
+      "projectionMs": {
+        "median": 0.0288,
+        "p95": 0.0677,
+        "max": 0.3658
+      },
+      "samples": 200,
+      "maxActiveCaptions": 100,
+      "maxRelevantLabels": 100,
+      "maxRenderedTranscriptRows": 40,
+      "maxActiveOutsideTranscriptWindow": 80,
+      "reachableCaptions": 1000
+    },
+    {
+      "kind": "long-caption",
+      "segments": 1000,
+      "labels": 100,
+      "characters": 1961201,
+      "durationSeconds": 249.95,
+      "captions": 1000,
+      "boundaries": 3000,
+      "preparationMs": 0.5803,
+      "projectionMs": {
+        "median": 0.02,
+        "p95": 0.0498,
+        "max": 0.3578
+      },
+      "samples": 200,
+      "maxActiveCaptions": 1,
+      "maxRelevantLabels": 1,
+      "maxRenderedTranscriptRows": 40,
+      "maxActiveOutsideTranscriptWindow": 0,
+      "reachableCaptions": 1000
+    },
+    {
+      "kind": "sequential",
+      "segments": 5000,
+      "labels": 100,
+      "characters": 343893,
+      "durationSeconds": 1249.95,
+      "captions": 5000,
+      "boundaries": 15000,
+      "preparationMs": 5.2512,
+      "projectionMs": {
+        "median": 0.1063,
+        "p95": 0.2236,
+        "max": 0.419
+      },
+      "samples": 200,
+      "maxActiveCaptions": 1,
+      "maxRelevantLabels": 1,
+      "maxRenderedTranscriptRows": 40,
+      "maxActiveOutsideTranscriptWindow": 0,
+      "reachableCaptions": 5000
+    },
+    {
+      "kind": "overlap-100",
+      "segments": 5000,
+      "labels": 100,
+      "characters": 343893,
+      "durationSeconds": 1235,
+      "captions": 5000,
+      "boundaries": 249,
+      "preparationMs": 1.8983,
+      "projectionMs": {
+        "median": 0.1059,
+        "p95": 0.2032,
+        "max": 1.105
+      },
+      "samples": 200,
+      "maxActiveCaptions": 100,
+      "maxRelevantLabels": 100,
+      "maxRenderedTranscriptRows": 40,
+      "maxActiveOutsideTranscriptWindow": 80,
+      "reachableCaptions": 5000
+    },
+    {
+      "kind": "long-caption",
+      "segments": 5000,
+      "labels": 100,
+      "characters": 2237201,
+      "durationSeconds": 1249.95,
+      "captions": 5000,
+      "boundaries": 15000,
+      "preparationMs": 1.5546,
+      "projectionMs": {
+        "median": 0.0986,
+        "p95": 0.1721,
+        "max": 0.9464
+      },
+      "samples": 200,
+      "maxActiveCaptions": 1,
+      "maxRelevantLabels": 1,
+      "maxRenderedTranscriptRows": 40,
+      "maxActiveOutsideTranscriptWindow": 0,
+      "reachableCaptions": 5000
+    },
+    {
+      "kind": "sequential",
+      "segments": 20000,
+      "labels": 100,
+      "characters": 1388894,
+      "durationSeconds": 4999.95,
+      "captions": 20000,
+      "boundaries": 60000,
+      "preparationMs": 10.2358,
+      "projectionMs": {
+        "median": 0.4367,
+        "p95": 0.6756,
+        "max": 0.7613
+      },
+      "samples": 200,
+      "maxActiveCaptions": 1,
+      "maxRelevantLabels": 1,
+      "maxRenderedTranscriptRows": 40,
+      "maxActiveOutsideTranscriptWindow": 0,
+      "reachableCaptions": 20000
+    },
+    {
+      "kind": "overlap-100",
+      "segments": 20000,
+      "labels": 100,
+      "characters": 1388894,
+      "durationSeconds": 4985,
+      "captions": 20000,
+      "boundaries": 999,
+      "preparationMs": 7.0763,
+      "projectionMs": {
+        "median": 0.4389,
+        "p95": 0.6248,
+        "max": 0.6553
+      },
+      "samples": 200,
+      "maxActiveCaptions": 100,
+      "maxRelevantLabels": 100,
+      "maxRenderedTranscriptRows": 40,
+      "maxActiveOutsideTranscriptWindow": 80,
+      "reachableCaptions": 20000
+    },
+    {
+      "kind": "long-caption",
+      "segments": 20000,
+      "labels": 100,
+      "characters": 3282202,
+      "durationSeconds": 4999.95,
+      "captions": 20000,
+      "boundaries": 60000,
+      "preparationMs": 22.3695,
+      "projectionMs": {
+        "median": 0.4505,
+        "p95": 0.6899,
+        "max": 0.8626
+      },
+      "samples": 200,
+      "maxActiveCaptions": 1,
+      "maxRelevantLabels": 1,
+      "maxRenderedTranscriptRows": 40,
+      "maxActiveOutsideTranscriptWindow": 0,
+      "reachableCaptions": 20000
+    }
+  ]
+}

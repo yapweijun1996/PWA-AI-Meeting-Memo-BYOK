@@ -1,0 +1,1751 @@
+{
+  "format": "meeting-memo-browser-playback-evidence",
+  "version": 1,
+  "date": "2026-11-16",
+  "baselineCommit": "a969c2d8e1df5721a4a3ffc2ac153d7c24546c0c",
+  "measuredChanges": "Caption scroll chaining plus benchmark contracts/tooling; source checksums identify the measured proposed files.",
+  "sourceSha256": {
+    "playback": "b2ed7b0057fdfea32c9c816a15ab3604424f81f94b26e77597b463bc3d3b93c5",
+    "css": "f2699c8d53d6207a78d3cb22824f86542b8718d52656f36da0ef32563a050bc6",
+    "test": "c5fadb00b87fd44aa9f4009f754bdf3d837734e21e74dbcae0cdd962be7e808f"
+  },
+  "workers": 1,
+  "reports": [
+    {
+      "format": "meeting-memo-browser-playback-benchmark",
+      "version": 1,
+      "engine": "chromium",
+      "browserVersion": "156.0.8078.4",
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 900,
+        "font": "normal"
+      },
+      "segments": 20000,
+      "labels": 100,
+      "samples": [
+        {
+          "position": 0.1,
+          "dispatchMs": 0.10000000894069672,
+          "secondFrameMs": 34.30000001192093,
+          "transcriptRows": 40,
+          "currentCaptions": 101,
+          "currentLabels": 101,
+          "domElements": 1731
+        },
+        {
+          "position": 5,
+          "dispatchMs": 0.09999999403953552,
+          "secondFrameMs": 114.20000000298023,
+          "transcriptRows": 40,
+          "currentCaptions": 101,
+          "currentLabels": 101,
+          "domElements": 1731
+        },
+        {
+          "position": 15,
+          "dispatchMs": 0.10000000894069672,
+          "secondFrameMs": 162.1000000089407,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 20.3,
+          "dispatchMs": 0.10000000894069672,
+          "secondFrameMs": 68.5,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 200.1,
+          "dispatchMs": 0.09999999403953552,
+          "secondFrameMs": 28.599999994039536,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 400.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 40.29999999701977,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 1000.1,
+          "dispatchMs": 0.19999998807907104,
+          "secondFrameMs": 19.399999991059303,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 2000.1,
+          "dispatchMs": 0.10000000894069672,
+          "secondFrameMs": 20.600000008940697,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 3000.1,
+          "dispatchMs": 0.10000000894069672,
+          "secondFrameMs": 22.200000002980232,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 4000.1,
+          "dispatchMs": 0.09999999403953552,
+          "secondFrameMs": 39.70000000298023,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 4990.1,
+          "dispatchMs": 0.09999999403953552,
+          "secondFrameMs": 41.29999999701977,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        }
+      ],
+      "longText": {
+        "characters": 17435,
+        "scrollHeight": 2311,
+        "clientHeight": 305,
+        "marginTop": "18px",
+        "fontPixels": "16px",
+        "maxHeight": "100%",
+        "tailBottom": 737.6875,
+        "clipTop": 435.75,
+        "clipBottom": 740.40625,
+        "boxBottom": 740.40625,
+        "stageBottom": 754.40625,
+        "parentBottom": 740.40625,
+        "tailVisible": true
+      },
+      "scrollOwners": [
+        {
+          "top": 453.75,
+          "bottom": 740.40625,
+          "left": 45,
+          "right": 1395,
+          "range": 2024,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 2003,
+              "range": 2006
+            },
+            {
+              "className": "immersive-captions size-normal",
+              "scrollTop": 0,
+              "range": 18
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        },
+        {
+          "top": 453.75,
+          "bottom": 740.40625,
+          "left": 45,
+          "right": 1395,
+          "range": 2024,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 2006,
+              "range": 2006
+            },
+            {
+              "className": "immersive-captions size-normal",
+              "scrollTop": 0,
+              "range": 18
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        },
+        {
+          "top": 435.75,
+          "bottom": 740.40625,
+          "left": 45,
+          "right": 1395,
+          "range": 2024,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 2006,
+              "range": 2006
+            },
+            {
+              "className": "immersive-captions size-normal",
+              "scrollTop": 18,
+              "range": 18
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        }
+      ],
+      "layout": {
+        "horizontalOverflow": false,
+        "footerBottom": 900,
+        "viewportHeight": 900,
+        "observedSafeAreaInsets": [
+          "0px",
+          "0px",
+          "0px",
+          "0px"
+        ],
+        "fontSize": "normal"
+      },
+      "scope": "Synthetic seek dispatch and second animation frame, with controlled media state. Excludes native decoding/audio output, physical rotation/safe areas, phones, screen readers and provider quality."
+    },
+    {
+      "format": "meeting-memo-browser-playback-benchmark",
+      "version": 1,
+      "engine": "chromium",
+      "browserVersion": "156.0.8078.4",
+      "viewport": {
+        "name": "landscape",
+        "width": 844,
+        "height": 390,
+        "font": "xxlarge"
+      },
+      "segments": 20000,
+      "labels": 100,
+      "samples": [
+        {
+          "position": 0.1,
+          "dispatchMs": 0.10000000894069672,
+          "secondFrameMs": 28.400000005960464,
+          "transcriptRows": 40,
+          "currentCaptions": 101,
+          "currentLabels": 101,
+          "domElements": 1731
+        },
+        {
+          "position": 5,
+          "dispatchMs": 0.20000000298023224,
+          "secondFrameMs": 33.5,
+          "transcriptRows": 40,
+          "currentCaptions": 101,
+          "currentLabels": 101,
+          "domElements": 1731
+        },
+        {
+          "position": 15,
+          "dispatchMs": 0.20000000298023224,
+          "secondFrameMs": 174.79999999701977,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 20.3,
+          "dispatchMs": 0.09999999403953552,
+          "secondFrameMs": 38.400000005960464,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 200.1,
+          "dispatchMs": 0.10000000894069672,
+          "secondFrameMs": 26.30000001192093,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 400.1,
+          "dispatchMs": 0.09999999403953552,
+          "secondFrameMs": 21.599999994039536,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 1000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 93.40000000596046,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 2000.1,
+          "dispatchMs": 0.09999999403953552,
+          "secondFrameMs": 51.29999999701977,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 3000.1,
+          "dispatchMs": 0.10000000894069672,
+          "secondFrameMs": 69.6000000089407,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 4000.1,
+          "dispatchMs": 0.10000000894069672,
+          "secondFrameMs": 89,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 4990.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 123.79999999701977,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        }
+      ],
+      "longText": {
+        "characters": 17435,
+        "scrollHeight": 4340,
+        "clientHeight": 4340,
+        "marginTop": "7.8px",
+        "fontPixels": "16px",
+        "maxHeight": "100%",
+        "tailBottom": 228.296875,
+        "clipTop": 107.5,
+        "clipBottom": 230.890625,
+        "boxBottom": 230.890625,
+        "stageBottom": 244.890625,
+        "parentBottom": 230.890625,
+        "tailVisible": true
+      },
+      "scrollOwners": [
+        {
+          "top": 107.5,
+          "bottom": 260.40625,
+          "left": 30,
+          "right": 814,
+          "range": 4505,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-content",
+              "scrollTop": 494,
+              "range": 4505
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        },
+        {
+          "top": 107.5,
+          "bottom": 230.890625,
+          "left": 30,
+          "right": 814,
+          "range": 4505,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-content",
+              "scrollTop": 4505,
+              "range": 4505
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        },
+        {
+          "top": 107.5,
+          "bottom": 230.890625,
+          "left": 30,
+          "right": 814,
+          "range": 4505,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-content",
+              "scrollTop": 4505,
+              "range": 4505
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        }
+      ],
+      "layout": {
+        "horizontalOverflow": false,
+        "footerBottom": 390,
+        "viewportHeight": 390,
+        "observedSafeAreaInsets": [
+          "0px",
+          "0px",
+          "0px",
+          "0px"
+        ],
+        "fontSize": "xxlarge"
+      },
+      "scope": "Synthetic seek dispatch and second animation frame, with controlled media state. Excludes native decoding/audio output, physical rotation/safe areas, phones, screen readers and provider quality."
+    },
+    {
+      "format": "meeting-memo-browser-playback-benchmark",
+      "version": 1,
+      "engine": "chromium",
+      "browserVersion": "156.0.8078.4",
+      "viewport": {
+        "name": "portrait",
+        "width": 390,
+        "height": 844,
+        "font": "xxlarge"
+      },
+      "segments": 20000,
+      "labels": 100,
+      "samples": [
+        {
+          "position": 0.1,
+          "dispatchMs": 0.10000000894069672,
+          "secondFrameMs": 223,
+          "transcriptRows": 40,
+          "currentCaptions": 101,
+          "currentLabels": 101,
+          "domElements": 1731
+        },
+        {
+          "position": 5,
+          "dispatchMs": 0.10000000894069672,
+          "secondFrameMs": 83.20000000298023,
+          "transcriptRows": 40,
+          "currentCaptions": 101,
+          "currentLabels": 101,
+          "domElements": 1731
+        },
+        {
+          "position": 15,
+          "dispatchMs": 0.10000000894069672,
+          "secondFrameMs": 213.40000000596046,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 20.3,
+          "dispatchMs": 0,
+          "secondFrameMs": 170.90000000596046,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 200.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 91,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 400.1,
+          "dispatchMs": 0.09999999403953552,
+          "secondFrameMs": 99.09999999403954,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 1000.1,
+          "dispatchMs": 0.10000000894069672,
+          "secondFrameMs": 82.80000001192093,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 2000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 194.20000000298023,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 3000.1,
+          "dispatchMs": 0.10000000894069672,
+          "secondFrameMs": 120.40000000596046,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 4000.1,
+          "dispatchMs": 0.09999999403953552,
+          "secondFrameMs": 22.799999997019768,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 4990.1,
+          "dispatchMs": 0.09999999403953552,
+          "secondFrameMs": 54.20000000298023,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        }
+      ],
+      "longText": {
+        "characters": 17435,
+        "scrollHeight": 9760,
+        "clientHeight": 9760,
+        "marginTop": "16.88px",
+        "fontPixels": "16px",
+        "maxHeight": "100%",
+        "tailBottom": 659.15625,
+        "clipTop": 124.25,
+        "clipBottom": 661.75,
+        "boxBottom": 661.75,
+        "stageBottom": 676,
+        "parentBottom": 661.75,
+        "tailVisible": true
+      },
+      "scrollOwners": [
+        {
+          "top": 405.375,
+          "bottom": 676,
+          "left": 30,
+          "right": 360,
+          "range": 9504,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-stage",
+              "scrollTop": 0,
+              "range": 9504
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        },
+        {
+          "top": 124.25,
+          "bottom": 661.75,
+          "left": 30,
+          "right": 360,
+          "range": 9504,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-stage",
+              "scrollTop": 9504,
+              "range": 9504
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        },
+        {
+          "top": 124.25,
+          "bottom": 661.75,
+          "left": 30,
+          "right": 360,
+          "range": 9504,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-stage",
+              "scrollTop": 9504,
+              "range": 9504
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        }
+      ],
+      "layout": {
+        "horizontalOverflow": false,
+        "footerBottom": 844,
+        "viewportHeight": 844,
+        "observedSafeAreaInsets": [
+          "0px",
+          "0px",
+          "0px",
+          "0px"
+        ],
+        "fontSize": "xxlarge"
+      },
+      "scope": "Synthetic seek dispatch and second animation frame, with controlled media state. Excludes native decoding/audio output, physical rotation/safe areas, phones, screen readers and provider quality."
+    },
+    {
+      "format": "meeting-memo-browser-playback-benchmark",
+      "version": 1,
+      "engine": "chromium",
+      "browserVersion": "156.0.8078.4",
+      "viewport": {
+        "name": "tablet",
+        "width": 768,
+        "height": 1024,
+        "font": "normal"
+      },
+      "segments": 20000,
+      "labels": 100,
+      "samples": [
+        {
+          "position": 0.1,
+          "dispatchMs": 0.20000000298023224,
+          "secondFrameMs": 94.70000000298023,
+          "transcriptRows": 40,
+          "currentCaptions": 101,
+          "currentLabels": 101,
+          "domElements": 1731
+        },
+        {
+          "position": 5,
+          "dispatchMs": 0.09999999403953552,
+          "secondFrameMs": 60.3999999910593,
+          "transcriptRows": 40,
+          "currentCaptions": 101,
+          "currentLabels": 101,
+          "domElements": 1731
+        },
+        {
+          "position": 15,
+          "dispatchMs": 0.09999999403953552,
+          "secondFrameMs": 144.59999999403954,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 20.3,
+          "dispatchMs": 0.10000000894069672,
+          "secondFrameMs": 42.20000000298023,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 200.1,
+          "dispatchMs": 0.20000000298023224,
+          "secondFrameMs": 142.40000000596046,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 400.1,
+          "dispatchMs": 0.10000000894069672,
+          "secondFrameMs": 57.29999999701977,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 1000.1,
+          "dispatchMs": 0.09999999403953552,
+          "secondFrameMs": 18.799999997019768,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 2000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 21.799999997019768,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 3000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 23.200000002980232,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 4000.1,
+          "dispatchMs": 0.09999999403953552,
+          "secondFrameMs": 19.299999997019768,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 4990.1,
+          "dispatchMs": 0.09999999403953552,
+          "secondFrameMs": 53.5,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        }
+      ],
+      "longText": {
+        "characters": 17435,
+        "scrollHeight": 4340,
+        "clientHeight": 4340,
+        "marginTop": "18px",
+        "fontPixels": "16px",
+        "maxHeight": "100%",
+        "tailBottom": 861.5,
+        "clipTop": 107.5,
+        "clipBottom": 864.09375,
+        "boxBottom": 864.09375,
+        "stageBottom": 878.09375,
+        "parentBottom": 864.09375,
+        "tailVisible": true
+      },
+      "scrollOwners": [
+        {
+          "top": 405.75,
+          "bottom": 894.40625,
+          "left": 30,
+          "right": 738,
+          "range": 3882,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-content",
+              "scrollTop": 0,
+              "range": 3882
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        },
+        {
+          "top": 107.5,
+          "bottom": 864.09375,
+          "left": 30,
+          "right": 738,
+          "range": 3882,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-content",
+              "scrollTop": 3882,
+              "range": 3882
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        },
+        {
+          "top": 107.5,
+          "bottom": 864.09375,
+          "left": 30,
+          "right": 738,
+          "range": 3882,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-content",
+              "scrollTop": 3882,
+              "range": 3882
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        }
+      ],
+      "layout": {
+        "horizontalOverflow": false,
+        "footerBottom": 1024,
+        "viewportHeight": 1024,
+        "observedSafeAreaInsets": [
+          "0px",
+          "0px",
+          "0px",
+          "0px"
+        ],
+        "fontSize": "normal"
+      },
+      "scope": "Synthetic seek dispatch and second animation frame, with controlled media state. Excludes native decoding/audio output, physical rotation/safe areas, phones, screen readers and provider quality."
+    },
+    {
+      "format": "meeting-memo-browser-playback-benchmark",
+      "version": 1,
+      "engine": "webkit",
+      "browserVersion": "27.2",
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 900,
+        "font": "normal"
+      },
+      "segments": 20000,
+      "labels": 100,
+      "samples": [
+        {
+          "position": 0.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 29,
+          "transcriptRows": 40,
+          "currentCaptions": 101,
+          "currentLabels": 101,
+          "domElements": 1731
+        },
+        {
+          "position": 5,
+          "dispatchMs": 1,
+          "secondFrameMs": 35,
+          "transcriptRows": 40,
+          "currentCaptions": 101,
+          "currentLabels": 101,
+          "domElements": 1731
+        },
+        {
+          "position": 15,
+          "dispatchMs": 0,
+          "secondFrameMs": 108,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 20.3,
+          "dispatchMs": 0,
+          "secondFrameMs": 42,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 200.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 41,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 400.1,
+          "dispatchMs": 1,
+          "secondFrameMs": 41,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 1000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 43,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 2000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 38,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 3000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 41,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 4000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 45,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 4990.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 39,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        }
+      ],
+      "longText": {
+        "characters": 17435,
+        "scrollHeight": 2267,
+        "clientHeight": 305,
+        "marginTop": "18px",
+        "fontPixels": "16px",
+        "maxHeight": "100%",
+        "tailBottom": 739.71875,
+        "clipTop": 435.75,
+        "clipBottom": 740.40625,
+        "boxBottom": 740.40625,
+        "stageBottom": 754.40625,
+        "parentBottom": 740.40625,
+        "tailVisible": true
+      },
+      "scrollOwners": [
+        {
+          "top": 453.75,
+          "bottom": 740.40625,
+          "left": 30,
+          "right": 1410,
+          "range": 1980,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 1961,
+              "range": 1962
+            },
+            {
+              "className": "immersive-captions size-normal",
+              "scrollTop": 0,
+              "range": 18
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        },
+        {
+          "top": 453.75,
+          "bottom": 740.40625,
+          "left": 30,
+          "right": 1410,
+          "range": 1980,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 1962,
+              "range": 1962
+            },
+            {
+              "className": "immersive-captions size-normal",
+              "scrollTop": 0,
+              "range": 18
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        },
+        {
+          "top": 435.75,
+          "bottom": 740.40625,
+          "left": 30,
+          "right": 1410,
+          "range": 1980,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 1962,
+              "range": 1962
+            },
+            {
+              "className": "immersive-captions size-normal",
+              "scrollTop": 18,
+              "range": 18
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        }
+      ],
+      "layout": {
+        "horizontalOverflow": false,
+        "footerBottom": 900,
+        "viewportHeight": 900,
+        "observedSafeAreaInsets": [
+          "0px",
+          "0px",
+          "0px",
+          "0px"
+        ],
+        "fontSize": "normal"
+      },
+      "scope": "Synthetic seek dispatch and second animation frame, with controlled media state. Excludes native decoding/audio output, physical rotation/safe areas, phones, screen readers and provider quality."
+    },
+    {
+      "format": "meeting-memo-browser-playback-benchmark",
+      "version": 1,
+      "engine": "webkit",
+      "browserVersion": "27.2",
+      "viewport": {
+        "name": "landscape",
+        "width": 844,
+        "height": 390,
+        "font": "xxlarge"
+      },
+      "segments": 20000,
+      "labels": 100,
+      "samples": [
+        {
+          "position": 0.1,
+          "dispatchMs": 1,
+          "secondFrameMs": 21,
+          "transcriptRows": 40,
+          "currentCaptions": 101,
+          "currentLabels": 101,
+          "domElements": 1731
+        },
+        {
+          "position": 5,
+          "dispatchMs": 0,
+          "secondFrameMs": 21,
+          "transcriptRows": 40,
+          "currentCaptions": 101,
+          "currentLabels": 101,
+          "domElements": 1731
+        },
+        {
+          "position": 15,
+          "dispatchMs": 1,
+          "secondFrameMs": 94,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 20.3,
+          "dispatchMs": 0,
+          "secondFrameMs": 42,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 200.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 41,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 400.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 35,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 1000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 39,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 2000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 43,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 3000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 37,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 4000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 36,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 4990.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 40,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        }
+      ],
+      "longText": {
+        "characters": 17435,
+        "scrollHeight": 4340,
+        "clientHeight": 4340,
+        "marginTop": "7.796875px",
+        "fontPixels": "16px",
+        "maxHeight": "100%",
+        "tailBottom": 229.515625,
+        "clipTop": 107.5,
+        "clipBottom": 230.890625,
+        "boxBottom": 230.890625,
+        "stageBottom": 244.890625,
+        "parentBottom": 230.890625,
+        "tailVisible": true
+      },
+      "scrollOwners": [
+        {
+          "top": 107.5,
+          "bottom": 260.40625,
+          "left": 30,
+          "right": 814,
+          "range": 4505,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-content",
+              "scrollTop": 385,
+              "range": 4505
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        },
+        {
+          "top": 107.5,
+          "bottom": 230.890625,
+          "left": 30,
+          "right": 814,
+          "range": 4505,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-content",
+              "scrollTop": 4505,
+              "range": 4505
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        },
+        {
+          "top": 107.5,
+          "bottom": 230.890625,
+          "left": 30,
+          "right": 814,
+          "range": 4505,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-content",
+              "scrollTop": 4505,
+              "range": 4505
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        }
+      ],
+      "layout": {
+        "horizontalOverflow": false,
+        "footerBottom": 390,
+        "viewportHeight": 390,
+        "observedSafeAreaInsets": [
+          "0px",
+          "0px",
+          "0px",
+          "0px"
+        ],
+        "fontSize": "xxlarge"
+      },
+      "scope": "Synthetic seek dispatch and second animation frame, with controlled media state. Excludes native decoding/audio output, physical rotation/safe areas, phones, screen readers and provider quality."
+    },
+    {
+      "format": "meeting-memo-browser-playback-benchmark",
+      "version": 1,
+      "engine": "webkit",
+      "browserVersion": "27.2",
+      "viewport": {
+        "name": "portrait",
+        "width": 390,
+        "height": 844,
+        "font": "xxlarge"
+      },
+      "segments": 20000,
+      "labels": 100,
+      "samples": [
+        {
+          "position": 0.1,
+          "dispatchMs": 1,
+          "secondFrameMs": 31,
+          "transcriptRows": 40,
+          "currentCaptions": 101,
+          "currentLabels": 101,
+          "domElements": 1731
+        },
+        {
+          "position": 5,
+          "dispatchMs": 0,
+          "secondFrameMs": 23,
+          "transcriptRows": 40,
+          "currentCaptions": 101,
+          "currentLabels": 101,
+          "domElements": 1731
+        },
+        {
+          "position": 15,
+          "dispatchMs": 0,
+          "secondFrameMs": 122,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 20.3,
+          "dispatchMs": 0,
+          "secondFrameMs": 38,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 200.1,
+          "dispatchMs": 1,
+          "secondFrameMs": 48,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 400.1,
+          "dispatchMs": 1,
+          "secondFrameMs": 46,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 1000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 44,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 2000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 38,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 3000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 38,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 4000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 36,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 4990.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 51,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        }
+      ],
+      "longText": {
+        "characters": 17435,
+        "scrollHeight": 9760,
+        "clientHeight": 9760,
+        "marginTop": "16.875px",
+        "fontPixels": "16px",
+        "maxHeight": "100%",
+        "tailBottom": 660.375,
+        "clipTop": 124.25,
+        "clipBottom": 661.75,
+        "boxBottom": 661.75,
+        "stageBottom": 676,
+        "parentBottom": 661.75,
+        "tailVisible": true
+      },
+      "scrollOwners": [
+        {
+          "top": 405.375,
+          "bottom": 676,
+          "left": 30,
+          "right": 360,
+          "range": 9504,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-stage",
+              "scrollTop": 0,
+              "range": 9504
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        },
+        {
+          "top": 124.25,
+          "bottom": 661.75,
+          "left": 30,
+          "right": 360,
+          "range": 9504,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-stage",
+              "scrollTop": 9504,
+              "range": 9504
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        },
+        {
+          "top": 124.25,
+          "bottom": 661.75,
+          "left": 30,
+          "right": 360,
+          "range": 9504,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-stage",
+              "scrollTop": 9504,
+              "range": 9504
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        }
+      ],
+      "layout": {
+        "horizontalOverflow": false,
+        "footerBottom": 844,
+        "viewportHeight": 844,
+        "observedSafeAreaInsets": [
+          "0px",
+          "0px",
+          "0px",
+          "0px"
+        ],
+        "fontSize": "xxlarge"
+      },
+      "scope": "Synthetic seek dispatch and second animation frame, with controlled media state. Excludes native decoding/audio output, physical rotation/safe areas, phones, screen readers and provider quality."
+    },
+    {
+      "format": "meeting-memo-browser-playback-benchmark",
+      "version": 1,
+      "engine": "webkit",
+      "browserVersion": "27.2",
+      "viewport": {
+        "name": "tablet",
+        "width": 768,
+        "height": 1024,
+        "font": "normal"
+      },
+      "segments": 20000,
+      "labels": 100,
+      "samples": [
+        {
+          "position": 0.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 17,
+          "transcriptRows": 40,
+          "currentCaptions": 101,
+          "currentLabels": 101,
+          "domElements": 1731
+        },
+        {
+          "position": 5,
+          "dispatchMs": 0,
+          "secondFrameMs": 22,
+          "transcriptRows": 40,
+          "currentCaptions": 101,
+          "currentLabels": 101,
+          "domElements": 1731
+        },
+        {
+          "position": 15,
+          "dispatchMs": 1,
+          "secondFrameMs": 144,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 20.3,
+          "dispatchMs": 0,
+          "secondFrameMs": 50,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 200.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 51,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 400.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 30,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 1000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 28,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 2000.1,
+          "dispatchMs": 1,
+          "secondFrameMs": 38,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 3000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 37,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 4000.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 37,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        },
+        {
+          "position": 4990.1,
+          "dispatchMs": 0,
+          "secondFrameMs": 52,
+          "transcriptRows": 40,
+          "currentCaptions": 1,
+          "currentLabels": 1,
+          "domElements": 730
+        }
+      ],
+      "longText": {
+        "characters": 17435,
+        "scrollHeight": 4340,
+        "clientHeight": 4340,
+        "marginTop": "18px",
+        "fontPixels": "16px",
+        "maxHeight": "100%",
+        "tailBottom": 862.71875,
+        "clipTop": 107.5,
+        "clipBottom": 864.09375,
+        "boxBottom": 864.09375,
+        "stageBottom": 878.09375,
+        "parentBottom": 864.09375,
+        "tailVisible": true
+      },
+      "scrollOwners": [
+        {
+          "top": 405.75,
+          "bottom": 894.40625,
+          "left": 30,
+          "right": 738,
+          "range": 3882,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-content",
+              "scrollTop": 0,
+              "range": 3882
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        },
+        {
+          "top": 107.5,
+          "bottom": 864.09375,
+          "left": 30,
+          "right": 738,
+          "range": 3882,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-content",
+              "scrollTop": 3882,
+              "range": 3882
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        },
+        {
+          "top": 107.5,
+          "bottom": 864.09375,
+          "left": 30,
+          "right": 738,
+          "range": 3882,
+          "owners": [
+            {
+              "className": "immersive-caption-content",
+              "scrollTop": 0,
+              "range": 0
+            },
+            {
+              "className": "immersive-content",
+              "scrollTop": 3882,
+              "range": 3882
+            },
+            {
+              "className": "immersive",
+              "scrollTop": 0,
+              "range": 0
+            }
+          ]
+        }
+      ],
+      "layout": {
+        "horizontalOverflow": false,
+        "footerBottom": 1024,
+        "viewportHeight": 1024,
+        "observedSafeAreaInsets": [
+          "0px",
+          "0px",
+          "0px",
+          "0px"
+        ],
+        "fontSize": "normal"
+      },
+      "scope": "Synthetic seek dispatch and second animation frame, with controlled media state. Excludes native decoding/audio output, physical rotation/safe areas, phones, screen readers and provider quality."
+    }
+  ]
+}

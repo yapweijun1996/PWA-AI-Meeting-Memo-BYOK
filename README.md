@@ -77,6 +77,8 @@ npm run preview
 
 Checks:
 
+For bounded synthetic projection and browser stress measurements, use [the playback benchmark](docs/PLAYBACK-PERFORMANCE.md). Its controlled audio clock does not establish native recording, phone or synchronization support.
+
 ```bash
 npm run lint
 npm run typecheck
