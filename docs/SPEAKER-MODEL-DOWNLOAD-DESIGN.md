@@ -1,6 +1,6 @@
 # Design: download the speaker model from its host at run time (route B)
 
-Licence evidence update, 2026-11-16: the [selection record](SPEAKER-MODEL-SELECTION.md#licence-evidence-correction--2026-11-16) supersedes this document's historical blanket "undeclared" wording. The upstream model card links CC BY-SA 3.0; the pinned ONNX conversion's notices/derivation compliance and consent copy are not yet reconciled. Route B does not by itself settle those conditions, measured accuracy or deployed/device recovery.
+Licence evidence update, 2026-11-16: the [selection record](SPEAKER-MODEL-SELECTION.md#licence-evidence-correction--2026-11-16) supersedes historical blanket "undeclared" wording. The upstream card links CC BY-SA 3.0; the pinned ONNX conversion's notices/derivation compliance remains open. Consent now links that reviewed evidence; [validation](VALIDATION.md#speaker-model-consent-disclosure--2026-11-16) records its tested delivery scope. Route B does not by itself settle compliance, measured accuracy or deployed/device recovery.
 
 Status: **implemented 2026-11-10 (code and unit tests); not yet verified in WebKit, on a phone, offline, or against the live host from inside the app (see section 10).** Two feasibility spikes passed in Chromium (section 2). It is route B of the licence investigation in [SPEAKER-MODEL-SELECTION.md](SPEAKER-MODEL-SELECTION.md): this repository and its GitHub Pages site stop hosting the WavLM weights; with the user's consent the browser downloads them from Hugging Face at a pinned revision, verifies SHA-256, and caches them privately. Markers: **verified** (checked by running a request or reading code on 2026-11-10), **to verify** (needs a spike or test).
 
@@ -58,7 +58,7 @@ States: `not_installed`, `downloading`, `verifying`, `ready`, `failed_network`, 
 
 ## 5. Consent and disclosure (user-facing)
 
-State before the first download: the file is about 102 MB; it is fetched from `huggingface.co` and its CDN, which will see the request (IP address and browser details); no recording, transcript, vector or key is sent; the model is stored in this browser and can be deleted in Settings. The disclosure must link the upstream CC BY-SA 3.0 evidence and distinguish the pinned ONNX conversion's unreconciled notices/derivation compliance. Current consent copy still needs this reconciliation; no download happens without confirmation.
+State before the first download: the file is about 102 MB; `huggingface.co` and its CDN see the request (IP address and browser details), but the model download sends them no recording, transcript, vector or provider key. Local analysis keeps that data in this browser; transcription separately sends the recording to the chosen provider after confirmation, without sending model files or vectors. The cached model can be deleted in Settings. Both consent contexts now link the upstream CC BY-SA 3.0 evidence and state that the conversion's notices/compliance remains open. No download happens without confirmation.
 
 ## 6. Failure and recovery
 
@@ -105,4 +105,4 @@ State before the first download: the file is about 102 MB; it is fetched from `h
 - Resuming inside one file: an interrupted 102 MB file restarts from its first byte (only completed files are kept). The design's `Range` resume is not implemented.
 - WebKit and Firefox (spikes S1 and S2 were Chromium only); a phone's memory peak when hashing 102 MB (the file is held in one buffer plus the digest); offline reload from the app cache.
 - A browser test (Playwright) of the download flow and of the Settings control; a real-network download run from inside the application (the spike used a local stand-in host, and the live host was only probed with HTTP requests).
-- Reconcile the pinned ONNX conversion's notices/derivation compliance and consent copy with the upstream CC BY-SA 3.0 link. This route removes our redistribution only.
+- Reconcile the pinned ONNX conversion's notices/derivation compliance with the upstream CC BY-SA 3.0 link. Consent discloses this open gate; route B removes our weight redistribution only.

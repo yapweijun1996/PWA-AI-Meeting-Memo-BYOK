@@ -2,7 +2,7 @@
 
 Written 2026-11-10 for the next engineer or AI agent. Read this first, then [AGENTS.md](../AGENTS.md), then the documents linked below for the area you touch. Statements are marked **verified** (checked by running code or reading a primary source in this work), **observed** (one real recording, not a benchmark) or **not verified**. Do not upgrade a claim without new evidence.
 
-Licence correction, 2026-11-16: the upstream Microsoft model card explicitly links CC BY-SA 3.0 terms; the earlier blanket absence claim below is historical. The pinned ONNX conversion's notices/derivation compliance and consent text remain to reconcile. [The selection record](SPEAKER-MODEL-SELECTION.md#licence-evidence-correction--2026-11-16) owns exact revisioned sources and remaining gates. No weights are published by this correction, and matching accuracy remains unmeasured.
+Licence correction, 2026-11-16: the upstream Microsoft model card explicitly links CC BY-SA 3.0 terms; the earlier blanket absence claim below is historical. The pinned ONNX conversion's notices/derivation compliance remains open. Consent now links the reviewed sources and preserves distinct local-analysis/provider-transcription disclosures; [validation](VALIDATION.md#speaker-model-consent-disclosure--2026-11-16) owns its tested delivery scope. [The selection record](SPEAKER-MODEL-SELECTION.md#licence-evidence-correction--2026-11-16) owns exact sources and remaining gates. No weights are published by this correction, and matching accuracy remains unmeasured.
 
 ## 1. The project in one paragraph
 
@@ -121,7 +121,7 @@ From [AGENTS.md](../AGENTS.md) and the owner: acoustic evidence only (names, lab
 
 ## 8. Risks and blockers
 
-1. **Model licence follow-up.** The upstream Microsoft model card links CC BY-SA 3.0 despite missing API licence metadata. The pinned Xenova ONNX conversion identifies that base model, but its notices/derivation compliance and current consent copy remain to reconcile. Runtime-download route B remains selected; no weights are published by this correction. Exact primary sources and remaining gates: [SPEAKER-MODEL-SELECTION.md](SPEAKER-MODEL-SELECTION.md#licence-evidence-correction--2026-11-16).
+1. **Model licence follow-up.** The upstream Microsoft model card links CC BY-SA 3.0 despite missing API licence metadata. The pinned Xenova ONNX conversion identifies that base model, but its notices/derivation compliance remains open. Consent links the reviewed evidence and states that limitation. Runtime-download route B remains selected; no weights are published by this correction. Exact sources and remaining gates: [SPEAKER-MODEL-SELECTION.md](SPEAKER-MODEL-SELECTION.md#licence-evidence-correction--2026-11-16).
 2. **The demo downloads its model at run time (route B).** `.github/workflows/pages.yml` does not set `SPEAKER_ASSET_SOURCE`, so the build writes a `remote_model` manifest and ships only the ONNX Runtime; the browser fetches the 102 MB weights from `huggingface.co` after consent and caches them (Settings can delete them). Verified: a CI-style build and the artifact check. **Not verified:** the download from the deployed site, WebKit, offline reload, phone memory, resume inside one file. `public/speaker-assets/` stays git-ignored.
 3. **Thresholds are one recording's worth of evidence.** Calibrate on more meeting audio with labelled pairs before any accuracy claim.
 4. **The speaker count is a human input.** A wrong number forces wrong merges. Do not infer it silently.

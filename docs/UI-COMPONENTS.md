@@ -20,6 +20,8 @@ Status: DS04 includes a runnable synthetic [actual-component catalogue](../catal
 
 `speakerBackground(index)` owns the five token-based presentation slots. Slot selection follows list order and must not be used as an identity-matching signal. `useBackToTopPosition(visible)` measures persistent-player geometry; the application owns when the control appears. Neither helper should become a second workflow or playback-state store.
 
+`SpeakerModelNotice`, in `src/features/SpeakerModelNotice.tsx`, owns shared provenance/download disclosure for local analysis and transcription consent. Its parent owns translation and context; the renderer has no hooks, storage or requests. Preserve the difference between local-only analysis and a separately confirmed provider upload. Reviewed source links remain pinned, with a contract that fails when the configured conversion changes without a fresh licence review. The notice does not establish derivative compliance or matching accuracy.
+
 ## Usage boundaries
 
 Use the existing native dialog and disclosure semantics where they provide the tested behavior. DS03 separately owns consolidation of repeated interactive controls; this inventory does not imply that a universal Button, Field or Tabs API already exists. Do not merge `MemoDateField` into a text editor solely to make the inventory shorter.
