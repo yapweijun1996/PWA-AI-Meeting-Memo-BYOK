@@ -152,15 +152,18 @@ test("theme and palette persist with readable dark surfaces", async ({ page }) =
   await expect(page.locator("html")).toHaveAttribute("data-palette", "ocean");
 });
 
-test("sidebar update check reports unavailability without shifting layout", async ({ page }) => {
+test("sidebar update feedback stays above the anchored update button", async ({ page }) => {
   await page.goto(settings);
   const sidebar = page.locator(".pwa-sidebar");
   await expect(sidebar.getByText(/Version 0\.1\.0/)).toBeVisible();
-  const before = await sidebar.boundingBox();
-  await sidebar.getByRole("button", { name: "Check for updates" }).click();
+  const button = sidebar.getByRole("button", { name: "Check for updates" });
+  const before = (await button.boundingBox())!;
+  await button.click();
   await expect(sidebar.getByRole("status")).toContainText(/unavailable|Could not check/);
-  const after = await sidebar.boundingBox();
-  expect(Math.abs(after!.height - before!.height)).toBeLessThanOrEqual(1);
+  const after = (await button.boundingBox())!;
+  expect(Math.abs(after.y + after.height - before.y - before.height)).toBeLessThanOrEqual(1);
+  const feedback = (await sidebar.getByRole("status").boundingBox())!;
+  expect(feedback.y + feedback.height).toBeLessThanOrEqual(after.y);
 });
 
 test("topbar language updates the clean settings form without making it dirty", async ({ page }) => {

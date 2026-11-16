@@ -48,6 +48,14 @@ Worker checks on Node 22.23.3: 314 unit tests, 30 Chromium/WebKit theme/settings
 
 DS01 remains partial: immersive-control/transcript UI skins, selected-filter/speaker-selection shadows, feature radii/fonts and local layers still contain real semantic debt. Artwork and iOS 16px constraints are preserved without blanket exemptions. This ownership milestone does not close exhaustive contrast, physical-device, real-screen-reader, model-quality or cold-theme-flash acceptance.
 
+## Sidebar update button placement — 2026-11-16
+
+The empty sidebar status region previously reserved 40px below the update button. CSS grid order now places feedback above the last-row button; an empty status region remains clipped and out of flow rather than removed from the accessibility tree. Update checking and activation JavaScript is unchanged. Root viewed desktop/tablet/mobile empty states plus expanded/mobile feedback states (subjective visual score 91). Measured button bottoms were unchanged before/after feedback and matched existing safe-area/padding boundaries.
+
+Independent Node 22.23.3 Chromium/WebKit verification passed four focused cases covering six layouts per engine, recent-list scrolling, visible feedback and bottom anchoring. Normal types/lint, SSOT (354 unchanged counts) and artifact checks passed. The previous whole-footer-height assertion was replaced by the user's actual requirement: button position stays fixed while feedback appears above. Real-device/screen-reader checks were not run. Hosted publication remains pending.
+
+The preceding `119d86b` hosted attempt failed before catalogue/PWA publication: 294 application browser cases passed, three failed and three skipped. Two Chromium responsive-shell cases reported color-contrast findings; one WebKit cost fixture did not observe the uploaded filename. They are under separate investigation and are not waived by this positioning fix.
+
 ## Actual shared-component catalogue — 2026-11-16
 
 DS04 imports the actual shared components into a developer-only synthetic catalogue, built under ignored `private-fixtures/catalogue-dist` and previewed on 4183. It is outside application navigation and the Pages artifact. The normal TypeScript and lint scopes include its entry/configs; `test:catalogue` performs type checking, isolated build and the independent Chromium/WebKit contracts. The publication workflow requires that command before PWA/artifact checks and upload.
