@@ -2,6 +2,8 @@
 
 Written 2026-11-10 for the next engineer or AI agent. Read this first, then [AGENTS.md](../AGENTS.md), then the documents linked below for the area you touch. Statements are marked **verified** (checked by running code or reading a primary source in this work), **observed** (one real recording, not a benchmark) or **not verified**. Do not upgrade a claim without new evidence.
 
+Licence correction, 2026-11-16: the upstream Microsoft model card explicitly links CC BY-SA 3.0 terms; the earlier blanket absence claim below is historical. The pinned ONNX conversion's notices/derivation compliance and consent text remain to reconcile. [The selection record](SPEAKER-MODEL-SELECTION.md#licence-evidence-correction--2026-11-16) owns exact revisioned sources and remaining gates. No weights are published by this correction, and matching accuracy remains unmeasured.
+
 ## 1. The project in one paragraph
 
 A browser-first, speaker-aware meeting memo PWA hosted on GitHub Pages. The user brings their own provider keys (BYOK); meetings, recordings and revisions live in this browser's IndexedDB. Speech is transcribed by a provider (default OpenRouter `elevenlabs/scribe-v2`); notes are generated from reviewed transcript passages. See [README.md](../README.md), [PRODUCT.md](PRODUCT.md) and [ARCHITECTURE.md](ARCHITECTURE.md).
@@ -24,7 +26,7 @@ A browser-first, speaker-aware meeting memo PWA hosted on GitHub Pages. The user
 | Accuracy on meeting audio | **Not measured.** No labelled ground truth exists |
 | Thresholds | Uncalibrated starting values from one recording |
 | Voice matching on the GitHub Pages demo | Route B implemented: the build ships only the runtime and the browser downloads the weights from Hugging Face after consent. **Not verified on the deployed site**; see section 8 and [SPEAKER-MODEL-DOWNLOAD-DESIGN.md](SPEAKER-MODEL-DOWNLOAD-DESIGN.md) |
-| WavLM weight licence | **Undeclared** in Hugging Face metadata; redistribution is unresolved |
+| WavLM weight licence | Upstream card links CC BY-SA 3.0; ONNX notices/derivation compliance remains unreconciled. See the 2026-11-16 correction above. |
 
 ## 4. How it works
 
@@ -119,7 +121,7 @@ From [AGENTS.md](../AGENTS.md) and the owner: acoustic evidence only (names, lab
 
 ## 8. Risks and blockers
 
-1. **Model licence (unresolved).** Neither `microsoft/wavlm-base-plus-sv` nor `Xenova/wavlm-base-plus-sv` declares a licence, and the repositories have no LICENSE file; the WavLM code repository is MIT but states no terms for the checkpoints, and the training-data terms are not stated on the pages checked. Do not publish the weights from this repository until the owner picks a route (ask the publisher, download from the host at run time, or change model). Evidence and options: [SPEAKER-MODEL-SELECTION.md](SPEAKER-MODEL-SELECTION.md).
+1. **Model licence follow-up.** The upstream Microsoft model card links CC BY-SA 3.0 despite missing API licence metadata. The pinned Xenova ONNX conversion identifies that base model, but its notices/derivation compliance and current consent copy remain to reconcile. Runtime-download route B remains selected; no weights are published by this correction. Exact primary sources and remaining gates: [SPEAKER-MODEL-SELECTION.md](SPEAKER-MODEL-SELECTION.md#licence-evidence-correction--2026-11-16).
 2. **The demo downloads its model at run time (route B).** `.github/workflows/pages.yml` does not set `SPEAKER_ASSET_SOURCE`, so the build writes a `remote_model` manifest and ships only the ONNX Runtime; the browser fetches the 102 MB weights from `huggingface.co` after consent and caches them (Settings can delete them). Verified: a CI-style build and the artifact check. **Not verified:** the download from the deployed site, WebKit, offline reload, phone memory, resume inside one file. `public/speaker-assets/` stays git-ignored.
 3. **Thresholds are one recording's worth of evidence.** Calibrate on more meeting audio with labelled pairs before any accuracy claim.
 4. **The speaker count is a human input.** A wrong number forces wrong merges. Do not infer it silently.

@@ -1,5 +1,9 @@
 # Validation record
 
+## Speaker-model licence evidence correction — 2026-11-16
+
+Re-read the exact Microsoft model-card revision, its linked UniSpeech licence, the application's pinned Xenova conversion README and repository API/file list. The upstream card explicitly links CC BY-SA 3.0; the pinned conversion identifies that base model but omits a separate licence field/file. The earlier blanket absence claim was therefore incomplete. Revisioned links and the remaining compliance gates are maintained in `SPEAKER-MODEL-SELECTION.md`; HANDOFF, download design, deployment, gap and task wording now agree. This documentation-only correction does not publish weights, clear the derivative's notices/conditions, validate matching quality or establish device/download recovery. No model download, provider call or runtime change was made.
+
 ## Fast main publication — 2026-11-16
 
 At the owner's request, main pushes now use lint, unit/contracts, SSOT, type/build and artifact checks before publication. Full application browser, catalogue and PWA lifecycle checks remain required on PRs and enabled by default for manual check-only dispatch. Documentation-only main pushes skip this workflow. No retries or failure overrides were introduced; upload/deploy require a main push, successful verification and the existing latest-head guard. This supersedes the earlier REL01 requirement to execute every browser check before each direct-main deployment. A direct-main browser regression can publish before a full run detects it.

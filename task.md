@@ -40,6 +40,7 @@ Current assessment: **partially aligned, not fully compliant**. [gap.md](gap.md)
 - [x] DS09 — Retain the existing explicit theme/palette/font/size controls; defer optional system-theme following, density and design kits. The scope decision and future acceptance conditions are in `docs/PRODUCT.md`; no capability or migration is claimed.
 - [ ] REL02 — Complete pinned Node 22 release checks and physical iOS/Android installed, offline, suspension, safe-area and screen-reader acceptance.
 - [ ] REL03 — Close speaker-model licensing/delivery, labelled matching evaluation and deployed download/offline/mobile recovery gates; retain separate accuracy limitations.
+- [x] REL03 evidence correction — Verify the upstream model card's CC BY-SA 3.0 link and reconcile the earlier blanket absence claim in the owning documents. This closes the evidence correction only; ONNX notices/derivation compliance, consent, quality and device/download acceptance remain open.
 - [x] DOC01 — Reconcile historical SSOT, immersive, fragment and release checklists against owning code and verified evidence; see the scoped 2026-11-16 reconciliation below. Other historical acceptance is retained rather than newly re-audited. Combined device, audio-energy and model-quality gates remain open.
 
 ## Checklist reconciliation — 2026-11-16

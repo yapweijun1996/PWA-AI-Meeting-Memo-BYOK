@@ -1,11 +1,13 @@
 # Design: download the speaker model from its host at run time (route B)
 
+Licence evidence update, 2026-11-16: the [selection record](SPEAKER-MODEL-SELECTION.md#licence-evidence-correction--2026-11-16) supersedes this document's historical blanket "undeclared" wording. The upstream model card links CC BY-SA 3.0; the pinned ONNX conversion's notices/derivation compliance and consent copy are not yet reconciled. Route B does not by itself settle those conditions, measured accuracy or deployed/device recovery.
+
 Status: **implemented 2026-11-10 (code and unit tests); not yet verified in WebKit, on a phone, offline, or against the live host from inside the app (see section 10).** Two feasibility spikes passed in Chromium (section 2). It is route B of the licence investigation in [SPEAKER-MODEL-SELECTION.md](SPEAKER-MODEL-SELECTION.md): this repository and its GitHub Pages site stop hosting the WavLM weights; with the user's consent the browser downloads them from Hugging Face at a pinned revision, verifies SHA-256, and caches them privately. Markers: **verified** (checked by running a request or reading code on 2026-11-10), **to verify** (needs a spike or test).
 
 ## 1. Why, and what this does not solve
 
-- The Pages demo cannot ship the model: CI has no model files, and the weights' redistribution terms are undeclared (see the licence investigation).
-- Route B removes **our redistribution** of the 101.7 MB weights. It does **not** establish that end users may use them: that question stays open, and the host's and publisher's terms apply to the user. Do not describe this route as licence-clean.
+- CI has no model files and keeps the `remote_model` build. Self-hosting weights remains outside this delivery while the pinned ONNX conversion's notices/derivation compliance is reconciled; the upstream card's CC BY-SA 3.0 link is recorded in the selection document.
+- Route B removes **our redistribution** of the 101.7 MB weights. It does not itself implement attribution or verify conversion compliance; the host's and publisher's terms still apply. Do not describe downloading from a third-party host as automatic licence compliance.
 - It depends on a third-party mirror: the only ONNX conversion is `Xenova/wavlm-base-plus-sv`. If that repository or revision disappears, the feature stops. The failure must be clear and non-destructive.
 
 ## 2. Facts established
@@ -29,7 +31,7 @@ Status: **implemented 2026-11-10 (code and unit tests); not yet verified in WebK
 
 ## 4. Proposed design
 
-**Split the assets.** Only the ONNX Runtime WASM and its loader (about 26.9 MB; `onnxruntime-web` is MIT) are served from our own origin, with MIT and Apache-2.0 notices added to the build. **Every model file**, the 101.7 MB weights and the three small configuration files, comes from the host, because all of them belong to the same repository whose terms are undeclared.
+**Split the assets.** Only the ONNX Runtime WASM and its loader (about 26.9 MB; `onnxruntime-web` is MIT) are served from our own origin, with MIT and Apache-2.0 notices added to the build. **Every model file**, the 101.7 MB weights and the three small configuration files, comes from the host under route B. The upstream licence link and outstanding ONNX notice/provenance checks are recorded in the selection document; do not substitute runtime-package licences for model terms.
 
 **Flow**
 
@@ -56,7 +58,7 @@ States: `not_installed`, `downloading`, `verifying`, `ready`, `failed_network`, 
 
 ## 5. Consent and disclosure (user-facing)
 
-State before the first download: the file is about 102 MB; it is fetched from `huggingface.co` and its CDN, which will see the request (IP address and browser details); no recording, transcript, vector or key is sent; the model is stored in this browser and can be deleted in Settings; the licence of the weights is not declared by the publisher. The existing consent checkbox and dialog already mention the download size; they need this added text. No download happens without the confirmation.
+State before the first download: the file is about 102 MB; it is fetched from `huggingface.co` and its CDN, which will see the request (IP address and browser details); no recording, transcript, vector or key is sent; the model is stored in this browser and can be deleted in Settings. The disclosure must link the upstream CC BY-SA 3.0 evidence and distinguish the pinned ONNX conversion's unreconciled notices/derivation compliance. Current consent copy still needs this reconciliation; no download happens without confirmation.
 
 ## 6. Failure and recovery
 
@@ -103,4 +105,4 @@ State before the first download: the file is about 102 MB; it is fetched from `h
 - Resuming inside one file: an interrupted 102 MB file restarts from its first byte (only completed files are kept). The design's `Range` resume is not implemented.
 - WebKit and Firefox (spikes S1 and S2 were Chromium only); a phone's memory peak when hashing 102 MB (the file is held in one buffer plus the digest); offline reload from the app cache.
 - A browser test (Playwright) of the download flow and of the Settings control; a real-network download run from inside the application (the spike used a local stand-in host, and the live host was only probed with HTTP requests).
-- The licence question: end-user use terms of the weights are still undeclared by the publisher. This route removes our redistribution only.
+- Reconcile the pinned ONNX conversion's notices/derivation compliance and consent copy with the upstream CC BY-SA 3.0 link. This route removes our redistribution only.

@@ -2,6 +2,14 @@
 
 Status: evidence record, 2026-11-10. **No model change is decided.** The shipped candidate remains `Xenova/wavlm-base-plus-sv` (see [ACOUSTIC-SPEAKER-CONTINUITY.md](ACOUSTIC-SPEAKER-CONTINUITY.md)). This file separates what was checked against a primary source in this session from what was only reported to us. Re-verify before relying on any row; versions, terms and prices change.
 
+## Licence evidence correction — 2026-11-16
+
+The earlier investigation's blanket statement that the upstream model has no declared terms is incomplete. Its metadata still has no `license` field and no separate LICENSE file, but the [Microsoft model card at revision `feb593a6c23c1cc3d9510425c29b0a14d2b07b1e`](https://huggingface.co/microsoft/wavlm-base-plus-sv/blob/feb593a6c23c1cc3d9510425c29b0a14d2b07b1e/README.md) explicitly links its licence section to UniSpeech. The [linked licence at commit `8f8cbd22d352fc59dfd5bf19de979b05bb5c7938`](https://github.com/microsoft/UniSpeech/blob/8f8cbd22d352fc59dfd5bf19de979b05bb5c7938/LICENSE) is **CC BY-SA 3.0 Unported**. This is newly verified evidence, not a claim that the licence changed recently.
+
+The [ONNX conversion card at the application's pinned revision `e61029603001bd11295c36d878698708bf59190f`](https://huggingface.co/Xenova/wavlm-base-plus-sv/blob/e61029603001bd11295c36d878698708bf59190f/README.md) identifies that Microsoft model as its base, but has no separate licence declaration or LICENSE file in the checked repository metadata/file list. That establishes a stated provenance link; it does not independently verify the converter's notices or every term applying to the quantized derivative. The [licensor's deed](https://creativecommons.org/licenses/by-sa/3.0/) describes attribution, licence-link and adaptation/share-alike conditions. Using the model alone does not establish a change to this application's code licence.
+
+Current disposition: upstream licence identified; ONNX attribution/derivation compliance and current consent text still require reconciliation before treating REL03 as closed. This task does not publish or replace weights. Runtime-download route B, labelled quality evaluation and device/download recovery remain separate acceptance gates. The dated 2026-11-10 findings below are historical and are superseded by this correction for the licence question. Missing API metadata alone is not evidence that no licence statement exists.
+
 ## Two different metrics
 
 | Need in this app | Metric | Why |
@@ -16,7 +24,7 @@ Published numbers use celebrity or benchmark audio. None is a statement about th
 | Item | Finding | Source |
 | --- | --- | --- |
 | `microsoft/wavlm-base-plus-sv` | Fine-tuned on VoxCeleb1 with an X-Vector head. Model card states no EER. Its example cosine threshold 0.86 is marked dataset-dependent. | Hugging Face model card |
-| WavLM licence | **No licence declared** in the Hugging Face metadata of either `microsoft/wavlm-base-plus-sv` or the `Xenova/wavlm-base-plus-sv` ONNX conversion. Not gated. | `huggingface.co/api/models/...` |
+| WavLM licence metadata | Both repositories omit the metadata licence field. The 2026-11-16 correction above additionally verifies the upstream model-card link to CC BY-SA 3.0; metadata absence alone was insufficient. | Hugging Face model API and revisioned model card above |
 | pyannote community-1 | CC-BY-4.0, gated (login and accepted conditions), `pip install pyannote.audio`, CPU by default. No ONNX or browser support stated. Provides exclusive speaker diarization output. | Hugging Face model card |
 | pyannote DER (no collar, overlap counted) | AISHELL-4 12.2 / 11.7 / 11.4; AliMeeting 24.5 / 20.3 / 15.2; AMI-IHM 18.8 / 17.0 / 12.9; VoxConverse 11.2 / 11.2 / 8.5 (3.1 / community-1 / precision-2). Precision-2 is a hosted commercial service (pyannoteAI key). | Same model card |
 | WeSpeaker pretrained models | Weights follow the licence of their training dataset; the page's VoxCeleb example is CC BY 4.0 (applying it to a given model is an inference). Commercial use is not addressed. | WeSpeaker pretrained-model page |
@@ -26,18 +34,18 @@ Published numbers use celebrity or benchmark audio. None is a statement about th
 
 - Repository record, not re-run here: [IMPLEMENTATION-LOG.md](IMPLEMENTATION-LOG.md) ("Speaker-count finding") reports an offline sherpa-onnx experiment (pyannote 3.0 segmentation plus WeSpeaker ResNet34) that found 4 voices above one minute on a 48.5-minute test recording, with no ground truth. It supports trying that route in a browser evaluation; it is not a browser result.
 
-## WavLM weight licence investigation (2026-11-10)
+## Historical WavLM weight licence investigation (2026-11-10)
 
 Question: may this repository, or its GitHub Pages site, redistribute `Xenova/wavlm-base-plus-sv` (about 101.7 MB)? This is a record of evidence, not legal advice.
 
 Checked against primary sources:
 
-- Hugging Face metadata for `microsoft/wavlm-base-plus-sv` and `microsoft/wavlm-base-plus` declares **no licence** (no `license` field, no `license:` tag). Their files are `README.md`, `config.json`, `preprocessor_config.json`, `pytorch_model.bin` and `.gitattributes`; there is **no LICENSE file**. The `Xenova/wavlm-base-plus-sv` ONNX conversion declares none either and does not mention the original's terms.
+- Historical metadata-only observation: the checked Microsoft repositories had no `license` field/tag or standalone LICENSE file; the Xenova conversion also omitted a separate declaration. This check missed the upstream model card's explicit licence link and was not sufficient to infer absence of terms. The revisioned 2026-11-16 evidence above supersedes that inference.
 - The WavLM code lives in `microsoft/unilm`, whose root `LICENSE` is the MIT License (Copyright Microsoft Corporation). The WavLM README says the project is licensed under that file, links the pretrained checkpoints (Azure and Google Drive) and states **no separate terms for them**. Whether the MIT grant covers the checkpoints is an inference, not a statement.
 - Training data (from the model card): pretraining on Libri-Light, GigaSpeech and VoxPopuli; fine-tuning of this speaker-verification model on VoxCeleb1. The VoxCeleb1 page states no licence or commercial terms (audio is released through a request form). The GigaSpeech repository lists Apache-2.0 for its code but states no dataset licence (access by form). The pages checked do not say whether models trained on these sets carry restrictions.
 - Runtime packages, from the installed `package.json` files: `onnxruntime-web` is MIT and `@huggingface/transformers` is Apache-2.0. Both permit redistribution with their notices; the app does not yet ship those notices.
 
-**Conclusion: the redistribution terms of the WavLM weights are not established by any public source found.** Treat them as unresolved until the owner decides.
+**Historical conclusion, superseded for upstream evidence:** this investigation had not identified public weight terms. The 2026-11-16 correction above identifies the upstream CC BY-SA 3.0 link; ONNX notices/derivation compliance remains to reconcile.
 
 | Route | What changes | Open points |
 | --- | --- | --- |
@@ -56,7 +64,7 @@ Suggested order: keep D now, design B for the demo (smallest change, no dependen
 
 ## Selection criteria, in order
 
-1. **Weights may be redistributed with a static site**, with attribution or terms we can honour. This is a gate, not a score. The current WavLM weights fail it until the licence is established.
+1. **Weights may be redistributed with a static site**, with attribution and terms we can honour. This is a gate, not a score. Upstream WavLM terms are now identified; the pinned ONNX derivative's notices/derivation compliance is not yet reconciled, and this delivery keeps runtime-download route B.
 2. Runs in a browser worker from the GitHub Pages base path, offline after first use, with pinned hashes.
 3. Size and load time acceptable on a phone (iOS standalone and Android are separate acceptance checks).
 4. Error rates measured on our own labelled meeting audio: wrong merges, missed merges and unresolved share, reported separately; DER if the model also segments.
@@ -67,7 +75,7 @@ Suggested order: keep D now, design B for the demo (smallest change, no dependen
 
 | Route | For | Against / unknowns |
 | --- | --- | --- |
-| Keep WavLM (current) | Already integrated and tested with fake vectors; in-browser. | Licence undeclared; about 100 MB; no published EER; threshold uncalibrated. |
+| Keep WavLM (current) | Already integrated and tested with fake vectors; in-browser. Upstream card links CC BY-SA 3.0. | ONNX notices/derivation compliance outstanding; about 100 MB; app matching quality unmeasured; threshold uncalibrated. |
 | sherpa-onnx (CAM++ or WeSpeaker, plus segmentation) in WebAssembly | Smaller models; includes segmentation, which would give a local diarization fallback. | Not integrated or tested here; weight licences, total download and worker behaviour unverified; its DER is not pyannote community-1's. |
 | pyannote community-1 on a server | Best published open DER here; whole-file labels are globally consistent. | Needs a server (a backend fallback needs owner approval for infrastructure and spend); gated access; not browser-first. |
 | Hosted diarization (ElevenLabs, OpenAI) | No local model. | Audio leaves the device; per-request charges; OpenAI route is deprecated; speaker libraries are cross-meeting voiceprints; browser CORS unverified. |
