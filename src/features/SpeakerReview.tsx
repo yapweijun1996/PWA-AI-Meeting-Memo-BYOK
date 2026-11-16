@@ -54,6 +54,7 @@ export function SpeakerReview({
   onCueSequence,
   voiceEvidence,
   onRegroupVoices,
+  onExportVoiceEvaluation,
   onSeek,
   onPause,
   onTogglePlayback,
@@ -85,6 +86,8 @@ export function SpeakerReview({
   voiceEvidence?: readonly AcousticEmbeddingRecord[];
   /** Opens the local voice analysis dialog, where a head count can be given. */
   onRegroupVoices?: () => void;
+  /** Downloads the saved vectors with the confirmed speakers as reference, for offline measurement. */
+  onExportVoiceEvaluation?: () => void;
   onSeek: (position: number) => void;
   onPause: () => void;
   onTogglePlayback: () => Promise<void>;
@@ -599,6 +602,7 @@ export function SpeakerReview({
                     </article>;
                   })}
                   {onRegroupVoices && <p className="small muted voice-suggestions-regroup">{t("More voices than people?", "声音数比实际人数多？")} <button className="text-button" disabled={locked} onClick={onRegroupVoices}>{t("Regroup with a head count", "填人数重新分组")}</button></p>}
+                  {onExportVoiceEvaluation && <p className="small muted voice-suggestions-regroup">{t("Measuring how well voices are matched?", "想测量声音匹配的效果？")} <button className="text-button" onClick={onExportVoiceEvaluation}>{t("Export voice evaluation data", "导出声音评测数据")}</button></p>}
                 </section>;
               })()}
               <label>{t("Compare with", "比较对象")}<select aria-label={t("Compare with speaker", "比较的说话人")} value={compareSpeaker?.id ?? ""} onChange={(event) => setCompareId(event.target.value)}><option value="">{t("Choose another speaker", "选择另一位说话人")}</option>{meeting.speakers.filter((item) => item.id !== speaker.id).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>)}</select></label>

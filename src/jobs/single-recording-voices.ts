@@ -12,6 +12,7 @@ import type { Meeting } from "../domain/model";
 import type { NormalizedSpeech } from "../providers/api";
 import type { BrowserSpeakerEmbeddingProvider } from "../audio/speaker-embedding";
 import { decodeAcousticWindow } from "../audio/acoustic-audio";
+import { reusableEmbedding } from "./acoustic-continuity";
 import {
   deleteAcousticAssignments,
   deleteAcousticIdentities,
@@ -107,18 +108,11 @@ export async function analyzeSingleRecordingVoices(
   let done = 0;
   for (const sample of selection.samples) {
     abortIfRequested(signal);
-    let embedding = await getAcousticEmbedding(meeting.id, sample.id);
-    if (
-      embedding &&
-      (embedding.recordingHash !== audio.hash ||
-        embedding.sourceRevision !== meeting.revision ||
-        embedding.chunkIndex !== sample.chunkIndex ||
-        embedding.sourceSpeakerId !== sample.sourceSpeakerId ||
-        embedding.modelId !== ACOUSTIC_POLICY.modelId ||
-        embedding.modelRevision !== ACOUSTIC_POLICY.modelRevision ||
-        embedding.extractionVersion !== ACOUSTIC_POLICY.version)
-    ) {
-      embedding = undefined;
+    let embedding = reusableEmbedding(await getAcousticEmbedding(meeting.id, sample.id), sample, audio.hash);
+    if (embedding && embedding.sourceRevision !== meeting.revision) {
+      // The vector is still valid; record that this revision's analysis uses it.
+      embedding = { ...embedding, sourceRevision: meeting.revision };
+      await putAcousticEmbedding(embedding);
     }
     if (!embedding) {
       const pcm = await decodeAcousticWindow(bytes, part, sample, { format, signal });
@@ -133,7 +127,7 @@ export async function analyzeSingleRecordingVoices(
         sample,
         modelId: ACOUSTIC_POLICY.modelId,
         modelRevision: ACOUSTIC_POLICY.modelRevision,
-        extractionVersion: ACOUSTIC_POLICY.version,
+        extractionVersion: ACOUSTIC_POLICY.extractionVersion,
         values,
         createdAt: new Date().toISOString(),
       };
@@ -168,7 +162,7 @@ export async function analyzeSingleRecordingVoices(
     sourceRevision: meeting.revision,
     modelId: ACOUSTIC_POLICY.modelId,
     modelRevision: ACOUSTIC_POLICY.modelRevision,
-    extractionVersion: ACOUSTIC_POLICY.version,
+    extractionVersion: ACOUSTIC_POLICY.extractionVersion,
     thresholdVersion: ACOUSTIC_POLICY.version,
     calibrationStatus: ACOUSTIC_POLICY.calibrationStatus,
     state: "completed",

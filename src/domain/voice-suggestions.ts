@@ -38,6 +38,29 @@ export interface SpeakerVoiceSuggestions {
 
 const OVERLAP_EPSILON = 1e-3;
 
+/**
+ * The one speaker every current transcript passage in a time range is attributed
+ * to, or null when the range has no timed passage, an unattributed passage, or
+ * more than one speaker. Uses the current attribution, so merges, splits and
+ * reassignments made by a person are respected.
+ */
+export function cleanSampleOwner(
+  segments: readonly Pick<Meeting["segments"][number], "start" | "end" | "speakerIds">[],
+  start: number,
+  end: number,
+): string | null {
+  const owners = new Set<string>();
+  for (const segment of segments) {
+    if (segment.start === null || segment.end === null || segment.end <= segment.start) continue;
+    if (segment.start < end - OVERLAP_EPSILON && segment.end > start + OVERLAP_EPSILON) {
+      for (const speakerId of segment.speakerIds) owners.add(speakerId);
+      if (!segment.speakerIds.length) owners.add("");
+    }
+  }
+  const [owner] = [...owners];
+  return owners.size === 1 && owner ? owner : null;
+}
+
 function average(vectors: readonly (readonly number[])[], length: number): number[] {
   const totals = Array.from({ length }, () => 0);
   for (const vector of vectors) {
@@ -84,15 +107,8 @@ export function suggestVoiceMatches(
     seen.add(embedding.id);
     const start = embedding.sample.startSeconds;
     const end = embedding.sample.endSeconds;
-    const owners = new Set<string>();
-    for (const segment of timed) {
-      if (segment.start! < end - OVERLAP_EPSILON && segment.end! > start + OVERLAP_EPSILON) {
-        for (const speakerId of segment.speakerIds) owners.add(speakerId);
-        if (!segment.speakerIds.length) owners.add("");
-      }
-    }
-    const [owner] = [...owners];
-    if (owners.size !== 1 || !owner || !known.has(owner)) continue;
+    const owner = cleanSampleOwner(timed, start, end);
+    if (!owner || !known.has(owner)) continue;
     const entry = bySpeaker.get(owner) ?? { vectors: [], parts: new Set<number>(), samples: [] };
     entry.vectors.push(embedding.values.map((value, index) => value - (recordingAverage[index] ?? 0)));
     entry.parts.add(embedding.chunkIndex);

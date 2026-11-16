@@ -55,7 +55,7 @@ import { ChunkedAudio, type PlayerLike } from "../audio/chunked-audio";
 import { getKey, getSelection, getSpeechEstimate, getUiLanguage } from "../providers/credentials";
 import { beginRequest, cancelProcessing, finishRequest, runJob, isProcessingMeeting } from "../jobs/runner";
 import { requireVoiceAnalysisLocks, withVoiceAnalysisLock } from "../jobs/voice-analysis-lock";
-import { analyzeExistingMeetingAcoustics, describeAcousticState, listCurrentAcousticEmbeddings } from "../jobs/acoustic-continuity";
+import { analyzeExistingMeetingAcoustics, describeAcousticState, exportVoiceEvaluation, listCurrentAcousticEmbeddings } from "../jobs/acoustic-continuity";
 import type { AcousticEmbeddingRecord } from "../domain/acoustic-speaker";
 import { analyzeSingleRecordingVoices, singleRecordingFormat } from "../jobs/single-recording-voices";
 import { getChunkedProgress, runChunkedSpeech } from "../jobs/chunked-runner";
@@ -577,6 +577,23 @@ export function MeetingWorkspace({
       if (acousticRequestController) finishRequest(acousticRequestController);
       setProcessing(false);
       setChunkProgressText("");
+    }
+  }
+  async function exportVoiceEvaluationFile() {
+    try {
+      const data = await exportVoiceEvaluation(m.id);
+      if (!data.samples.length) {
+        setNotice(t("No saved voice samples to export. Run Auto-match voices first.", "没有可导出的声音样本。请先运行“自动关联声音”。"));
+        return;
+      }
+      download(new Blob([JSON.stringify(data)], { type: "application/json" }), `${safeFilename(m.title)}-voice-evaluation.json`);
+      const withReference = data.samples.filter((sample) => sample.reference !== null).length;
+      setNotice(t(
+        `Exported ${data.samples.length} voice samples; ${withReference} have a confirmed speaker as reference. The file holds voice-derived data and no transcript text or names: keep it private.`,
+        `已导出 ${data.samples.length} 个声音样本，其中 ${withReference} 个有已确认的说话人作为参考答案。文件含有由声音计算出的数据，不含转录文字和姓名：请勿公开。`,
+      ));
+    } catch {
+      onError("Could not export voice evaluation data.");
     }
   }
   async function acousticSummaryText(meetingId: string): Promise<string> {
@@ -1367,6 +1384,7 @@ export function MeetingWorkspace({
             onCueSequence={cueSequence}
             voiceEvidence={voiceEvidence}
             onRegroupVoices={m.audio?.chunked && !audioMissing && chunkManifest ? () => setAcousticConfirm(true) : undefined}
+            onExportVoiceEvaluation={() => void exportVoiceEvaluationFile()}
             onPause={() => player.current?.pause()}
             playbackRate={playback.rate}
             onChangeRate={(rate) => { if (player.current) player.current.playbackRate = rate; }}
