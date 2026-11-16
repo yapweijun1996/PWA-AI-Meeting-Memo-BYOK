@@ -307,7 +307,7 @@ export default function App() {
             />
           </label>
         </nav>
-        <div className="sidebar-recent" aria-label={t("Recent meetings", "最近会议")}>
+        <div className="sidebar-recent" role="region" aria-label={t("Recent meetings", "最近会议")}>
           <div className="sidebar-recent-heading">
             <p className="nav-label">{t("RECENT MEETINGS", "最近会议")}</p>
             {meetings.length > 4 && (

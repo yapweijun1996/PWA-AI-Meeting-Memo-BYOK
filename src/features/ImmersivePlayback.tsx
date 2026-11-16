@@ -307,7 +307,7 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
     <Button ref={opener} type="button" className="button secondary compact" onClick={enter}><Icon glyph={Maximize2} size="compact" /> {t("Immersive playback", "沉浸式播放")}</Button>
     <div ref={host} hidden={!open} className="immersive" role="dialog" aria-modal="true" aria-label={t("Immersive playback", "沉浸式播放")}>
       {open && <>
-        <header ref={header} hidden={!controlsVisible} className="immersive-header"><strong>MeetingMemo</strong><span aria-label={t("Meeting title", "会议标题")}>{meeting.title}</span><Button className="immersive-fullscreen-toggle" type="button" onClick={toggleFullscreen} aria-label={fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Enter full screen", "\u8fdb\u5165\u5168\u5c4f")}>{fullscreenActive ? <Icon glyph={Minimize2} size="status" /> : <Icon glyph={Maximize2} size="status" />}<span className="immersive-fullscreen-label">{fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Full screen", "\u5168\u5c4f")}</span></Button><Button className="immersive-exit-button" ref={exitButton} type="button" onClick={close} aria-label={t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}><Icon glyph={Minimize2} size="status" /><span className="immersive-exit-label">{t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}</span></Button></header>
+        <header ref={header} hidden={!controlsVisible} className="immersive-header"><strong>MeetingMemo</strong><span role="group" aria-label={t("Meeting title", "会议标题")}>{meeting.title}</span><Button className="immersive-fullscreen-toggle" type="button" onClick={toggleFullscreen} aria-label={fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Enter full screen", "\u8fdb\u5165\u5168\u5c4f")}>{fullscreenActive ? <Icon glyph={Minimize2} size="status" /> : <Icon glyph={Maximize2} size="status" />}<span className="immersive-fullscreen-label">{fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Full screen", "\u5168\u5c4f")}</span></Button><Button className="immersive-exit-button" ref={exitButton} type="button" onClick={close} aria-label={t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}><Icon glyph={Minimize2} size="status" /><span className="immersive-exit-label">{t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}</span></Button></header>
         {fallback && <p className="immersive-fallback" role="status">{t("Full screen is unavailable; using the in-page view.", "无法使用全屏，正在使用页面内视图。")}</p>}
         {controlError && <p className="immersive-fallback" role="alert">{t("Playback could not start.", "无法开始播放。")}</p>}
         <div className="immersive-content">
@@ -320,7 +320,7 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
                 <Button type="button" aria-pressed={showTable} onClick={() => setSpeakerLayout("table")}>{t("Table", "会议桌")}</Button>
               </div>}
             </div>
-            <div id="immersive-roster" className="immersive-roster" hidden={!showRoster} aria-label={t("Speaker labels", "说话人标签")}>
+            <div id="immersive-roster" className="immersive-roster" hidden={!showRoster} role="group" aria-label={t("Speaker labels", "说话人标签")}>
               {meeting.speakers.map((speaker) => <div className="immersive-person" key={speaker.id} data-active={playing && status === "playing" && activeIds.has(speaker.id)} data-position={activeIds.has(speaker.id)}>
                 <strong>{speaker.name}</strong><span>{speaker.confirmed ? t("Name confirmed", "姓名已确认") : t("Unconfirmed", "未确认")}</span>
               </div>)}
@@ -338,7 +338,7 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
                 </div>;
               })}
               {meeting.speakers.length === 4 && <span className="immersive-table-puck" aria-hidden="true"><span /></span>}
-            </div> : <div className="immersive-current-speakers" aria-label={t("Speaker attribution and context", "说话人归属及上下文")}>
+            </div> : <div className="immersive-current-speakers" role="group" aria-label={t("Speaker attribution and context", "说话人归属及上下文")}>
               {currentSpeakers.map((speaker) => <div className="immersive-current-speaker" key={speaker.id} data-active={playing && status === "playing" && activeIds.has(speaker.id)} data-context={!current.length && contextIds.has(speaker.id)}>
                 <SpeakerAvatar id={speaker.id} image={avatars[speaker.id]} className="immersive-avatar" />
                 <strong>{speaker.name}</strong><span className="immersive-confirmation">{speaker.confirmed ? t("Name confirmed", "姓名已确认") : t("Unconfirmed", "未确认")}</span>
