@@ -55,7 +55,8 @@ import { ChunkedAudio, type PlayerLike } from "../audio/chunked-audio";
 import { getKey, getSelection, getSpeechEstimate, getUiLanguage } from "../providers/credentials";
 import { beginRequest, cancelProcessing, finishRequest, runJob, isProcessingMeeting } from "../jobs/runner";
 import { requireVoiceAnalysisLocks, withVoiceAnalysisLock } from "../jobs/voice-analysis-lock";
-import { analyzeExistingMeetingAcoustics, describeAcousticState } from "../jobs/acoustic-continuity";
+import { analyzeExistingMeetingAcoustics, describeAcousticState, listCurrentAcousticEmbeddings } from "../jobs/acoustic-continuity";
+import type { AcousticEmbeddingRecord } from "../domain/acoustic-speaker";
 import { analyzeSingleRecordingVoices, singleRecordingFormat } from "../jobs/single-recording-voices";
 import { getChunkedProgress, runChunkedSpeech } from "../jobs/chunked-runner";
 import { WavLmSpeakerEmbeddingProvider } from "../audio/speaker-embedding";
@@ -117,7 +118,20 @@ export function MeetingWorkspace({
     [sampleRange, setSampleRange] = useState<{ start: number; end: number } | null>(null),
     [audioStopToken, setAudioStopToken] = useState(0);
   const player = useRef<PlayerLike | null>(null),
-    playUntil = useRef<number | null>(null);
+    playUntil = useRef<number | null>(null),
+    // Ranges still to play after the current cue (voice comparison plays two samples in a row).
+    cueQueue = useRef<{ start: number; end: number }[]>([]);
+  const [voiceEvidence, setVoiceEvidence] = useState<AcousticEmbeddingRecord[]>([]);
+  // Moves to the next queued range, or reports that the cue is finished. Uses refs only, so a
+  // stale copy held by an event listener behaves the same.
+  function continueCueQueue(audio: { currentTime: number }): boolean {
+    const next = cueQueue.current.shift();
+    if (!next) return false;
+    playUntil.current = next.end;
+    audio.currentTime = next.start;
+    setSampleRange(next);
+    return true;
+  }
   const [chunkPlayer, setChunkPlayer] = useState<ChunkedAudio>();
   const canPlay = Boolean(url || chunkPlayer);
   const playback = usePlaybackClock(player, canPlay, chunkManifest?.totalSeconds ?? m.audio?.duration ?? 0),
@@ -241,9 +255,20 @@ export function MeetingWorkspace({
     };
   }, [m.id, chunkManifest?.meetingId, chunkManifest?.manifestSha256]);
   useEffect(() => {
+    // Saved voice vectors feed the speaker review hints. They change only when a local
+    // analysis ends, so reload on entering the tab and after processing stops.
+    if (tab !== "speakers" || processing) return;
+    let cancelled = false;
+    void listCurrentAcousticEmbeddings(m.id)
+      .then((records) => { if (!cancelled) setVoiceEvidence(records); })
+      .catch(() => { if (!cancelled) setVoiceEvidence([]); });
+    return () => { cancelled = true; };
+  }, [m.id, tab, processing]);
+  useEffect(() => {
     if (!chunkPlayer) return;
     const stopAtCueEnd = () => {
       if (playUntil.current !== null && chunkPlayer.currentTime >= playUntil.current) {
+        if (continueCueQueue(chunkPlayer)) return;
         chunkPlayer.pause();
         playUntil.current = null;
       }
@@ -419,6 +444,7 @@ export function MeetingWorkspace({
       setNotice("This source has no playable local audio range.");
       return;
     }
+    cueQueue.current = [];
     setSampleRange({ start, end: end ?? Math.min(duration || start + 20, start + 20) });
     setAudioStopToken((value) => value + 1);
     playUntil.current = end;
@@ -431,6 +457,13 @@ export function MeetingWorkspace({
           "Playback could not start. Check this browser supports the recording format.",
         ),
       );
+  }
+  /** Play several ranges one after another; any other cue or seek replaces the sequence. */
+  function cueSequence(ranges: { start: number; end: number }[]) {
+    const [first, ...rest] = ranges;
+    if (!first) return;
+    cueRange(first.start, first.end);
+    if (player.current) cueQueue.current = rest;
   }
   function cue(s: Segment) {
     if (s.start === null) {
@@ -1330,6 +1363,9 @@ export function MeetingWorkspace({
               playback.refresh();
             }}
             onCue={cueRange}
+            onCueSequence={cueSequence}
+            voiceEvidence={voiceEvidence}
+            onRegroupVoices={m.audio?.chunked && !audioMissing && chunkManifest ? () => setAcousticConfirm(true) : undefined}
             onPause={() => player.current?.pause()}
             playbackRate={playback.rate}
             onChangeRate={(rate) => { if (player.current) player.current.playbackRate = rate; }}
@@ -1777,6 +1813,7 @@ export function MeetingWorkspace({
               }}
               onTimeUpdate={(e) => {
                 if (playUntil.current !== null && e.currentTarget.currentTime >= playUntil.current) {
+                  if (continueCueQueue(e.currentTarget)) return;
                   e.currentTarget.pause();
                   playUntil.current = null;
                 }

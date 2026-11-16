@@ -24,6 +24,8 @@ import {
   type SpeakerWindow,
 } from "../domain/speaker-review";
 import type { SpeakerLink } from "../domain/long-audio";
+import type { AcousticEmbeddingRecord } from "../domain/acoustic-speaker";
+import { suggestVoiceMatches, type VoiceSuggestion } from "../domain/voice-suggestions";
 import type { PlaybackClockStore, PlaybackStatus } from "./usePlaybackClock";
 import { suggestVideoId } from "../domain/reference-video";
 import { ImmersivePlayback } from "./ImmersivePlayback";
@@ -49,6 +51,9 @@ export function SpeakerReview({
   playbackStatus,
   locked,
   onCue,
+  onCueSequence,
+  voiceEvidence,
+  onRegroupVoices,
   onSeek,
   onPause,
   onTogglePlayback,
@@ -74,6 +79,12 @@ export function SpeakerReview({
   playbackStatus: PlaybackStatus;
   locked: boolean;
   onCue: (start: number, end: number) => void;
+  /** Plays ranges one after another, for comparing two voices by ear. */
+  onCueSequence?: (ranges: { start: number; end: number }[]) => void;
+  /** Saved vectors of the latest local voice analysis; empty when none has run. */
+  voiceEvidence?: readonly AcousticEmbeddingRecord[];
+  /** Opens the local voice analysis dialog, where a head count can be given. */
+  onRegroupVoices?: () => void;
   onSeek: (position: number) => void;
   onPause: () => void;
   onTogglePlayback: () => Promise<void>;
@@ -110,6 +121,12 @@ export function SpeakerReview({
   const queueRef = useRef<HTMLDivElement>(null);
   const [modeNotice, setModeNotice] = useState("");
   const [mergeNotice, setMergeNotice] = useState("");
+  // Pairs a person rejected in this visit. Not persisted: a reload shows the hint again.
+  const [dismissedVoicePairs, setDismissedVoicePairs] = useState<ReadonlySet<string>>(() => new Set());
+  const voiceSuggestions = useMemo(
+    () => suggestVoiceMatches(meeting, voiceEvidence ?? [], { limit: 4 }),
+    [meeting, voiceEvidence],
+  );
   const savedNames = useRef<Record<string, string>>({});
   const activity = useMemo(
     () => speakerActivity(meeting.segments, position),
@@ -311,6 +328,22 @@ export function SpeakerReview({
   );
   const linkGroups = connectedLinkGroups(visibleLinks);
   const visibleSelected = selectedSpeakers.filter((speakerId) => meeting.speakers.some((speaker) => speaker.id === speakerId));
+  const voicePairKey = (first: string, second: string) => [first, second].sort().join("\u0000");
+  async function mergeVoiceSuggestion(speakerId: string, candidate: VoiceSuggestion) {
+    const current = meeting.speakers.find((item) => item.id === speakerId);
+    const other = meeting.speakers.find((item) => item.id === candidate.speakerId);
+    if (!current || !other) return;
+    // A name a person already confirmed is the one to keep.
+    const [target, source] = other.confirmed && !current.confirmed ? [other, current] : [current, other];
+    try {
+      await onMergeGroups([[target.id, source.id]]);
+      setMergeNotice(t(`Merged into ${target.name}. Use Undo to restore.`, `已合并到“${target.name}”。使用“撤销”可还原。`));
+      setSelectedId(target.id);
+      setFilter("all");
+    } catch {
+      setMergeNotice(t("Could not merge these speakers.", "无法合并这些说话人。"));
+    }
+  }
   async function mergeSuggested(groups: string[][]) {
     try {
       await onMergeGroups(groups);
@@ -535,6 +568,39 @@ export function SpeakerReview({
               <h3>{t("Voice review", "声音审核")} · {speaker.name}</h3>
               <p className="small muted">{t("Listen to samples and compare voices manually. Range includes surrounding context; it may contain other voices.", "试听样本并人工比较声音。样本包含前后语境，可能有其他说话人。")}</p>
               <div className="speaker-samples">{sampleList(speaker)}{!windowsBySpeaker.get(speaker.id)?.length && <p className="small muted">{t("No timed sample available.", "没有可播放的有时间样本。")}</p>}</div>
+              {(() => {
+                const own = voiceSuggestions.get(speaker.id);
+                const candidates = (own?.candidates ?? [])
+                  .filter((candidate) => !dismissedVoicePairs.has(voicePairKey(speaker.id, candidate.speakerId)))
+                  .slice(0, 2);
+                if (!voiceEvidence?.length) return null;
+                return <section className="voice-suggestions" aria-label={t("Most similar voices", "最相似的声音")}>
+                  <h4>{t("Most similar voices", "最相似的声音")}</h4>
+                  <p className="small muted">{t("A local comparison of saved voice samples. It is uncalibrated and only a hint: listen before deciding.", "基于已保存声音样本的本地比较，尚未校准，仅供参考：请先试听再决定。")}</p>
+                  {!own && <p className="small muted">{t("This speaker has no clean voice sample to compare.", "此说话人没有可比较的干净声音样本。")}</p>}
+                  {own && !candidates.length && <p className="small muted">{t("No other speaker sounds similar. This may be a separate person.", "没有声音相似的其他说话人，可能是单独的一个人。")}</p>}
+                  {own && candidates.map((candidate) => {
+                    const other = meeting.speakers.find((item) => item.id === candidate.speakerId);
+                    if (!other) return null;
+                    const level = candidate.band === "high" ? t("High", "高") : candidate.band === "medium" ? t("Medium", "中") : t("Low", "低");
+                    return <article className="voice-suggestion" key={candidate.speakerId}>
+                      <div className="voice-suggestion-head">
+                        <SpeakerAvatar id={other.id} image={avatars[other.id]} />
+                        <strong>{other.name}</strong>
+                        <span className={`voice-suggestion-band is-${candidate.band}`}>{t("Similarity", "相似度")}: {level}</span>
+                      </div>
+                      {candidate.sharesPart && <p className="small muted">{t("Both speak in the same recording part, which usually means two different people.", "两者在同一录音部分都有发言，通常表示是两个人。")}</p>}
+                      {candidate.fewSamples && <p className="small muted">{t("Based on very few samples.", "基于很少的样本。")}</p>}
+                      <div className="voice-suggestion-actions">
+                        <button className="button secondary compact" disabled={!audioAvailable || locked || !onCueSequence} onClick={() => { setSampleFocus(null); onCueSequence?.([own.sample, candidate.sample]); }}><Play size={12} /> {t("Play both", "连续播放两段")}</button>
+                        <button className="button primary compact" disabled={locked} onClick={() => void mergeVoiceSuggestion(speaker.id, candidate)}><Check size={12} /> {t("Same person", "是同一人")}</button>
+                        <button className="text-button" onClick={() => setDismissedVoicePairs((current) => new Set([...current, voicePairKey(speaker.id, candidate.speakerId)]))}>{t("Not the same", "不是同一人")}</button>
+                      </div>
+                    </article>;
+                  })}
+                  {onRegroupVoices && <p className="small muted voice-suggestions-regroup">{t("More voices than people?", "声音数比实际人数多？")} <button className="text-button" disabled={locked} onClick={onRegroupVoices}>{t("Regroup with a head count", "填人数重新分组")}</button></p>}
+                </section>;
+              })()}
               <label>{t("Compare with", "比较对象")}<select aria-label={t("Compare with speaker", "比较的说话人")} value={compareSpeaker?.id ?? ""} onChange={(event) => setCompareId(event.target.value)}><option value="">{t("Choose another speaker", "选择另一位说话人")}</option>{meeting.speakers.filter((item) => item.id !== speaker.id).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>)}</select></label>
               {compareSpeaker && <div className="speaker-comparison"><h4>{compareSpeaker.name} · {compareSpeaker.id}</h4>{sampleList(compareSpeaker)}{!windowsBySpeaker.get(compareSpeaker.id)?.length && <p>{t("No timed sample available.", "没有可播放的有时间样本。")}</p>}</div>}
               {transcriptWindow && <section className="speaker-sample-transcript" tabIndex={0} aria-label={t("Related transcript", "\u76f8\u5173\u8f6c\u5f55")}>
