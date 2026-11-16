@@ -55,6 +55,8 @@ export function SpeakerReview({
   voiceEvidence,
   onRegroupVoices,
   onExportVoiceEvaluation,
+  onMarkDifferent,
+  onClearDifferent,
   onSeek,
   onPause,
   onTogglePlayback,
@@ -88,6 +90,10 @@ export function SpeakerReview({
   onRegroupVoices?: () => void;
   /** Downloads the saved vectors with the confirmed speakers as reference, for offline measurement. */
   onExportVoiceEvaluation?: () => void;
+  /** Saves a person's judgement that two speakers are different people. */
+  onMarkDifferent?: (firstSpeakerId: string, secondSpeakerId: string) => void;
+  /** Forgets the saved "different people" judgements that involve one speaker. */
+  onClearDifferent?: (speakerId: string) => void;
   onSeek: (position: number) => void;
   onPause: () => void;
   onTogglePlayback: () => Promise<void>;
@@ -597,10 +603,15 @@ export function SpeakerReview({
                       <div className="voice-suggestion-actions">
                         <button className="button secondary compact" disabled={!audioAvailable || locked || !onCueSequence} onClick={() => { setSampleFocus(null); onCueSequence?.([own.sample, candidate.sample]); }}><Play size={12} /> {t("Play both", "连续播放两段")}</button>
                         <button className="button primary compact" disabled={locked} onClick={() => void mergeVoiceSuggestion(speaker.id, candidate)}><Check size={12} /> {t("Same person", "是同一人")}</button>
-                        <button className="text-button" onClick={() => setDismissedVoicePairs((current) => new Set([...current, voicePairKey(speaker.id, candidate.speakerId)]))}>{t("Not the same", "不是同一人")}</button>
+                        <button className="text-button" disabled={locked && Boolean(onMarkDifferent)} onClick={() => (onMarkDifferent ? onMarkDifferent(speaker.id, candidate.speakerId) : setDismissedVoicePairs((current) => new Set([...current, voicePairKey(speaker.id, candidate.speakerId)])))}>{t("Not the same", "不是同一人")}</button>
                       </div>
                     </article>;
                   })}
+                  {(() => {
+                    const count = (meeting.voiceDecisions ?? []).filter((decision) => decision.firstSpeakerId === speaker.id || decision.secondSpeakerId === speaker.id).length;
+                    if (!count || !onClearDifferent) return null;
+                    return <p className="small muted voice-suggestions-regroup">{t(`Marked as not the same as ${count} other speaker(s). Automatic matching keeps them apart.`, `已标记为与 ${count} 位其他说话人不是同一人，自动匹配会保持分开。`)} <button className="text-button" disabled={locked} onClick={() => onClearDifferent(speaker.id)}>{t("Forget these decisions", "取消这些标记")}</button></p>;
+                  })()}
                   {onRegroupVoices && <p className="small muted voice-suggestions-regroup">{t("More voices than people?", "声音数比实际人数多？")} <button className="text-button" disabled={locked} onClick={onRegroupVoices}>{t("Regroup with a head count", "填人数重新分组")}</button></p>}
                   {onExportVoiceEvaluation && <p className="small muted voice-suggestions-regroup">{t("Measuring how well voices are matched?", "想测量声音匹配的效果？")} <button className="text-button" onClick={onExportVoiceEvaluation}>{t("Export voice evaluation data", "导出声音评测数据")}</button></p>}
                 </section>;

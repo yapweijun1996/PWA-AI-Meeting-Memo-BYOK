@@ -13,6 +13,7 @@ import type { NormalizedSpeech } from "../providers/api";
 import type { BrowserSpeakerEmbeddingProvider } from "../audio/speaker-embedding";
 import { decodeAcousticWindow } from "../audio/acoustic-audio";
 import { reusableEmbedding } from "./acoustic-continuity";
+import { buildVoiceConstraints } from "../domain/voice-constraints";
 import {
   deleteAcousticAssignments,
   deleteAcousticIdentities,
@@ -190,7 +191,20 @@ export async function analyzeSingleRecordingVoices(
       perIdentity.set(assignment.identityId, (perIdentity.get(assignment.identityId) ?? 0) + 1);
     }
   }
-  const grouped = assignments.filter((assignment) => assignment.identityId && (perIdentity.get(assignment.identityId) ?? 0) > 1);
+  // Never re-join labels a person judged to be different people (two confirmed
+  // speakers, or a pair marked "not the same"): such a voice is left unapplied.
+  const { cannotLink } = buildVoiceConstraints(latest, embeddings);
+  const labelsOfIdentity = new Map<string, Set<string>>();
+  for (const assignment of assignments) {
+    if (!assignment.identityId) continue;
+    labelsOfIdentity.set(assignment.identityId, (labelsOfIdentity.get(assignment.identityId) ?? new Set()).add(assignment.sourceKey));
+  }
+  const rejectedIdentities = new Set(
+    [...labelsOfIdentity].filter(([, labels]) => cannotLink.some(([left, right]) => labels.has(left) && labels.has(right))).map(([identityId]) => identityId),
+  );
+  const grouped = assignments.filter(
+    (assignment) => assignment.identityId && (perIdentity.get(assignment.identityId) ?? 0) > 1 && !rejectedIdentities.has(assignment.identityId),
+  );
   const projected = applyAcousticAssignmentsToMeeting(
     latest,
     grouped,

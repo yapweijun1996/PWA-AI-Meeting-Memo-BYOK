@@ -639,6 +639,9 @@ test("suggests the most similar voice in speaker review and merges it reversibly
   await expect(suggestion).toContainText("Similarity: High");
   await suggestion.getByRole("button", { name: "Not the same", exact: true }).click();
   await expect(suggestion).toHaveCount(0);
+  // The judgement is saved with the meeting, so it survives a reload and constrains later matching.
+  await expect.poll(async () => ((await readMeeting(page)).voiceDecisions as unknown[] | undefined)?.length ?? 0).toBe(1);
+  await expect(hints.getByText(/Marked as not the same as 1 other speaker/)).toBeVisible();
   expect((await readMeeting(page)).speakers).toHaveLength(4);
 
   await page.locator(".speaker-queue-select", { hasText: "Speaker A (part 1)" }).click();

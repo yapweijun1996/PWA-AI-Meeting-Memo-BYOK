@@ -34,10 +34,12 @@ import { summarizeMeetingAccounting } from "../domain/accounting";
 import { id, importTranscript } from "../domain/model";
 import {
   assignSegments,
+  clearSpeakerVoiceDecisions,
   editMeeting,
   editSegment,
   formatTime,
   markdown,
+  markSpeakersDifferent,
   mergeSpeakerGroups,
   mergeSpeakers,
   replaceTranscript,
@@ -1385,6 +1387,8 @@ export function MeetingWorkspace({
             voiceEvidence={voiceEvidence}
             onRegroupVoices={m.audio?.chunked && !audioMissing && chunkManifest ? () => setAcousticConfirm(true) : undefined}
             onExportVoiceEvaluation={() => void exportVoiceEvaluationFile()}
+            onMarkDifferent={(first, second) => void persistQuietly(markSpeakersDifferent(m, first, second))}
+            onClearDifferent={(speakerId) => void persistQuietly(clearSpeakerVoiceDecisions(m, speakerId))}
             onPause={() => player.current?.pause()}
             playbackRate={playback.rate}
             onChangeRate={(rate) => { if (player.current) player.current.playbackRate = rate; }}

@@ -65,6 +65,19 @@ const SpeakerLinkSchema = z.object({
   sharedWords: z.number().int().min(1),
   share: z.number().finite().min(0).max(1),
 }).strict();
+/**
+ * A person's judgement, made by listening, that two current speakers are
+ * different people. Review metadata, not transcript content: it constrains
+ * automatic voice matching and hides the pair from voice hints. A confirmed
+ * speaker already states "these passages are one person", so only "different"
+ * needs a record.
+ */
+const VoiceDecisionSchema = z.object({
+  firstSpeakerId: z.string().min(1).max(160),
+  secondSpeakerId: z.string().min(1).max(160),
+  decision: z.literal("different"),
+  decidedAt: z.string().max(40),
+}).strict();
 const SnapshotSchema = z
   .object({
     title: z.string().min(1).max(160),
@@ -73,6 +86,7 @@ const SnapshotSchema = z
     speakers: z.array(SpeakerSchema).max(100),
     segments: z.array(SegmentSchema).max(20000),
     speakerLinks: z.array(SpeakerLinkSchema).max(200).optional(),
+    voiceDecisions: z.array(VoiceDecisionSchema).max(500).optional(),
   })
   .strict();
 export const JobSchema = z
@@ -226,6 +240,7 @@ export const MeetingSchema = z
     synthetic: z.boolean(),
     referenceVideo: ReferenceVideoSchema.nullable().optional(),
     speakerLinks: z.array(SpeakerLinkSchema).max(200).optional(),
+    voiceDecisions: z.array(VoiceDecisionSchema).max(500).optional(),
     speakers: z.array(SpeakerSchema).max(100),
     segments: z.array(SegmentSchema).max(20000),
     history: z.array(SegmentSchema).max(100000),
@@ -276,6 +291,7 @@ export const MeetingSchema = z
 export type Meeting = z.infer<typeof MeetingSchema>;
 export type Segment = z.infer<typeof SegmentSchema>;
 export type Speaker = z.infer<typeof SpeakerSchema>;
+export type VoiceDecision = z.infer<typeof VoiceDecisionSchema>;
 export type MemoItem = z.infer<typeof MemoItemSchema>;
 export type Job = z.infer<typeof JobSchema>;
 export type { ReferenceVideo };

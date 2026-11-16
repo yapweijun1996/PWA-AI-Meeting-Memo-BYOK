@@ -3,7 +3,8 @@ import type { AcousticAssignment, AcousticEmbeddingRecord } from "../src/domain/
 import { segment, type Meeting } from "../src/domain/model";
 import { buildVoiceEvaluationExport } from "../src/domain/voice-evaluation";
 // @ts-expect-error The offline read-only CLI is JavaScript.
-import { evaluateVoiceMatching } from "../scripts/evaluate-voice-matching.mjs";
+import { evaluateVoiceMatching, replayVoiceMatching } from "../scripts/evaluate-voice-matching.mjs";
+import * as matcher from "../src/domain/acoustic-speaker";
 
 const HASH = "e".repeat(64);
 
@@ -173,6 +174,22 @@ describe("offline voice evaluation", () => {
     const result = evaluateVoiceMatching(buildVoiceEvaluationExport(mixed, embeddings, []));
     expect(result.mixedLabels).toEqual([{ part: 0, label: "A", samplesPerReference: { P02: 1, P01: 2 } }]);
     expect(result.counts.labelsWithOneReference).toBe(5);
+  });
+
+  it("replays the app's matcher on the exported vectors and scores each setting", () => {
+    const { meeting, embeddings } = fixture(ROWS, all);
+    const data = JSON.parse(JSON.stringify(buildVoiceEvaluationExport(meeting, embeddings, [])));
+    const result = replayVoiceMatching(data, matcher);
+    const current = result.replay.runs[0];
+    // Labels A and B swap people between the parts; the matcher follows the voices, not the labels.
+    expect(current).toMatchObject({ name: "current settings", floorCosine: 0.35, margin: 0.1, voices: 3, labelsScored: 6, correctMerges: 3, wrongMerges: 0, missedMerges: 0 });
+    expect(result.replay.runs.some((run: { expectedVoices: number | null }) => run.expectedVoices === 3)).toBe(true);
+    expect(result.replay.runs.filter((run: { name: string }) => run.name.startsWith("floor "))).toHaveLength(17);
+    // A person's "different" pair is honoured when the replay is told to use it.
+    const constrained = replayVoiceMatching({ ...data, differentLabelPairs: [["0:A", "1:B"]] }, matcher).replay.runs
+      .find((run: { name: string }) => run.name === "current settings with human different pairs");
+    expect(constrained).toMatchObject({ humanDifferentPairsJoined: 0, missedMerges: 1 });
+    expect(result.savedGrouping.labelsScored).toBe(0);
   });
 
   it("rejects files that are not an export", () => {

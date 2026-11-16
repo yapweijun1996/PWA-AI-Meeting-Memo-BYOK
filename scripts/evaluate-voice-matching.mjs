@@ -1,5 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const MAX_BYTES = 64 * 1024 * 1024;
 const fail = () => {
@@ -124,6 +124,14 @@ export function evaluateVoiceMatching(data) {
     )
       fail();
 
+  const differentPairs = data.differentLabelPairs ?? [];
+  if (
+    !Array.isArray(differentPairs) ||
+    differentPairs.length > 100000 ||
+    differentPairs.some((pair) => !Array.isArray(pair) || pair.length !== 2 || pair.some((value) => typeof value !== "string"))
+  )
+    fail();
+
   const key = (part, label) => `${part}:${label}`;
   const samples = data.samples;
   const referenced = samples.filter((s) => s.reference !== null);
@@ -165,30 +173,11 @@ export function evaluateVoiceMatching(data) {
   }
 
   // The app's saved grouping against the reference, over pairs of labels.
-  const undecidedByState = {};
-  const scored = [];
-  for (const d of data.decisions) {
-    const reference = labelReference.get(key(d.part, d.label));
-    if (reference === undefined) continue;
-    if (d.voice === null) undecidedByState[d.state] = (undecidedByState[d.state] ?? 0) + 1;
-    else scored.push({ part: d.part, label: d.label, voice: d.voice, reference });
-  }
-  let correctMerges = 0,
-    wrongMerges = 0,
-    missedMerges = 0;
-  for (let i = 0; i < scored.length; i++)
-    for (let j = i + 1; j < scored.length; j++) {
-      const sameVoice = scored[i].voice === scored[j].voice;
-      const samePerson = scored[i].reference === scored[j].reference;
-      if (sameVoice && samePerson) correctMerges++;
-      else if (sameVoice) wrongMerges++;
-      else if (samePerson) missedMerges++;
-    }
-  const peoplePerVoice = new Map();
-  for (const s of scored) peoplePerVoice.set(s.voice, (peoplePerVoice.get(s.voice) ?? new Set()).add(s.reference));
-  const mixedVoices = [...peoplePerVoice]
-    .filter(([, people]) => people.size > 1)
-    .map(([voice, people]) => ({ voice, references: [...people].sort() }));
+  const saved = scoreGrouping(
+    data.decisions.map((d) => ({ key: key(d.part, d.label), state: d.state, voice: d.voice })),
+    labelReference,
+    differentPairs,
+  );
 
   return {
     schemaVersion: 1,
@@ -207,19 +196,179 @@ export function evaluateVoiceMatching(data) {
     samplePairs,
     labelPairs,
     mixedLabels,
-    savedGrouping: {
-      labelsScored: scored.length,
-      labelsUndecidedByState: undecidedByState,
-      voices: peoplePerVoice.size,
-      referenceSpeakers: new Set(scored.map((s) => s.reference)).size,
-      correctMerges,
-      wrongMerges,
-      missedMerges,
-      mergePrecision: ratio(correctMerges, correctMerges + wrongMerges),
-      mergeRecall: ratio(correctMerges, correctMerges + missedMerges),
-      voicesMixingPeople: mixedVoices,
+    savedGrouping: saved,
+  };
+}
+
+/**
+ * Score one grouping of labels into voices against the reference, over pairs of
+ * labels: a correct merge joins two labels of one person, a wrong merge joins two
+ * people, a missed merge leaves one person's labels apart.
+ */
+function scoreGrouping(decisions, labelReference, differentPairs) {
+  const undecidedByState = {};
+  const scored = [];
+  for (const d of decisions) {
+    const reference = labelReference.get(d.key);
+    if (reference === undefined) continue;
+    if (d.voice === null) undecidedByState[d.state] = (undecidedByState[d.state] ?? 0) + 1;
+    else scored.push({ voice: d.voice, reference });
+  }
+  let correctMerges = 0,
+    wrongMerges = 0,
+    missedMerges = 0;
+  for (let i = 0; i < scored.length; i++)
+    for (let j = i + 1; j < scored.length; j++) {
+      const sameVoice = scored[i].voice === scored[j].voice;
+      const samePerson = scored[i].reference === scored[j].reference;
+      if (sameVoice && samePerson) correctMerges++;
+      else if (sameVoice) wrongMerges++;
+      else if (samePerson) missedMerges++;
+    }
+  // Label pairs a person judged different that this grouping put in one voice anyway.
+  const voiceOfLabel = new Map(decisions.filter((d) => d.voice !== null).map((d) => [d.key, d.voice]));
+  const joined = differentPairs.filter(
+    ([left, right]) => voiceOfLabel.has(left) && voiceOfLabel.get(left) === voiceOfLabel.get(right),
+  ).length;
+  const peoplePerVoice = new Map();
+  for (const s of scored) peoplePerVoice.set(s.voice, (peoplePerVoice.get(s.voice) ?? new Set()).add(s.reference));
+  return {
+    labelsScored: scored.length,
+    labelsUndecidedByState: undecidedByState,
+    voices: peoplePerVoice.size,
+    referenceSpeakers: new Set(scored.map((s) => s.reference)).size,
+    correctMerges,
+    wrongMerges,
+    missedMerges,
+    mergePrecision: ratio(correctMerges, correctMerges + wrongMerges),
+    mergeRecall: ratio(correctMerges, correctMerges + missedMerges),
+    voicesMixingPeople: [...peoplePerVoice]
+      .filter(([, people]) => people.size > 1)
+      .map(([voice, people]) => ({ voice, references: [...people].sort() })),
+    humanDifferentPairs: differentPairs.length,
+    humanDifferentPairsJoined: joined,
+  };
+}
+
+const REPLAY_FLOORS = [0.25, 0.3, 0.35, 0.4, 0.45, 0.5];
+const REPLAY_MARGINS = [0.05, 0.1, 0.15];
+
+/**
+ * Run the app's own multi-part matcher again on the exported vectors under other
+ * settings and score every result. `matcher` is the app module
+ * (`src/domain/acoustic-speaker.ts`), passed in so this file holds no second copy
+ * of the matching rules. Settings chosen here fit this one recording: confirm
+ * them on another recording before changing the app.
+ */
+export function replayVoiceMatching(data, matcher) {
+  const base = evaluateVoiceMatching(data);
+  const key = (part, label) => `${part}:${label}`;
+  const labelReference = new Map();
+  const byLabel = new Map();
+  for (const s of data.samples) byLabel.set(key(s.part, s.label), [...(byLabel.get(key(s.part, s.label)) ?? []), s]);
+  for (const [id, list] of byLabel) {
+    const references = [...new Set(list.filter((s) => s.reference !== null).map((s) => s.reference))];
+    if (references.length === 1) labelReference.set(id, references[0]);
+  }
+  const differentPairs = data.differentLabelPairs ?? [];
+  const recordingHash = "0".repeat(64);
+  const embeddings = data.samples.map((s) => ({
+    id: s.id,
+    meetingId: "evaluation",
+    recordingHash,
+    sourceRevision: 1,
+    chunkIndex: s.part,
+    sourceSpeakerId: s.label,
+    sample: { id: s.id, chunkIndex: s.part, sourceSpeakerId: s.label, startSeconds: s.start, endSeconds: s.end, segmentIds: [] },
+    modelId: data.model?.id ?? "unknown",
+    modelRevision: data.model?.revision ?? "unknown",
+    extractionVersion: data.model?.extractionVersion ?? "unknown",
+    values: s.values,
+    createdAt: data.exportedAt ?? new Date(0).toISOString(),
+  }));
+  const run = (name, options) => {
+    const rules = {
+      ...matcher.PART_MATCH_POLICY,
+      floorCosine: options.floorCosine ?? matcher.PART_MATCH_POLICY.floorCosine,
+      margin: options.margin ?? matcher.PART_MATCH_POLICY.margin,
+    };
+    const result = matcher.matchLabelsAcrossParts(
+      {
+        meetingId: "evaluation",
+        recordingHash,
+        sourceRevision: 1,
+        embeddings,
+        expectedVoices: options.expectedVoices,
+        constraints: options.useHumanDifferentPairs ? { mustLink: [], cannotLink: differentPairs } : undefined,
+      },
+      matcher.ACOUSTIC_POLICY,
+      rules,
+    );
+    const identities = [...new Set(result.assignments.map((a) => a.identityId).filter(Boolean))];
+    const score = scoreGrouping(
+      result.assignments.map((a) => ({
+        key: a.sourceKey,
+        state: a.state,
+        voice: a.identityId && (a.state === "matched" || a.state === "new_identity") ? `V${identities.indexOf(a.identityId) + 1}` : null,
+      })),
+      labelReference,
+      differentPairs,
+    );
+    return {
+      name,
+      floorCosine: rules.floorCosine,
+      margin: rules.margin,
+      expectedVoices: options.expectedVoices ?? null,
+      humanDifferentPairsUsed: Boolean(options.useHumanDifferentPairs),
+      voices: score.voices,
+      labelsScored: score.labelsScored,
+      labelsUndecided: Object.values(score.labelsUndecidedByState).reduce((sum, count) => sum + count, 0),
+      correctMerges: score.correctMerges,
+      wrongMerges: score.wrongMerges,
+      missedMerges: score.missedMerges,
+      mergePrecision: score.mergePrecision,
+      mergeRecall: score.mergeRecall,
+      humanDifferentPairsJoined: score.humanDifferentPairsJoined,
+    };
+  };
+  const people = base.counts.referenceSpeakers;
+  const runs = [run("current settings", {})];
+  if (people > 0) runs.push(run("current settings with the reference head count", { expectedVoices: people }));
+  if (differentPairs.length) {
+    runs.push(run("current settings with human different pairs", { useHumanDifferentPairs: true }));
+    if (people > 0) runs.push(run("reference head count with human different pairs", { expectedVoices: people, useHumanDifferentPairs: true }));
+  }
+  for (const floorCosine of REPLAY_FLOORS)
+    for (const margin of REPLAY_MARGINS) {
+      if (floorCosine === matcher.PART_MATCH_POLICY.floorCosine && margin === matcher.PART_MATCH_POLICY.margin) continue;
+      runs.push(run(`floor ${floorCosine}, margin ${margin}`, { floorCosine, margin }));
+    }
+  return {
+    ...base,
+    replay: {
+      scope:
+        "The app's multi-part matcher re-run on these vectors. Settings that look best here fit this one recording; confirm on another before changing the app.",
+      runs,
     },
   };
+}
+
+/** Load the app's matcher from its TypeScript source, so the replay cannot drift from the app. */
+async function loadMatcher() {
+  const { createServer } = await import("vite");
+  const server = await createServer({
+    root: fileURLToPath(new URL("..", import.meta.url)),
+    configFile: false,
+    logLevel: "silent",
+    appType: "custom",
+    server: { middlewareMode: true, ws: false, hmr: false, watch: null },
+    optimizeDeps: { noDiscovery: true, include: [] },
+  });
+  try {
+    return await server.ssrLoadModule("/src/domain/acoustic-speaker.ts");
+  } finally {
+    await server.close();
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -228,7 +377,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if ((await stat(process.argv[2])).size > MAX_BYTES) fail();
     const bytes = await readFile(process.argv[2]);
     if (bytes.byteLength > MAX_BYTES) fail();
-    console.log(JSON.stringify(evaluateVoiceMatching(JSON.parse(bytes.toString("utf8"))), null, 2));
+    const data = JSON.parse(bytes.toString("utf8"));
+    const result = process.argv.includes("--replay") ? replayVoiceMatching(data, await loadMatcher()) : evaluateVoiceMatching(data);
+    console.log(JSON.stringify(result, null, 2));
   } catch {
     console.error("Voice evaluation failed. Check that the file is an unmodified export from the app and within the size limit.");
     process.exitCode = 1;

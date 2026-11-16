@@ -5,6 +5,7 @@ import {
   type AcousticEmbeddingRecord,
 } from "./acoustic-speaker";
 import type { Meeting } from "./model";
+import { buildVoiceConstraints } from "./voice-constraints";
 import { cleanSampleOwner } from "./voice-suggestions";
 
 export const VOICE_EVALUATION_KIND = "voice-evaluation-export";
@@ -48,6 +49,11 @@ export interface VoiceEvaluationExport {
   reference: { source: "human-confirmed-speakers"; speakers: number; confirmedSpeakers: number };
   samples: VoiceEvaluationSample[];
   decisions: VoiceEvaluationDecision[];
+  /**
+   * Pairs of "part:label" a person judged to be different people: two confirmed
+   * speakers, or two speakers marked "not the same" in review.
+   */
+  differentLabelPairs: [string, string][];
 }
 
 function pseudonym(prefix: string, index: number): string {
@@ -60,7 +66,7 @@ function pseudonym(prefix: string, index: number): string {
  * confirmed that speaker; anything else stays null rather than guessed.
  */
 export function buildVoiceEvaluationExport(
-  meeting: Pick<Meeting, "speakers" | "segments" | "audio">,
+  meeting: Pick<Meeting, "speakers" | "segments" | "audio"> & Partial<Pick<Meeting, "voiceDecisions">>,
   embeddings: readonly AcousticEmbeddingRecord[],
   assignments: readonly AcousticAssignment[],
   exportedAt: string = new Date().toISOString(),
@@ -131,5 +137,6 @@ export function buildVoiceEvaluationExport(
     reference: { source: "human-confirmed-speakers", speakers: meeting.speakers.length, confirmedSpeakers: confirmed.length },
     samples,
     decisions,
+    differentLabelPairs: buildVoiceConstraints(meeting, usable).cannotLink.map(([left, right]) => [left, right]),
   };
 }

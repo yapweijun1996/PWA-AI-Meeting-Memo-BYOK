@@ -2,7 +2,8 @@ import "fake-indexeddb/auto";
 import { describe, expect, it, vi } from "vitest";
 import { analyzeExistingMeetingAcoustics } from "../src/jobs/acoustic-continuity";
 import { createMeeting, segment, validateMeeting } from "../src/domain/model";
-import { replaceTranscript, undoEdit } from "../src/domain/operations";
+import { markSpeakersDifferent, replaceTranscript, undoEdit } from "../src/domain/operations";
+import { listAcousticAssignments } from "../src/storage/acoustic-store";
 import { getMeeting, saveMeeting, deleteMeeting, db } from "../src/storage/repository";
 import { storeLongAudio } from "../src/storage/long-audio-store";
 import type { BrowserSpeakerEmbeddingProvider } from "../src/audio/speaker-embedding";
@@ -47,11 +48,9 @@ const provider: BrowserSpeakerEmbeddingProvider = {
   dispose() { return undefined; },
 };
 
-describe("existing meeting local acoustic analysis", () => {
-  it("groups old part-N run speakers locally, saves with CAS, preserves text and supports undo", async () => {
+async function prepare(meetingId: string) {
     FakeAudioContext.decodedByteLengths = [];
     vi.stubGlobal("AudioContext", FakeAudioContext);
-    const meetingId = "00000000-0000-4000-8000-000000000011";
     const encoded = mp3Frames(3_000);
     const manifest = await storeLongAudio({
       meetingId,
@@ -97,6 +96,13 @@ describe("existing meeting local acoustic analysis", () => {
       originalSegments: sourceSegments,
     });
     const saved = await saveMeeting(withRun);
+    return { saved, manifest, sourceSegments, encoded };
+}
+
+describe("existing meeting local acoustic analysis", () => {
+  it("groups old part-N run speakers locally, saves with CAS, preserves text and supports undo", async () => {
+    const meetingId = "00000000-0000-4000-8000-000000000011";
+    const { saved, manifest, sourceSegments, encoded } = await prepare(meetingId);
     const analyzed = await analyzeExistingMeetingAcoustics(saved, {
       manifest,
       provider,
@@ -124,6 +130,23 @@ describe("existing meeting local acoustic analysis", () => {
     await analyzeExistingMeetingAcoustics(persisted, { manifest, provider, consent: true, signal: undefined });
     expect(embedCalls).toBe(callsBefore);
     expect(FakeAudioContext.decodedByteLengths.length).toBe(decodesBefore);
+    await deleteMeeting(meetingId);
+  });
+
+  it("keeps two speakers apart after a person marked them not the same", async () => {
+    const meetingId = "00000000-0000-4000-8000-000000000012";
+    const { saved, manifest } = await prepare(meetingId);
+    // Both parts produce the same vector, so without the decision they are grouped (see the test above).
+    const decided = await saveMeeting(markSpeakersDifferent(saved, "part-0:A", "part-1:A"));
+    const analyzed = await analyzeExistingMeetingAcoustics(decided, { manifest, provider, consent: true, signal: undefined });
+    expect(analyzed.segments[0]?.speakerIds).not.toEqual(analyzed.segments[1]?.speakerIds);
+    expect(analyzed.speakers).toHaveLength(2);
+    const assignments = await listAcousticAssignments(meetingId);
+    expect(new Set(assignments.map((assignment) => assignment.identityId)).size).toBe(2);
+    // The decision still names the two speakers that now hold those passages.
+    expect(analyzed.voiceDecisions).toHaveLength(1);
+    const pair = [analyzed.voiceDecisions![0]!.firstSpeakerId, analyzed.voiceDecisions![0]!.secondSpeakerId].sort();
+    expect(pair).toEqual([analyzed.segments[0]!.speakerIds[0], analyzed.segments[1]!.speakerIds[0]].sort());
     await deleteMeeting(meetingId);
     (await db()).close();
   });

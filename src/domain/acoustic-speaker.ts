@@ -1,5 +1,5 @@
 import type { NormalizedSpeech } from "../providers/api";
-import { editMeeting } from "./operations";
+import { editMeeting, remapVoiceDecisions } from "./operations";
 import { ref, type Meeting } from "./model";
 
 /**
@@ -808,8 +808,24 @@ function averageVector(vectors: readonly (readonly number[])[]): number[] {
 interface MatchUnit {
   chunkIndex: number;
   labels: string[];
+  /** Source keys ("part:label") of the labels, for human constraints. */
+  keys: string[];
+  /** Indexes of the human-confirmed groups these labels belong to. */
+  groups: Set<number>;
   evidence: AcousticEmbeddingRecord[];
   mean: number[];
+}
+
+/**
+ * What a person established by listening, expressed on provider labels
+ * ("part:label" source keys). These are hard constraints: similarity never
+ * overrides them. See `buildVoiceConstraints`.
+ */
+export interface VoiceConstraints {
+  /** Each group holds labels that belong to one human-confirmed speaker. */
+  mustLink: readonly (readonly string[])[];
+  /** Pairs of labels that belong to different people. */
+  cannotLink: readonly (readonly [string, string])[];
 }
 
 /**
@@ -835,10 +851,21 @@ export function matchLabelsAcrossParts(
      * can split one person into two labels.
      */
     expectedVoices?: number;
+    /** Optional, from a person's review: labels that must or must not share a voice. */
+    constraints?: VoiceConstraints;
   },
   policy: AcousticPolicy = ACOUSTIC_POLICY,
-  rules: typeof PART_MATCH_POLICY = PART_MATCH_POLICY,
+  rules: Pick<typeof PART_MATCH_POLICY, "floorCosine" | "margin" | "withinPartMergeCosine"> & { version: string } = PART_MATCH_POLICY,
 ): RecordingClusterResult {
+  const groupOf = new Map<string, number>();
+  (input.constraints?.mustLink ?? []).forEach((group, index) => group.forEach((key) => groupOf.set(key, index)));
+  const forbiddenPairs = new Set<string>();
+  for (const [left, right] of input.constraints?.cannotLink ?? []) {
+    forbiddenPairs.add(`${left}\u0000${right}`);
+    forbiddenPairs.add(`${right}\u0000${left}`);
+  }
+  const forbidden = (left: readonly string[], right: readonly string[]) =>
+    forbiddenPairs.size > 0 && left.some((a) => right.some((b) => forbiddenPairs.has(`${a}\u0000${b}`)));
   const base = (embedding: AcousticEmbeddingRecord, evidence: readonly AcousticEmbeddingRecord[]) => ({
     meetingId: input.meetingId,
     recordingHash: input.recordingHash,
@@ -901,7 +928,14 @@ export function matchLabelsAcrossParts(
   for (const [chunkIndex, partLabels] of [...byPart.entries()].sort((a, b) => a[0] - b[0])) {
     const parent = partLabels.map((_, index) => index);
     const find = (x: number): number => (parent[x] === x ? x : (parent[x] = find(parent[x]!)));
-    const agree = (a: number, b: number) => cosineSimilarity(partLabels[a]!.mean, partLabels[b]!.mean) >= rules.withinPartMergeCosine;
+    const keyAt = (index: number) => acousticSourceKey(chunkIndex, partLabels[index]!.evidence[0]!.sourceSpeakerId);
+    const agree = (a: number, b: number) => {
+      const left = keyAt(a);
+      const right = keyAt(b);
+      if (forbidden([left], [right])) return false;
+      if (groupOf.has(left) && groupOf.get(left) === groupOf.get(right)) return true;
+      return cosineSimilarity(partLabels[a]!.mean, partLabels[b]!.mean) >= rules.withinPartMergeCosine;
+    };
     for (let a = 0; a < partLabels.length; a += 1) {
       for (let b = a + 1; b < partLabels.length; b += 1) if (agree(a, b)) parent[find(b)] = find(a);
     }
@@ -913,9 +947,12 @@ export function matchLabelsAcrossParts(
         continue;
       }
       const evidence = members.flatMap((index) => partLabels[index]!.evidence);
+      const keys = members.map(keyAt);
       units.push({
         chunkIndex,
         labels: members.map((index) => partLabels[index]!.evidence[0]!.sourceSpeakerId),
+        keys,
+        groups: new Set(keys.flatMap((key) => (groupOf.has(key) ? [groupOf.get(key)!] : []))),
         evidence,
         mean: averageVector(evidence.map((entry) => centered(entry.values))),
       });
@@ -923,8 +960,11 @@ export function matchLabelsAcrossParts(
   }
 
   // 3. Across parts: one voice per unit, one unit per voice per part, best pairs first.
-  interface Voice { id: string; members: { unit: MatchUnit; score: number }[]; centroid: number[] }
+  interface Voice { id: string; members: { unit: MatchUnit; score: number; human?: boolean }[]; centroid: number[] }
   const voices: Voice[] = [];
+  const voiceKeys = (voice: Voice) => voice.members.flatMap((member) => member.unit.keys);
+  const sharesGroup = (groups: ReadonlySet<number>, voice: Voice) =>
+    groups.size > 0 && voice.members.some((member) => [...member.unit.groups].some((group) => groups.has(group)));
   const expected = input.expectedVoices;
   if (expected !== undefined && (!Number.isInteger(expected) || expected < 1 || expected > 50)) {
     throw new RangeError("The expected number of speakers must be a whole number from 1 to 50.");
@@ -940,14 +980,25 @@ export function matchLabelsAcrossParts(
       continue;
     }
     const existing = [...voices];
-    const similarity = partUnits.map((unit) => existing.map((voice) => cosineSimilarity(unit.mean, voice.centroid)));
+    // A voice holding a label this unit must stay apart from is not a candidate at all.
+    const similarity = partUnits.map((unit) =>
+      existing.map((voice) => (forbidden(unit.keys, voiceKeys(voice)) ? Number.NaN : cosineSimilarity(unit.mean, voice.centroid))),
+    );
     const pairs = partUnits
       .flatMap((_, u) => existing.map((__, v) => ({ u, v, score: similarity[u]![v]! })))
       .filter((pair) => Number.isFinite(pair.score) && pair.score >= rules.floorCosine)
       .sort((left, right) => right.score - left.score);
     const takenUnits = new Set<number>();
     const takenVoices = new Set<number>();
-    const placed: { unit: MatchUnit; voice: Voice; score: number }[] = [];
+    const placed: { unit: MatchUnit; voice: Voice; score: number; human?: boolean }[] = [];
+    // A unit a person confirmed as the speaker of an existing voice joins it first, whatever the similarity.
+    partUnits.forEach((unit, u) => {
+      const v = existing.findIndex((voice, index) => !takenVoices.has(index) && sharesGroup(unit.groups, voice));
+      if (v < 0) return;
+      takenUnits.add(u);
+      takenVoices.add(v);
+      placed.push({ unit, voice: existing[v]!, score: cosineSimilarity(unit.mean, existing[v]!.centroid), human: true });
+    });
     for (const pair of pairs) {
       if (takenUnits.has(pair.u) || takenVoices.has(pair.v)) continue;
       takenUnits.add(pair.u);
@@ -972,9 +1023,28 @@ export function matchLabelsAcrossParts(
       else for (const label of unit.labels) state(labelEvidence(unit, label), "ambiguous", "A better-matching label in this part already holds the closest voice; no merge was forced.");
     });
     // Apply the part's placements together so earlier pairs do not shift later ones.
-    for (const { unit, voice, score } of placed) {
-      voice.members.push({ unit, score });
+    for (const { unit, voice, score, human } of placed) {
+      voice.members.push({ unit, score, human });
       voice.centroid = averageVector(voice.members.map((member) => member.unit.mean));
+    }
+  }
+
+  const joinVoices = (keepIndex: number, dropIndex: number, human: boolean) => {
+    const keep = voices[keepIndex]!;
+    const drop = voices[dropIndex]!;
+    keep.members.push(...drop.members.map((member) => ({ unit: member.unit, score: -1, human: human || member.human })));
+    keep.centroid = averageVector(keep.members.map((member) => member.unit.mean));
+    voices.splice(dropIndex, 1);
+  };
+  // Voices that hold labels of one human-confirmed speaker are one voice.
+  if (groupOf.size) {
+    for (let a = 0; a < voices.length; a += 1) {
+      for (let b = a + 1; b < voices.length; b += 1) {
+        const groups = new Set(voices[b]!.members.flatMap((member) => [...member.unit.groups]));
+        if (!sharesGroup(groups, voices[a]!) || forbidden(voiceKeys(voices[a]!), voiceKeys(voices[b]!))) continue;
+        joinVoices(a, b, true);
+        b -= 1;
+      }
     }
   }
 
@@ -990,22 +1060,22 @@ export function matchLabelsAcrossParts(
         for (let b = a + 1; b < voices.length; b += 1) {
           const score = cosineSimilarity(voices[a]!.centroid, voices[b]!.centroid);
           if (!Number.isFinite(score)) continue;
+          // A head count never joins voices a person judged to be different people.
+          if (forbidden(voiceKeys(voices[a]!), voiceKeys(voices[b]!))) continue;
           const shared = [...partsOf(voices[a]!)].some((part) => partsOf(voices[b]!).has(part));
           const value = score - (shared ? SHARED_PART_PENALTY : 0);
           if (!best || value > best.value) best = { a, b, value };
         }
       }
       if (!best) break;
-      const keep = voices[best.a]!;
-      const drop = voices[best.b]!;
-      keep.members.push(...drop.members.map((member) => ({ unit: member.unit, score: -1 })));
-      keep.centroid = averageVector(keep.members.map((member) => member.unit.mean));
-      voices.splice(best.b, 1);
+      joinVoices(best.a, best.b, false);
     }
+  }
+  if (expected !== undefined || groupOf.size) {
     for (const voice of voices) {
       // Report each joined label's similarity to its final voice.
       voice.members = voice.members.map((member, position) => ({
-        unit: member.unit,
+        ...member,
         score: position === 0 ? 1 : cosineSimilarity(member.unit.mean, voice.centroid),
       }));
     }
@@ -1045,6 +1115,8 @@ export function matchLabelsAcrossParts(
           scores: position === 0 ? [] : [{ identityId: voice.id, mean: member.score, minimum: member.score, support: evidence.length }],
           reason: position === 0
             ? "First label of a new anonymous voice in this recording."
+            : member.human
+              ? "Joined this voice because a person confirmed these passages as one speaker."
             : expected !== undefined
               ? "Joined this voice by acoustic similarity, including grouping to reach the expected number of speakers."
               : "Paired one-to-one with this voice using acoustic similarity and a clear lead over the next candidate.",
@@ -1258,6 +1330,21 @@ export function applyAcousticAssignmentsToMeeting(
       };
     });
     draft.speakerLinks = undefined;
+    // Speakers were re-keyed: keep "not the same" decisions pointing at the speakers that now hold those passages.
+    const replacements = new Map<string, string>();
+    for (const segment of meeting.segments) {
+      const next = mappedById.get(segment.id);
+      const [before] = segment.speakerIds;
+      const [after] = next?.speakerIds ?? [];
+      if (segment.speakerIds.length === 1 && next?.speakerIds.length === 1 && before && after && before !== after) {
+        replacements.set(before, after);
+      }
+    }
+    draft.voiceDecisions = remapVoiceDecisions(
+      draft.voiceDecisions,
+      replacements,
+      new Set(mapped.speakers.map((speaker) => speaker.id)),
+    );
   });
 }
 

@@ -17,6 +17,7 @@ import {
 } from "../domain/acoustic-speaker";
 import type { Meeting } from "../domain/model";
 import { buildVoiceEvaluationExport, type VoiceEvaluationExport } from "../domain/voice-evaluation";
+import { buildVoiceConstraints } from "../domain/voice-constraints";
 import type { NormalizedSpeech } from "../providers/api";
 import type { BrowserSpeakerEmbeddingProvider, SpeakerModelProgress } from "../audio/speaker-embedding";
 import { decodeAcousticWindow } from "../audio/acoustic-audio";
@@ -63,6 +64,11 @@ export interface AcousticContinuityOptions {
   restart?: boolean;
   /** Optional, from a person: how many people spoke. Used only for multi-part grouping. */
   expectedVoices?: number;
+  /**
+   * The meeting as a person reviewed it. Confirmed speakers and "not the same"
+   * decisions become hard constraints on the multi-part grouping.
+   */
+  review?: Pick<Meeting, "speakers" | "segments" | "voiceDecisions">;
 }
 
 function now(): string {
@@ -416,13 +422,16 @@ export async function runAcousticContinuity(
       for (const embedding of embeddings) {
         labelsPerPart.set(embedding.chunkIndex, (labelsPerPart.get(embedding.chunkIndex) ?? new Set()).add(embedding.sourceSpeakerId));
       }
-      if (embeddings.length && [...labelsPerPart.values()].some((labels) => labels.size >= 2)) {
+      // A person's "different people" judgement also establishes that there are voices to tell apart.
+      const constraints = options.review ? buildVoiceConstraints(options.review, embeddings) : undefined;
+      if (embeddings.length && ([...labelsPerPart.values()].some((labels) => labels.size >= 2) || constraints?.cannotLink.length)) {
         const decided = matchLabelsAcrossParts({
           meetingId,
           recordingHash: options.recordingHash,
           sourceRevision: options.sourceRevision,
           embeddings,
           expectedVoices: options.expectedVoices,
+          constraints,
         });
         await deleteAcousticAssignments(meetingId);
         await deleteAcousticIdentities(meetingId);
@@ -636,6 +645,7 @@ export async function analyzeExistingMeetingAcoustics(
     manifest: options.manifest,
     fallbackParts,
     restart: true,
+    review: meeting,
   });
   for (const meta of options.manifest.chunks) {
     const speech = await savedPartSpeech(meeting.id, meta.index, fallbackParts);

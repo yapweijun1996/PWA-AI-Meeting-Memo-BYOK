@@ -5,7 +5,60 @@ import {
   type Meeting,
   type Segment,
   type Speaker,
+  type VoiceDecision,
 } from "./model";
+
+/**
+ * Carry "different people" decisions through a change of speaker ids. A pair whose
+ * two sides became one speaker is dropped: a later human merge overrides it.
+ * Pairs that name a speaker that no longer exists are dropped too.
+ */
+export function remapVoiceDecisions(
+  decisions: readonly VoiceDecision[] | undefined,
+  replacements: ReadonlyMap<string, string>,
+  existing: ReadonlySet<string>,
+): VoiceDecision[] | undefined {
+  if (!decisions) return undefined;
+  const seen = new Set<string>();
+  const result: VoiceDecision[] = [];
+  for (const decision of decisions) {
+    const first = replacements.get(decision.firstSpeakerId) ?? decision.firstSpeakerId;
+    const second = replacements.get(decision.secondSpeakerId) ?? decision.secondSpeakerId;
+    if (first === second || !existing.has(first) || !existing.has(second)) continue;
+    const [a, b] = [first, second].sort() as [string, string];
+    if (seen.has(`${a}\u0000${b}`)) continue;
+    seen.add(`${a}\u0000${b}`);
+    result.push({ ...decision, firstSpeakerId: a, secondSpeakerId: b });
+  }
+  return result.length ? result : undefined;
+}
+
+/**
+ * Record that a person judged two speakers to be different people. This is review
+ * metadata: the transcript revision does not change, so notes are not marked stale.
+ */
+export function markSpeakersDifferent(m: Meeting, firstSpeakerId: string, secondSpeakerId: string): Meeting {
+  if (firstSpeakerId === secondSpeakerId) throw new Error("Select two different speakers.");
+  const existing = new Set(m.speakers.map((speaker) => speaker.id));
+  if (!existing.has(firstSpeakerId) || !existing.has(secondSpeakerId)) throw new Error("Speaker no longer exists.");
+  const voiceDecisions = remapVoiceDecisions(
+    [
+      ...(m.voiceDecisions ?? []),
+      { firstSpeakerId, secondSpeakerId, decision: "different" as const, decidedAt: new Date().toISOString() },
+    ].slice(-500),
+    new Map(),
+    existing,
+  );
+  return validateMeeting({ ...m, voiceDecisions });
+}
+
+/** Forget every "different people" decision that involves this speaker. */
+export function clearSpeakerVoiceDecisions(m: Meeting, speakerId: string): Meeting {
+  const kept = (m.voiceDecisions ?? []).filter(
+    (decision) => decision.firstSpeakerId !== speakerId && decision.secondSpeakerId !== speakerId,
+  );
+  return validateMeeting({ ...m, voiceDecisions: kept.length ? kept : undefined });
+}
 export function editMeeting(
   m: Meeting,
   change: (draft: Meeting) => void,
@@ -20,6 +73,7 @@ export function editMeeting(
       speakers: structuredClone(m.speakers),
       segments: structuredClone(m.segments),
       speakerLinks: structuredClone(m.speakerLinks),
+      voiceDecisions: structuredClone(m.voiceDecisions),
     },
   ].slice(-20);
   const existing = new Set(draft.history.map(ref));
@@ -109,6 +163,7 @@ function mergeSpeakerGroupsInDraft(d: Meeting, groups: string[][]): void {
     };
   });
   d.speakerLinks = d.speakerLinks?.filter((link) => !consumed.has(link.fromSpeakerId) && !consumed.has(link.toSpeakerId));
+  d.voiceDecisions = remapVoiceDecisions(d.voiceDecisions, replacements, new Set(d.speakers.map((speaker) => speaker.id)));
 }
 
 export function mergeSpeakerGroups(m: Meeting, groups: string[][]): Meeting {
@@ -196,6 +251,8 @@ export function replaceTranscript(
     d.speakers = speakers;
     d.segments = segments;
     d.speakerLinks = undefined;
+    // Decisions were made about the replaced transcript's speakers.
+    d.voiceDecisions = undefined;
     d.runs.push({
       id: options.runId ?? id(),
       provider,

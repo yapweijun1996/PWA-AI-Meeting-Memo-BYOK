@@ -77,10 +77,11 @@ function average(vectors: readonly (readonly number[])[], length: number): numbe
  * passage in the sample's time range is attributed to that speaker alone, so
  * merges, splits and reassignments made by a person are respected. As in
  * `matchLabelsAcrossParts`, the recording's average vector is removed first.
- * Two speakers a person confirmed separately are never suggested to each other.
+ * Two speakers a person confirmed separately, or marked "not the same", are
+ * never suggested to each other.
  */
 export function suggestVoiceMatches(
-  meeting: Pick<Meeting, "speakers" | "segments" | "audio">,
+  meeting: Pick<Meeting, "speakers" | "segments" | "audio"> & Partial<Pick<Meeting, "voiceDecisions">>,
   embeddings: readonly AcousticEmbeddingRecord[],
   options: { limit?: number } = {},
 ): Map<string, SpeakerVoiceSuggestions> {
@@ -127,9 +128,16 @@ export function suggestVoiceMatches(
     sample: [...entry.samples].sort((a, b) => b.end - b.start - (a.end - a.start) || a.start - b.start)[0]!,
   }));
   const minimum = ACOUSTIC_POLICY.minSamplesForAssignment;
+  const rejected = new Set(
+    (meeting.voiceDecisions ?? []).flatMap((decision) => [
+      `${decision.firstSpeakerId}\u0000${decision.secondSpeakerId}`,
+      `${decision.secondSpeakerId}\u0000${decision.firstSpeakerId}`,
+    ]),
+  );
   for (const profile of profiles) {
     const ranked = profiles
       .filter((other) => other.speakerId !== profile.speakerId && !(other.confirmed && profile.confirmed))
+      .filter((other) => !rejected.has(`${profile.speakerId}\u0000${other.speakerId}`))
       .map((other) => ({ other, score: cosineSimilarity(profile.mean, other.mean) }))
       .filter((entry) => Number.isFinite(entry.score))
       .sort((left, right) => right.score - left.score || left.other.speakerId.localeCompare(right.other.speakerId));
