@@ -17,6 +17,8 @@ import {
   getSpeechEstimate,
 } from "../providers/credentials";
 import { buildMemoInput } from "../providers/memo-input";
+import type {MemoAgentPlan} from "../domain/model";
+import {hasPendingAgentReceipt} from "./agent-recovery";
 let controller: AbortController | undefined;
 let activeMeetingId: string | undefined;
 export const isProcessingMeeting = (id: string) =>
@@ -47,10 +49,12 @@ export async function runJob(
     selection: Selection;
     outputLanguage?: MemoOutputLanguage;
     plan?: MemoPipeline | null;
+    agentPlan?: MemoAgentPlan;
     reviewedRetry?: boolean;
     onCheckpoint?: (m: Meeting) => void;
   },
 ): Promise<Meeting> {
+  if (hasPendingAgentReceipt()) throw new Error("Save or export the unsaved review response before another provider request.");
   if (isProcessing())
     throw new Error("Finish the current request before starting another.");
   if (m.jobs.some((j) => j.state === "in_flight"))
@@ -62,6 +66,15 @@ export async function runJob(
       "Meeting history limit reached. Back up this meeting and create a new one before further processing.",
     );
   const selection = confirmed?.selection ?? getSelection(stage);
+  if (stage === "memo" && confirmed?.agentPlan) {
+    if (selection.provider !== confirmed.agentPlan.provider || selection.model !== confirmed.agentPlan.model)
+      throw new Error("The confirmed review changed. Open its confirmation again.");
+    const requestController=beginRequest(m.id);
+    try {
+      const {runAgentMemo}=await import("./memo-agent");
+      return await runAgentMemo(m,confirmed.agentPlan,getKey(selection.provider),requestController.signal,confirmed.reviewedRetry,confirmed.onCheckpoint);
+    } finally {finishRequest(requestController);}
+  }
   if (stage === "memo" && confirmed?.plan)
     return runMemoPipeline(
       m,

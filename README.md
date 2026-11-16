@@ -2,6 +2,8 @@
 
 A browser-first workspace for recordings, speaker corrections, evidence-linked meeting notes, and local backups. Bring your own OpenAI or OpenRouter keys; no companion or application server is required.
 
+OpenAI GPT-6 Luna also offers an optional Pi selective-review mode: bounded local transcript search/range tools, at most six paid attempts per confirmed plan, and saved response receipts. It does not promise complete transcript coverage. The standard memo flow remains the default. See [limits and recovery](docs/PI-MEMO-READINESS.md); live provider/account quality remains unverified.
+
 **Status:** implemented browser beta. Local automated checks cover the review, recovery, speaker-listening and source-video workflows. Real recording accuracy, paid account access, and physical-phone acceptance remain user-run gates; this is not a claim of validated diarization quality.
 
 Live app: **https://yapweijun1996.github.io/PWA-AI-Meeting-Memo-BYOK/**. Main pushes publish after lint, unit/contracts, SSOT, type/build and artifact checks. Full Chromium/WebKit application, catalogue and PWA checks run on pull requests and by default on manual dispatch; manual runs never deploy. Documentation-only main pushes skip the workflow. Run relevant checks below locally before delivery; successful deployment and live-browser evidence are recorded in [validation](docs/VALIDATION.md).

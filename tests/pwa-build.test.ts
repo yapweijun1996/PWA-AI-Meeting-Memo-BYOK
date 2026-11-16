@@ -60,6 +60,10 @@ async function createFixture() {
   await mkdir(path.join(fixtureRoot, "scripts"), { recursive: true });
   await mkdir(path.join(fixtureRoot, "src", "pwa"), { recursive: true });
   await mkdir(path.join(fixtureRoot, "dist", "assets"), { recursive: true });
+  await mkdir(path.join(fixtureRoot,"docs","third-party"),{recursive:true});
+  for (const file of ["pi-LICENSE.txt","typebox-LICENSE.txt"])
+    await copyFile(path.join(projectRoot,"docs","third-party",file),path.join(fixtureRoot,"docs","third-party",file));
+  await writeFile(path.join(fixtureRoot,"dist","THIRD-PARTY-NOTICES.md"),"# Synthetic dependency notices\n");
   await copyFile(
     path.join(projectRoot, "scripts", "build-pwa.mjs"),
     path.join(fixtureRoot, "scripts", "build-pwa.mjs"),

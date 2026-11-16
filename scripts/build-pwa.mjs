@@ -17,6 +17,14 @@ import {
   writeUnavailableSpeakerManifest,
 } from "./speaker-assets.mjs";
 const base = process.env.VITE_BASE_PATH || "/PWA-AI-Meeting-Memo-BYOK/";
+// Pi's published 1.5.2 packages declare MIT but omit the root license text.
+// Preserve the verified upstream notice and the schema package's TypeBox notice.
+const noticesFile = "dist/THIRD-PARTY-NOTICES.md";
+const notices = await readFile(noticesFile,"utf8");
+if (!notices.includes("## Pi upstream license (core, AI and schema 1.5.2)"))
+  await writeFile(noticesFile, notices + "\n## Pi upstream license (core, AI and schema 1.5.2)\n\n" +
+  await readFile("docs/third-party/pi-LICENSE.txt","utf8") + "\n\n## TypeBox-derived schema code\n\n" +
+  await readFile("docs/third-party/typebox-LICENSE.txt","utf8"));
 if (!base.startsWith("/") || !base.endsWith("/"))
   throw new Error(
     "VITE_BASE_PATH must be an absolute path with trailing slash",

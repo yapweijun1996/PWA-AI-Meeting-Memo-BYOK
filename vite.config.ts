@@ -9,5 +9,5 @@ export default defineConfig({
       process.env.VITE_BUILD_ID || `local-${Date.now()}`,
     ),
   },
-  build: { target: "es2022", sourcemap: false },
+  build: { target: "es2022", sourcemap: false, license: {fileName: "THIRD-PARTY-NOTICES.md"} },
 });

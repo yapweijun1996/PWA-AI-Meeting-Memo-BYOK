@@ -35,7 +35,7 @@ async function inspect(dir) {
       );
     } else {
       assert(
-        isSpeakerAssetManifest(relative) ||
+        isSpeakerAssetManifest(relative) || relative === "THIRD-PARTY-NOTICES.md" ||
           /\.(html|js|css|svg|png|webmanifest)$/.test(relative),
         `Unexpected artifact file: ${p}`,
       );
@@ -46,7 +46,7 @@ async function inspect(dir) {
     if (
       !deferred &&
       !p.endsWith(".png") &&
-      /\.(html|js|css|svg|webmanifest|json|mjs)$/.test(relative)
+      /\.(html|js|css|svg|webmanifest|json|mjs|md)$/.test(relative)
     ) {
       const text = await readFile(p, "utf8");
       assert(
@@ -62,6 +62,8 @@ async function inspect(dir) {
   }
 }
 await inspect("dist");
+const dependencyNotices=await readFile("dist/THIRD-PARTY-NOTICES.md","utf8");
+assert(dependencyNotices.includes("Copyright (c) 2025 Mario Zechner") && dependencyNotices.includes("Copyright (c) 2017-2026 Haydn Paterson"),"Required Pi and derived schema license notices are missing");
 const speakerManifest = await readSpeakerAssetManifest("dist");
 const speakerPaths = await listSpeakerAssetPaths("dist");
 validateSpeakerAssetManifest(speakerManifest, {

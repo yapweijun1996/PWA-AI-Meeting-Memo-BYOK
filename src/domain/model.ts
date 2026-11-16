@@ -1,5 +1,6 @@
 import { MEMO_OUTPUT_LANGUAGES } from "./memo-language";
 import { z } from "zod";
+import {AgentContextItemSchema, MEMO_AGENT_MAX_REQUESTS, MEMO_AGENT_MAX_TOOLS, MEMO_AGENT_MODEL, MEMO_AGENT_RECORD_BYTES} from "./memo-agent-contract";
 import { ReferenceVideoSchema, type ReferenceVideo } from "./reference-video";
 export const id = () => crypto.randomUUID();
 export const localDate = (now = new Date()) =>
@@ -147,6 +148,8 @@ export const JobSchema = z
       .optional(),
     outputLanguage: z.enum(MEMO_OUTPUT_LANGUAGES).optional(),
     pipelineId: key.optional(),
+    agentId: key.optional(),
+    assistantRecord: z.string().max(MEMO_AGENT_RECORD_BYTES).optional(),
     stepIndex: z.number().int().min(0).max(8).optional(),
     contextual: z.object({
       action: z.enum(["simplify", "rewrite", "shorten"]),
@@ -170,6 +173,17 @@ const PipelineSnapshotSchema = SnapshotSchema.extend({
 }).strict();
 const ReferencedPipelineSnapshotSchema = PipelineSnapshotSchema.omit({segments: true}).extend({
   sourceRefs: z.array(z.object({id: transcriptId, revision: z.number().int().positive()}).strict()).min(1).max(20000),
+}).strict();
+export const MemoAgentPlanSchema = z.object({
+  id: key, provider: z.literal("openai"), model: z.literal(MEMO_AGENT_MODEL),
+  createdAt: z.iso.datetime(), sourceRevision: z.number().int().positive(),
+  outputLanguage: z.enum(MEMO_OUTPUT_LANGUAGES), snapshot: ReferencedPipelineSnapshotSchema,
+  requestLimit: z.literal(MEMO_AGENT_MAX_REQUESTS), jobIds: z.array(key).max(MEMO_AGENT_MAX_REQUESTS),
+  context: z.array(AgentContextItemSchema).max(MEMO_AGENT_MAX_REQUESTS * 2 + MEMO_AGENT_MAX_TOOLS),
+  consulted: z.array(z.object({id: transcriptId, revision: z.number().int().positive()}).strict()).max(20000),
+  state: z.enum(["ready", "running", "paused", "blocked", "completed"]),
+  failure: z.object({kind: z.enum(["request", "limit", "result", "storage"]), message: z.string().max(500)}).strict().nullable(),
+  memoId: key.nullable(),
 }).strict();
 export const MemoPipelineSchema = z
   .object({
@@ -241,6 +255,7 @@ export const MeetingSchema = z
   .object({
     schemaVersion: z.union([z.literal(1), z.literal(2)]),
     memoPipelines: z.array(MemoPipelineSchema).max(30).optional(),
+    memoAgents: z.array(MemoAgentPlanSchema).max(30).optional(),
     version: z.number().int().nonnegative(),
     id: key,
     title: z.string().min(1).max(160),
@@ -310,14 +325,18 @@ export type Speaker = z.infer<typeof SpeakerSchema>;
 export type VoiceDecision = z.infer<typeof VoiceDecisionSchema>;
 export type MemoItem = z.infer<typeof MemoItemSchema>;
 export type Job = z.infer<typeof JobSchema>;
+export type MemoAgentPlan = z.infer<typeof MemoAgentPlanSchema>;
 export type { ReferenceVideo };
 export const ref = (s: { id: string; revision: number }) =>
   `${s.id}:${s.revision}`;
 /** Resolve saved plan references against immutable current/history revisions, including legacy copies. */
 export function pipelineSourceSegments(m: Meeting, pipeline: NonNullable<Meeting["memoPipelines"]>[number]): Segment[] {
-  if ("segments" in pipeline.snapshot) return pipeline.snapshot.segments;
+  return memoSnapshotSegments(m, pipeline.snapshot);
+}
+export function memoSnapshotSegments(m: Meeting, snapshot: z.infer<typeof PipelineSnapshotSchema> | z.infer<typeof ReferencedPipelineSnapshotSchema>): Segment[] {
+  if ("segments" in snapshot) return snapshot.segments;
   const evidence = new Map([...m.history, ...m.segments].map(source => [ref(source), source]));
-  return pipeline.snapshot.sourceRefs.map(source => {
+  return snapshot.sourceRefs.map(source => {
     const segment = evidence.get(ref(source));
     if (!segment) throw new Error("Pipeline sources do not match meeting evidence.");
     return segment;
@@ -365,6 +384,39 @@ export function validateMeeting(value: unknown): Meeting {
     throw new Error("Unresolved memo evidence");
   if (m.schemaVersion === 1 && m.memoPipelines !== undefined)
     throw new Error("Pipeline data requires meeting schema version 2.");
+  if (m.schemaVersion === 1 && m.memoAgents !== undefined)
+    throw new Error("Agent memo data requires meeting schema version 2.");
+  const agents = new Map((m.memoAgents ?? []).map(plan => [plan.id, plan]));
+  if (agents.size !== (m.memoAgents?.length ?? 0)) throw new Error("Duplicate memo agent identity.");
+  for (const job of m.jobs) {
+    if (job.assistantRecord !== undefined && !job.agentId) throw new Error("Unresolved agent response.");
+    if (job.agentId && (job.stage !== "memo" || job.pipelineId || job.contextual || !agents.has(job.agentId))) throw new Error("Unresolved memo agent job.");
+  }
+  for (const plan of agents.values()) {
+    new Intl.DateTimeFormat("en", {timeZone: plan.snapshot.timezone}).format();
+    if (plan.sourceRevision !== plan.snapshot.revision || !/^\d{4}-\d{2}-\d{2}$/.test(plan.snapshot.date) || new Date(`${plan.snapshot.date}T12:00:00Z`).toISOString().slice(0,10) !== plan.snapshot.date)
+      throw new Error("Invalid agent source snapshot.");
+    const sources = memoSnapshotSegments(m, plan.snapshot);
+    const sourceRefs = new Set(sources.map(ref));
+    const labels = new Set(plan.snapshot.speakers.map(speaker => speaker.id));
+    if (labels.size !== plan.snapshot.speakers.length || new Set(sources.map(source => source.id)).size !== sources.length || sources.some(source => source.speakerIds.some(id => !labels.has(id))))
+      throw new Error("Invalid agent source references.");
+    if (new Set(plan.consulted.map(ref)).size !== plan.consulted.length || plan.consulted.some(source => !sourceRefs.has(ref(source))))
+      throw new Error("Invalid consulted source references.");
+    if (new Set(plan.jobIds).size !== plan.jobIds.length) throw new Error("Duplicate agent job reference.");
+    for (const [index, jobId] of plan.jobIds.entries()) {
+      const jobs = m.jobs.filter(job => job.id === jobId);
+      if (jobs.length !== 1 || jobs[0].agentId !== plan.id || jobs[0].stepIndex !== index || jobs[0].provider !== plan.provider || jobs[0].model !== plan.model || jobs[0].inputRevision !== plan.sourceRevision || jobs[0].outputLanguage !== plan.outputLanguage)
+        throw new Error("Invalid agent job checkpoint.");
+    }
+    if (m.jobs.some(job => job.agentId === plan.id && !plan.jobIds.includes(job.id))) throw new Error("Unreferenced agent job.");
+    const assistantIds = plan.context.filter(item => item.kind === "assistant").map(item => item.jobId);
+    if (new Set(assistantIds).size !== assistantIds.length || assistantIds.some(jobId => !plan.jobIds.includes(jobId) || !m.jobs.some(job => job.id === jobId && job.state === "completed" && job.assistantRecord !== undefined)))
+      throw new Error("Unresolved agent context.");
+    if (plan.context.filter(item => item.kind === "tool").length > MEMO_AGENT_MAX_TOOLS) throw new Error("Agent tool limit exceeded.");
+    if (plan.state === "completed" && (!plan.memoId || !m.memos.some(memo => memo.id === plan.memoId && memo.sourceRevision === plan.sourceRevision)))
+      throw new Error("Invalid completed agent memo.");
+  }
   if (
     new Set((m.memoPipelines ?? []).map((p) => p.id)).size !==
     (m.memoPipelines?.length ?? 0)

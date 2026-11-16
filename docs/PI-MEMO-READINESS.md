@@ -1,6 +1,6 @@
 # Pi memo adoption checkpoint
 
-Date: 2026-11-16. Status: prerequisites investigated; production integration **not implemented**. This record does not close the Pi task or authorize live provider requests.
+Date: 2026-11-16. Status: optional browser integration implemented; local automated acceptance is recorded in [validation](VALIDATION.md). Live authenticated provider acceptance, actual billing and model quality remain unverified. This record does not authorize live provider requests.
 
 ## Audited source and private browser experiment
 
@@ -16,12 +16,24 @@ The [Responses transport](https://github.com/earendil-works/pi/blob/9bd70ea1d044
 
 The [official GPT-6 Luna model documentation](https://developers.openai.com/api/docs/models/gpt-6-luna) lists `none`, `low`, `medium`, `high`, `xhigh` and `max` reasoning effort. Responses tool calling and the requested effort must be selected explicitly. SDK types alone do not establish model support, and the mocked payload is not provider acceptance. Computed SDK cost estimates must not be presented as provider-reported charges.
 
-## Required implementation and acceptance
+## Implemented scope and boundaries
 
-- Use bounded transcript search/range tools over frozen source revision references. Keep complete transcript copies out of agent plans and prompts; preserve original output and human edits.
-- Validate tool arguments, cap results, context bytes and paid turns, and show the maximum request count before confirmation. Enforce the ceiling independently of model instructions.
-- Persist each submitted turn before awaiting its result. Checkpoint successful results, cancellation and unknown outcomes; resume without automatically resubmitting an uncertain turn.
-- Normalize final memo evidence against the frozen local sources and preserve undo, backup/restore and revision invalidation. Tool text is untrusted data.
-- Verify success, failure, cancellation, reload/resume and source edits in unit and both-engine browser tests, then run the existing PWA and artifact gates. Keep live provider and physical-device acceptance separate.
+The ordinary memo/extraction/synthesis path remains the default. With OpenAI `gpt-6-luna` selected, the confirmation offers an unchecked **Use selective transcript review (Pi, optional)** choice. This is selective evidence gathering, not a promise to read the complete transcript or discover every fact. An OpenAI API key is required; ChatGPT sign-in tokens and other Pi adapters are not supported. Output language and meeting revision are captured in the confirmed plan.
 
-The application package manifest and lockfile have not been changed by this investigation. Current memo extraction/synthesis remains the production path.
+The model receives frozen meeting metadata and speaker labels plus two read-only tools: literal `search_transcript` and `read_transcript_range`. Plans retain revision references rather than another transcript copy. Search scans at most 1,000 passages / 200,000 source characters per call. Range cursors preserve exact Unicode text, timing and original speaker IDs. Tool results are limited to 8 KiB UTF-8. Search snippets do not count as read evidence; final citations must resolve to passages actually returned by range tools. A partially read passage counts once, so the displayed passage count is neither full-text coverage nor a quality score. Claims still require human review.
+
+Application limits are six paid attempts and 32 declared local tool calls per plan, 256 KiB per serialized request, 4 MiB per HTTP response and decoded record, and the existing 64 MiB meeting JSON boundary. The first request reserves approximately 48.5 MiB for worst-case embedded responses and tool artifacts; existing large meetings can be refused locally. Device quota, memory and practical phone limits are not established by that reservation. The model catalog's 1,050,000 context / 128,000 output limits were checked against the official model page; this app requests at most 4,096 output tokens and enforces its smaller byte limits independently.
+
+Each foreground POST is fixed to `https://api.openai.com/v1/responses`, with `store:false`, no background job, no redirects, omitted ambient credentials, explicit zero SDK retries and an application fetch-once guard. A durable `in_flight` receipt precedes sending; a sanitized decoded assistant record precedes tool execution or another paid turn. Provider token usage is recorded only when a terminal provider event actually reports it. Missing usage and actual charges remain unknown; SDK catalog price placeholders never become a bill.
+
+Errors, disconnects, cancellation and uncertain outcomes stop the loop. Reload starts no request. Explicit continuation replays only deterministic local lookups against the frozen revision, then uses the remaining confirmed budget. A failed/uncertain paid attempt also requires the billing-review checkbox. Unsupported/truncated final results remain available without automatic correction requests. A new correction attempt requires another confirmation. Source edits and existing memos survive processing, and new memos retain generated originals, frozen evidence and pending review.
+
+If a known response cannot be saved, the page retains a key-redacted recovery receipt. Further requests, deletion, navigation and PWA activation are blocked until local recovery or explicit export acknowledgement. **Retry local save only** never contacts a provider. If decoding is unsupported, the bounded raw response is held for export and local retry saves only its receipt. This fallback file is a recovery artifact, not a meeting-backup import format. A response above the disclosed HTTP limit is stopped and cannot be retained in full. These in-memory copies do not survive a browser crash: keep the page open and export before leaving. Meeting JSON backups preserve saved plans, jobs and decoded records; provider keys remain in separate settings storage.
+
+## Package, CSP and delivery evidence
+
+The manifest/lockfile pin `@earendil-works/pi-agent-core` and `@earendil-works/pi-ai` to 1.5.2. Only the core and specific Responses transport are imported for this feature. The CSP has not been weakened. A separate strict-CSP private fixture verified core success and schema rejection in both engines, with an actual blocked `new Function` sentinel; production browser cases exercise the tool round trip under the application's CSP.
+
+Compared with a clean `c0244e8` baseline built with the same Node 22.23.3 and installed dependencies, emitted JavaScript grew from 1,457,976 to 1,899,985 bytes, an increase of **442,009 bytes raw / 119,113 summed gzip bytes**. These are whole-build sums, including the unchanged speaker worker, not a transferred-network or phone-memory measurement. The SDK is evaluated lazily after confirmation, but the PWA precaches its code for offline app integrity. Third-party notices add 24,486 bytes.
+
+Vite generates bundled dependency notices. The Pi npm tarballs omit their root MIT license text, so the verified upstream notice and the schema package's TypeBox notice are additionally preserved under `docs/third-party/` and included in `THIRD-PARTY-NOTICES.md`. Artifact checks require both copyright notices; PWA installation hashes and caches the notice with other shell assets. This does not establish or change the separate WavLM derivative-weight license.

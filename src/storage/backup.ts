@@ -81,6 +81,7 @@ export async function readBackup(
       title: `${m.title.slice(0, 140)} (restored)`,
       audio: m.audio ? { ...m.audio, present: !!audio } : null,
       memoPipelines: m.memoPipelines?.map(p => ({...p,state: m.jobs.some(j=>j.pipelineId===p.id && j.state==="in_flight") ? "blocked" as const : p.state})),
+      memoAgents: m.memoAgents?.map(p => ({...p,state:m.jobs.some(j=>j.agentId===p.id && j.state==="in_flight") ? "blocked" as const : p.state})),
       jobs: m.jobs.map((j) =>
         j.state === "in_flight"
           ? { ...j, state: "outcome_unknown", billing: "possibly_charged" }

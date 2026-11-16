@@ -6,6 +6,9 @@ import { usePlayerClearance } from "./usePlayerClearance";
 import { translateUi } from "../i18n";
 import { planMemo, type MemoPipeline } from "../providers/memo-plan";
 import { resumablePipeline } from "../jobs/memo-pipeline";
+import {planAgentMemo, resumableAgentMemo, supportsAgentMemo} from "../providers/memo-agent-plan";
+import {AgentResponseRecovery} from "./AgentResponseRecovery";
+import {pendingAgentReceipt} from "../jobs/agent-recovery";
 import type { Selection } from "../providers/credentials";
 import { speakerBackground } from "../components/speaker-appearance";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -31,7 +34,7 @@ import {
   Upload,
   Users,
 } from "lucide-react";
-import type { Meeting, MemoItem, Segment } from "../domain/model";
+import type { Meeting, MemoItem, Segment, MemoAgentPlan } from "../domain/model";
 import type { ReferenceVideo as ReferenceVideoValue } from "../domain/reference-video";
 import { groupTranscript } from "../domain/transcript-groups";
 import { summarizeMeetingAccounting } from "../domain/accounting";
@@ -171,7 +174,7 @@ export function MeetingWorkspace({
   const evidenceTrigger = useRef<HTMLElement | null>(null);
   const [evidence, setEvidence] = useState<Segment>();
   const [evidenceRefs, setEvidenceRefs] = useState<{ id: string; revision: number }[]>([]);
-  const [confirmed, setConfirmed] = useState<{ selection: Selection; outputLanguage?: MemoOutputLanguage; plan?: MemoPipeline | null }>();
+  const [confirmed, setConfirmed] = useState<{ selection: Selection; outputLanguage?: MemoOutputLanguage; plan?: MemoPipeline | null; planError?: string; agentPlan?: MemoAgentPlan }>();
   const [uiLanguage, setUiLanguage] = useState(getUiLanguage());
   const t = (en: string, zh: string) => translateUi(uiLanguage, en, zh);
   function navigateTab(next: string) {
@@ -198,7 +201,13 @@ export function MeetingWorkspace({
     window.addEventListener("memo-keys-changed", changed);
     return () => window.removeEventListener("memo-keys-changed", changed);
   }, []);
-  const locked = saving || processing || dirtyMemoItems.size > 0;
+  const [agentRecovery,setAgentRecovery]=useState(()=>!!pendingAgentReceipt(m.id));
+  useEffect(()=>{
+    const changed=()=>setAgentRecovery(!!pendingAgentReceipt(m.id));changed();
+    window.addEventListener("memo-agent-recovery-changed",changed);
+    return ()=>window.removeEventListener("memo-agent-recovery-changed",changed);
+  },[m.id]);
+  const locked = saving || processing || dirtyMemoItems.size > 0 || agentRecovery;
   const activeLocalWrites = useRef(0);
   useEffect(() => {
     const changed = () => setProcessing(isProcessingMeeting(m.id));
@@ -508,7 +517,12 @@ export function MeetingWorkspace({
   async function prepareConfirmation(stage: "speech" | "memo") {
     try {
       const selection = { ...getSelection(stage) };
-      const plan = stage === "memo" ? resumablePipeline(m,selection,true) ?? planMemo(m,selection.provider,selection.model) : null;
+      let plan: MemoPipeline | null=null, planError: string | undefined;
+      try {plan = stage === "memo" ? resumablePipeline(m,selection,true) ?? planMemo(m,selection.provider,selection.model) : null;}
+      catch(error) {
+        if (stage!=="memo" || !supportsAgentMemo(selection)) throw error;
+        planError=error instanceof Error ? error.message : "The standard memo plan is unavailable.";
+      }
       setReviewedRetry(false);
       if (stage === "speech") setAcousticConsent(false);
       if (stage === "speech" && m.audio?.chunked) {
@@ -518,7 +532,7 @@ export function MeetingWorkspace({
         setChunkManifest(manifest);
         setChunkProgress(progress);
       }
-      setConfirmed({selection, plan, outputLanguage: plan ? plan.outputLanguage ?? "meeting" : getMemoOutputLanguage()});
+      setConfirmed({selection, plan, planError, outputLanguage: plan ? plan.outputLanguage ?? "meeting" : getMemoOutputLanguage()});
       setConfirmStage(stage);
     } catch(error) { onError(error instanceof Error ? error.message : "Could not prepare the memo plan."); }
   }
@@ -920,6 +934,7 @@ export function MeetingWorkspace({
   const { workspaceRef, playerBarRef } = usePlayerClearance(canPlay);
   return (
     <div ref={workspaceRef} className={`${canPlay ? "workspace has-player" : "workspace"}${tab === "memo" && miniPlayer ? " memo-mini-active" : ""}`}>
+      <AgentResponseRecovery meeting={m} onUpdate={onUpdate} t={t} onError={onError} />
       <a href="#/" className="back-link">
         <Icon glyph={ArrowLeft} size="compact" />
         {t("All meetings", "所有会议")}
@@ -1769,6 +1784,14 @@ export function MeetingWorkspace({
           )}
         </section>
       )}
+      {(m.memoAgents ?? []).map(plan=><section className="notice memo-plan-progress" key={plan.id} aria-label={t("Selective review progress","选择性复核进度")}>
+        <strong role="status">{t("Selective review","选择性复核")} · {plan.jobIds.length}/{plan.requestLimit} {t("requests recorded","次请求已记录")}</strong>
+        <span>{t(`${plan.consulted.length}/${plan.snapshot.sourceRefs.length} passages read in local lookups; this is not full coverage or a quality score.`, `本地读取已涉及 ${plan.consulted.length}/${plan.snapshot.sourceRefs.length} 段；这不代表完整覆盖或质量评分。`)}</span>
+        <span>{t("State","状态")}: {uiLanguage === "zh-CN" ? ({ready:"待执行",running:"执行中",paused:"已暂停",blocked:"已停止，需核对",completed:"已完成"})[plan.state] : plan.state}</span>
+        {plan.failure && <p>{translateMessage(plan.failure.message,uiLanguage)}</p>}
+        {!processing && plan.state!=="completed" && plan.sourceRevision===m.revision && plan.jobIds.length<plan.requestLimit && plan.failure?.kind!=="limit" && <Button className="button secondary" onClick={()=>void prepareConfirmation("memo")}>{t("Review generation plan","查看生成计划")}</Button>}
+        {!!plan.jobIds.length && <Button className="button secondary" onClick={()=>download(new Blob([JSON.stringify({format:"meeting-memo-agent-records",version:1,plan,jobs:m.jobs.filter(job=>job.agentId===plan.id)})],{type:"application/json"}),`${safeFilename(m.title)}-review-records.json`)}>{t("Export recorded responses","导出已记录回应")}</Button>}
+      </section>)}
       {(m.memoPipelines ?? []).map(p => (
         <section className="notice memo-plan-progress" key={p.id} aria-label={t("Long memo progress", "长纪要进度")}>
           <strong role="status">{t("Long memo", "长纪要")} · {p.results.filter(Boolean).length}/{p.chunks.length} {t("extractions saved", "步提取已保存")}</strong>
@@ -2048,6 +2071,19 @@ export function MeetingWorkspace({
                     })() : t("Unknown · provider charges apply. A dated applicable rate or duration is unavailable.", "未知 · 服务商可能收费。缺少适用的带日期费率或录音时长。")}
               </dd>
             </dl>
+            {confirmStage==="memo" && confirmed && supportsAgentMemo(confirmed.selection) && <>
+              <label><input type="checkbox" checked={!!confirmed.agentPlan} onChange={event=>{
+                try {
+                  const agentPlan=event.target.checked ? resumableAgentMemo(m,confirmed.selection) ?? planAgentMemo(m,confirmed.selection,getMemoOutputLanguage()) : undefined;
+                  setConfirmed({...confirmed,agentPlan,outputLanguage:agentPlan?.outputLanguage ?? confirmed.plan?.outputLanguage ?? getMemoOutputLanguage()});
+                  setReviewedRetry(false);
+                }catch(error){onError(error instanceof Error ? error.message : "Could not prepare selective review.");}
+              }} /> {t("Use selective transcript review (Pi, optional)","使用选择性转录复核（Pi，可选）")}</label>
+              {confirmed.agentPlan && <div className="notice sand">
+                {t(`This mode sends selected excerpts and meeting context to OpenAI, not a promised complete transcript review. Up to ${confirmed.agentPlan.requestLimit-confirmed.agentPlan.jobIds.length} further paid requests and 32 local lookups in total are allowed by this confirmation. Each request may be charged; total cost is unknown. Any request or save failure stops the run. Reload never resumes it automatically. Limits: 256 KiB per request, 4 MiB per response, 8 KiB per lookup.`, `此模式向 OpenAI 发送选取的原文片段和会议背景，不保证审阅全部转录。本次确认最多允许再发送 ${confirmed.agentPlan.requestLimit-confirmed.agentPlan.jobIds.length} 次付费请求，累计最多 32 次本地查询。每次请求可能收费，总费用未知；请求或保存失败即停止，重新加载不会自动恢复。限制：每次请求 256 KiB、每次回应 4 MiB、每次查询 8 KiB。`)}
+              </div>}
+              {!confirmed.agentPlan && confirmed.planError && <p role="alert">{confirmed.planError}</p>}
+            </>}
             {confirmStage === "speech" && m.audio?.chunked && chunkManifest && (
               <>
                 <div className="notice sand">
@@ -2093,7 +2129,7 @@ export function MeetingWorkspace({
             <p className="muted">
               {t("Keep this page open. Cancellation does not guarantee remote processing or billing stops. The app does not automatically retry. Review the provider's retention policy for your account.", "请保持此页面打开。取消不保证远端处理或计费停止。应用不会自动重试。请查看服务商对您账户的数据保留政策。")}
             </p>
-            {confirmStage === "memo" && confirmed?.plan && (
+            {confirmStage === "memo" && !confirmed?.agentPlan && confirmed?.plan && (
               <div className="notice sand" role="status">
                 {t(`Long memo: ${confirmed.plan.chunks.length} extraction requests and one synthesis request. ${confirmed.plan.results.filter(Boolean).length} extraction steps are already saved. Total cost is unknown; each request may be charged. This confirmation authorizes the remaining steps in order. Any error stops the plan; reloading never resumes requests automatically.`, `长纪要：${confirmed.plan.chunks.length} 次提取和 1 次合成。已保存 ${confirmed.plan.results.filter(Boolean).length} 步提取。总费用未知，每次请求均可能收费。本次确认允许按顺序执行剩余步骤；出现错误即停止，重新加载不会自动恢复请求。`)}
               </div>
@@ -2126,7 +2162,7 @@ export function MeetingWorkspace({
                 {t("A new transcription replaces the current view only if its source has not changed. Previous text and edits remain in revision history.", "只有来源未改变时，新转录才会替换当前视图。之前的文字和编辑会保留在修订历史中。")}
               </div>
             )}
-            {confirmStage === "memo" && confirmed?.plan && m.jobs.some(j=>j.pipelineId===confirmed.plan!.id && j.state!=="completed") && (
+            {confirmStage === "memo" && ((confirmed?.agentPlan && m.jobs.some(j=>j.agentId===confirmed.agentPlan!.id && j.state!=="completed")) || (!confirmed?.agentPlan && confirmed?.plan && m.jobs.some(j=>j.pipelineId===confirmed.plan!.id && j.state!=="completed"))) && (
               <label><input type="checkbox" checked={reviewedRetry} onChange={e=>setReviewedRetry(e.target.checked)} /> {t("I reviewed the previous request outcome and billing. I authorize a new paid attempt for the unfinished step.", "我已核对之前请求的结果和账单，并允许为未完成步骤提交新的付费请求。")}</label>
             )}
             <div className="modal-actions">
@@ -2138,7 +2174,7 @@ export function MeetingWorkspace({
               </Button>
               <Button
                 className="button primary"
-                disabled={!getKey((confirmed?.selection ?? getSelection(confirmStage)).provider) || (Boolean(confirmed?.plan && m.jobs.some(j=>j.pipelineId===confirmed.plan!.id && j.state!=="completed")) && !reviewedRetry) || (confirmStage === "speech" && Boolean(m.audio?.chunked && chunkProgress?.blockedIndex !== null && chunkProgress?.blockedIndex !== undefined) && !reviewedRetry)}
+                disabled={!getKey((confirmed?.selection ?? getSelection(confirmStage)).provider) || (Boolean(confirmed?.planError) && !confirmed?.agentPlan) || (Boolean(confirmed?.agentPlan ? m.jobs.some(j=>j.agentId===confirmed.agentPlan!.id && j.state!=="completed") : confirmed?.plan && m.jobs.some(j=>j.pipelineId===confirmed.plan!.id && j.state!=="completed")) && !reviewedRetry) || (confirmStage === "speech" && Boolean(m.audio?.chunked && chunkProgress?.blockedIndex !== null && chunkProgress?.blockedIndex !== undefined) && !reviewedRetry)}
                 onClick={() => void process()}
               >
                 {confirmStage === "speech" && m.audio?.chunked

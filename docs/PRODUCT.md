@@ -40,6 +40,8 @@ The user chose to persist provider keys, provider/model selections, and speech r
 
 Before sending, show a clear confirmation of the selected data and recipient. Estimates include known stages and identify missing rates; an estimate is neither an invoice nor an account-level spending cap.
 
+OpenAI GPT-6 Luna confirmations offer an optional Pi **selective transcript review** mode, unchecked by default. It sends meeting context and tool-selected excerpts, supports at most six paid attempts / 32 local tool calls per plan, and shows the remaining request count and unknown total charge before consent. It is not a full-transcript coverage guarantee. Plans freeze source revision and output language; search snippets cannot authorize citations. Failed requests or local saves stop processing, and reload never resumes it automatically. A retry of an uncertain attempt requires billing review and fresh confirmation. Saved results remain pending human review. An unsaved response offers local-only save retry and explicit export recovery; keep its page open until resolved. See [tested limits](PI-MEMO-READINESS.md).
+
 #### Requested preset and cost visibility (planned 2026-11-05)
 
 Offer a clearly labeled recommended starting preset: OpenRouter `elevenlabs/scribe-v2` for transcription and OpenAI `gpt-6-luna` for memo generation. New installations may start with this combination; preserve existing users' saved selections, keys and custom model IDs through upgrades. Allow users to select and edit alternatives. Explain that the preset needs separate OpenRouter and OpenAI keys, and choosing it does not validate keys, send audio or guarantee model availability. Preserve explicit consent before paid requests and never silently fall back to a different provider or model.

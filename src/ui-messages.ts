@@ -1,5 +1,13 @@
 // Translate only application-owned fixed messages; never rewrite user content.
 const messages: Record<string, string> = {
+  "Request stopped. Review the recorded outcome and provider account before a new paid attempt.": "请求已停止。再次付费提交前，请核对记录的结果和服务商账户。",
+  "Selective review paused. Saved responses were retained.": "选择性复核已暂停，已保存的回应仍保留。",
+  "Selective review paused. Saved steps were retained.": "选择性复核已暂停，已保存的步骤仍保留。",
+  "The review cited a passage it did not read. Its original response is saved for inspection.": "复核引用了未读取的段落，原始回应已保留供检查。",
+  "The six-request limit was reached. Saved responses remain available.": "已达到六次请求限制，已保存的回应仍可查看。",
+  "Save or export the unsaved review response before another provider request.": "再次发送服务商请求前，请先保存或导出未保存的复核回应。",
+  "The confirmed review changed. Open its confirmation again.": "已确认的复核计划发生改变，请重新打开确认窗口。",
+  "No provider request was submitted. Its durable local receipt could not be recorded.": "本地请求记录无法保存，尚未向服务商提交请求。",
   "Memo input needs text.": "纪要输入需要文字。",
   "A source passage cannot fit a bounded memo request.": "某个来源片段超过单次纪要请求限制。",
   "This meeting needs more than eight extraction requests. No request was sent.": "此会议需要超过八次提取请求，尚未发送任何请求。",

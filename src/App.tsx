@@ -44,6 +44,7 @@ import { NewMeeting } from "./features/NewMeeting";
 import { MeetingWorkspace } from "./features/MeetingWorkspace";
 import { Settings } from "./features/Settings";
 import { isProcessing } from "./jobs/runner";
+import {hasPendingAgentReceipt} from "./jobs/agent-recovery";
 import {
   getSettingsStorageError,
   saveUiLanguagePreference,
@@ -109,7 +110,7 @@ export default function App() {
   }, []);
   useEffect(() => {
     const fn = () => {
-      if (document.querySelector('[data-unsaved-edit="true"]')) {
+      if (hasPendingAgentReceipt() || document.querySelector('[data-unsaved-edit="true"]')) {
         history.pushState(null, "", `${location.pathname}${location.search}#${currentRoute.current}`);
         setError(uiLanguage === "zh-CN" ? "离开会议前请保存或处理未保存的笔记。" : "Save or resolve your unsaved note before leaving this meeting.");
         return;
@@ -184,7 +185,7 @@ export default function App() {
   }, [route]);
   useEffect(() => {
     const guard = (e: BeforeUnloadEvent) => {
-      if (isProcessing() || isSettingsDirty() || document.querySelector('[data-unsaved-edit="true"]')) {
+      if (isProcessing() || hasPendingAgentReceipt() || isSettingsDirty() || document.querySelector('[data-unsaved-edit="true"]')) {
         e.preventDefault();
         e.returnValue = "";
       }
@@ -193,6 +194,7 @@ export default function App() {
     return () => removeEventListener("beforeunload", guard);
   }, []);
   async function created(m: Meeting) {
+    if (hasPendingAgentReceipt()) throw new Error("Save or export the unsaved review response before leaving this meeting.");
     await refresh();
     setNewOpen(false);
     setLoading(true);
@@ -460,6 +462,7 @@ export default function App() {
                   void refresh();
                 }}
                 onDelete={async () => {
+                  if (hasPendingAgentReceipt()) throw new Error("Save or export the unsaved review response before deleting a meeting.");
                   if (isProcessing())
                     throw new Error("Finish processing first.");
                   await deleteMeeting(current.id);

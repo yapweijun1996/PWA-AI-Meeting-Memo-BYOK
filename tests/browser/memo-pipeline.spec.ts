@@ -190,7 +190,7 @@ for (const {failOnce, wordLevel} of [{failOnce: false, wordLevel: true}, {failOn
         exact: true,
       });
       await expect(send).toBeDisabled();
-      await dialog.getByRole("checkbox").check();
+      await dialog.getByRole("checkbox",{name:/I reviewed the previous request outcome and billing/}).check();
       await send.click();
     }
     // Simple Mode presents saved notes as paragraphs; inspect the editable
