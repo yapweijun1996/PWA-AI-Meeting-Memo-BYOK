@@ -1,4 +1,4 @@
-import { id, type Meeting, type MemoItem } from "./model";
+import { id, MAX_MEETING_JSON_BYTES, type Meeting, type MemoItem } from "./model";
 
 export type MemoVersion = Meeting["memos"][number];
 export type PriorityReason = "decision" | "action" | "question" | "risk" | "source_changed" | "edited" | "many_sources" | "missing_owner" | "missing_due";
@@ -15,9 +15,9 @@ export type MemoReviewSummary = {
   priorityReasons: Record<string, PriorityReason[]>;
 };
 
-// JSON exports are pretty-printed and imports reject files above 12 MiB.
+// JSON exports are pretty-printed and imports reject files above the shared meeting limit.
 // Reserve room for the repository's version/timestamp update and audio flag.
-export const MAX_RESTORABLE_JSON_BYTES = 12 * 1024 * 1024;
+export const MAX_RESTORABLE_JSON_BYTES = MAX_MEETING_JSON_BYTES;
 const BACKUP_RESERVE_BYTES = 4096;
 const backupBytes = (meeting: Meeting) => new TextEncoder().encode(JSON.stringify(meeting, null, 2)).byteLength;
 

@@ -4420,3 +4420,20 @@ body:has(.audio-player) .toast-layer { bottom: calc(150px + env(safe-area-inset-
   .player-progress::-webkit-slider-thumb { background: Highlight; border-color: CanvasText; }
   .player-progress::-moz-range-thumb { background: Highlight; border-color: CanvasText; }
 }
+
+/* Settings: storage monitor (read-only). */
+.storage-report h3 { margin: 18px 0 6px; font-size: var(--text-lg); }
+.storage-meter { height: 10px; margin: 8px 0; overflow: hidden; border-radius: var(--radius); background: var(--status-neutral-bg); }
+.storage-meter > span { display: block; height: 100%; background: var(--green); }
+.storage-meter.is-warn > span { background: var(--status-sand-text); }
+.storage-meetings { display: grid; gap: 12px; margin: 12px 0 0; padding: 0; list-style: none; }
+.storage-meetings > li { padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); }
+.storage-meeting-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.storage-meeting-head > strong { overflow-wrap: anywhere; }
+.storage-meeting-head > span { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.storage-meetings p { margin: 4px 0; font-size: var(--text-sm); }
+.storage-meetings summary { margin-top: 6px; font-size: var(--text-sm); cursor: pointer; }
+.storage-parts { display: grid; gap: 4px; margin: 8px 0 0; font-size: var(--text-sm); }
+.storage-parts > div { display: flex; justify-content: space-between; gap: 12px; }
+.storage-parts dt, .storage-parts dd { margin: 0; }
+.storage-parts dd { font-variant-numeric: tabular-nums; }

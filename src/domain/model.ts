@@ -201,6 +201,16 @@ export const MemoPipelineSchema = z
   })
   .strict();
 export const MAX_JOBS = 400;
+/**
+ * Largest meeting record, as JSON, that the app will create or restore. One source of
+ * truth for the memo plan, contextual suggestions, memo review writes and backup import.
+ * IndexedDB itself can hold far more; the limit exists because a meeting is saved,
+ * exported and restored as one JSON document held in memory. A JavaScript string tops
+ * out near 512 MiB in Chromium and a backup is read whole, so this stays well below that.
+ * Raised from 10/12 MiB on 2026-11-16: a 60-minute word-level transcript (12,584 passages)
+ * reaches about 14 MiB once it has a provider run, an undo copy, a history copy and a memo plan.
+ */
+export const MAX_MEETING_JSON_BYTES = 64 * 1024 * 1024;
 const ChunkedAudioSchema = z.object({
   format: z.enum(["mp3", "mp4"]),
   chunkCount: z.number().int().min(1).max(2000),

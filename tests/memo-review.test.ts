@@ -101,7 +101,8 @@ describe("memo review", () => {
     const m = fixture(), memoId = m.memos[0].id, itemId = m.memos[0].items[0].id;
     const edited = editMemoItem(m, memoId, itemId, { text: "New human edit" });
     // Valid 20,000-character source revisions, rather than an invalid oversized field.
-    const largeHistory = Array.from({ length: 315 }, () => segment("x".repeat(20_000)));
+    // Each carries its text twice (text and originalText), so size the history from the limit.
+    const largeHistory = Array.from({ length: Math.ceil(MAX_RESTORABLE_JSON_BYTES / 40_000) + 20 }, () => segment("x".repeat(20_000)));
     const legacy = { ...edited, history: largeHistory };
     expect(new TextEncoder().encode(JSON.stringify(legacy, null, 2)).byteLength).toBeGreaterThan(MAX_RESTORABLE_JSON_BYTES);
     expect(() => editMemoItem(legacy, memoId, itemId, { text: "Another edit" })).toThrow("backup limit");

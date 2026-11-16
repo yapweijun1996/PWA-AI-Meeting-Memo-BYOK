@@ -1,4 +1,4 @@
-import { id, MAX_JOBS, type Meeting, type MemoItem } from "../domain/model";
+import { id, MAX_JOBS, MAX_MEETING_JSON_BYTES, type Meeting, type MemoItem } from "../domain/model";
 import { buildMemoInput, MemoInputError, type MemoInput } from "./memo-input";
 
 export type MemoPipeline = NonNullable<Meeting["memoPipelines"]>[number];
@@ -96,7 +96,7 @@ export function planMemo(
     new TextEncoder().encode(
       JSON.stringify({ ...m, memoPipelines: [...(m.memoPipelines ?? []), p] }),
     ).byteLength >
-    10 * 1024 * 1024
+    MAX_MEETING_JSON_BYTES
   )
     throw new Error(
       "The memo checkpoint would exceed the safe backup budget. No request was sent.",

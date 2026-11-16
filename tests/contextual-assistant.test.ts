@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { sampleMeeting, type Meeting } from "../src/domain/model";
+import { MAX_MEETING_JSON_BYTES, sampleMeeting, type Meeting } from "../src/domain/model";
 import { getMeeting, saveMeeting } from "../src/storage/repository";
 import * as repository from "../src/storage/repository";
 import { applyContextualSuggestion, hasUnresolvedContextualAttempt, runContextualAssistant } from "../src/jobs/contextual-assistant";
@@ -158,9 +158,13 @@ describe("contextual suggestion", () => {
 
   it("does not send when the pretty-printed backup plus result reserve exceeds the limit", async () => {
     const meeting = await meetingFixture();
-    const padded = Object.assign(structuredClone(meeting), { padding: Array(400_000).fill(0), filler: "x".repeat(9_500_000) });
-    expect(new TextEncoder().encode(JSON.stringify(padded)).byteLength).toBeLessThan(12 * 1024 * 1024 - 304_384);
-    expect(new TextEncoder().encode(JSON.stringify(padded, null, 2)).byteLength).toBeGreaterThan(12 * 1024 * 1024 - 304_384);
+    // The array is much larger pretty-printed than compact, so a filler sized from the compact
+    // length puts the compact form just under the limit and the pretty-printed form just over it.
+    const withPadding = Object.assign(structuredClone(meeting), { padding: Array(400_000).fill(0), filler: "" });
+    const compactBase = new TextEncoder().encode(JSON.stringify(withPadding)).byteLength;
+    const padded = Object.assign(withPadding, { filler: "x".repeat(MAX_MEETING_JSON_BYTES - 304_384 - 500_000 - compactBase) });
+    expect(new TextEncoder().encode(JSON.stringify(padded)).byteLength).toBeLessThan(MAX_MEETING_JSON_BYTES - 304_384);
+    expect(new TextEncoder().encode(JSON.stringify(padded, null, 2)).byteLength).toBeGreaterThan(MAX_MEETING_JSON_BYTES - 304_384);
     vi.spyOn(repository, "getMeeting").mockResolvedValue(padded);
     const fetchMock = vi.fn(async () => answer());
     vi.stubGlobal("fetch", fetchMock);

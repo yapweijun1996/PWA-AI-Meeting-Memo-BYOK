@@ -1,4 +1,4 @@
-import { id, MAX_JOBS, type Job, type Meeting } from "../domain/model";
+import { id, MAX_JOBS, MAX_MEETING_JSON_BYTES, type Job, type Meeting } from "../domain/model";
 import { editMemoItem } from "../domain/memo-review";
 import { getKey, getSelection, type Selection } from "../providers/credentials";
 import { ProviderError } from "../providers/api";
@@ -9,7 +9,7 @@ import { beginRequest, finishRequest, isProcessing } from "./runner";
 export type ContextualSelection = { memoId: string; itemId: string; originalText: string; start: number; end: number };
 export type ContextualSnapshot = NonNullable<Job["contextual"]>;
 
-const MAX_MEETING_BYTES = 12 * 1024 * 1024;
+const MAX_MEETING_BYTES = MAX_MEETING_JSON_BYTES;
 // JSON escaping can take six bytes per character. Leave space for the saved
 // result and subsequent bounded undo entry before authorizing a paid request.
 const MAX_RESERVE_BYTES = (MAX_SUGGESTION_TEXT + 40_000) * 6 + 16_384;
