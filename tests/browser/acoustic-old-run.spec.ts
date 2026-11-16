@@ -596,3 +596,77 @@ test("refuses local voice analysis when cross-tab locks are unavailable", async 
   expect(await readMeeting(page)).toEqual(before);
   expect(await readCheckpointState(page)).toBeNull();
 });
+
+test("suggests the most similar voice in speaker review and merges it reversibly", async ({ page, browserName }) => {
+  await page.route("https://**/*", (route) => route.abort());
+  await page.route("**/speaker-assets/manifest.json", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(readySpeakerManifest) }),
+  );
+  await installDeterministicLocalEmbedding(page);
+  await page.goto(base);
+  await seedOldRun(page, oldRunFixture());
+  await page.reload();
+  // Wait for the app to mount so the hash change is not lost.
+  await expect(page.getByRole("heading", { name: "Your meetings.", exact: true })).toBeVisible();
+  await page.evaluate((id) => { location.hash = `#/meetings/${id}`; }, meetingId);
+  await expect(page.getByRole("heading", { name: "Old completed chunked run", exact: true })).toBeVisible();
+
+  // No local analysis has run yet: there is nothing to compare, so no hint panel.
+  await page.getByRole("tab", { name: /Speakers/ }).click();
+  await expect(page.locator(".speaker-queue-item")).toHaveCount(4);
+  const hints = page.getByRole("region", { name: "Most similar voices", exact: true });
+  await expect(hints).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Auto-match voices", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Download and analyze locally", exact: true }).click();
+  await expect(page.getByText(/Anonymous voice continuity was updated locally\./)).toBeVisible({ timeout: 90_000 });
+  await expect(page.locator(".speaker-queue-item")).toHaveCount(2);
+  // The two remaining voices are unlike each other.
+  await expect(hints.getByText("No other speaker sounds similar. This may be a separate person.")).toBeVisible();
+
+  // Undo the automatic grouping; the saved vectors still describe the four labels.
+  await page.getByRole("tab", { name: /Transcript/ }).click();
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await page.getByRole("tab", { name: /Speakers/ }).click();
+  await expect(page.locator(".speaker-queue-item")).toHaveCount(4);
+
+  await page.locator(".speaker-queue-select", { hasText: "Speaker B (part 1)" }).click();
+  const suggestion = hints.locator(".voice-suggestion");
+  await expect(suggestion).toHaveCount(1);
+  await expect(suggestion).toContainText("Speaker B (part 2)");
+  await expect(suggestion).toContainText("Similarity: High");
+  await suggestion.getByRole("button", { name: "Not the same", exact: true }).click();
+  await expect(suggestion).toHaveCount(0);
+  expect((await readMeeting(page)).speakers).toHaveLength(4);
+
+  await page.locator(".speaker-queue-select", { hasText: "Speaker A (part 1)" }).click();
+  await expect(suggestion).toContainText("Speaker A (part 2)");
+  // Both clean samples play back to back: this speaker's (5-9 s), then the candidate's (55-59 s).
+  // The synthetic MP3 does not advance in Playwright's WebKit build, so playback is checked in Chromium only.
+  if (browserName === "chromium") {
+    const position = async () => Number(await page.getByRole("slider", { name: "Playback position", exact: true }).inputValue());
+    await suggestion.getByRole("button", { name: "Play both", exact: true }).click();
+    await expect.poll(position).toBeGreaterThanOrEqual(5);
+    expect(await position()).toBeLessThan(10);
+    await expect.poll(position, { timeout: 20_000 }).toBeGreaterThanOrEqual(55);
+    await expect.poll(position, { timeout: 20_000 }).toBeGreaterThanOrEqual(58.5);
+    await page.waitForTimeout(1_500);
+    expect(await position()).toBeLessThan(60.5);
+  }
+  const beforeMerge = await readMeeting(page);
+  await suggestion.getByRole("button", { name: "Same person", exact: true }).click();
+  await expect(page.getByText("Merged into Speaker A (part 1). Use Undo to restore.")).toBeVisible();
+  await expect(page.locator(".speaker-queue-item")).toHaveCount(3);
+  const merged = await readMeeting(page);
+  expect((merged.speakers as { id: string }[]).map((speaker) => speaker.id)).toEqual(["part-0:voice-a", "part-0:voice-b", "part-1:voice-b"]);
+  expect(transcriptSnapshot(merged).filter((segment) => (segment.speakerIds as string[])[0] === "part-0:voice-a")).toHaveLength(4);
+  expect(transcriptSnapshot(merged).map(({ id, text, originalText }) => ({ id, text, originalText }))).toEqual(
+    transcriptSnapshot(beforeMerge).map(({ id, text, originalText }) => ({ id, text, originalText })),
+  );
+  expect((merged.runs as unknown[])[0]).toEqual((beforeMerge.runs as unknown[])[0]);
+  expect((merged.undo as unknown[]).length).toBe((beforeMerge.undo as unknown[]).length + 1);
+
+  // The head-count shortcut opens the existing local analysis dialog.
+  await hints.getByRole("button", { name: "Regroup with a head count", exact: true }).click();
+  await expect(page.getByRole("dialog").getByText("How many people spoke? (optional)")).toBeVisible();
+});

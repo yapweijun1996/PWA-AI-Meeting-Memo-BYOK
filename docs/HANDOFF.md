@@ -125,13 +125,14 @@ From [AGENTS.md](../AGENTS.md) and the owner: acoustic evidence only (names, lab
 4. **The speaker count is a human input.** A wrong number forces wrong merges. Do not infer it silently.
 5. **Single-voice recordings** (one label per part) bypass the centered matching, because removing the average would erase the only voice; per-part decisions are kept.
 6. **Provider labels that mix voices** limit everything downstream; no step here splits a label by voice.
-7. Not built: part-by-part human comparison panel, local diarization independent of provider labels, WAV/WebM single-file support, cross-meeting identities.
+7. Speaker review shows a "Most similar voices" hint per speaker (`src/domain/voice-suggestions.ts`, added 2026-11-16): it ranks other speakers from the saved vectors (recording average removed), plays one clean sample of each back to back, and merges through the existing undoable path. It is a hint, not a decision: bands (high/medium/low) reuse `PART_MATCH_POLICY` and are uncalibrated; a rejected pair is hidden only until the page reloads; confirmations are not yet stored as ground truth. Verified with fake vectors (unit tests) and one seeded browser flow in Chromium and WebKit; back-to-back playback in Chromium only; not yet checked on a real recording.
+8. Not built: local diarization independent of provider labels, WAV/WebM single-file support, cross-meeting identities.
 
 ## 9. Recommended next steps
 
 1. Verify route B on the deployed site (real download, WebKit, offline reload, a phone), add a Playwright test of the download flow, and resolve the weight licence question (route A: ask the publisher; or choose a model with an explicit licence).
 2. Build a small labelled evaluation (same/different pairs and, if segmenting, reference turns) from a real meeting; calibrate; compare WavLM with the sherpa-onnx route.
-3. Build the part-by-part comparison panel (play a sample per label, suggest pairings, human confirms through the existing merge and undo path); its confirmations double as ground truth.
+3. Extend the speaker review voice hints (built 2026-11-16, see section 8 item 7): persist "not the same" decisions with revision invalidation, and record confirmations as ground truth for calibration.
 4. Run Chromium and WebKit browser acceptance for the voice flow and physical iOS/Android checks before any mobile claim.
 5. Decide whether cross-meeting identity is wanted; it needs consent, local controls, deletion and no real-world naming.
 

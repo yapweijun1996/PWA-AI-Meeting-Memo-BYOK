@@ -529,15 +529,12 @@ function crossPartSimilarity(
   };
 }
 
-/** Read-only summary of saved local voice analysis, so results are visible after the fact. */
-export async function describeAcousticState(meetingId: string): Promise<AcousticStateSummary> {
-  const [checkpoint, assignments, allEmbeddings] = await Promise.all([
-    getAcousticCheckpoint(meetingId),
-    listAcousticAssignments(meetingId),
-    listAcousticEmbeddings(meetingId),
-  ]);
-  const current = checkpoint
-    ? allEmbeddings.filter(
+function embeddingsOfCheckpoint(
+  checkpoint: AcousticCheckpoint | undefined,
+  embeddings: readonly AcousticEmbeddingRecord[],
+): AcousticEmbeddingRecord[] {
+  return checkpoint
+    ? embeddings.filter(
         (embedding) =>
           embedding.recordingHash === checkpoint.recordingHash &&
           embedding.sourceRevision === checkpoint.sourceRevision &&
@@ -545,6 +542,25 @@ export async function describeAcousticState(meetingId: string): Promise<Acoustic
           embedding.extractionVersion === checkpoint.extractionVersion,
       )
     : [];
+}
+
+/** Read-only: the saved voice vectors of the latest local analysis, for review hints. */
+export async function listCurrentAcousticEmbeddings(meetingId: string): Promise<AcousticEmbeddingRecord[]> {
+  const [checkpoint, embeddings] = await Promise.all([
+    getAcousticCheckpoint(meetingId),
+    listAcousticEmbeddings(meetingId),
+  ]);
+  return embeddingsOfCheckpoint(checkpoint, embeddings);
+}
+
+/** Read-only summary of saved local voice analysis, so results are visible after the fact. */
+export async function describeAcousticState(meetingId: string): Promise<AcousticStateSummary> {
+  const [checkpoint, assignments, allEmbeddings] = await Promise.all([
+    getAcousticCheckpoint(meetingId),
+    listAcousticAssignments(meetingId),
+    listAcousticEmbeddings(meetingId),
+  ]);
+  const current = embeddingsOfCheckpoint(checkpoint, allEmbeddings);
   const byState: Record<AcousticAssignmentState, number> = { matched: 0, new_identity: 0, ambiguous: 0, unresolved: 0, conflict: 0, stale: 0 };
   for (const assignment of assignments) byState[assignment.state] += 1;
   return {
