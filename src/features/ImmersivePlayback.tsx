@@ -52,6 +52,7 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
   const [panel, setPanel] = useState(() => typeof window === "undefined" || !window.matchMedia("(max-width: 600px)").matches);
   const [showCaptions, setShowCaptions] = useState(true);
   const [showRoster, setShowRoster] = useState(false);
+  const [relevantRoster, setRelevantRoster] = useState(false);
   const [speakerLayout, setSpeakerLayout] = useState<"single" | "table">("single");
   const [controlError, setControlError] = useState(false);
   const [fullscreenError, setFullscreenError] = useState(false);
@@ -101,6 +102,8 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
   const contextUnknown = retainedCaptions.some((caption) => caption.speakerIds.length === 0);
   const displayedIds = current.length ? activeIds : contextIds;
   const currentSpeakers = meeting.speakers.filter((speaker) => displayedIds.has(speaker.id));
+  const rosterSpeakers = relevantRoster ? currentSpeakers : meeting.speakers;
+  const showUnknownLabel = activeUnknown || (!current.length && contextUnknown);
   const tableAvailable = meeting.speakers.length >= 2 && meeting.speakers.length <= 5;
   const showTable = speakerLayout === "table" && tableAvailable;
   const glowSeat = showTable && playing && status === "playing" && !activeUnknown && activeIds.size === 1
@@ -392,19 +395,31 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
         {controlError && <p className="immersive-fallback" role="alert">{t("Playback could not start.", "无法开始播放。")}</p>}
         {fullscreenError && <p className="immersive-fallback" role="alert">{t("Full screen could not change. Try again or use your browser controls.", "无法切换全屏。请重试或使用浏览器控制。")}</p>}
         <div className="immersive-content">
-          <section ref={stage} tabIndex={0} className="immersive-stage" data-cinematic={showTable && !controlsVisible && !panel && !showRoster} aria-label={t("Speaker and captions", "说话人和字幕")} aria-describedby="immersive-keyboard-help">
+          <section ref={stage} tabIndex={0} className="immersive-stage" data-roster-open={showRoster} data-cinematic={showTable && !controlsVisible && !panel && !showRoster} aria-label={t("Speaker and captions", "说话人和字幕")} aria-describedby="immersive-keyboard-help">
             <div ref={rosterBar} hidden={!controlsVisible} className="immersive-roster-bar">
               <span>{meeting.speakers.length} {t("speaker labels", "个说话人标签")}</span>
               <Button type="button" aria-expanded={showRoster} aria-controls="immersive-roster" onClick={() => setShowRoster(!showRoster)}>{showRoster ? t("Hide labels", "隐藏标签") : t("View labels", "查看标签")}</Button>
+              {showRoster && <Button type="button" aria-pressed={relevantRoster} aria-controls="immersive-roster" onClick={() => setRelevantRoster(!relevantRoster)}>{t("Relevant labels only", "仅显示相关标签")}</Button>}
               {tableAvailable && <div className="immersive-speaker-layout" role="group" aria-label={t("Speaker layout", "说话人布局")}>
                 <Button type="button" aria-pressed={!showTable} onClick={() => setSpeakerLayout("single")}>{t("Single", "单人")}</Button>
                 <Button type="button" aria-pressed={showTable} onClick={() => setSpeakerLayout("table")}>{t("Table", "会议桌")}</Button>
               </div>}
             </div>
             <div id="immersive-roster" className="immersive-roster" hidden={!showRoster} role="group" aria-label={t("Speaker labels", "说话人标签")}>
-              {meeting.speakers.map((speaker) => <div className="immersive-person" key={speaker.id} data-active={playing && status === "playing" && activeIds.has(speaker.id)} data-position={activeIds.has(speaker.id)}>
-                <strong>{speaker.name}</strong><span>{speaker.confirmed ? t("Name confirmed", "姓名已确认") : t("Unconfirmed", "未确认")}</span>
-              </div>)}
+              {rosterSpeakers.map((speaker) => {
+                const atPosition=activeIds.has(speaker.id);
+                const previousContext=!current.length && contextIds.has(speaker.id);
+                const speaking=playing && status === "playing" && atPosition;
+                return <div className="immersive-person" key={speaker.id} data-speaker-id={speaker.id} data-active={speaking} data-position={atPosition} data-context={previousContext}>
+                  <strong>{speaker.name}</strong><span>{speaker.confirmed ? t("Name confirmed", "姓名已确认") : t("Unconfirmed", "未确认")}</span>
+                  <span aria-hidden={!atPosition && !previousContext}>{speaking ? t("Speaking", "正在发言") : atPosition ? t("At this position", "此位置的归属") : previousContext ? retainedLabel : "\u00a0"}</span>
+                </div>;
+              })}
+              {showUnknownLabel && <div className="immersive-person" data-unknown="true" data-active={playing && status === "playing" && activeUnknown} data-position={activeUnknown} data-context={!current.length && contextUnknown}>
+                <strong>{t("Unknown speaker", "未知说话人")}</strong><span>{t("No confirmed identity", "身份未确认")}</span>
+                <span>{activeUnknown ? playing && status === "playing" ? t("Speaking", "正在发言") : t("At this position", "此位置的归属") : retainedLabel}</span>
+              </div>}
+              {relevantRoster && !rosterSpeakers.length && !showUnknownLabel && <p>{t("No attributed speech or retained context here.", "此处没有已归属发言或保留的上下文。")}</p>}
               <Button type="button" onClick={() => { close(); onEditSpeakers(); }}>{t("Edit speakers", "编辑说话人")}</Button>
             </div>
             {showTable ? <div className="immersive-table-speakers" data-count={meeting.speakers.length} data-glow-seat={glowSeat >= 0 ? glowSeat : undefined} role="group" tabIndex={0} aria-label={t("Meeting speaker labels", "会议说话人标签")}>

@@ -282,6 +282,72 @@ function parseRange(text: string | null) {
   return { start: values[0] ?? 0, end: values[1] ?? 0 };
 }
 
+for (const viewport of [
+  {name:"desktop",width:1440,height:900,language:"en"},
+  {name:"portrait",width:390,height:844,language:"zh-CN"},
+  {name:"landscape",width:844,height:390,language:"en"},
+]) test(`large roster relevant labels preserve paused overlap and unknown attribution on ${viewport.name}`,async({page,context},info)=>{
+  await context.route("https://**/*",route=>route.abort());
+  await page.addInitScript(()=>{HTMLElement.prototype.requestFullscreen=()=>Promise.reject(new Error("Synthetic in-page view"));});
+  const fixture=fixtureMeeting();
+  fixture.speakers.push(...Array.from({length:98},(_,index)=>({id:crypto.randomUUID(),name:`Part ${index+3} label`,confirmed:index===96,sourceLabels:["synthetic-part-label"]})));
+  fixture.segments[0]={...fixture.segments[0],start:0,end:10,speakerIds:[fixture.speakers[98].id]};
+  fixture.segments[1]={...fixture.segments[1],start:0,end:10,speakerIds:[fixture.speakers[99].id]};
+  fixture.segments[2]={...fixture.segments[2],start:2,end:8,speakerIds:[]};
+  fixture.segments[3]={...fixture.segments[3],start:20,end:25,speakerIds:[]};
+  await createFixture(page,"large-roster.wav",fixture);
+  const before=sourceSnapshot(await storedMeeting(page));
+  await page.setViewportSize(viewport);
+  if(viewport.language==="zh-CN") await page.getByRole("combobox",{name:"Display language",exact:true}).selectOption("zh-CN");
+  const zh=viewport.language==="zh-CN";
+  const setPosition=async(position:number)=>page.locator("audio").evaluate((element,position)=>{(element as HTMLMediaElement).currentTime=position;element.dispatchEvent(new Event("seeked"));},position);
+  await setPosition(3);
+  await page.getByRole("button",{name:zh ? "沉浸式播放" : "Immersive playback",exact:true}).click();
+  const dialog=page.getByRole("dialog",{name:zh ? "沉浸式播放" : "Immersive playback"});
+  if(viewport.width<600) await dialog.getByRole("button",{name:zh ? "关闭转录" : "Close transcript",exact:true}).click();
+  await dialog.getByRole("button",{name:zh ? "查看标签" : "View labels",exact:true}).click();
+  const relevant=dialog.getByRole("button",{name:zh ? "仅显示相关标签" : "Relevant labels only",exact:true});
+  await expect(relevant).toBeVisible({timeout:3000});await relevant.focus();await page.keyboard.press("Space");
+  await expect(relevant).toHaveAttribute("aria-pressed","true");await expect(relevant).toBeFocused();
+  const roster=dialog.locator(".immersive-roster");const people=roster.locator(".immersive-person");
+  await expect(people).toHaveCount(3);await expect(people.filter({hasText:fixture.speakers[98].name})).toContainText(zh ? "姓名已确认" : "Name confirmed");
+  await expect(people.filter({hasText:fixture.speakers[99].name})).toContainText(zh ? "未确认" : "Unconfirmed");
+  await expect(people.filter({hasText:zh ? "未知说话人" : "Unknown speaker"})).toHaveCount(1);
+  for(const name of [fixture.speakers[98].name,fixture.speakers[99].name,zh ? "未知说话人" : "Unknown speaker"]) {
+    const row=people.filter({hasText:name});await row.locator("strong").scrollIntoViewIfNeeded();await expect(row.locator("strong")).toBeInViewport();
+  }
+  await page.screenshot({path:info.outputPath("relevant-roster.png")});
+  const captions=dialog.locator(".immersive-caption-content");await captions.scrollIntoViewIfNeeded();
+  await expect(captions).toBeInViewport();expect(await captions.evaluate(element=>element.clientHeight)).toBeGreaterThan(0);
+  await page.screenshot({path:info.outputPath("relevant-caption.png")});await relevant.focus();
+  await expect(roster.locator('[data-active="true"]')).toHaveCount(0);await expect(roster.locator('[data-position="true"]')).toHaveCount(3);
+  await page.locator("audio").evaluate(async element=>{await (element as HTMLMediaElement).play();element.dispatchEvent(new Event("playing"));});
+  await expect(roster.locator('[data-active="true"]')).toHaveCount(3);
+  await page.locator("audio").evaluate(element=>(element as HTMLMediaElement).pause());
+  await expect(roster.locator('[data-active="true"]')).toHaveCount(0);await expect(relevant).toBeFocused();
+  await relevant.click();await expect(people).toHaveCount(101);
+  const scroll=await roster.evaluate(element=>{element.scrollTop=element.scrollHeight/2;return element.scrollTop;});
+  await setPosition(4);expect(await roster.evaluate(element=>element.scrollTop)).toBeCloseTo(scroll,0);
+  await relevant.click();await setPosition(12);
+  await expect(people).toHaveCount(2);await expect(roster.locator('[data-context="true"]')).toHaveCount(2);await expect(roster.locator('[data-active="true"]')).toHaveCount(0);
+  await expect(people.first()).toContainText(zh ? "当前没有归属发言" : "not current speech");
+  await setPosition(22);await expect(people).toHaveCount(1);await expect(people).toContainText(zh ? "未知说话人" : "Unknown speaker");
+  expect(await dialog.evaluate(element=>element.scrollWidth<=element.clientWidth+1)).toBe(true);
+  await dialog.getByRole("button",{name:zh ? "退出沉浸模式" : "Exit immersive",exact:true}).click();
+  expect(sourceSnapshot(await storedMeeting(page))).toEqual(before);
+});
+
+test("relevant roster never invents position attribution from untimed-only evidence",async({page})=>{
+  await page.addInitScript(()=>{HTMLElement.prototype.requestFullscreen=()=>Promise.reject(new Error("Synthetic fallback"));});
+  const fixture=fixtureMeeting();fixture.segments=fixture.segments.map(source=>({...source,start:null,end:null}));
+  await createFixture(page,"untimed-roster.wav",fixture);
+  await page.getByRole("button",{name:"Immersive playback",exact:true}).click();const dialog=page.getByRole("dialog",{name:"Immersive playback"});
+  await dialog.getByRole("button",{name:"View labels",exact:true}).click();await dialog.getByRole("button",{name:"Relevant labels only",exact:true}).click();
+  await expect(dialog.locator(".immersive-roster .immersive-person")).toHaveCount(0);
+  await expect(dialog.locator(".immersive-roster")).toContainText("No attributed speech or retained context here.");
+  await dialog.getByRole("button",{name:"Relevant labels only",exact:true}).click();await expect(dialog.locator(".immersive-roster .immersive-person")).toHaveCount(2);
+});
+
 test("speaker review offers long samples and explicit overlap/gap activity", async ({ page }) => {
   await createFixture(page);
   await expect(page.getByRole("button", { name: "Sample 1", exact: true }).first()).toBeEnabled();

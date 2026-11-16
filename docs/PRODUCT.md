@@ -80,6 +80,8 @@ The [interactive concept](design/speaker-review-prototype.html) uses invented ti
 
 #### Synchronized playback acceptance contract
 
+In immersive playback, **View labels → Relevant labels only** reduces a large roster to all labels relevant to the current position or explicitly retained prior context, including unknown attribution. Keep confirmation status separate from activity: a paused label is not speaking, and a source-part label is not a verified person. Switching back exposes the complete list without changing evidence. An open roster and the captions remain scrollable on small viewports; playback and exit controls remain accessible.
+
 Owner-approved direction, 2026-11-06: prioritize the Audio → Active Speaker → Live Caption → Transcript Highlight synchronization loop before avatar uploads or further video enhancement. Implementation and release evidence belong in [validation](VALIDATION.md); these requirements alone do not establish completion.
 
 Playback and Edit Speakers are separate views of the same meeting and recording. Switching views retains the audio position. Playback presents currently attributed speaker(s) and readable captions first, followed by the synchronized transcript and then the full speaker roster. Caption size is next to the transcript heading; the persistent player controls playback. Edit Speakers retains sample listening, name drafts, confirmation, merge and undo. Mobile stacks these sections above the persistent accessible player.
