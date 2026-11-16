@@ -206,3 +206,92 @@ describe("which average is removed before comparing", () => {
     expect(voiceOf.get("0:B")).not.toBe(voiceOf.get("0:C"));
   });
 });
+
+describe("a provider label that mixes two people", () => {
+  // Six samples per label. `voices` lists the voice of each sample of the label.
+  function mixedBuild(parts: { label: string; voices: number[] }[][]) {
+    const rng = random(11);
+    return parts.flatMap((labels, chunkIndex) =>
+      labels.flatMap(({ label, voices }) => voices.map((voice, n) => record(chunkIndex, label, voice, n, rng))),
+    );
+  }
+  const pure = (voice: number) => Array.from({ length: 6 }, () => voice);
+  const rules = { version: "test", withinPartMergeCosine: 0.9, floorCosine: 0.35, margin: 0.1 };
+  const match = (embeddings: AcousticEmbeddingRecord[], purityMargin?: number | null) =>
+    new Map(
+      matchLabelsAcrossParts({ meetingId: "meeting", recordingHash: HASH, sourceRevision: 1, embeddings }, undefined, { ...rules, purityMargin })
+        .assignments.map((assignment) => [assignment.sourceKey, assignment]),
+    );
+
+  // In part 0 the provider put three passages of voice 1 under label A, which is otherwise voice 0.
+  const mixed = mixedBuild([
+    [{ label: "A", voices: [0, 0, 0, 1, 1, 1] }, { label: "B", voices: pure(1) }, { label: "C", voices: pure(2) }],
+    [{ label: "A", voices: pure(0) }, { label: "B", voices: pure(1) }, { label: "C", voices: pure(2) }],
+  ]);
+
+  it("leaves the mixed label ungrouped and says why", () => {
+    const result = match(mixed);
+    expect(result.get("0:A")).toMatchObject({ state: "conflict", identityId: null });
+    expect(result.get("0:A")?.reason).toMatch(/may mix two people/);
+    // The clean labels are still matched across the parts.
+    expect(result.get("0:B")?.identityId).toBeTruthy();
+    expect(result.get("0:B")?.identityId).toBe(result.get("1:B")?.identityId);
+    expect(result.get("0:C")?.identityId).toBe(result.get("1:C")?.identityId);
+    expect(result.get("1:A")?.identityId).not.toBe(result.get("1:B")?.identityId);
+  });
+
+  it("would place the mixed label in a voice when the check is turned off", () => {
+    const result = match(mixed, null);
+    expect(result.get("0:A")?.state).not.toBe("conflict");
+  });
+
+  it("does not flag clean labels, including one person split into two labels", () => {
+    const clean = mixedBuild([
+      [{ label: "A", voices: pure(0) }, { label: "A2", voices: pure(0) }, { label: "B", voices: pure(1) }, { label: "C", voices: pure(2) }],
+      [{ label: "A", voices: pure(0) }, { label: "B", voices: pure(1) }, { label: "C", voices: pure(2) }],
+    ]);
+    expect([...match(clean).values()].filter((assignment) => assignment.state === "conflict")).toEqual([]);
+  });
+
+  it("does not judge a label with fewer than four samples", () => {
+    const few = mixedBuild([
+      [{ label: "A", voices: [0, 1, 1] }, { label: "B", voices: pure(1) }, { label: "C", voices: pure(2) }],
+      [{ label: "A", voices: pure(0) }, { label: "B", voices: pure(1) }, { label: "C", voices: pure(2) }],
+    ]);
+    expect(match(few).get("0:A")?.state).not.toBe("conflict");
+  });
+
+  it("accepts a mixed-looking label when a person confirmed its speaker", () => {
+    const result = matchLabelsAcrossParts(
+      { meetingId: "meeting", recordingHash: HASH, sourceRevision: 1, embeddings: mixed, constraints: { mustLink: [["0:A", "1:A"]], cannotLink: [] } },
+      undefined,
+      rules,
+    );
+    const byKey = new Map(result.assignments.map((assignment) => [assignment.sourceKey, assignment]));
+    expect(byKey.get("0:A")?.state).not.toBe("conflict");
+    expect(byKey.get("0:A")?.identityId).toBe(byKey.get("1:A")?.identityId);
+  });
+});
+
+describe("a head count that is too small", () => {
+  // Four different people, two in each part. No voice appears twice.
+  const four = () => build([
+    [{ label: "A", voice: 0 }, { label: "B", voice: 1 }],
+    [{ label: "A", voice: 2 }, { label: "B", voice: 3 }],
+  ]);
+
+  it("does not join clearly different voices to reach the number", () => {
+    const result = run(four(), 2);
+    expect(result.identities).toHaveLength(4);
+    expect(new Set(result.assignments.map((assignment) => assignment.identityId)).size).toBe(4);
+  });
+
+  it("joined them before this safeguard, which the replay can still reproduce", () => {
+    const forced = matchLabelsAcrossParts(
+      { meetingId: "meeting", recordingHash: HASH, sourceRevision: 1, embeddings: four(), expectedVoices: 2 },
+      undefined,
+      { version: "test", withinPartMergeCosine: 0.9, floorCosine: 0.35, margin: 0.1, headCountFloorCosine: Number.NEGATIVE_INFINITY },
+    );
+    expect(forced.identities).toHaveLength(2);
+  });
+});

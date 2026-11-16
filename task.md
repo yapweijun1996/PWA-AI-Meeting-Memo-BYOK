@@ -22,9 +22,10 @@ Current assessment: **working prototype, not production quality; no accuracy is 
 - [ ] VID05 (P1) — Options implemented 2026-11-16, default unchanged: `centre` = samples / labels / voices in the matcher and in `--replay`. Switch the default only on real-recording evidence.
 - [x] Voice change verification 2026-11-16 (Node 25.2.1): 362 unit tests, lint, typecheck, SSOT check, build, artifact check; Chromium/WebKit voice analysis spec 12/12 after its fixture's audio levels were moved inside full scale (the old levels of 1 and 2 are rejected as clipped by design).
 - [x] Immersive Focus mode on tablet widths: the stage fills the screen again (`d109629`); all 57 immersive Chromium/WebKit cases pass, 3 skipped. Root cause: the tablet separate-flow rule from `a65de10` also applied when no transcript sits below the stage.
-- [ ] VID06 (P1) — Label purity check in the multi-part matcher; impure labels stay unmerged and are offered for splitting.
+- [ ] VID06 (P1) — Implemented 2026-11-16, measurement open: a label whose samples side with another label of the same part is left ungrouped and counted in the notice. No guided split action yet. Stays unchecked until a VID01 result.
 - [ ] VID07 (P1) — Global constrained clustering compared against the current greedy part-by-part matcher.
-- [ ] VID08 (P1) — Estimate the head count from data; forced merges below the floor become review suggestions.
+- [ ] VID08 (P1) — Implemented 2026-11-16, measurement open: a head count no longer joins voices of negative similarity or pairs a person rejected, and the notice says when the count was not reached. Estimating the count from data is not done. Stays unchecked until a VID01 result.
+- [x] VID06/VID08 verification 2026-11-16 (Node 25.2.1): 7 new unit tests, 369 in total, lint, typecheck, SSOT check, build, artifact check, Chromium/WebKit voice analysis spec 12/12. Fake vectors only.
 - [ ] VID10 (P1) — Measure the raw-cosine single-file and one-label-per-part paths, then align their scoring.
 - [ ] VID11 (P2) — Low-confidence suggestions for labels with too few samples.
 - [ ] VID12 (P2) — Evaluate local segmentation against provider labels.

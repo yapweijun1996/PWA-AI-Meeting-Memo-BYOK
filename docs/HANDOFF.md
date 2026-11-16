@@ -115,7 +115,7 @@ const all = s => new Promise(r => { const q = db.transaction(s).objectStore(s).g
 const [assignments, identities, checkpoints] = await Promise.all(['acousticAssignments', 'acousticIdentities', 'acousticCheckpoints'].map(all));
 ```
 
-Filter by `meetingId`; an `assignment.thresholdVersion` ending in `one-to-one-centered-v1` means the multi-part consolidation produced it.
+Filter by `meetingId`; an `assignment.thresholdVersion` ending in `one-to-one-centered-v2` (`-v1` before the 2026-11-16 mixed-label and head-count safeguards) means the multi-part consolidation produced it.
 
 **Measuring a result.** After confirming speakers by ear, **Export voice evaluation data** (Speakers tab, under "Most similar voices") downloads the saved vectors and decisions with confirmed speakers as pseudonymous references. `node scripts/evaluate-voice-matching.mjs <file>` reports same-person and different-person similarity, the balanced threshold with its error rates, labels that mix people, and the saved grouping's correct, wrong and missed merges. Add `--replay` to re-run the app's multi-part matcher on the same vectors under other floors, margins, the reference head count and the human "different" pairs. It describes that one recording; the reference inherits any error the person did not catch, and settings tuned on one recording must be confirmed on another. No real recording has been measured yet. The full gap list is in [gap.md](../gap.md#voice-identity-logic-gap-register--2026-11-16).
 

@@ -822,10 +822,28 @@ export interface PartMatchRules {
    * --replay`); do not change the default without a result on real recordings.
    */
   centre?: "samples" | "labels" | "voices";
+  /**
+   * A label is treated as mixing two people when at least two of its samples are
+   * closer, by this much, to another label of the same part than to the label's
+   * own other samples, while at least two samples are not. `null` turns the
+   * check off. Uncalibrated.
+   */
+  purityMargin?: number | null;
+  /**
+   * With a head count, voices are joined only while they are at least this
+   * similar. Zero means "no less alike than two unrelated voices of this
+   * recording", so a wrong count cannot join clearly different voices.
+   */
+  headCountFloorCosine?: number;
 }
 
+/** A label needs this many samples before its purity can be judged (two on each side). */
+const MIN_SAMPLES_FOR_PURITY = 4;
+
 export const PART_MATCH_POLICY = {
-  version: `${ACOUSTIC_POLICY.version}+one-to-one-centered-v1`,
+  version: `${ACOUSTIC_POLICY.version}+one-to-one-centered-v2`,
+  purityMargin: 0.2,
+  headCountFloorCosine: 0,
   /** Two labels in one part join only when their averages are nearly identical. */
   withinPartMergeCosine: 0.9,
   /** Least similarity between a label and a voice for them to be paired. */
@@ -986,6 +1004,40 @@ export function matchLabelsAcrossParts(
     ]);
   }
 
+  // 1b. Leave out a label whose samples disagree about who is speaking. A provider can put
+  // two people under one label; averaging them would give a point between both voices.
+  const purityMargin = rules.purityMargin === undefined ? PART_MATCH_POLICY.purityMargin : rules.purityMargin;
+  if (purityMargin !== null) {
+    for (const [chunkIndex, partLabels] of byPart) {
+      if (partLabels.length < 2) continue;
+      const mixed = new Set<number>();
+      partLabels.forEach((label, index) => {
+        if (label.evidence.length < MIN_SAMPLES_FOR_PURITY) return;
+        // A person confirmed this label's speaker: their judgement stands.
+        if (groupOf.has(acousticSourceKey(chunkIndex, label.evidence[0]!.sourceSpeakerId))) return;
+        const samples = label.evidence.map((entry) => centered(entry.values));
+        let foreign = 0;
+        samples.forEach((sample, position) => {
+          const own = cosineSimilarity(sample, averageVector(samples.filter((_, other) => other !== position)));
+          const other = Math.max(
+            ...partLabels.filter((_, otherIndex) => otherIndex !== index).map((entry) => cosineSimilarity(sample, entry.mean)),
+          );
+          if (Number.isFinite(own) && Number.isFinite(other) && other - own >= purityMargin) foreign += 1;
+        });
+        if (foreign >= 2 && samples.length - foreign >= 2) mixed.add(index);
+      });
+      if (!mixed.size) continue;
+      for (const index of mixed) {
+        state(
+          partLabels[index]!.evidence,
+          "conflict",
+          "Some samples under this provider label sound like another speaker in the same part. The label may mix two people, so it was not grouped.",
+        );
+      }
+      byPart.set(chunkIndex, partLabels.filter((_, index) => !mixed.has(index)));
+    }
+  }
+
   // 2. Inside a part, join labels whose averages are nearly identical (one person over-split).
   const units: MatchUnit[] = [];
   for (const [chunkIndex, partLabels] of [...byPart.entries()].sort((a, b) => a[0] - b[0])) {
@@ -1113,8 +1165,11 @@ export function matchLabelsAcrossParts(
 
   if (expected !== undefined) {
     for (const unit of deferred) voices.push(newVoice(unit));
-    // Group further, most similar first, until the expected number remain.
+    // Group further, most similar first, until the expected number remain or no pair is
+    // similar enough. The head count is a person's estimate: it justifies joining voices
+    // the similarity rules left apart, but not voices that are plainly unlike each other.
     // Voices that share a part are penalised, not forbidden (a provider can over-split one person).
+    const headCountFloor = rules.headCountFloorCosine ?? PART_MATCH_POLICY.headCountFloorCosine;
     const partsOf = (voice: Voice) => new Set(voice.members.map((member) => member.unit.chunkIndex));
     const SHARED_PART_PENALTY = 0.5;
     while (voices.length > expected) {
@@ -1122,7 +1177,7 @@ export function matchLabelsAcrossParts(
       for (let a = 0; a < voices.length; a += 1) {
         for (let b = a + 1; b < voices.length; b += 1) {
           const score = cosineSimilarity(voices[a]!.centroid, voices[b]!.centroid);
-          if (!Number.isFinite(score)) continue;
+          if (!Number.isFinite(score) || score < headCountFloor) continue;
           // A head count never joins voices a person judged to be different people.
           if (forbidden(voiceKeys(voices[a]!), voiceKeys(voices[b]!))) continue;
           const shared = [...partsOf(voices[a]!)].some((part) => partsOf(voices[b]!).has(part));
