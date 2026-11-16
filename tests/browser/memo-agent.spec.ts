@@ -177,7 +177,7 @@ test("opt-in review uses real Pi tools under CSP, preserves receipts and does no
   const dialog = await confirm(page);
   expect(calls).toBe(0);
   expect(
-    (await new AxeBuilder({ page }).include('dialog[open]').analyze())
+    (await new AxeBuilder({ page }).include("dialog[open]").analyze())
       .violations,
   ).toEqual([]);
   await expect(dialog).toContainText("6 further paid requests");
@@ -262,9 +262,7 @@ test("unknown paid outcome stops, survives reload and requires reviewed authoriz
   expect(saved.jobs).toHaveLength(3);
 });
 
-test("quota failure retains an exportable response and local retry never repeats the paid request", async ({
-  page,
-}) => {
+async function rejectFirstResponseSave(page: Page) {
   await page.addInitScript(() => {
     const put = IDBObjectStore.prototype.put;
     IDBObjectStore.prototype.put = function (value, ...args) {
@@ -284,6 +282,12 @@ test("quota failure retains an exportable response and local retry never repeats
       return put.call(this, value, ...args);
     };
   });
+}
+
+test("quota failure retains an exportable response and local retry never repeats the paid request", async ({
+  page,
+}) => {
+  await rejectFirstResponseSave(page);
   const fixture = await setup(page);
   let calls = 0;
   await page.route("https://api.openai.com/v1/responses", async (route) => {
@@ -411,7 +415,7 @@ test("Chinese selective confirmation captures the resolved memo language and rem
     ),
   ).toBe(true);
   expect(
-    (await new AxeBuilder({ page }).include('dialog[open]').analyze())
+    (await new AxeBuilder({ page }).include("dialog[open]").analyze())
       .violations,
   ).toEqual([]);
   await dialog.getByRole("button", { name: "确认并发送", exact: true }).click();
@@ -449,4 +453,86 @@ test("Stop waiting aborts the active Pi request and reload never resubmits it", 
   await expect(
     page.getByRole("region", { name: "Selective review progress" }),
   ).toContainText("paused");
+});
+
+test("local response recovery waits for a real cross-tab processing lock without repeating its request", async ({
+  page,
+  context,
+}) => {
+  await rejectFirstResponseSave(page);
+  await setup(page);
+  let calls = 0;
+  await page.route("https://api.openai.com/v1/responses", async (route) => {
+    calls++;
+    await stream(route, [tool()]);
+  });
+  const dialog = await confirm(page);
+  await dialog
+    .getByRole("button", { name: "Confirm and send", exact: true })
+    .click();
+  const recovery = page.getByRole("alert", { name: "Unsaved review response" });
+  await expect(recovery).toBeVisible();
+  expect(calls).toBe(1);
+  test.skip(
+    !(await page.evaluate(() => !!navigator.locks)),
+    "This engine does not expose Web Locks; CAS fallback is covered by unit contracts.",
+  );
+  const meetingId = new URL(page.url()).hash.split("/").at(-1)!;
+  const other = await context.newPage();
+  await other.goto(page.url());
+  await other.evaluate((meetingId) => {
+    const target = window as Window & {
+      recoveryLockHeld?: boolean;
+      releaseRecoveryLock?: () => void;
+    };
+    void navigator.locks.request(`meeting-memo-job:${meetingId}`, async () => {
+      target.recoveryLockHeld = true;
+      await new Promise<void>((resolve) => {
+        target.releaseRecoveryLock = resolve;
+      });
+      target.recoveryLockHeld = false;
+    });
+  }, meetingId);
+  await expect
+    .poll(() =>
+      other.evaluate(
+        () =>
+          !!(window as Window & { recoveryLockHeld?: boolean })
+            .recoveryLockHeld,
+      ),
+    )
+    .toBe(true);
+  await recovery
+    .getByRole("button", { name: "Retry local save only", exact: true })
+    .click();
+  await expect(
+    page
+      .getByText("Another tab is processing this meeting.", { exact: true })
+      .first(),
+  ).toBeVisible();
+  await expect(recovery).toBeVisible();
+  expect(calls).toBe(1);
+  await other.evaluate(() =>
+    (
+      window as Window & { releaseRecoveryLock?: () => void }
+    ).releaseRecoveryLock?.(),
+  );
+  await expect
+    .poll(() =>
+      other.evaluate(
+        () =>
+          !!(window as Window & { recoveryLockHeld?: boolean })
+            .recoveryLockHeld,
+      ),
+    )
+    .toBe(false);
+  await recovery
+    .getByRole("button", { name: "Retry local save only", exact: true })
+    .click();
+  await expect(recovery).toHaveCount(0);
+  expect(calls).toBe(1);
+  await expect
+    .poll(async () => (await backup(page)).jobs[0]?.state)
+    .toBe("completed");
+  await other.close();
 });

@@ -685,6 +685,12 @@ The supported synthetic fixture contains 100 labels, the current meeting-schema 
 
 **Hosted roster closeout:** main `74a7149ef1beefbb50f4b43429910ec10491a6d6` passed [verify and publish run 43881632469](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/43881632469). Fresh production Chromium/WebKit profiles read that exact runtime build ID and passed **8/8** large-roster/untimed cases, including Chinese portrait, landscape, viewport-visible names and captions, keyboard activity states, unchanged evidence and no unexpected outside-origin requests. Audio state was simulated and no provider request was made. The original main worktree was synchronized by clean fast-forward; physical-device and native-audio limitations remain open.
 
+## Concurrent response recovery — 2026-11-16
+
+Three added regression contracts reproduced real recovery defects: an old receipt changed a newer running plan to paused; an identical already-saved receipt overwrote later accounting and added an unnecessary version; and local recovery ignored another tab's processing lock. The fix preserves advanced plans, makes identical-response recovery a no-op, and uses the existing meeting lock with `ifAvailable:true` before local saving. No provider retry, source replacement or new schema is introduced; the existing CAS write remains the no-Web-Locks fallback. An unsaved export copy is retained while another tab is active.
+
+**PASS:** all three contracts turned green; Node 22.23.3 lint, types/build, **458 unit tests**, SSOT 107 and artifact checks passed. The combined memo suite passed **30/30 Chromium/WebKit cases**, including two new cases with a real same-origin processing lock held by another page: recovery waits, retains its copy, then saves locally after release with exactly one mocked provider attempt. Both real-worker PWA update/recovery runs passed. No live provider requests or actual billing reconciliation occurred. Publication is checked after push.
+
 ## Optional Pi selective memo review — 2026-11-16
 
 Implemented the optional browser agent with pinned `@earendil-works/pi-agent-core`/`pi-ai` 1.5.2 and the dedicated Responses transport. Search/range tools operate on frozen revision references; no complete transcript is copied into a plan or initial prompt. Limits, billing uncertainty and remaining request count are shown before consent. Ordinary memo generation remains the default. See [the exact supported scope, delivery size, licensing and recovery limits](PI-MEMO-READINESS.md).

@@ -25,6 +25,19 @@ export function acknowledgeAgentExport(meetingId: string) {
 
 /** Save a known response locally; never repeat the provider request or overwrite a newer plan. */
 export async function recoverAgentReceipt(meetingId: string): Promise<Meeting> {
+  if (navigator.locks)
+    return navigator.locks.request(
+      `meeting-memo-job:${meetingId}`,
+      { ifAvailable: true },
+      (lock) => {
+        if (!lock) throw new Error("Another tab is processing this meeting.");
+        return saveAgentReceipt(meetingId);
+      },
+    );
+  return saveAgentReceipt(meetingId);
+}
+
+async function saveAgentReceipt(meetingId: string): Promise<Meeting> {
   const recovery = pending.get(meetingId);
   if (!recovery)
     throw new Error("No unsaved review response remains in this page.");
@@ -48,24 +61,38 @@ export async function recoverAgentReceipt(meetingId: string): Promise<Meeting> {
     throw new Error(
       "A different response is already saved for this request. Export this copy for review.",
     );
+  if (
+    existing.assistantRecord !== undefined &&
+    existing.assistantRecord === recovery.job.assistantRecord &&
+    existing.state === recovery.job.state
+  ) {
+    if (!recovery.wireResponse) pending.delete(meetingId);
+    changed();
+    return latest;
+  }
+  const atLastAttempt = plan.jobIds.at(-1) === recovery.job.id;
   const append =
     !!recovery.job.assistantRecord &&
     recovery.job.state === "completed" &&
-    plan.jobIds.at(-1) === recovery.job.id &&
+    atLastAttempt &&
     !plan.context.some(
       (item) => item.kind === "assistant" && item.jobId === recovery.job.id,
     );
-  const updated = {
-    ...plan,
-    state:
-      plan.state === "completed" ? ("completed" as const) : ("paused" as const),
-    context: append
-      ? [
-          ...plan.context,
-          { kind: "assistant" as const, jobId: recovery.job.id },
-        ]
-      : plan.context,
-  };
+  const updated = atLastAttempt
+    ? {
+        ...plan,
+        state:
+          plan.state === "completed"
+            ? ("completed" as const)
+            : ("paused" as const),
+        context: append
+          ? [
+              ...plan.context,
+              { kind: "assistant" as const, jobId: recovery.job.id },
+            ]
+          : plan.context,
+      }
+    : plan;
   const value = {
     ...latest,
     jobs: latest.jobs.map((job) =>

@@ -13,6 +13,7 @@ import {
   acknowledgeAgentExport,
   pendingAgentReceipt,
   recoverAgentReceipt,
+  retainAgentReceipt,
 } from "../src/jobs/agent-recovery";
 import * as repository from "../src/storage/repository";
 import { readBackup } from "../src/storage/backup";
@@ -509,4 +510,116 @@ test("oversized wire responses stop at the disclosed boundary without retrying o
   expect(latest.jobs[0].state).toBe("outcome_unknown");
   expect(latest.jobs[0].usage).toBeNull();
   expect(latest.memos).toEqual([]);
+});
+
+async function recoveryFixture(advanced = false) {
+  const { meeting, plan } = await setup();
+  const jobId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const job: Meeting["jobs"][number] = {
+    id: jobId,
+    agentId: plan.id,
+    stage: "memo",
+    stepIndex: 0,
+    state: "outcome_unknown",
+    billing: "possibly_charged",
+    provider: "openai",
+    model: selection.model,
+    inputRevision: 1,
+    outputLanguage: plan.outputLanguage,
+    createdAt: now,
+    updatedAt: now,
+    requestId: null,
+    message: "Previous uncertain attempt",
+  };
+  const next = {
+    ...job,
+    id: crypto.randomUUID(),
+    stepIndex: 1,
+    state: "in_flight" as const,
+    message: "New explicit attempt is active",
+  };
+  const record = JSON.stringify({
+    role: "assistant",
+    api: "openai-responses",
+    provider: "openai",
+    model: selection.model,
+    timestamp: Date.now(),
+    content: [],
+    usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 },
+    stopReason: "stop",
+  });
+  const current = await saveMeeting({
+    ...meeting,
+    schemaVersion: 2,
+    memoAgents: [
+      {
+        ...plan,
+        jobIds: advanced ? [jobId, next.id] : [jobId],
+        state: "running",
+      },
+    ],
+    jobs: advanced ? [job, next] : [job],
+  });
+  const recovered = {
+    ...job,
+    state: "completed" as const,
+    assistantRecord: record,
+    reportedCostUsd: null,
+  };
+  retainAgentReceipt({
+    meetingId: meeting.id,
+    agentId: plan.id,
+    job: recovered,
+  });
+  return { current, recovered };
+}
+
+test("late receipt recovery never pauses or replaces a newer running plan", async () => {
+  const { current, recovered } = await recoveryFixture(true);
+  const forbidden = vi.fn();
+  vi.stubGlobal("fetch", forbidden);
+  const saved = await recoverAgentReceipt(current.id);
+  expect(saved.jobs[0].assistantRecord).toBe(recovered.assistantRecord);
+  expect(saved.jobs[0].state).toBe("completed");
+  expect(saved.jobs[1]).toEqual(current.jobs[1]);
+  expect(saved.memoAgents).toEqual(current.memoAgents);
+  expect(forbidden).not.toHaveBeenCalled();
+});
+
+test("idempotent receipt recovery preserves later accounting and makes no extra write", async () => {
+  const { current, recovered } = await recoveryFixture();
+  const newer = await saveMeeting({
+    ...current,
+    jobs: [
+      {
+        ...recovered,
+        billing: "provider_reported",
+        reportedCostUsd: 0.012,
+        message: "Later reconciled provider report",
+      },
+    ],
+  });
+  const saved = await recoverAgentReceipt(current.id);
+  expect(saved).toEqual(newer);
+  expect(saved.version).toBe(newer.version);
+  expect(pendingAgentReceipt(current.id)).toBeUndefined();
+});
+
+test("local receipt recovery respects another tab's processing lock and retains its export copy", async () => {
+  const { current } = await recoveryFixture();
+  vi.stubGlobal("navigator", {
+    locks: {
+      request: async (
+        _name: string,
+        _options: object,
+        callback: (lock: null) => Promise<Meeting>,
+      ) => callback(null),
+    },
+  });
+  await expect(recoverAgentReceipt(current.id)).rejects.toThrow(
+    "Another tab is processing this meeting.",
+  );
+  expect(await getMeeting(current.id)).toEqual(current);
+  expect(pendingAgentReceipt(current.id)).toBeDefined();
 });
