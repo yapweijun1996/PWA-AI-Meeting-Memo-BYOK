@@ -1,3 +1,4 @@
+import { Button } from "./components/controls";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
@@ -22,7 +23,7 @@ class ErrorBoundary extends React.Component<
           Your local data has not been deleted. Reload to try again; avoid
           clearing browser data before backing up your meetings.
         </p>
-        <button onClick={() => location.reload()}>Reload workspace</button>
+        <Button onClick={() => location.reload()}>Reload workspace</Button>
       </main>
     ) : (
       this.props.children

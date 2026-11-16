@@ -1,4 +1,5 @@
-import { Check } from "lucide-react";
+import { Button, IconButton, Field, Tabs, Tab } from "../src/components/controls";
+import { Check, X } from "lucide-react";
 import { Icon, ICON_SIZES, type IconSize } from "../src/components/Icon";
 import { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -18,6 +19,11 @@ const editorInitial = "The next review step is documented here.\nSelect a line a
 
 function Catalogue() {
   const [modalOpen, setModalOpen] = useState(false);
+  const [controlPending, setControlPending] = useState(false);
+  const [controlCount, setControlCount] = useState(0);
+  const [controlDraft, setControlDraft] = useState("Local draft");
+  const [controlTab, setControlTab] = useState("first");
+  const [blockTabs, setBlockTabs] = useState(false);
   const [loading, setLoading] = useState(false);
   const [editorValue, setEditorValue] = useState(editorInitial);
   const [editorDirty, setEditorDirty] = useState(false);
@@ -83,11 +89,11 @@ function Catalogue() {
           <section className="catalogue-card" aria-labelledby="dialog-title">
             <div className="catalogue-section-heading"><div><p className="catalogue-kicker">src/components/ui.tsx</p><h2 id="dialog-title">Native dialog</h2></div></div>
             <p className="catalogue-copy">The shared wrapper opens a native modal dialog and focuses its marked target.</p>
-            <button type="button" className="button primary" data-modal-opener onClick={event => { event.currentTarget.focus(); setModalOpen(true); }}>Open sample dialog</button>
+            <Button type="button" className="button primary" data-modal-opener onClick={event => { event.currentTarget.focus(); setModalOpen(true); }}>Open sample dialog</Button>
             {modalOpen && <Modal title="Component sample" onClose={() => setModalOpen(false)} className="catalogue-dialog">
               <div className="modal-body">
               <p>This dialog has no persistent draft. Escape or close it to dismiss it.</p>
-                <button type="button" className="button secondary" data-initial-focus>Focused on open</button>
+                <Button type="button" className="button secondary" data-initial-focus>Focused on open</Button>
               </div>
             </Modal>}
           </section>
@@ -95,13 +101,13 @@ function Catalogue() {
           <section className="catalogue-card" aria-labelledby="tooltip-title">
             <div className="catalogue-section-heading"><div><p className="catalogue-kicker">src/components/TooltipLayer.tsx</p><h2 id="tooltip-title">Keyboard hint</h2></div></div>
             <p className="catalogue-copy">Tab to the control. Escape dismisses the hint; its accessible name stays on the button.</p>
-            <button type="button" className="text-button" data-tooltip="A short keyboard and pointer hint.">Focus for a tooltip</button>
+            <Button type="button" className="text-button" data-tooltip="A short keyboard and pointer hint.">Focus for a tooltip</Button>
           </section>
 
           <section className="catalogue-card" aria-labelledby="toast-title">
             <div className="catalogue-section-heading"><div><p className="catalogue-kicker">src/components/ToastLayer.tsx</p><h2 id="toast-title">Transient status</h2></div></div>
             <p className="catalogue-copy">A local event demonstrates the shared polite status and its dismiss control.</p>
-            <button type="button" className="button secondary" onClick={() => showToast("Local preview saved in memory.")}>Show a status toast</button>
+            <Button type="button" className="button secondary" onClick={() => showToast("Local preview saved in memory.")}>Show a status toast</Button>
           </section>
 
           <section className="catalogue-card" aria-labelledby="empty-title">
@@ -115,8 +121,32 @@ function Catalogue() {
           <section className="catalogue-card" aria-labelledby="loading-title">
             <div className="catalogue-section-heading"><div><p className="catalogue-kicker">src/components/LoadingPlaceholder.tsx</p><h2 id="loading-title">Loading state</h2></div></div>
             <p className="catalogue-copy">A short local transition displays the library placeholder while its preview state is loading.</p>
-            <button type="button" className="button secondary" onClick={simulateLocalLoad} disabled={loading}>Simulate local loading</button>
+            <Button type="button" className="button secondary" onClick={simulateLocalLoad} disabled={loading}>Simulate local loading</Button>
             {loading && <LoadingPlaceholder kind="library" label="Loading local catalogue preview" />}
+          </section>
+
+          <section className="catalogue-card catalogue-card--wide" aria-labelledby="controls-title">
+            <div className="catalogue-section-heading"><div><p className="catalogue-kicker">src/components/controls.tsx</p><h2 id="controls-title">Shared controls</h2></div></div>
+            <Field label="Synthetic shared field" hint="This draft stays in this tab" error={controlDraft ? undefined : "Enter a synthetic value"}>
+              <input value={controlDraft} onChange={event => setControlDraft(event.target.value)} />
+            </Field>
+            <div className="catalogue-actions">
+              <Button className="button primary" pending={controlPending} onClick={() => {
+                setControlCount(count => count + 1); setControlPending(true);
+                setTimeout(() => setControlPending(false), 300);
+              }}>Run synthetic operation</Button>
+              <IconButton label="Clear synthetic field" onClick={() => setControlDraft("")}><Icon glyph={X} size="transport" /></IconButton>
+              <span role="status">Synthetic operation count: {controlCount}</span>
+            </div>
+            <label><input type="checkbox" checked={blockTabs} onChange={event => setBlockTabs(event.target.checked)} /> Block synthetic tab changes</label>
+            <Tabs className="settings-tabs" label="Synthetic shared tabs" onValueChange={value => {
+              if (blockTabs) return false;
+              setControlTab(value);
+            }}>
+              {["first", "second", "disabled"].map(value => <Tab key={value} value={value} selected={controlTab === value} disabled={value === "disabled"}
+                id={`control-tab-${value}`} aria-controls={`control-panel-${value}`}>{value} control tab</Tab>)}
+            </Tabs>
+            {["first", "second", "disabled"].map(value => <div key={value} role="tabpanel" id={`control-panel-${value}`} aria-labelledby={`control-tab-${value}`} hidden={controlTab !== value}>{value} synthetic panel</div>)}
           </section>
 
           <section className="catalogue-card" aria-labelledby="icon-title">

@@ -1,3 +1,4 @@
+import { Button } from "./controls";
 import { Icon } from "./Icon";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -20,5 +21,5 @@ export function ToastLayer() {
     window.addEventListener(eventName, receive);
     return () => { window.removeEventListener(eventName, receive); if (timer.current) clearTimeout(timer.current); };
   }, []);
-  return message ? createPortal(<div className="toast-layer" role="status" aria-live="polite"><Icon glyph={CheckCircle2} size="control" aria-hidden="true" /><span>{message}</span><button type="button" aria-label={translateUi(language, "Dismiss notification", "\u5173\u95ed\u63d0\u793a")} onClick={() => setMessage("")}><Icon glyph={X} size="inline" /></button></div>, document.body) : null;
+  return message ? createPortal(<div className="toast-layer" role="status" aria-live="polite"><Icon glyph={CheckCircle2} size="control" aria-hidden="true" /><span>{message}</span><Button type="button" aria-label={translateUi(language, "Dismiss notification", "\u5173\u95ed\u63d0\u793a")} onClick={() => setMessage("")}><Icon glyph={X} size="inline" /></Button></div>, document.body) : null;
 }

@@ -1,3 +1,4 @@
+import { Button } from "../components/controls";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 type Props = {
@@ -104,7 +105,7 @@ export function MemoEditorField({ label, value, disabled, failureText, showTools
       }}
       onBlur={() => void flush()}
     />
-    {showTools && <div className="memo-text-tools"><button type="button" className="text-button small" disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => insertPrefix("# ")}>{headingText}</button><button type="button" className="text-button small" disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => insertPrefix("- ")}>{bulletText}</button></div>}
+    {showTools && <div className="memo-text-tools"><Button type="button" className="text-button small" disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => insertPrefix("# ")}>{headingText}</Button><Button type="button" className="text-button small" disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => insertPrefix("- ")}>{bulletText}</Button></div>}
     {failed && <span role="status" data-memo-save-error="true" className="small danger-text">{failureText}</span>}
   </>;
 }

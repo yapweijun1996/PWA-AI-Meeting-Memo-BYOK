@@ -1,3 +1,4 @@
+import { Button } from "../components/controls";
 import { useRef, useState } from "react";
 import { formatBytes, scanStorage, type MeetingStorageRow, type StorageReport } from "../storage/storage-report";
 
@@ -85,9 +86,9 @@ export function StorageMonitor({ t }: { t: Translate }) {
           "显示此应用保存在浏览器 IndexedDB 中的内容。只读：不会修改或删除任何内容，也不会读取服务商密钥。大小为估算值。",
         )}
       </p>
-      <button className="button secondary" disabled={state === "scanning"} onClick={() => void scan()}>
+      <Button className="button secondary" disabled={state === "scanning"} onClick={() => void scan()}>
         {state === "scanning" ? t(`Scanning ${progress}`, `正在扫描 ${progress}`) : report ? t("Scan again", "重新扫描") : t("Scan storage", "扫描存储")}
-      </button>
+      </Button>
       {state === "error" && (
         <p className="notice" role="alert">
           {t("Storage could not be read. Close other tabs of this app and try again.", "无法读取存储。请关闭此应用的其他标签页后重试。")}

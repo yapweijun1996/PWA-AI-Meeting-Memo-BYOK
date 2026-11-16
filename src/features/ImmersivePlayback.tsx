@@ -1,3 +1,4 @@
+import { Button } from "../components/controls";
 import { Icon } from "../components/Icon";
 import { SpeakerAvatar, useSpeakerAvatars } from "../components/SpeakerAvatar";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
@@ -303,27 +304,27 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
   const suspend = () => { setPage(start); setFollow(false); };
   const jumpToCurrent = () => { setSearch(""); setFollow(true); };
   return <>
-    <button ref={opener} type="button" className="button secondary compact" onClick={enter}><Icon glyph={Maximize2} size="compact" /> {t("Immersive playback", "沉浸式播放")}</button>
+    <Button ref={opener} type="button" className="button secondary compact" onClick={enter}><Icon glyph={Maximize2} size="compact" /> {t("Immersive playback", "沉浸式播放")}</Button>
     <div ref={host} hidden={!open} className="immersive" role="dialog" aria-modal="true" aria-label={t("Immersive playback", "沉浸式播放")}>
       {open && <>
-        <header ref={header} hidden={!controlsVisible} className="immersive-header"><strong>MeetingMemo</strong><span aria-label={t("Meeting title", "会议标题")}>{meeting.title}</span><button className="immersive-fullscreen-toggle" type="button" onClick={toggleFullscreen} aria-label={fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Enter full screen", "\u8fdb\u5165\u5168\u5c4f")}>{fullscreenActive ? <Icon glyph={Minimize2} size="status" /> : <Icon glyph={Maximize2} size="status" />}<span className="immersive-fullscreen-label">{fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Full screen", "\u5168\u5c4f")}</span></button><button className="immersive-exit-button" ref={exitButton} type="button" onClick={close} aria-label={t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}><Icon glyph={Minimize2} size="status" /><span className="immersive-exit-label">{t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}</span></button></header>
+        <header ref={header} hidden={!controlsVisible} className="immersive-header"><strong>MeetingMemo</strong><span aria-label={t("Meeting title", "会议标题")}>{meeting.title}</span><Button className="immersive-fullscreen-toggle" type="button" onClick={toggleFullscreen} aria-label={fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Enter full screen", "\u8fdb\u5165\u5168\u5c4f")}>{fullscreenActive ? <Icon glyph={Minimize2} size="status" /> : <Icon glyph={Maximize2} size="status" />}<span className="immersive-fullscreen-label">{fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Full screen", "\u5168\u5c4f")}</span></Button><Button className="immersive-exit-button" ref={exitButton} type="button" onClick={close} aria-label={t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}><Icon glyph={Minimize2} size="status" /><span className="immersive-exit-label">{t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}</span></Button></header>
         {fallback && <p className="immersive-fallback" role="status">{t("Full screen is unavailable; using the in-page view.", "无法使用全屏，正在使用页面内视图。")}</p>}
         {controlError && <p className="immersive-fallback" role="alert">{t("Playback could not start.", "无法开始播放。")}</p>}
         <div className="immersive-content">
           <section ref={stage} tabIndex={0} className="immersive-stage" data-cinematic={showTable && !controlsVisible && !panel && !showRoster} aria-label={t("Speaker and captions", "说话人和字幕")} aria-describedby="immersive-keyboard-help">
             <div ref={rosterBar} hidden={!controlsVisible} className="immersive-roster-bar">
               <span>{meeting.speakers.length} {t("speaker labels", "个说话人标签")}</span>
-              <button type="button" aria-expanded={showRoster} aria-controls="immersive-roster" onClick={() => setShowRoster(!showRoster)}>{showRoster ? t("Hide labels", "隐藏标签") : t("View labels", "查看标签")}</button>
+              <Button type="button" aria-expanded={showRoster} aria-controls="immersive-roster" onClick={() => setShowRoster(!showRoster)}>{showRoster ? t("Hide labels", "隐藏标签") : t("View labels", "查看标签")}</Button>
               {tableAvailable && <div className="immersive-speaker-layout" role="group" aria-label={t("Speaker layout", "说话人布局")}>
-                <button type="button" aria-pressed={!showTable} onClick={() => setSpeakerLayout("single")}>{t("Single", "单人")}</button>
-                <button type="button" aria-pressed={showTable} onClick={() => setSpeakerLayout("table")}>{t("Table", "会议桌")}</button>
+                <Button type="button" aria-pressed={!showTable} onClick={() => setSpeakerLayout("single")}>{t("Single", "单人")}</Button>
+                <Button type="button" aria-pressed={showTable} onClick={() => setSpeakerLayout("table")}>{t("Table", "会议桌")}</Button>
               </div>}
             </div>
             <div id="immersive-roster" className="immersive-roster" hidden={!showRoster} aria-label={t("Speaker labels", "说话人标签")}>
               {meeting.speakers.map((speaker) => <div className="immersive-person" key={speaker.id} data-active={playing && status === "playing" && activeIds.has(speaker.id)} data-position={activeIds.has(speaker.id)}>
                 <strong>{speaker.name}</strong><span>{speaker.confirmed ? t("Name confirmed", "姓名已确认") : t("Unconfirmed", "未确认")}</span>
               </div>)}
-              <button type="button" onClick={() => { close(); onEditSpeakers(); }}>{t("Edit speakers", "编辑说话人")}</button>
+              <Button type="button" onClick={() => { close(); onEditSpeakers(); }}>{t("Edit speakers", "编辑说话人")}</Button>
             </div>
             {showTable ? <div className="immersive-table-speakers" data-count={meeting.speakers.length} data-glow-seat={glowSeat >= 0 ? glowSeat : undefined} role="group" tabIndex={0} aria-label={t("Meeting speaker labels", "会议说话人标签")}>
               {meeting.speakers.map((speaker) => {
@@ -360,35 +361,35 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
             </p>)}</div></div>}
           </section>
           {panel && <aside className="immersive-transcript" aria-label={t("Transcript", "转录")} style={{ "--transcript-width": `${panelWidth}%` } as CSSProperties}>
-            <div className="immersive-panel-head"><h2>{t("Transcript", "转录")}</h2><button type="button" onClick={() => { setPanel(false); transcriptToggle.current?.focus(); }} aria-label={t("Close transcript", "关闭转录")}>×</button></div>
+            <div className="immersive-panel-head"><h2>{t("Transcript", "转录")}</h2><Button type="button" onClick={() => { setPanel(false); transcriptToggle.current?.focus(); }} aria-label={t("Close transcript", "关闭转录")}>×</Button></div>
             <label className="immersive-panel-width">{t("Panel width", "面板宽度")} <input type="range" aria-label={t("Transcript panel width", "转录面板宽度")} aria-valuetext={`${panelWidth}%`} min="25" max="45" step="1" value={panelWidth} onChange={(event) => setPanelWidth(Number(event.target.value))} /><span>{panelWidth}%</span></label>
             <label className="immersive-search"><span>{t("Search transcript", "搜索转录")}</span><input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); setUntimedPage(0); setFollow(false); }} placeholder={t("Search text or speaker", "搜索文字或说话人")} /></label>
-            <div className="immersive-follow-row"><p className="immersive-follow-status">{follow && !searchTerm ? t("Following playback", "正在跟随播放") : searchTerm ? t("Search results · follow paused", "搜索结果 · 跟随已暂停") : t("Follow paused", "跟随已暂停")}</p><button type="button" onClick={jumpToCurrent}>{t("Jump to current", "跳至当前位置")}</button></div>
+            <div className="immersive-follow-row"><p className="immersive-follow-status">{follow && !searchTerm ? t("Following playback", "正在跟随播放") : searchTerm ? t("Search results · follow paused", "搜索结果 · 跟随已暂停") : t("Follow paused", "跟随已暂停")}</p><Button type="button" onClick={jumpToCurrent}>{t("Jump to current", "跳至当前位置")}</Button></div>
             <div ref={transcript} className="immersive-transcript-list" onWheel={suspend} onTouchMove={suspend} onPointerDown={suspend} onKeyDown={suspend} tabIndex={0}>
-              {visible.map((caption) => <button key={caption.id} type="button" data-immersive-caption={caption.id} className={current.includes(caption) ? "is-current" : ""} onClick={() => { suspend(); onSeek(caption.start); }}>
+              {visible.map((caption) => <Button key={caption.id} type="button" data-immersive-caption={caption.id} className={current.includes(caption) ? "is-current" : ""} onClick={() => { suspend(); onSeek(caption.start); }}>
                 <span className="immersive-row-meta"><span>{formatTime(caption.start)}</span><strong>{caption.speakerIds.length ? speakerName(meeting, caption.speakerIds) : t("Unknown speaker", "未知说话人")}</strong></span>
                 <span>{caption.fragments.map((fragment, index) => <span key={fragment.id} className={fragmentsAtTime([fragment], exact).length ? "is-current-fragment" : undefined}>{index > 0 && joinedText([caption.fragments[index - 1].text, fragment.text]) !== caption.fragments[index - 1].text + fragment.text ? " " : ""}{fragment.text}</span>)}</span>
-              </button>)}
+              </Button>)}
               {searchTerm && !matchingCaptions.length && <p className="immersive-empty">{matchingUntimed.length ? t("No timed captions match.", "没有匹配的带时间字幕。") : t("No transcript matches.", "没有匹配的转录。")}</p>}
             </div>
               {matchingUntimed.length > 0 && <details className="immersive-untimed" open={searchTerm ? true : undefined}><summary><span>{t("Timing unavailable", "时间不可用")}</span> ({matchingUntimed.length})</summary>{matchingUntimed.slice(untimedPage, untimedPage + 40).map((segment) => <p key={segment.id}>{segment.speakerIds.length ? speakerName(meeting, segment.speakerIds) : t("Unknown speaker", "未知说话人")}: {segment.text}</p>)}
-                {matchingUntimed.length > 40 && <div><button type="button" disabled={untimedPage === 0} onClick={() => setUntimedPage(Math.max(0, untimedPage - 40))}>{t("Earlier untimed", "较早的无时间片段")}</button><button type="button" disabled={untimedPage + 40 >= matchingUntimed.length} onClick={() => setUntimedPage(untimedPage + 40)}>{t("Later untimed", "较晚的无时间片段")}</button></div>}
+                {matchingUntimed.length > 40 && <div><Button type="button" disabled={untimedPage === 0} onClick={() => setUntimedPage(Math.max(0, untimedPage - 40))}>{t("Earlier untimed", "较早的无时间片段")}</Button><Button type="button" disabled={untimedPage + 40 >= matchingUntimed.length} onClick={() => setUntimedPage(untimedPage + 40)}>{t("Later untimed", "较晚的无时间片段")}</Button></div>}
               </details>}
-            <div className="immersive-paging"><button type="button" disabled={start === 0} onClick={() => { setFollow(false); setPage(Math.max(0, start - 40)); }}>{t("Earlier", "更早")}</button><span>{t("Caption groups", "字幕组")} {matchingCaptions.length ? start + 1 : 0}–{Math.min(start + 40, matchingCaptions.length)} {t("of", "/")} {matchingCaptions.length}</span><button type="button" disabled={start + 40 >= matchingCaptions.length} onClick={() => { setFollow(false); setPage(start + 40); }}>{t("Later", "更晚")}</button></div>
+            <div className="immersive-paging"><Button type="button" disabled={start === 0} onClick={() => { setFollow(false); setPage(Math.max(0, start - 40)); }}>{t("Earlier", "更早")}</Button><span>{t("Caption groups", "字幕组")} {matchingCaptions.length ? start + 1 : 0}–{Math.min(start + 40, matchingCaptions.length)} {t("of", "/")} {matchingCaptions.length}</span><Button type="button" disabled={start + 40 >= matchingCaptions.length} onClick={() => { setFollow(false); setPage(start + 40); }}>{t("Later", "更晚")}</Button></div>
           </aside>}
         </div>
         <footer ref={controls} hidden={!controlsVisible} className="immersive-controls">
           <div className="immersive-timeline"><span>{formatTime(position)}</span><input type="range" aria-label={t("Playback position", "播放位置")} min="0" max={duration || 1} step="0.1" value={Math.min(position, duration || 1)} onChange={(event) => onSeek(Number(event.target.value))} /><span>{formatTime(duration)}</span></div>
           <div className="immersive-control-row">
-          <button type="button" onClick={() => { void onTogglePlayback().then(() => setControlError(false)).catch(() => setControlError(true)); }} aria-label={playing ? t("Pause audio", "暂停录音") : t("Play audio", "播放录音")}>{playing ? <Icon glyph={Pause} size="transport" /> : <Icon glyph={Play} size="transport" />}</button>
-          <button type="button" onClick={() => onSeek(Math.max(0, position - 15))} aria-label={t("Back 15 seconds", "后退15秒")}><Icon glyph={RotateCcw} size="control" /> 15</button>
-          <button type="button" onClick={() => onSeek(Math.min(duration, position + 15))} aria-label={t("Forward 15 seconds", "前进15秒")}><Icon glyph={RotateCw} size="control" /> 15</button>
+          <Button type="button" onClick={() => { void onTogglePlayback().then(() => setControlError(false)).catch(() => setControlError(true)); }} aria-label={playing ? t("Pause audio", "暂停录音") : t("Play audio", "播放录音")}>{playing ? <Icon glyph={Pause} size="transport" /> : <Icon glyph={Play} size="transport" />}</Button>
+          <Button type="button" onClick={() => onSeek(Math.max(0, position - 15))} aria-label={t("Back 15 seconds", "后退15秒")}><Icon glyph={RotateCcw} size="control" /> 15</Button>
+          <Button type="button" onClick={() => onSeek(Math.min(duration, position + 15))} aria-label={t("Forward 15 seconds", "前进15秒")}><Icon glyph={RotateCw} size="control" /> 15</Button>
           <select aria-label={t("Playback speed", "播放速度")} value={String(rate)} onChange={(event) => onChangeRate(Number(event.target.value))}>{[0.75, 1, 1.25, 1.5, 2].map((value) => <option key={value} value={value}>{value}×</option>)}</select>
-          <button type="button" aria-pressed={showCaptions} onClick={() => setShowCaptions(!showCaptions)}>{t("Captions", "字幕")}</button>
+          <Button type="button" aria-pressed={showCaptions} onClick={() => setShowCaptions(!showCaptions)}>{t("Captions", "字幕")}</Button>
           <select aria-label={t("Caption size", "字幕大小")} value={size} onChange={(event) => setSize(event.target.value)}><option value="normal">{t("Normal", "标准")}</option><option value="large">{t("Large", "大")}</option><option value="xlarge">{t("Extra large", "特大")}</option></select>
           <div className="immersive-view-mode" role="group" aria-label={t("View mode", "查看模式")}>
-            <button type="button" aria-pressed={!panel} onClick={() => setPanel(false)}>{t("Focus", "专注")}</button>
-            <button ref={transcriptToggle} type="button" aria-pressed={panel} onClick={() => setPanel(true)}>{t("Reading", "阅读")}</button>
+            <Button type="button" aria-pressed={!panel} onClick={() => setPanel(false)}>{t("Focus", "专注")}</Button>
+            <Button ref={transcriptToggle} type="button" aria-pressed={panel} onClick={() => setPanel(true)}>{t("Reading", "阅读")}</Button>
           </div>
           </div>
           <p id="immersive-keyboard-help" className="immersive-keyboard-help">{t("Focus the stage: Space plays or pauses; arrow keys skip 5 seconds.", "聚焦舞台后：空格播放或暂停；方向键跳转 5 秒。")}</p>

@@ -701,6 +701,9 @@ for (const language of ["en", "zh-CN"] as const) {
     // Legal evidence stays pinned: a model change must trigger a new licence review.
     expect(reviewedConversion).toBe(`https://huggingface.co/${ACOUSTIC_POLICY.modelId}/blob/${ACOUSTIC_POLICY.modelRevision}/README.md`);
     const windowsWebKit = browserName === "webkit" && process.platform === "win32";
+    // Safari on macOS uses Option-Tab for full webpage-item traversal by default.
+    // https://support.apple.com/guide/safari/keyboard-shortcuts-and-gestures-cpsh003/mac
+    const nextItemKey = browserName === "webkit" && process.platform === "darwin" ? "Alt+Tab" : "Tab";
     if (windowsWebKit) {
       test.info().annotations.push({ type: "coverage-gap", description: "Windows WebKit: focused-anchor Enter activation only; sequential Tab reachability remains unverified. Prior failed navigation traces are retained in the REL03 evidence." });
     }
@@ -776,7 +779,7 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(link).toHaveAttribute("rel", "noopener noreferrer");
         // Explicit focus proves activation only in Windows WebKit, never sequential Tab reachability.
         if (windowsWebKit) await link.focus();
-        else await page.keyboard.press("Tab");
+        else await page.keyboard.press(nextItemKey);
         await expect(link).toBeFocused();
         const beforeActivation = activations.length;
         expectedSource = href;
@@ -794,17 +797,17 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(link).toBeFocused();
       }
       if (local) {
-        await page.keyboard.press("Tab");
+        await page.keyboard.press(nextItemKey);
         await expect(dialog.getByRole("spinbutton")).toBeFocused();
       }
-      await page.keyboard.press("Tab");
+      await page.keyboard.press(nextItemKey);
       const cancel = dialog.getByRole("button", { name: label("Cancel", "取消"), exact: true });
       await expect(cancel).toBeFocused();
       await expect(cancel).toBeInViewport({ ratio: 1 });
       const confirmation = dialog.getByRole("button", { name: local ? label("Download and analyze locally", "下载并在本地分析") : label("Confirm and send 2 requests", "确认并发送 2 次请求"), exact: true });
       await expect(confirmation).toBeInViewport({ ratio: 1 });
       if (local) {
-        await page.keyboard.press("Tab");
+        await page.keyboard.press(nextItemKey);
         await expect(confirmation).toBeFocused();
       }
       expect(outgoing).toEqual([]);

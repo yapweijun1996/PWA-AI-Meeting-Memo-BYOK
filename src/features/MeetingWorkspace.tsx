@@ -1,3 +1,4 @@
+import { Button, Tabs, Tab } from "../components/controls";
 import { previewHistoryCleanup } from "../domain/history-cleanup";
 import { Icon } from "../components/Icon";
 import { memoLanguageName, type MemoOutputLanguage } from "../domain/memo-language";
@@ -911,7 +912,7 @@ export function MeetingWorkspace({
           </p>
         </div>
         <div className="heading-actions">
-          <button
+          <Button
             className="icon-button"
             aria-label={t("Edit meeting details", "编辑会议资料")}
             data-tooltip={t("Edit meeting details", "编辑会议资料")}
@@ -919,7 +920,7 @@ export function MeetingWorkspace({
             disabled={locked}
           >
             <Icon glyph={Settings} size="navigation" />
-          </button>
+          </Button>
           <details className="export-menu">
             <summary className="button secondary">
               <Icon glyph={Download} size="inline" />
@@ -928,7 +929,7 @@ export function MeetingWorkspace({
             </summary>
             <div>
               {(["md", "txt", "json", "zip"] as const).map((f) => (
-                <button
+                <Button
                   key={f}
                   onClick={(e) => {
                     e.currentTarget.closest("details")?.removeAttribute("open");
@@ -940,11 +941,11 @@ export function MeetingWorkspace({
                     : f === "json"
                       ? t("Meeting JSON (no audio)", "会议 JSON（不含录音）")
                       : `${f.toUpperCase()} ${t("notes", "笔记")}`}
-                </button>
+                </Button>
               ))}
             </div>
           </details>
-          <button
+          <Button
             className="icon-button danger-text"
             aria-label={t("Delete meeting", "删除会议")}
             data-tooltip={t("Delete meeting and local recording", "删除会议及本地录音")}
@@ -964,7 +965,7 @@ export function MeetingWorkspace({
             }}
           >
             <Icon glyph={Trash2} size="control" />
-          </button>
+          </Button>
         </div>
       </section>
       <div className="workspace-toolbar">
@@ -1002,7 +1003,7 @@ export function MeetingWorkspace({
               onChange={(e) => void attach(e.target.files?.[0])}
             />
           </label>
-          <button
+          <Button
             className="button primary compact"
             data-tooltip={
               m.segments.length > 0
@@ -1019,15 +1020,15 @@ export function MeetingWorkspace({
             {m.audio?.chunked && chunkProgress && chunkProgress.done > 0 && chunkProgress.done < chunkProgress.total
               ? t(`Resume transcription (${chunkProgress.done} of ${chunkProgress.total} parts done)`, `恢复转录（已完成 ${chunkProgress.done}/${chunkProgress.total} 部分）`)
               : t("Transcribe", "转录")}
-          </button>
+          </Button>
           {m.audio?.present && m.segments.length > 0 && (
-            <button
+            <Button
               className="button secondary compact"
               onClick={() => setAcousticConfirm(true)}
               disabled={locked || audioMissing || (m.audio.chunked ? !chunkManifest : !url)}
             >
               {t("Auto-match voices", "自动关联声音")}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -1042,13 +1043,13 @@ export function MeetingWorkspace({
           <span>
             {t("An unfinished request is recorded. It may be active in another tab or already billable.", "存在未完成的请求。请求可能仍在其他标签页运行或已经产生费用。")}
           </span>
-          <button
+          <Button
             className="button secondary compact"
             onClick={() => void markInterrupted()}
           >
             {t("Review interruption", "检查中断")}
-          </button>
-          <button
+          </Button>
+          <Button
             className="text-button"
             onClick={async () => {
               const latest = await getMeeting(m.id);
@@ -1056,7 +1057,7 @@ export function MeetingWorkspace({
             }}
           >
             {t("Reload state", "重新加载状态")}
-          </button>
+          </Button>
         </div>
       )}
       {processing && (
@@ -1074,15 +1075,18 @@ export function MeetingWorkspace({
               {processingKind === "local" ? t("Running on this device; model download may need a connection.", "\u5728\u672c\u8bbe\u5907\u5904\u7406\uff1b\u4e0b\u8f7d\u6a21\u578b\u53ef\u80fd\u9700\u8981\u7f51\u7edc\u3002") : t("Sending or waiting for your provider · Time depends on the request", "正在发送或等待服务商 · 所需时间取决于请求")}
             </span>
           </div>
-          <button
+          <Button
             className="button secondary compact"
             onClick={cancelProcessing}
           >
             {t("Stop waiting", "停止等待")}
-          </button>
+          </Button>
         </section>
       )}
-      <div className="workspace-tabs" role="tablist" aria-label={t("Meeting views", "会议视图")}>
+      <Tabs className="workspace-tabs" label={t("Meeting views", "会议视图")} onValueChange={value => {
+        if (dirtyMemoItems.size > 0) { onError(t("Wait for note changes to save before changing views.", "切换视图前请等待笔记更改保存。")); return false; }
+        return navigateTab(value);
+      }}>
         {[
           ["transcript", t("Transcript", "转录"), FileText, m.segments.length],
           ["speakers", t("Speakers", "说话人"), Users, m.speakers.length],
@@ -1097,28 +1101,25 @@ export function MeetingWorkspace({
                 : t("items", "项");
           const accessibleLabel = `${String(label)}, ${String(count)} ${unit}`;
           return (
-            <button
+            <Tab
               key={String(value)}
-              role="tab"
-              aria-selected={tab === value}
+              value={String(value)}
+              selected={tab === value}
               aria-label={accessibleLabel}
               data-tooltip={accessibleLabel}
-              onClick={() => {
-                if (dirtyMemoItems.size > 0) { onError(t("Wait for note changes to save before changing views.", "切换视图前请等待笔记更改保存。")); return; }
-                navigateTab(String(value));
-              }}
+
             >
               <Icon glyph={Glyph} size="status" />
               {String(label)}
               <span aria-hidden="true">{String(count)}</span>
-            </button>
+            </Tab>
           );
         })}
         <span className="save-state">
           <span className="status-dot" />
           {saving ? t("Saving…", "正在保存…") : dirtyMemoItems.size ? t("Unsaved changes", "更改尚未保存") : t("Saved locally", "已保存在本地")}
         </span>
-      </div>
+      </Tabs>
       {tab === "transcript" && (
         <section className="workspace-panel transcript-panel">
           <header className="panel-toolbar">
@@ -1143,22 +1144,22 @@ export function MeetingWorkspace({
                 <option value="unknown">{t("Unknown speaker", "未知说话人")}</option>
                 {m.speakers.map((speaker) => <option key={speaker.id} value={speaker.id}>{speaker.name}</option>)}
               </select>
-              <button
+              <Button
                 className="button secondary compact"
                 disabled={locked || !m.undo.length}
                 onClick={() => void change(undoEdit)}
               >
                 <Icon glyph={Undo2} size="compact" />
                 {t("Undo", "撤销")}
-              </button>
-              <button
+              </Button>
+              <Button
                 className="button secondary compact"
                 onClick={() => setAddText(true)}
                 disabled={locked}
               >
                 <Icon glyph={Plus} size="compact" />
                 {t("Add transcript", "添加转录")}
-              </button>
+              </Button>
             </div>
           </header>
           {selected.length > 0 && (
@@ -1177,7 +1178,7 @@ export function MeetingWorkspace({
                   </option>
                 ))}
               </select>
-              <button
+              <Button
                 className="button primary compact"
                 disabled={!assignment || locked}
                 onClick={async () => {
@@ -1198,10 +1199,10 @@ export function MeetingWorkspace({
                 }}
               >
                 {t("Preview & assign", "预览并分配")}
-              </button>
-              <button className="text-button" onClick={() => setSelected([])}>
+              </Button>
+              <Button className="text-button" onClick={() => setSelected([])}>
                 {t("Clear", "清除")}
-              </button>
+              </Button>
             </div>
           )}
           {groups.length ? (
@@ -1225,18 +1226,18 @@ export function MeetingWorkspace({
                       <strong>{first.speakerIds.length ? speakerName(m, first.speakerIds) : t("Unknown speaker", "未知说话人")}</strong>
                       {first.speakerIds.length > 1 && <Pill>{t("Overlap / multiple", "重叠／多人")}</Pill>}
                       {first.speakerIds.some((id) => !m.speakers.find((speaker) => speaker.id === id)?.confirmed) && <span className="small muted">{t("Unconfirmed", "未确认")}</span>}
-                      <button className="time-link" disabled={first.start === null || !canPlay}
+                      <Button className="time-link" disabled={first.start === null || !canPlay}
                         onClick={() => first.start !== null && cueRange(first.start, last.end)}>
                         {first.start === null ? t("Time unknown", "时间未知") : `${formatTime(first.start)} – ${formatTime(last.end!)}`}
-                      </button>
+                      </Button>
                     </div>
                     <p>{group.text}</p>
                     <div className="passage-actions">
                       <span className="small muted">{group.segments.length} {t("source fragments", "个来源片段")} · {reviewed}/{group.segments.length} {t("reviewed", "已审阅")}</span>
-                      <button className="text-button" disabled={locked || reviewed === group.segments.length}
+                      <Button className="text-button" disabled={locked || reviewed === group.segments.length}
                         onClick={() => void change((meeting) => reviewSegments(meeting, group.segments.map((segment) => segment.id), true))}>
                         {t("Mark group reviewed", "标记整段已审阅")}
-                      </button>
+                      </Button>
                     </div>
                   </div>}
                   <details open={group.segments.length === 1 || expandedGroup === first.id || group.segments.some((segment) => segment.id === highlight)}
@@ -1286,7 +1287,7 @@ export function MeetingWorkspace({
                         (id) =>
                           !m.speakers.find((sp) => sp.id === id)?.confirmed,
                       ) && <span className="small muted">{t("Unconfirmed", "未确认")}</span>}
-                      <button
+                      <Button
                         className="time-link"
                         disabled={s.start === null || !canPlay}
                         onClick={() => cue(s)}
@@ -1294,7 +1295,7 @@ export function MeetingWorkspace({
                         {s.start === null
                           ? t("Time unknown", "时间未知")
                           : `${formatTime(s.start)} – ${formatTime(s.end!)}`}
-                      </button>
+                      </Button>
                       {s.reviewed && <Icon glyph={Check} size="small" className="green-text" />}
                     </div>
                     <p>{s.text}</p>
@@ -1305,14 +1306,14 @@ export function MeetingWorkspace({
                       </details>
                     )}
                     <div className="passage-actions">
-                      <button
+                      <Button
                         className="text-button"
                         onClick={() => setEditing(s)}
                         disabled={locked}
                       >
                         {t("Edit passage", "编辑段落")}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         className="text-button"
                         onClick={() => {
                           setSplitAt(Math.max(1, Math.floor(s.text.length / 2)));
@@ -1321,8 +1322,8 @@ export function MeetingWorkspace({
                         disabled={locked || s.text.length < 2}
                       >
                         {t("Split", "拆分")}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         className="text-button"
                         onClick={() =>
                           void change((x) =>
@@ -1332,7 +1333,7 @@ export function MeetingWorkspace({
                         disabled={locked}
                       >
                         {s.reviewed ? t("Mark unreviewed", "标记为未审阅") : t("Mark reviewed", "标记为已审阅")}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 </article>
@@ -1341,9 +1342,9 @@ export function MeetingWorkspace({
                 </div>;
               })}
               {groups.length > pageSize && <nav className="transcript-paging" aria-label={t("Transcript pages", "转录分页")}>
-                <button className="button secondary compact" disabled={page === 0} onClick={() => { setTranscriptPage(page - 1); setExpandedGroup(""); }}>{t("Previous", "上一页")}</button>
+                <Button className="button secondary compact" disabled={page === 0} onClick={() => { setTranscriptPage(page - 1); setExpandedGroup(""); }}>{t("Previous", "上一页")}</Button>
                 <span>{page * pageSize + 1}–{Math.min((page + 1) * pageSize, groups.length)} / {groups.length}</span>
-                <button className="button secondary compact" disabled={(page + 1) * pageSize >= groups.length} onClick={() => { setTranscriptPage(page + 1); setExpandedGroup(""); }}>{t("Next", "下一页")}</button>
+                <Button className="button secondary compact" disabled={(page + 1) * pageSize >= groups.length} onClick={() => { setTranscriptPage(page + 1); setExpandedGroup(""); }}>{t("Next", "下一页")}</Button>
               </nav>}
             </div>
           ) : (
@@ -1353,13 +1354,13 @@ export function MeetingWorkspace({
               <p>
                 {t("Transcribe a recording with your own key, or add an existing transcript. Original results and your edits are kept separately.", "使用自己的密钥转录录音，或添加已有转录。原始结果和您的修改会分别保存。")}
               </p>
-              <button
+              <Button
                 className="button secondary"
                 onClick={() => setAddText(true)}
               >
                 <Icon glyph={Plus} size="inline" />
                 {t("Add transcript", "添加转录")}
-              </button>
+              </Button>
             </Empty>
           )}
         </section>
@@ -1476,7 +1477,7 @@ export function MeetingWorkspace({
                   : t("A first draft, grounded in your transcript.", "根据转录生成的初稿。")}
               </p>
             </div>
-            <button
+            <Button
               className={`button ${memo ? "secondary" : "primary"} compact`}
               title={t(
                 "Creates a separate version; provider charges may apply.",
@@ -1487,13 +1488,13 @@ export function MeetingWorkspace({
             >
               <Icon glyph={Sparkles} size="compact" />
               {memo ? t("Generate new version", "生成新版本") : t("Generate meeting notes", "生成会议笔记")}
-            </button>
+            </Button>
           </header>
           {memo ? (
             <>
               <div className="memo-view-switch" role="group" aria-label={t("Notes view", "笔记视图")}>
-                <button type="button" aria-pressed={memoMode === "simple"} disabled={dirtyMemoItems.size > 0} onClick={() => setMemoMode("simple")}>{t("Simple Mode", "简洁模式")}</button>
-                <button type="button" aria-pressed={memoMode === "review"} disabled={dirtyMemoItems.size > 0} onClick={() => setMemoMode("review")}>{t("Evidence Review", "证据审阅")}</button>
+                <Button type="button" aria-pressed={memoMode === "simple"} disabled={dirtyMemoItems.size > 0} onClick={() => setMemoMode("simple")}>{t("Simple Mode", "简洁模式")}</Button>
+                <Button type="button" aria-pressed={memoMode === "review"} disabled={dirtyMemoItems.size > 0} onClick={() => setMemoMode("review")}>{t("Evidence Review", "证据审阅")}</Button>
               </div>
               <div className="memo-version">
                 <Icon glyph={History} size="compact" />
@@ -1526,22 +1527,22 @@ export function MeetingWorkspace({
               {memo.id !== m.memos.at(-1)?.id && <p className="small muted">{t("Historical versions are read-only. Restore this version as a new version to edit it.", "历史版本为只读。请先恢复为新版本再编辑。")}</p>}
               <div className="memo-document-tools">
                 {memoMode === "review" && <label className="checkbox-label"><input type="checkbox" checked={priorityOnly} disabled={dirtyMemoItems.size > 0} onChange={event => setPriorityOnly(event.target.checked)} /> {t("Priority items only", "只看重点项目")}</label>}
-                <button className="button secondary compact" disabled={locked || memo.id !== m.memos.at(-1)?.id || !(memo.editUndo?.length)} onClick={() => void (async () => {
+                <Button className="button secondary compact" disabled={locked || memo.id !== m.memos.at(-1)?.id || !(memo.editUndo?.length)} onClick={() => void (async () => {
                   try { await persist(undoMemoEdit(m, memo.id)); }
                   catch (error) { onError(error instanceof Error ? error.message : t("Could not undo the note edit.", "无法撤销笔记修改。")); }
-                })()}>{t("Undo note edit", "撤销笔记修改")}</button>
-                <button className="button secondary compact" disabled={locked || memo.id !== m.memos.at(-1)?.id || !reviewSummary?.total} onClick={() => void (async () => {
+                })()}>{t("Undo note edit", "撤销笔记修改")}</Button>
+                <Button className="button secondary compact" disabled={locked || memo.id !== m.memos.at(-1)?.id || !reviewSummary?.total} onClick={() => void (async () => {
                   const scope = reviewSummary?.priorityItemIds.length ? { kind: "priority" as const, itemIds: reviewSummary.priorityItemIds } : { kind: "all" as const, itemIds: memo.items.map(item => item.id) };
                   const text = t(`Finish this review session for ${scope.itemIds.length} ${scope.kind === "priority" ? "priority" : "total"} items? ${reviewSummary?.pending ?? 0} items still need individual confirmation. Their states will not change.`, `完成本次复核（${scope.itemIds.length} 项${scope.kind === "priority" ? "重点项目" : "全部项目"}）？仍有 ${reviewSummary?.pending ?? 0} 项待逐条确认，其状态不会改变。`);
                   if (!confirm(text)) return;
                   try { await persist(await completeMemoReview(m, memo.id, scope)); }
                   catch (error) { onError(error instanceof Error ? error.message : t("Could not finish the review.", "无法完成复核。")); }
-                })()}>{t("Finish review", "完成复核")}</button>
-                {memo.id !== m.memos.at(-1)?.id && <button className="button secondary compact" disabled={locked || dirtyMemoItems.size > 0} onClick={() => void (async () => {
+                })()}>{t("Finish review", "完成复核")}</Button>
+                {memo.id !== m.memos.at(-1)?.id && <Button className="button secondary compact" disabled={locked || dirtyMemoItems.size > 0} onClick={() => void (async () => {
                   if (!confirm(t("Restore this version as a new version? Existing versions remain unchanged; the copy needs review.", "将此版本恢复为新版本？现有版本保持不变，新副本需要审阅。"))) return;
                   try { const saved = await persist(restoreMemoVersion(m, memo.id)); setViewVersion(saved.memos.at(-1)?.id); }
                   catch (error) { onError(error instanceof Error ? error.message : t("Could not restore this version.", "无法恢复此版本。")); }
-                })()}>{t("Restore as new version", "恢复为新版本")}</button>}
+                })()}>{t("Restore as new version", "恢复为新版本")}</Button>}
                 {m.memos.length > 1 && <label>{t("Compare with", "比较版本")} <select value={compareVersion} onChange={event => setCompareVersion(event.target.value)} aria-label={t("Compare with version", "选择比较版本")}>
                   <option value="">{t("Choose a version", "选择版本")}</option>
                   {m.memos.filter(v => v.id !== memo.id).map((v) => <option key={v.id} value={v.id}>{t("Version", "版本")} {m.memos.findIndex(candidate => candidate.id === v.id) + 1}</option>)}
@@ -1561,19 +1562,19 @@ export function MeetingWorkspace({
                       {t("Source details changed after these notes were generated. Review every item against the current transcript; accepted items from the old source remain stale.", "生成笔记后来源资料已改变。请对照当前转录重新审阅每一项；旧来源中已接受的项目仍标记为过期。")}
                     </span>
                     <div className="notice-actions">
-                      <button
+                      <Button
                         className="text-button"
                         onClick={() => navigateTab("transcript")}
                       >
                         {t("View current transcript", "查看当前转录")}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         className="button secondary compact"
                         disabled={locked || !m.segments.length}
                         onClick={() => prepareConfirmation("memo")}
                       >
                         {t("Generate another version", "生成另一个版本")}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -1619,11 +1620,11 @@ export function MeetingWorkspace({
                       onSelectionChange={(start, end, originalText) => setMemoSelection({ memoId: memo.id, itemId: item.id, start, end, originalText })}
                     />}
                     {memoMode === "simple" && <div className="memo-inline-actions">
-                      {memo.id === m.memos.at(-1)?.id && <button type="button" className="text-button" disabled={processing || reviewBusy || (editingNotes.has(`${memo.id}:${item.id}`) && (dirtyMemoItems.has(item.id) || dirtyMemoItems.has(`${item.id}:due`)))} aria-label={`${editingNotes.has(`${memo.id}:${item.id}`) ? t("Finish editing", "完成编辑") : t("Edit note", "编辑笔记")} · ${item.text.slice(0, 35)}`} onClick={event => { event.currentTarget.focus(); const key = `${memo.id}:${item.id}`; setEditingNotes(previous => { const next = new Set(previous); if (next.has(key)) next.delete(key); else next.add(key); return next; }); setMemoSelection(undefined); }}>{editingNotes.has(`${memo.id}:${item.id}`) ? t("Done", "完成") : t("Edit", "编辑")}</button>}
+                      {memo.id === m.memos.at(-1)?.id && <Button type="button" className="text-button" disabled={processing || reviewBusy || (editingNotes.has(`${memo.id}:${item.id}`) && (dirtyMemoItems.has(item.id) || dirtyMemoItems.has(`${item.id}:due`)))} aria-label={`${editingNotes.has(`${memo.id}:${item.id}`) ? t("Finish editing", "完成编辑") : t("Edit note", "编辑笔记")} · ${item.text.slice(0, 35)}`} onClick={event => { event.currentTarget.focus(); const key = `${memo.id}:${item.id}`; setEditingNotes(previous => { const next = new Set(previous); if (next.has(key)) next.delete(key); else next.add(key); return next; }); setMemoSelection(undefined); }}>{editingNotes.has(`${memo.id}:${item.id}`) ? t("Done", "完成") : t("Edit", "编辑")}</Button>}
                       <SimpleMemoEvidence meeting={m} item={item} indexes={segmentIndexById} sourceIndex={evidenceIndex} disabled={dirtyMemoItems.size > 0} onSelect={(segment, refs) => { setEvidenceRefs(refs); evidenceTrigger.current = document.activeElement as HTMLElement | null; setEvidence(segment); }} onReview={() => setMemoMode("review")} />
                       {(reviewSummary?.priorityReasons[item.id]?.length ?? 0) > 0 && <details className="memo-review-reason"><summary>{t("Suggested review", "建议核实")}</summary><p>{reviewSummary!.priorityReasons[item.id].map(reason => priorityNames[reason]).join(" · ")}<br />{t("Review priorities are guidance, not verification.", "审核提示仅用于安排核对，不代表内容已验证。")}</p></details>}
                     </div>}
-                    {memoSelection?.memoId === memo.id && memoSelection.itemId === item.id && memoSelection.end > memoSelection.start && <button type="button" className="text-button small" disabled={locked || memo.id !== m.memos.at(-1)?.id || memoSelection.originalText !== item.text || memoSelection.end - memoSelection.start > 4000} onMouseDown={event => event.preventDefault()} onClick={() => setAssistantSelection(memoSelection)}>{t("Improve selected text with AI", "用 AI 优化所选文字")}</button>}
+                    {memoSelection?.memoId === memo.id && memoSelection.itemId === item.id && memoSelection.end > memoSelection.start && <Button type="button" className="text-button small" disabled={locked || memo.id !== m.memos.at(-1)?.id || memoSelection.originalText !== item.text || memoSelection.end - memoSelection.start > 4000} onMouseDown={event => event.preventDefault()} onClick={() => setAssistantSelection(memoSelection)}>{t("Improve selected text with AI", "用 AI 优化所选文字")}</Button>}
                     {item.review === "edited" && <p className="memo-unverified small">{t("Edited text needs evidence review; previous citations have not verified it.", "内容已修改，原引用尚未验证此内容，请重新核对。")}</p>}
                     <div hidden={memoMode !== "review"}><OriginalNote
                       item={memo.originalItems?.find((x) => x.id === item.id)}
@@ -1672,7 +1673,7 @@ export function MeetingWorkspace({
                     <div className="memo-actions" hidden={memoMode !== "review"}>
                       {(["accepted", "pending", "rejected"] as const).map(
                         (state) => (
-                          <button
+                          <Button
                             key={state}
                             className={`text-button ${item.review === state ? "selected" : ""}`}
                             disabled={processing || memo.id !== m.memos.at(-1)?.id}
@@ -1724,7 +1725,7 @@ export function MeetingWorkspace({
                               : state === "rejected"
                                 ? t("Reject", "拒绝")
                                 : t("Needs review", "需要审阅")}
-                          </button>
+                          </Button>
                         ),
                       )}
                     </div>
@@ -1755,7 +1756,7 @@ export function MeetingWorkspace({
         <section className="notice memo-plan-progress" key={p.id} aria-label={t("Long memo progress", "长纪要进度")}>
           <strong role="status">{t("Long memo", "长纪要")} · {p.results.filter(Boolean).length}/{p.chunks.length} {t("extractions saved", "步提取已保存")}</strong>
           <span>{t("State", "状态")}: {uiLanguage === "zh-CN" ? ({ready:"待执行",running:"执行中",paused:"已暂停",blocked:"已停止，需核对",completed:"已完成"})[p.state] : p.state}</span>
-          {!processing && p.state !== "completed" && <button className="button secondary" onClick={() => prepareConfirmation("memo")}>{t("Review generation plan", "查看生成计划")}</button>}
+          {!processing && p.state !== "completed" && <Button className="button secondary" onClick={() => prepareConfirmation("memo")}>{t("Review generation plan", "查看生成计划")}</Button>}
         </section>
       ))}
       {(m.jobs.length > 0 || m.runs.length > 0) && (
@@ -1814,7 +1815,7 @@ export function MeetingWorkspace({
               <strong>
                 {run.provider} · {run.model} · {t("saved original result", "已保存的原始结果")}
               </strong>
-              <button
+              <Button
                 className="button secondary compact"
                 disabled={locked}
                 onClick={() => {
@@ -1832,7 +1833,7 @@ export function MeetingWorkspace({
                 }}
               >
                 {t("Use this transcription", "使用此转录")}
-              </button>
+              </Button>
             </div>
           ))}
         </details>
@@ -1861,8 +1862,8 @@ export function MeetingWorkspace({
               onError={() => setNotice("This browser cannot play the recording. The provider may still support it; verify before sending.")}
             />
           )}
-          <button type="button" className="player-skip player-skip-back" aria-label={t("Back 15 seconds", "\u540e\u9000 15 \u79d2")} data-tooltip={t("Back 15 seconds", "\u540e\u9000 15 \u79d2")} disabled={!duration} onClick={() => { if (player.current) { playUntil.current = null; player.current.currentTime = Math.max(0, player.current.currentTime - 15); playback.refresh(); } }}><Icon glyph={RotateCcw} size="inline" /><span>15</span></button>
-          <button
+          <Button type="button" className="player-skip player-skip-back" aria-label={t("Back 15 seconds", "\u540e\u9000 15 \u79d2")} data-tooltip={t("Back 15 seconds", "\u540e\u9000 15 \u79d2")} disabled={!duration} onClick={() => { if (player.current) { playUntil.current = null; player.current.currentTime = Math.max(0, player.current.currentTime - 15); playback.refresh(); } }}><Icon glyph={RotateCcw} size="inline" /><span>15</span></Button>
+          <Button
             className="play-button"
             aria-label={playing ? t("Pause audio", "暂停录音") : t("Play audio", "播放录音")}
             onClick={() => {
@@ -1875,8 +1876,8 @@ export function MeetingWorkspace({
             }}
           >
             {playing ? <Icon glyph={Pause} size="control" /> : <Icon glyph={Play} size="control" />}
-          </button>
-          <button type="button" className="player-skip player-skip-forward" aria-label={t("Forward 15 seconds", "\u524d\u8fdb 15 \u79d2")} data-tooltip={t("Forward 15 seconds", "\u524d\u8fdb 15 \u79d2")} disabled={!duration} onClick={() => { if (player.current) { playUntil.current = null; player.current.currentTime = Math.min(duration, player.current.currentTime + 15); playback.refresh(); } }}><Icon glyph={RotateCw} size="inline" /><span>15</span></button>
+          </Button>
+          <Button type="button" className="player-skip player-skip-forward" aria-label={t("Forward 15 seconds", "\u524d\u8fdb 15 \u79d2")} data-tooltip={t("Forward 15 seconds", "\u524d\u8fdb 15 \u79d2")} disabled={!duration} onClick={() => { if (player.current) { playUntil.current = null; player.current.currentTime = Math.min(duration, player.current.currentTime + 15); playback.refresh(); } }}><Icon glyph={RotateCw} size="inline" /><span>15</span></Button>
           <div className="player-title" data-tooltip={m.audio?.name}>
             <strong>{m.audio?.name}</strong>
             <span>{t("Original recording", "原始录音")}</span>
@@ -1914,7 +1915,7 @@ export function MeetingWorkspace({
             <option value="1.5">1.5×</option>
             <option value="2">2×</option>
           </select>
-          {tab === "memo" && <button type="button" className="player-expand text-button" aria-expanded={!miniPlayer} onClick={() => setMiniPlayer(value => !value)}>{miniPlayer ? t("Expand", "展开") : t("Minimize", "收起")}</button>}
+          {tab === "memo" && <Button type="button" className="player-expand text-button" aria-expanded={!miniPlayer} onClick={() => setMiniPlayer(value => !value)}>{miniPlayer ? t("Expand", "展开") : t("Minimize", "收起")}</Button>}
         </div>
       )}
       {historyCleanup && <Modal title={t("Reduce local history", "精简本地历史")} onClose={() => setHistoryCleanup(undefined)}>
@@ -1924,11 +1925,11 @@ export function MeetingWorkspace({
           <p>{t("Current edits, every distinct old revision, provider originals, notes, citations, saved plans and note-edit undo are retained. Clearing transcript/speaker undo cannot be undone. Export a backup first if you need those snapshots.", "保留当前修改、所有不同的旧修订、服务商原始输出、笔记、引用、已保存计划和笔记编辑撤销。清除转录／说话人撤销后无法恢复；如需这些快照，请先导出备份。")}</p>
         </div>
         <footer className="modal-actions">
-          <button type="button" className="button secondary" onClick={() => setHistoryCleanup(undefined)}>{t("Cancel", "取消")}</button>
-          <button type="button" className="button primary" disabled={locked || (!historyCleanup.undoCount && !historyCleanup.redundantHistoryCount)} onClick={() => {
+          <Button type="button" className="button secondary" onClick={() => setHistoryCleanup(undefined)}>{t("Cancel", "取消")}</Button>
+          <Button type="button" className="button primary" disabled={locked || (!historyCleanup.undoCount && !historyCleanup.redundantHistoryCount)} onClick={() => {
             if (m.version !== historyCleanup.version) { onError(t("The meeting changed. Close this preview and open it again.", "会议已更改，请关闭并重新打开预览。")); return; }
             void persistQuietly(historyCleanup.result).then(() => setHistoryCleanup(undefined)).catch(() => {});
-          }}>{t("Confirm cleanup", "确认清理")}</button>
+          }}>{t("Confirm cleanup", "确认清理")}</Button>
         </footer>
       </Modal>}
       {acousticConfirm && (
@@ -1964,8 +1965,8 @@ export function MeetingWorkspace({
               </p>
             )}
             <div className="modal-actions">
-              <button className="button secondary" onClick={() => setAcousticConfirm(false)}>{t("Cancel", "取消")}</button>
-              <button className="button primary" onClick={() => void analyzeAcousticVoices()}>{t("Download and analyze locally", "下载并在本地分析")}</button>
+              <Button className="button secondary" onClick={() => setAcousticConfirm(false)}>{t("Cancel", "取消")}</Button>
+              <Button className="button primary" onClick={() => void analyzeAcousticVoices()}>{t("Download and analyze locally", "下载并在本地分析")}</Button>
             </div>
           </div>
         </Modal>
@@ -2119,13 +2120,13 @@ export function MeetingWorkspace({
               <label><input type="checkbox" checked={reviewedRetry} onChange={e=>setReviewedRetry(e.target.checked)} /> {t("I reviewed the previous request outcome and billing. I authorize a new paid attempt for the unfinished step.", "我已核对之前请求的结果和账单，并允许为未完成步骤提交新的付费请求。")}</label>
             )}
             <div className="modal-actions">
-              <button
+              <Button
                 className="button secondary"
                 onClick={() => setConfirmStage(undefined)}
               >
                 {t("Cancel", "取消")}
-              </button>
-              <button
+              </Button>
+              <Button
                 className="button primary"
                 disabled={!getKey((confirmed?.selection ?? getSelection(confirmStage)).provider) || (Boolean(confirmed?.plan && m.jobs.some(j=>j.pipelineId===confirmed.plan!.id && j.state!=="completed")) && !reviewedRetry) || (confirmStage === "speech" && Boolean(m.audio?.chunked && chunkProgress?.blockedIndex !== null && chunkProgress?.blockedIndex !== undefined) && !reviewedRetry)}
                 onClick={() => void process()}
@@ -2133,7 +2134,7 @@ export function MeetingWorkspace({
                 {confirmStage === "speech" && m.audio?.chunked
                   ? t(`Confirm and send ${Math.max(0, (chunkManifest?.chunks.length ?? 0) - (chunkProgress?.done ?? 0))} requests`, `确认并发送 ${Math.max(0, (chunkManifest?.chunks.length ?? 0) - (chunkProgress?.done ?? 0))} 次请求`)
                   : t("Confirm and send", "确认并发送")}
-              </button>
+              </Button>
             </div>
             {!getKey((confirmed?.selection ?? getSelection(confirmStage)).provider) && (
               <a
@@ -2173,16 +2174,16 @@ export function MeetingWorkspace({
             </p>
             <p className="small muted">{!canPlay ? t("Local audio is unavailable for playback.", "本地录音不可播放。") : !evidenceHasTime ? t("Audio time is unavailable for this passage.", "此段落没有可用的录音时间。") : t("Audio playback includes up to 3 seconds before and after the cited time.", "试听包含引用时间前后最多 3 秒的录音。")}</p>
             <div className="toolbar-actions">
-              <button
+              <Button
                 className="button secondary"
                 disabled={!canPlay || !evidenceHasTime}
                 onClick={() => cueRange(Math.max(0, evidence.start! - 3), Math.min(duration || evidence.end! + 3, evidence.end! + 3))}
               >
                 <Icon glyph={Play} size="compact" />
                 {t("Play source audio with context", "播放来源录音及上下文")}
-              </button>
+              </Button>
               {m.segments.some((s) => s.id === evidence.id) && (
-                <button
+                <Button
                   className="button primary"
                   onClick={() => {
                     if (!navigateTab("transcript")) return;
@@ -2203,7 +2204,7 @@ export function MeetingWorkspace({
                   }}
                 >
                   {t("View current passage", "查看当前段落")}
-                </button>
+                </Button>
               )}
             </div>
             <p className="small muted">
@@ -2273,14 +2274,14 @@ export function MeetingWorkspace({
             <p className="small muted">
               {t("Changes mark generated notes for re-review.", "更改后，生成的笔记将标记为需要重新审阅。")}
             </p>
-            <button type="button" className="button secondary" disabled={locked || (!m.undo.length && !m.history.length)} onClick={(event) => {
+            <Button type="button" className="button secondary" disabled={locked || (!m.undo.length && !m.history.length)} onClick={(event) => {
               event.currentTarget.focus({preventScroll: true});
               try { setHistoryCleanup(previewHistoryCleanup(m)); }
               catch (error) { onError(error instanceof Error ? error.message : "Could not preview local history."); }
-            }}>{t("Reduce local history", "精简本地历史")}</button>
-            <button type="submit" className="button primary" disabled={locked}>
+            }}>{t("Reduce local history", "精简本地历史")}</Button>
+            <Button type="submit" className="button primary" disabled={locked}>
               {t("Save details", "保存资料")}
-            </button>
+            </Button>
           </form>
         </Modal>
       )}
@@ -2330,9 +2331,9 @@ export function MeetingWorkspace({
                 onChange={(e) => setNewText(e.target.value)}
               />
             </label>
-            <button type="submit" className="button primary" disabled={locked}>
+            <Button type="submit" className="button primary" disabled={locked}>
               {t("Save transcript locally", "将转录保存在本地")}
-            </button>
+            </Button>
           </form>
         </Modal>
       )}
@@ -2395,9 +2396,9 @@ export function MeetingWorkspace({
               <summary>{t("Original text", "原始文字")}</summary>
               <p>{editing.originalText}</p>
             </details>
-            <button className="button primary" disabled={locked}>
+            <Button className="button primary" disabled={locked}>
               {t("Save correction", "保存更正")}
-            </button>
+            </Button>
           </form>
         </Modal>
       )}
@@ -2477,9 +2478,9 @@ export function MeetingWorkspace({
             <p className="small muted">
               {t("Without a verified boundary, both new passages have unknown timing. The original timed source remains in history.", "若没有经过核实的分界点，新段落的时间均为未知。原始带时间的来源保留在历史记录中。")}
             </p>
-            <button className="button primary" disabled={locked}>
+            <Button className="button primary" disabled={locked}>
               {t("Split passage", "拆分段落")}
-            </button>
+            </Button>
           </form>
         </Modal>
       )}
@@ -2514,7 +2515,7 @@ export function MeetingWorkspace({
                 ))}
               </select>
             </label>
-            <button className="button primary" disabled={locked}>{t("Confirm merge", "确认合并")}</button>
+            <Button className="button primary" disabled={locked}>{t("Confirm merge", "确认合并")}</Button>
           </form>
         </Modal>
       )}

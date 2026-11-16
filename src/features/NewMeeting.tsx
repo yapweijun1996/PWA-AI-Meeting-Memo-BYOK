@@ -1,3 +1,4 @@
+import { Button } from "../components/controls";
 import { Icon } from "../components/Icon";
 import { translateUi } from "../i18n";
 import { useState, type FormEvent } from "react";
@@ -300,18 +301,18 @@ export function NewMeeting({
           {t("No AI request is made when you create a meeting.", "创建会议不会发送 AI 请求。")}
         </p>
         <div className="modal-actions">
-          <button
+          <Button
             className="button secondary"
             type="button"
             onClick={onClose}
             disabled={busy}
           >
             {t("Cancel", "取消")}
-          </button>
-          <button className="button primary" disabled={busy} type="submit">
+          </Button>
+          <Button className="button primary" disabled={busy} type="submit">
             <Icon glyph={Plus} size="status" />
             {busy ? t("Saving locally…", "正在保存到本地…") : t("Create meeting", "创建会议")}
-          </button>
+          </Button>
         </div>
         </div>
         </fieldset>

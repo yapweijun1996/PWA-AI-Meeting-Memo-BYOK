@@ -1,3 +1,4 @@
+import { Button } from "../components/controls";
 import { Icon } from "../components/Icon";
 import "./SpeakerPlayback.css";
 import { showToast } from "../components/ToastLayer";
@@ -425,21 +426,21 @@ export function SpeakerReview({
         </div>
         <div className="speaker-review-controls">
           <div className="speaker-mode-switch" role="group" aria-label={t("Speaker review mode", "说话人审阅模式")}>
-            <button
+            <Button
               className={`button compact ${mode === "playback" ? "primary" : "secondary"}`}
               aria-pressed={mode === "playback"}
               disabled={!canPlayback}
               onClick={() => requestMode("playback")}
             >
               {t("Playback mode", "播放模式")}
-            </button>
-            <button
+            </Button>
+            <Button
               className={`button compact ${mode === "naming" ? "primary" : "secondary"}`}
               aria-pressed={mode === "naming"}
               onClick={() => requestMode("naming")}
             >
               {t("Edit speakers", "编辑说话人")}
-            </button>
+            </Button>
           </div>
           {audioAvailable && <ImmersivePlayback meeting={meeting} clock={clock} position={position} duration={duration}
             rate={playbackRate} playing={playing} status={playbackStatus} onSeek={onSeek}
@@ -460,17 +461,17 @@ export function SpeakerReview({
                 </select>
               </label>
               {playing ? (
-                <button className="button secondary compact" onClick={onPause}>
+                <Button className="button secondary compact" onClick={onPause}>
                   <Icon glyph={Pause} size="small" /> {t("Pause", "暂停")}
-                </button>
+                </Button>
               ) : null}
-              <button
+              <Button
                 className="button secondary compact"
                 disabled={locked}
                 onClick={onAdd}
               >
                 <Icon glyph={Plus} size="small" /> {t("Add speaker", "添加说话人")}
-              </button>
+              </Button>
             </>
           )}
         </div>
@@ -481,9 +482,9 @@ export function SpeakerReview({
         <section className="notice sand speaker-link-panel" aria-labelledby="speaker-links-title">
           <h3 id="speaker-links-title">{t("Suggested same-speaker links from overlapping audio", "重叠音频中的同一说话人建议链接")}</h3>
           <p>{t("Suggestions are based on matching words in overlapping audio, not voice identity. Merging can be undone with Undo.", "这些建议基于重叠音频中的匹配词语，并非声音身份识别。合并后可使用“撤销”还原。")}</p>
-          <button className="button primary compact" disabled={locked} onClick={() => void mergeSuggested(linkGroups.map((group) => group.ids))}>
+          <Button className="button primary compact" disabled={locked} onClick={() => void mergeSuggested(linkGroups.map((group) => group.ids))}>
             {t("Merge all suggested groups", "合并所有建议组")}
-          </button>
+          </Button>
           {linkGroups.map((group) => (
             <article key={group.ids.join("|")} className="speaker-link-group">
               <p>{group.ids.map((speakerId) => meeting.speakers.find((speaker) => speaker.id === speakerId)?.name ?? speakerId).join(" → ")}</p>
@@ -492,13 +493,13 @@ export function SpeakerReview({
                   {t(`${link.sharedWords} matching words across the part overlap`, `分段重叠处有 ${link.sharedWords} 个匹配词`)}
                 </p>
               ))}
-              <button className="button secondary compact" disabled={locked} onClick={() => void mergeSuggested([group.ids])}>{t("Merge this group", "合并此组")}</button>
-              <button className="text-button" disabled={locked} onClick={() => {
+              <Button className="button secondary compact" disabled={locked} onClick={() => void mergeSuggested([group.ids])}>{t("Merge this group", "合并此组")}</Button>
+              <Button className="text-button" disabled={locked} onClick={() => {
                 const keys = new Set(group.links.map((link) => `${link.fromSpeakerId}\u0000${link.toSpeakerId}`));
                 void onChange((current) => editMeeting(current, (draft) => {
                   draft.speakerLinks = draft.speakerLinks?.filter((link) => !keys.has(`${link.fromSpeakerId}\u0000${link.toSpeakerId}`));
                 }));
-              }}>{t("Not the same", "不是同一人")}</button>
+              }}>{t("Not the same", "不是同一人")}</Button>
             </article>
           ))}
         </section>
@@ -531,7 +532,7 @@ export function SpeakerReview({
           <p className="small muted">{t(`${meeting.speakers.filter((speaker) => !speaker.confirmed).length} unconfirmed`, `${meeting.speakers.filter((speaker) => !speaker.confirmed).length} 位未确认`)}</p>
           <input aria-label={t("Search speakers", "搜索说话人")} placeholder={t("Search name or ID", "搜索姓名或 ID")} value={speakerSearch} onChange={(event) => setSpeakerSearch(event.target.value)} />
           <div className="speaker-review-filters" role="group" aria-label={t("Filter speakers", "筛选说话人")}>
-            {(["unconfirmed", "confirmed", "all"] as const).map((item) => <button key={item} className={`button compact ${filter === item ? "primary" : "secondary"}`} aria-pressed={filter === item} onClick={() => { setFilter(item); const next = meeting.speakers.find((speaker) => item === "all" || (item === "confirmed" ? speaker.confirmed : !speaker.confirmed)); if (next) setSelectedId(next.id); }}>{item === "unconfirmed" ? t("Unconfirmed", "未确认") : item === "confirmed" ? t("Confirmed", "已确认") : t("All", "全部")}</button>)}
+            {(["unconfirmed", "confirmed", "all"] as const).map((item) => <Button key={item} className={`button compact ${filter === item ? "primary" : "secondary"}`} aria-pressed={filter === item} onClick={() => { setFilter(item); const next = meeting.speakers.find((speaker) => item === "all" || (item === "confirmed" ? speaker.confirmed : !speaker.confirmed)); if (next) setSelectedId(next.id); }}>{item === "unconfirmed" ? t("Unconfirmed", "未确认") : item === "confirmed" ? t("Confirmed", "已确认") : t("All", "全部")}</Button>)}
           </div>
           <label className="small">{t("Sort by", "排序")}
             <select aria-label={t("Sort speakers", "说话人排序")} value={sort} onChange={(event) => setSort(event.target.value as "duration" | "fragments")}><option value="duration">{t("Timed duration", "有时间记录的时长")}</option><option value="fragments">{t("Fragment count", "片段数量")}</option></select>
@@ -540,13 +541,13 @@ export function SpeakerReview({
             {filteredSpeakers.map((speaker) => <div className={`speaker-queue-item${selectedSpeaker?.id === speaker.id ? " is-selected" : ""}`} key={speaker.id}>
               <label className="speaker-queue-check"><input type="checkbox" aria-label={t(`Select ${speaker.name}`, `\u9009\u62e9${speaker.name}`)} checked={visibleSelected.includes(speaker.id)} disabled={locked} onChange={(event) => setSelectedSpeakers((current) => event.target.checked ? [...current, speaker.id] : current.filter((id) => id !== speaker.id))} /></label>
               <SpeakerAvatar id={speaker.id} image={avatars[speaker.id]} />
-              <button className="speaker-queue-select" aria-pressed={selectedSpeaker?.id === speaker.id} onClick={() => setSelectedId(speaker.id)}>
+              <Button className="speaker-queue-select" aria-pressed={selectedSpeaker?.id === speaker.id} onClick={() => setSelectedId(speaker.id)}>
                 <strong>{speaker.name}</strong><span className="small muted">ID: {speaker.id}</span><span className="small muted">{formatTime(speakerStats.get(speaker.id)?.timed ?? 0)} · {speakerStats.get(speaker.id)?.count ?? 0} {t("fragments", "片段")}</span>
-              </button>
+              </Button>
             </div>)}
             {!filteredSpeakers.length && <p className="small muted">{t("No speakers match this filter.", "没有符合筛选条件的说话人。")}</p>}
           </div>
-          {visibleSelected.length >= 2 && <button className="button primary compact" disabled={locked} onClick={() => onSelectMerge(visibleSelected)}>{t(`Merge selected (${visibleSelected.length})`, `\u5408\u5e76\u6240\u9009 (${visibleSelected.length})`)}</button>}
+          {visibleSelected.length >= 2 && <Button className="button primary compact" disabled={locked} onClick={() => onSelectMerge(visibleSelected)}>{t(`Merge selected (${visibleSelected.length})`, `\u5408\u5e76\u6240\u9009 (${visibleSelected.length})`)}</Button>}
         </section>
         {selectedSpeaker && (() => {
           const speaker = selectedSpeaker;
@@ -554,7 +555,7 @@ export function SpeakerReview({
           const draft = drafts[speaker.id] ?? speaker.name;
           const stats = speakerStats.get(speaker.id);
           const sampleList = (item: typeof speaker) => (windowsBySpeaker.get(item.id) ?? []).map((window, sampleIndex) => <article className="speaker-sample" key={`${item.id}:${window.start}`}>
-            <button className="button secondary compact" disabled={!audioAvailable || locked} onClick={() => { setSampleFocus({ speakerId: item.id, start: window.start }); onCue(window.start, window.end); }}><Icon glyph={Play} size="micro" /> {t("Sample", "\u6837\u672c")} {sampleIndex + 1}</button>
+            <Button className="button secondary compact" disabled={!audioAvailable || locked} onClick={() => { setSampleFocus({ speakerId: item.id, start: window.start }); onCue(window.start, window.end); }}><Icon glyph={Play} size="micro" /> {t("Sample", "\u6837\u672c")} {sampleIndex + 1}</Button>
             <span className="speaker-sample-range">{formatTime(window.start)} - {formatTime(window.end)}</span>
           </article>);
           const selectedWindows = windowsBySpeaker.get(speaker.id) ?? [];
@@ -602,19 +603,19 @@ export function SpeakerReview({
                       {candidate.sharesPart && <p className="small muted">{t("Both speak in the same recording part, which usually means two different people.", "两者在同一录音部分都有发言，通常表示是两个人。")}</p>}
                       {candidate.fewSamples && <p className="small muted">{t("Based on very few samples.", "基于很少的样本。")}</p>}
                       <div className="voice-suggestion-actions">
-                        <button className="button secondary compact" disabled={!audioAvailable || locked || !onCueSequence} onClick={() => { setSampleFocus(null); onCueSequence?.([own.sample, candidate.sample]); }}><Icon glyph={Play} size="micro" /> {t("Play both", "连续播放两段")}</button>
-                        <button className="button primary compact" disabled={locked} onClick={() => void mergeVoiceSuggestion(speaker.id, candidate)}><Icon glyph={Check} size="micro" /> {t("Same person", "是同一人")}</button>
-                        <button className="text-button" disabled={locked && Boolean(onMarkDifferent)} onClick={() => (onMarkDifferent ? onMarkDifferent(speaker.id, candidate.speakerId) : setDismissedVoicePairs((current) => new Set([...current, voicePairKey(speaker.id, candidate.speakerId)])))}>{t("Not the same", "不是同一人")}</button>
+                        <Button className="button secondary compact" disabled={!audioAvailable || locked || !onCueSequence} onClick={() => { setSampleFocus(null); onCueSequence?.([own.sample, candidate.sample]); }}><Icon glyph={Play} size="micro" /> {t("Play both", "连续播放两段")}</Button>
+                        <Button className="button primary compact" disabled={locked} onClick={() => void mergeVoiceSuggestion(speaker.id, candidate)}><Icon glyph={Check} size="micro" /> {t("Same person", "是同一人")}</Button>
+                        <Button className="text-button" disabled={locked && Boolean(onMarkDifferent)} onClick={() => (onMarkDifferent ? onMarkDifferent(speaker.id, candidate.speakerId) : setDismissedVoicePairs((current) => new Set([...current, voicePairKey(speaker.id, candidate.speakerId)])))}>{t("Not the same", "不是同一人")}</Button>
                       </div>
                     </article>;
                   })}
                   {(() => {
                     const count = (meeting.voiceDecisions ?? []).filter((decision) => decision.firstSpeakerId === speaker.id || decision.secondSpeakerId === speaker.id).length;
                     if (!count || !onClearDifferent) return null;
-                    return <p className="small muted voice-suggestions-regroup">{t(`Marked as not the same as ${count} other speaker(s). Automatic matching keeps them apart.`, `已标记为与 ${count} 位其他说话人不是同一人，自动匹配会保持分开。`)} <button className="text-button" disabled={locked} onClick={() => onClearDifferent(speaker.id)}>{t("Forget these decisions", "取消这些标记")}</button></p>;
+                    return <p className="small muted voice-suggestions-regroup">{t(`Marked as not the same as ${count} other speaker(s). Automatic matching keeps them apart.`, `已标记为与 ${count} 位其他说话人不是同一人，自动匹配会保持分开。`)} <Button className="text-button" disabled={locked} onClick={() => onClearDifferent(speaker.id)}>{t("Forget these decisions", "取消这些标记")}</Button></p>;
                   })()}
-                  {onRegroupVoices && <p className="small muted voice-suggestions-regroup">{t("More voices than people?", "声音数比实际人数多？")} <button className="text-button" disabled={locked} onClick={onRegroupVoices}>{t("Regroup with a head count", "填人数重新分组")}</button></p>}
-                  {onExportVoiceEvaluation && <p className="small muted voice-suggestions-regroup">{t("Measuring how well voices are matched?", "想测量声音匹配的效果？")} <button className="text-button" onClick={onExportVoiceEvaluation}>{t("Export voice evaluation data", "导出声音评测数据")}</button></p>}
+                  {onRegroupVoices && <p className="small muted voice-suggestions-regroup">{t("More voices than people?", "声音数比实际人数多？")} <Button className="text-button" disabled={locked} onClick={onRegroupVoices}>{t("Regroup with a head count", "填人数重新分组")}</Button></p>}
+                  {onExportVoiceEvaluation && <p className="small muted voice-suggestions-regroup">{t("Measuring how well voices are matched?", "想测量声音匹配的效果？")} <Button className="text-button" onClick={onExportVoiceEvaluation}>{t("Export voice evaluation data", "导出声音评测数据")}</Button></p>}
                 </section>;
               })()}
               <label>{t("Compare with", "比较对象")}<select aria-label={t("Compare with speaker", "比较的说话人")} value={compareSpeaker?.id ?? ""} onChange={(event) => setCompareId(event.target.value)}><option value="">{t("Choose another speaker", "选择另一位说话人")}</option>{meeting.speakers.filter((item) => item.id !== speaker.id).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>)}</select></label>
@@ -628,16 +629,16 @@ export function SpeakerReview({
               <h3>{t("Speaker identity", "说话人身份")}</h3><strong>{speaker.name}</strong><p className="small muted">ID: {speaker.id} · {speaker.confirmed ? t("Confirmed", "已确认") : t("Unconfirmed", "未确认")}</p>
               <div className="speaker-profile-image"><SpeakerAvatar id={speaker.id} image={avatars[speaker.id]} className="speaker-avatar large" />
                 <label className="button secondary compact">{t("Change avatar", "\u66f4\u6362\u5934\u50cf")}<input className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" aria-label={t("Upload speaker avatar", "\u4e0a\u4f20\u8bf4\u8bdd\u4eba\u5934\u50cf")} disabled={locked || avatarBusy} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) { setAvatarBusy(true); void trackAvatarWrite(prepareAvatar(file).then((image) => setSpeakerAvatar(meeting.id, speaker.id, image))).then(() => { setAvatarError(""); showToast(t("Speaker avatar saved locally.", "\u8bf4\u8bdd\u4eba\u5934\u50cf\u5df2\u4fdd\u5b58\u5230\u672c\u5730\u3002")); }).catch(() => setAvatarError(t("Could not save the avatar. Choose a JPEG, PNG, or WebP image under 5 MB.", "\u65e0\u6cd5\u4fdd\u5b58\u5934\u50cf\uff0c\u8bf7\u9009\u62e9 5 MB \u4ee5\u4e0b\u7684 JPEG\u3001PNG \u6216 WebP \u56fe\u7247\u3002"))).finally(() => setAvatarBusy(false)); } }} /></label>
-                {avatars[speaker.id] && <button type="button" className="text-button" disabled={locked || avatarBusy} onClick={() => { setAvatarBusy(true); void trackAvatarWrite(setSpeakerAvatar(meeting.id, speaker.id, null)).then(() => setAvatarError("")).catch(() => setAvatarError(t("Could not remove the avatar.", "\u65e0\u6cd5\u5220\u9664\u5934\u50cf\u3002"))).finally(() => setAvatarBusy(false)); }}>{t("Use default", "\u4f7f\u7528\u9ed8\u8ba4\u5934\u50cf")}</button>}
+                {avatars[speaker.id] && <Button type="button" className="text-button" disabled={locked || avatarBusy} onClick={() => { setAvatarBusy(true); void trackAvatarWrite(setSpeakerAvatar(meeting.id, speaker.id, null)).then(() => setAvatarError("")).catch(() => setAvatarError(t("Could not remove the avatar.", "\u65e0\u6cd5\u5220\u9664\u5934\u50cf\u3002"))).finally(() => setAvatarBusy(false)); }}>{t("Use default", "\u4f7f\u7528\u9ed8\u8ba4\u5934\u50cf")}</Button>}
               </div>{avatarError && <p className="notice danger" role="alert">{avatarError}</p>}
 
               <label>{t("Display name", "显示名称")}<input aria-label={t(`Name for speaker ${index + 1}`, `\u7b2c ${index + 1} \u4f4d\u8bf4\u8bdd\u4eba\u7684\u59d3\u540d`)} data-speaker-input-id={speaker.id} value={draft} maxLength={80} disabled={locked} data-unsaved-edit={draft !== speaker.name ? "true" : "false"} onChange={(event) => setDrafts((current) => ({ ...current, [speaker.id]: event.target.value }))} /></label>
               {saveErrors[speaker.id] && <p className="notice danger" role="alert">{saveErrors[speaker.id]}</p>}
               <p className="small muted">{stats?.count ?? 0} {t("transcript fragments", "段转录片段")} · {formatTime(stats?.timed ?? 0)} {t("timed intervals", "有时间记录的片段时长")}</p>
               <p className="small muted">{t("Overlapping intervals may be counted more than once.", "重叠片段可能重复计入时长。")}</p>
-              <div className="speaker-card-actions"><button className="button secondary compact" disabled={locked || !draft.trim() || draft === speaker.name} data-unsaved-edit={draft !== speaker.name ? "true" : "false"} onClick={() => void saveSpeaker(speaker.id, "save")}>{t("Save name", "保存姓名")}</button>
-                <button className="button primary compact" disabled={locked || !draft.trim()} onClick={() => void saveSpeaker(speaker.id, speaker.confirmed ? "toggle" : "confirm")}><Icon glyph={Check} size="compact" />{speaker.confirmed ? t("Leave unconfirmed", "取消姓名确认") : t("Confirm name", "确认姓名")}</button>
-                <button className="text-button" onClick={() => onMerge(speaker.id)} disabled={locked || meeting.speakers.length < 2}>{t("Merge\u2026", "\u5408\u5e76\u2026")}</button></div>
+              <div className="speaker-card-actions"><Button className="button secondary compact" disabled={locked || !draft.trim() || draft === speaker.name} data-unsaved-edit={draft !== speaker.name ? "true" : "false"} onClick={() => void saveSpeaker(speaker.id, "save")}>{t("Save name", "保存姓名")}</Button>
+                <Button className="button primary compact" disabled={locked || !draft.trim()} onClick={() => void saveSpeaker(speaker.id, speaker.confirmed ? "toggle" : "confirm")}><Icon glyph={Check} size="compact" />{speaker.confirmed ? t("Leave unconfirmed", "取消姓名确认") : t("Confirm name", "确认姓名")}</Button>
+                <Button className="text-button" onClick={() => onMerge(speaker.id)} disabled={locked || meeting.speakers.length < 2}>{t("Merge\u2026", "\u5408\u5e76\u2026")}</Button></div>
             </section>
           </>;
         })()}
@@ -884,9 +885,9 @@ function PlaybackMode({
           <div className="playback-gap small muted" style={{ visibility: showGap ? "visible" : "hidden" }} aria-hidden={!showGap}>
             <span>{t("No timed caption at this position.", "此处没有带时间的字幕。")}</span>
             {audioAvailable && jumpTarget && (
-              <button type="button" className="text-button" tabIndex={showGap ? undefined : -1} onClick={() => onSeek(jumpTarget.start)}>
+              <Button type="button" className="text-button" tabIndex={showGap ? undefined : -1} onClick={() => onSeek(jumpTarget.start)}>
                 {nextCaption ? t("Next speech", "下一段发言") : t("First speech", "首段发言")} · {formatTime(jumpTarget.start)}
-              </button>
+              </Button>
             )}
           </div>
           <div className="playback-stage-footer" aria-hidden="true" />
@@ -914,7 +915,7 @@ function PlaybackMode({
             {followPlayback ? t("Following playback", "正在跟随播放") : t("Follow paused", "已暂停跟随")}
           </span>
           {!followPlayback && (
-            <button
+            <Button
               className="button secondary compact"
               onClick={() => {
                 setFollowPlayback(true);
@@ -922,7 +923,7 @@ function PlaybackMode({
               }}
             >
               {t("Follow playback", "跟随播放")}
-            </button>
+            </Button>
           )}
         </div>
         <div
@@ -972,7 +973,7 @@ function PlaybackMode({
                 {turn.captions.map((caption) => {
                   const active = current.includes(caption);
                   return (
-                    <button
+                    <Button
                       key={caption.id}
                       type="button"
                       data-caption-id={caption.id}
@@ -991,7 +992,7 @@ function PlaybackMode({
                         ))}
                       </span>
                       {active && playing && <span className="chat-wave" aria-hidden="true">·|·|·</span>}
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -999,7 +1000,7 @@ function PlaybackMode({
           ))}
         </div>
         <div className="playback-transcript-paging">
-          <button
+          <Button
             className="text-button"
             disabled={start === 0}
             onClick={() => {
@@ -1008,9 +1009,9 @@ function PlaybackMode({
             }}
           >
             {t("Load earlier", "加载更早内容")}
-          </button>
+          </Button>
           <span className="small muted">{Math.min(start + 1, captions.length)}–{Math.min(start + visible.length, captions.length)} / {captions.length}</span>
-          <button
+          <Button
             className="text-button"
             disabled={start + visible.length >= captions.length}
             onClick={() => {
@@ -1019,7 +1020,7 @@ function PlaybackMode({
             }}
           >
             {t("Load later", "加载更晚内容")}
-          </button>
+          </Button>
         </div>
       </section>
 
@@ -1028,29 +1029,29 @@ function PlaybackMode({
           <summary>{t("Timing unavailable", "时间信息不可用")} · {untimed.length}</summary>
           <p className="small muted">{t("These passages cannot be synchronized or used to seek.", "这些片段无法同步或跳转播放。")}</p>
           {untimed.slice(untimedStart, untimedStart + 80).map((segment) => <p key={segment.id}>{segment.text}</p>)}
-          <button className="text-button" disabled={untimedStart === 0} onClick={() => setUntimedStart(Math.max(0, untimedStart - 80))}>{t("Load earlier", "加载更早内容")}</button>
-          <button className="text-button" disabled={untimedStart + 80 >= untimed.length} onClick={() => setUntimedStart(untimedStart + 80)}>{t("Load later", "加载更晚内容")}</button>
+          <Button className="text-button" disabled={untimedStart === 0} onClick={() => setUntimedStart(Math.max(0, untimedStart - 80))}>{t("Load earlier", "加载更早内容")}</Button>
+          <Button className="text-button" disabled={untimedStart + 80 >= untimed.length} onClick={() => setUntimedStart(untimedStart + 80)}>{t("Load later", "加载更晚内容")}</Button>
         </details>
       )}
           {meeting.speakers.length > 0 && (
             <div className="playback-roster">
               <div className="playback-roster-head">
                 <span className="small muted">{t("Speakers in this meeting", "本场会议说话人")}</span>
-                <button
+                <Button
                   type="button"
                   className="text-button playback-edit-link"
                   disabled={locked}
                   onClick={() => onSelectSpeaker(meeting.speakers.find((s) => !s.confirmed)?.id ?? meeting.speakers[0].id)}
                 >
                   {t("Edit & confirm names →", "编辑并确认姓名 →")}
-                </button>
+                </Button>
               </div>
               <div className="playback-active-speakers">
                 {meeting.speakers.map((speaker, index) => {
                   const isActive = activeIds.has(speaker.id);
                   const atPosition = currentIds.has(speaker.id);
                   return (
-                    <button
+                    <Button
                       type="button"
                       key={speaker.id}
                       disabled={locked}
@@ -1074,7 +1075,7 @@ function PlaybackMode({
                       <span className="speaker-number" aria-hidden="true">
                         S{index + 1}
                       </span>
-                    </button>
+                    </Button>
                   );
                 })}
               </div>

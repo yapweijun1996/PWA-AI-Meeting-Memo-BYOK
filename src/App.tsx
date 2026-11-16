@@ -1,3 +1,4 @@
+import { Button } from "./components/controls";
 import { Icon } from "./components/Icon";
 import { translateUi } from "./i18n";
 import { isMeetingCompleted, doesMeetingNeedReview, getMeetingWorkflow } from "./domain/workflow";
@@ -250,7 +251,7 @@ export default function App() {
         {t("Skip to content", "跳转到内容")}
       </a>
       {mobileNav && (
-        <button
+        <Button
           className="nav-scrim"
           onClick={() => setMobileNav(false)}
           aria-label={t("Close navigation", "关闭导航")}
@@ -276,7 +277,7 @@ export default function App() {
             <Icon glyph={FolderOpen} size="navigation" />
             <span className="nav-text">{t("Your meetings", "您的会议")}</span><span className="nav-count">{meetings.length}</span>
           </a>
-          <button
+          <Button
             data-tooltip={navTip(t("Needs review", "待审阅"))}
             className={route === "/" && filter === "review" ? "active" : ""}
             onClick={() => {
@@ -288,11 +289,11 @@ export default function App() {
             <Icon glyph={Clock} size="navigation" />
             <span className="nav-text">{t("Needs review", "待审阅")}</span>
             <span className="nav-count">{needsReviewCount}</span>
-          </button>
-          <button data-tooltip={navTip(t("New meeting", "新建会议"))} onClick={() => setNewOpen(true)}>
+          </Button>
+          <Button data-tooltip={navTip(t("New meeting", "新建会议"))} onClick={() => setNewOpen(true)}>
             <Icon glyph={Plus} size="navigation" />
             <span className="nav-text">{t("New meeting", "新建会议")}</span>
-          </button>
+          </Button>
           <label className="nav-file" data-tooltip={navTip(t("Restore backup", "恢复备份"))}>
             <Icon glyph={Upload} size="navigation" />
             <span className="nav-text">{t("Restore backup", "恢复备份")}</span>
@@ -310,7 +311,7 @@ export default function App() {
           <div className="sidebar-recent-heading">
             <p className="nav-label">{t("RECENT MEETINGS", "最近会议")}</p>
             {meetings.length > 4 && (
-              <button
+              <Button
                 type="button"
                 className="sidebar-recent-all"
                 aria-label={t("View all meetings", "查看全部会议")}
@@ -322,7 +323,7 @@ export default function App() {
                 }}
               >
                 {t("View all", "查看全部")}
-              </button>
+              </Button>
             )}
           </div>
           {meetings.length > 0 ? (
@@ -366,10 +367,10 @@ export default function App() {
             <Icon glyph={SettingsIcon} size="control" />
             <span className="nav-text">{t("Settings & API keys", "设置与 API 密钥")}</span>
           </a>
-          <button data-tooltip={navTip(t("How it works", "使用说明"))} onClick={() => setHelp(true)}>
+          <Button data-tooltip={navTip(t("How it works", "使用说明"))} onClick={() => setHelp(true)}>
             <Icon glyph={HelpCircle} size="control" />
             <span className="nav-text">{t("How it works", "使用说明")}</span>
-          </button>
+          </Button>
           <div className="local-label">
             <span className="status-dot" />
             <span className="nav-text">{t("Saved on this device · Local storage", "已保存在此设备 · 本地存储")}</span>
@@ -380,14 +381,14 @@ export default function App() {
       <div className="main-shell">
         <header className={`topbar ${topHidden ? "topbar-hidden" : ""}`}>
           <div className="breadcrumb">
-            <button
+            <Button
               className="icon-button mobile-menu"
               onClick={() => setMobileNav(true)}
               aria-label={t("Open navigation", "打开导航")}
             >
               <Icon glyph={Menu} size="heading" />
-            </button>
-            <button
+            </Button>
+            <Button
               className="icon-button sidebar-toggle"
               onClick={toggleSidebar}
               aria-controls="app-sidebar"
@@ -404,7 +405,7 @@ export default function App() {
               }
             >
               {sidebarCollapsed ? <Icon glyph={PanelLeftOpen} size="transport" /> : <Icon glyph={PanelLeftClose} size="transport" />}
-            </button>
+            </Button>
             <a className="breadcrumb-root" href="#/">
               {t("Workspace", "工作空间")}
             </a>
@@ -436,13 +437,13 @@ export default function App() {
           {error && (
             <div className="notice danger" role="alert">
               {translateMessage(error, uiLanguage)}
-              <button
+              <Button
                 className="icon-button"
                 onClick={() => setError("")}
                 aria-label={t("Dismiss error", "关闭错误提示")}
               >
                 <Icon glyph={X} size="status" />
-              </button>
+              </Button>
             </div>
           )}
           <PwaStatus />
@@ -479,13 +480,13 @@ export default function App() {
                   <p>{t("Manage recordings, transcripts and notes.", "管理录音、转录与会议笔记。")}</p>
                 </div>
                 {hasMeetings && (
-                  <button
+                  <Button
                     className="button primary"
                     onClick={() => setNewOpen(true)}
                   >
                     <Icon glyph={Plus} size="control" />
                     {t("New meeting", "新建会议")}
-                  </button>
+                  </Button>
                 )}
               </section>
               {hasMeetings && (
@@ -537,13 +538,13 @@ export default function App() {
                       ["review", t("Needs review", "需要审阅")],
                       ["notes", t("With notes", "有笔记")],
                     ].map(([value, label]) => (
-                      <button
+                      <Button
                         key={value}
                         className={filter === value ? "selected" : ""}
                         onClick={() => setFilter(value)}
                       >
                         {label}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                   <div className="library-controls">
@@ -556,14 +557,14 @@ export default function App() {
                         onChange={(e) => setSearch(e.target.value)}
                       />
                       {search && (
-                        <button
+                        <Button
                           type="button"
                           className="icon-button search-clear"
                           aria-label={t("Clear search", "清除搜索")}
                           onClick={() => setSearch("")}
                         >
                           <Icon glyph={X} size="compact" />
-                        </button>
+                        </Button>
                       )}
                     </label>
                     <label className="sort-control">
@@ -635,13 +636,13 @@ export default function App() {
                         ? t("Try another search or filter.", "请尝试其他搜索或筛选条件。")
                         : t("Import a recording or transcript to begin. Nothing is sent until you say so.", "导入录音或转录开始使用。未经您确认不会发送任何内容。")}
                     </p>
-                    <button
+                    <Button
                       className="text-button"
                       onClick={() => setNewOpen(true)}
                     >
                       <Icon glyph={Plus} size="inline" />
                       {t("Create your first meeting", "创建第一个会议")}
-                    </button>
+                    </Button>
                   </Empty>
                 )}
               </section>
@@ -657,10 +658,10 @@ export default function App() {
                     </p>
                   </div>
                 </div>
-                <button className="text-button" onClick={() => setHelp(true)}>
+                <Button className="text-button" onClick={() => setHelp(true)}>
                   {t("A quick tour", "快速了解")}
                   <Icon glyph={ArrowUpRight} size="inline" />
-                </button>
+                </Button>
               </section>
               <footer className="page-footer">
                 <span>{t("Made for more mindful meetings.", "让会议更加专注。")}</span>
@@ -674,7 +675,7 @@ export default function App() {
         </main>
       </div>
       {showTop && (
-        <button
+        <Button
           ref={backToTopRef}
           className="back-to-top"
           aria-label={t("Back to top", "返回顶部")}
@@ -688,7 +689,7 @@ export default function App() {
           }
         >
           <Icon glyph={ArrowUp} size="control" />
-        </button>
+        </Button>
       )}
       {newOpen && (
         <NewMeeting

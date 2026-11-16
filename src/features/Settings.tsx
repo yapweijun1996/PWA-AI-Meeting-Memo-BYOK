@@ -1,3 +1,4 @@
+import { Button, Field, Tabs, Tab } from "../components/controls";
 import { Icon } from "../components/Icon";
 import type { MemoLanguagePreference } from "../domain/memo-language";
 import { translateUi } from "../i18n";
@@ -93,13 +94,6 @@ export function Settings() {
   function changeFont(value: FontChoice) {
     try { saveFont(value); setFontError(false); setFontSaved(true); }
     catch { setFontError(true); setFontSaved(false); }
-  }
-  function tabKey(event: React.KeyboardEvent<HTMLButtonElement>) {
-    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-    event.preventDefault();
-    const next = event.key === "Home" ? "appearance" : event.key === "End" ? "api" : activeTab === "api" ? "appearance" : "api";
-    setActiveTab(next);
-    document.getElementById(`settings-tab-${next}`)?.focus();
   }
   useEffect(() => {
     setSettingsDirty(formDirty);
@@ -268,13 +262,15 @@ export function Settings() {
           <p>{t("Personalize your workspace and connect your own keys.", "个性化工作区并连接您自己的密钥。")}</p>
         </div>
       </section>
-      <div className="settings-tabs" role="tablist" aria-label={t("Settings sections", "设置分类")}>
-        {(["appearance", "api"] as const).map((name) => <button key={name} id={`settings-tab-${name}`} type="button" role="tab"
-          aria-selected={activeTab === name} aria-controls={`settings-panel-${name}`} tabIndex={activeTab === name ? 0 : -1}
-          onClick={() => setActiveTab(name)} onKeyDown={tabKey}>
+      <Tabs className="settings-tabs" label={t("Settings sections", "设置分类")} onValueChange={name => {
+        if (name !== "appearance" && name !== "api") return false;
+        setActiveTab(name);
+      }}>
+        {(["appearance", "api"] as const).map(name => <Tab key={name} id={`settings-tab-${name}`} value={name}
+          selected={activeTab === name} aria-controls={`settings-panel-${name}`}>
           {name === "appearance" ? t("Appearance", "外观") : t("API & models", "API 与模型")}
-        </button>)}
-      </div>
+        </Tab>)}
+      </Tabs>
       {formDirty && <p className="settings-dirty" role="status">{t("Unsaved settings", "设置尚未保存")}</p>}
       <section className="settings-panel">
         <form onInvalid={(event) => {
@@ -294,7 +290,7 @@ export function Settings() {
           <p className="small muted">{t("Save settings to keep your language choice.", "请保存设置以保留语言选择。")}</p>
           {languageDirty && <div className="appearance-language-save">
             <p role="status">{t("Language change is not saved. Saving also saves any API and model drafts.", "语言更改尚未保存。保存时也会保存 API 和模型草稿。")}</p>
-            <button type="submit" className="button primary compact" disabled={saving}>{t("Save all settings", "保存所有设置")}</button>
+            <Button type="submit" className="button primary compact" disabled={saving}>{t("Save all settings", "保存所有设置")}</Button>
           </div>}
           {languageDirty && saveError && <div className="notice danger" role="alert">{translateMessage(saveError, displayLanguage)}</div>}
           </section>
@@ -341,7 +337,7 @@ export function Settings() {
             <p className="small muted">{t("Review decisions, sources and next steps.", "审阅决定、来源和下一步。")}</p>
             <div className="appearance-preview-samples"><span className="appearance-preview-action">{t("Example button", "示例按钮")}</span><span className="pill green">{t("Ready", "已就绪")}</span></div>
           </div>
-          <button type="button" className="button secondary" onClick={() => changeFont("default")}>{t("Restore default font", "恢复默认字体")}</button>
+          <Button type="button" className="button secondary" onClick={() => changeFont("default")}>{t("Restore default font", "恢复默认字体")}</Button>
           </section>
         </div>
         <div id="settings-panel-api" role="tabpanel" aria-labelledby="settings-tab-api" hidden={activeTab !== "api"}>
@@ -378,8 +374,7 @@ export function Settings() {
                 <Icon glyph={ExternalLink} size="inline" />
               </a>
             </div>
-            <label>
-              {t("OpenRouter API key", "OpenRouter API 密钥")}
+            <Field label={t("OpenRouter API key", "OpenRouter API 密钥")}>
               <input
                 type="password"
                 maxLength={4096}
@@ -391,7 +386,7 @@ export function Settings() {
                 placeholder={t("Enter your OpenRouter key", "输入 OpenRouter 密钥")}
                 aria-label={t("OpenRouter API key", "OpenRouter API 密钥")}
               />
-            </label>
+            </Field>
           </div>
           <div className="connection">
             <div className="connection-heading">
@@ -409,8 +404,7 @@ export function Settings() {
                 <Icon glyph={ExternalLink} size="inline" />
               </a>
             </div>
-            <label>
-              {t("OpenAI API key", "OpenAI API 密钥")}
+            <Field label={t("OpenAI API key", "OpenAI API 密钥")}>
               <input
                 type="password"
                 maxLength={4096}
@@ -422,15 +416,15 @@ export function Settings() {
                 placeholder={t("Enter your OpenAI key", "输入 OpenAI 密钥")}
                 aria-label={t("OpenAI API key", "OpenAI API 密钥")}
               />
-            </label>
+            </Field>
           </div>
           <div className="connection">
             <h3>{t("Recommended preset", "推荐预设")}</h3>
             <p>{t("OpenRouter Scribe v2 for transcription and OpenAI GPT-6 Luna for notes. Each provider needs its own key. Model access is not guaranteed.", "使用 OpenRouter Scribe v2 转录，OpenAI GPT-6 Luna 生成笔记。两个服务各需一个密钥，不能保证模型可用。")}</p>
-            <button type="button" className="button secondary" disabled={saving} onClick={() => {
+            <Button type="button" className="button secondary" disabled={saving} onClick={() => {
               setSpeech({ provider: "openrouter", model: defaultModel("openrouter", "speech") });
               setMemo({ provider: "openai", model: defaultModel("openai", "memo") });
-            }}>{t("Use recommended preset", "使用推荐预设")}</button>
+            }}>{t("Use recommended preset", "使用推荐预设")}</Button>
             <p className="small muted">{t("Selecting the preset does not validate keys or send a request. Save settings to keep it.", "选择预设不会验证密钥或发送请求。请保存设置。")}</p>
           </div>
           {(["speech", "memo"] as Stage[]).map((stage) => {
@@ -531,8 +525,8 @@ export function Settings() {
             <label>{t("Pricing source URL", "定价来源网址")}<input type="url" maxLength={300} value={rateSource} disabled={saving} onChange={(e) => setRateSource(e.target.value)} placeholder="https://example.com/pricing" /></label>
             <label>{t("Date checked", "核对日期")}<input type="date" value={rateDate} disabled={saving} onChange={(e) => setRateDate(e.target.value)} /></label>
             <p className="small muted">{rateFor ? `${t("Rate applies to", "费率适用模型")} ${rateFor.provider} / ${rateFor.model}` : t("Rate is not bound to a model.", "费率尚未绑定模型。")}</p>
-            <button type="button" className="button secondary" disabled={saving} onClick={() => setRateFor({ ...speech, model: speech.model.trim() })}>{t("Bind rate to selected speech model", "绑定费率到所选语音模型")}</button>
-            <button type="button" className="button ghost" disabled={saving} onClick={() => { setRateSource(""); setRateDate(""); setRateFor(null); }}>{t("Clear rate provenance", "清除费率来源")}</button>
+            <Button type="button" className="button secondary" disabled={saving} onClick={() => setRateFor({ ...speech, model: speech.model.trim() })}>{t("Bind rate to selected speech model", "绑定费率到所选语音模型")}</Button>
+            <Button type="button" className="button ghost" disabled={saving} onClick={() => { setRateSource(""); setRateDate(""); setRateFor(null); }}>{t("Clear rate provenance", "清除费率来源")}</Button>
           </div>
         </div>
           {saveError && !(activeTab === "appearance" && languageDirty) && (
@@ -541,15 +535,15 @@ export function Settings() {
             </div>
           )}
           <div className="settings-actions">
-            <button type="submit" className="button primary" disabled={saving}>
+            <Button type="submit" className="button primary" disabled={saving}>
               {saved && !formDirty ? (
                 <Icon glyph={Check} size="inline" />
               ) : (
                 <Icon glyph={KeyRound} size="inline" />
               )}{" "}
               {saved && !formDirty ? t("Saved on this device", "已保存在此设备") : t("Save settings", "保存设置")}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               className="button ghost"
               hidden={activeTab !== "api"}
@@ -558,7 +552,7 @@ export function Settings() {
             >
               <Icon glyph={Trash2} size="inline" />
               {t("Forget keys", "清除密钥")}
-            </button>
+            </Button>
           </div>
           <p className="small muted">
             {t("Saving settings does not test keys or incur a charge. Cloud requests are made only after you confirm a meeting operation.", "保存设置不会测试密钥或产生费用。只有确认会议操作后才会发送云端请求。")}
@@ -580,9 +574,9 @@ export function Settings() {
           <p className="muted">
             {t("Meetings are saved in this browser, on this device. Clearing site data removes them. A different device or hostname has a separate library.", "会议保存在此设备的浏览器中。清除网站数据会删除这些会议。其他设备或域名使用独立的会议库。")}
           </p>
-          <button className="button secondary" onClick={() => void persist()}>
+          <Button className="button secondary" onClick={() => void persist()}>
             {t("Request persistent storage", "请求持久化存储")}
-          </button>
+          </Button>
         </section>
         <StorageMonitor t={t} />
         <SpeakerModelSettings t={t} />

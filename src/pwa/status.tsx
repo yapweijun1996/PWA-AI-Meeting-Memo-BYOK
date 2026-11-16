@@ -1,3 +1,4 @@
+import { Button } from "../components/controls";
 import { Icon } from "../components/Icon";
 import { translateUi } from "../i18n";
 import { useEffect, useRef, useState } from "react";
@@ -228,10 +229,10 @@ export function PwaStatus() {
       {sidebarSlot && createPortal(<div className="pwa-sidebar">
         <span className="pwa-version" data-tooltip={__BUILD_ID__}>{t("Version", "\u7248\u672c")} {appVersion} - {displayBuild}</span>
         {confirmation.open && confirmation.origin === "sidebar" && !updating ? <div className="pwa-sidebar-actions">
-          <button ref={confirmButton} type="button" className="pwa-sidebar-button pwa-sidebar-confirm" aria-label={t("Confirm update", "确认更新")} onClick={() => void update()}><Icon glyph={Check} size="compact" />{t("Confirm update", "确认更新")}</button>
-          <button type="button" className="pwa-sidebar-button pwa-sidebar-cancel" aria-label={t("Cancel", "取消")} data-tooltip={t("Cancel", "取消")} onClick={cancelUpdate}><Icon glyph={X} size="compact" /></button>
-        </div> : (waiting || refreshReady) ? <button ref={sidebarUpdateButton} type="button" className="pwa-sidebar-button" aria-label={t("Open update confirmation", "\u6253\u5f00\u66f4\u65b0\u786e\u8ba4")} onClick={() => requestUpdate("sidebar")} disabled={updating}><Icon glyph={RefreshCw} size="compact" />{updating ? t("Updating...", "\u6b63\u5728\u66f4\u65b0...") : t("Update now", "\u7acb\u5373\u66f4\u65b0")}</button>
-          : <button type="button" className="pwa-sidebar-button" onClick={() => void checkForUpdates()} disabled={checking}><Icon glyph={RefreshCw} size="compact" className={checking ? "pwa-check-spin" : undefined} />{checking ? t("Checking...", "\u6b63\u5728\u68c0\u67e5...") : t("Check for updates", "\u68c0\u67e5\u66f4\u65b0")}</button>}
+          <Button ref={confirmButton} type="button" className="pwa-sidebar-button pwa-sidebar-confirm" aria-label={t("Confirm update", "确认更新")} onClick={() => void update()}><Icon glyph={Check} size="compact" />{t("Confirm update", "确认更新")}</Button>
+          <Button type="button" className="pwa-sidebar-button pwa-sidebar-cancel" aria-label={t("Cancel", "取消")} data-tooltip={t("Cancel", "取消")} onClick={cancelUpdate}><Icon glyph={X} size="compact" /></Button>
+        </div> : (waiting || refreshReady) ? <Button ref={sidebarUpdateButton} type="button" className="pwa-sidebar-button" aria-label={t("Open update confirmation", "\u6253\u5f00\u66f4\u65b0\u786e\u8ba4")} onClick={() => requestUpdate("sidebar")} disabled={updating}><Icon glyph={RefreshCw} size="compact" />{updating ? t("Updating...", "\u6b63\u5728\u66f4\u65b0...") : t("Update now", "\u7acb\u5373\u66f4\u65b0")}</Button>
+          : <Button type="button" className="pwa-sidebar-button" onClick={() => void checkForUpdates()} disabled={checking}><Icon glyph={RefreshCw} size="compact" className={checking ? "pwa-check-spin" : undefined} />{checking ? t("Checking...", "\u6b63\u5728\u68c0\u67e5...") : t("Check for updates", "\u68c0\u67e5\u66f4\u65b0")}</Button>}
         <span className={`pwa-check-message${sidebarError ? " pwa-update-error" : ""}`} role="status" data-tooltip={sidebarError ? errorText : undefined} tabIndex={sidebarError ? 0 : undefined}>{sidebarError ? <><Icon glyph={AlertTriangle} size="compact" /><span>{errorText}</span></> : checkMessage}</span>
       </div>, sidebarSlot)}
       {offline && (
@@ -246,22 +247,22 @@ export function PwaStatus() {
           <span>{t("A new version is ready. Save your work before updating.", "新版本已准备好。更新前请先保存工作。")}</span>
           {confirmation.open && confirmation.origin === "banner" && !updating ? (
             <>
-              <button ref={confirmButton} className="button secondary compact" onClick={() => void update()}>
+              <Button ref={confirmButton} className="button secondary compact" onClick={() => void update()}>
                 {t("Confirm update", "确认更新")}
-              </button>
-              <button className="text-button" onClick={cancelUpdate}>
+              </Button>
+              <Button className="text-button" onClick={cancelUpdate}>
                 {t("Cancel", "取消")}
-              </button>
+              </Button>
             </>
           ) : (
-            <button
+            <Button
               className="button secondary compact"
               ref={bannerUpdateButton}
               onClick={() => requestUpdate("banner")}
               disabled={updating}
             >
               {updating ? t("Updating…", "正在更新…") : t("Update now", "立即更新")}
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -269,7 +270,7 @@ export function PwaStatus() {
         <div className="notice install">
           <Icon glyph={Download} size="status" />
           <span>{t("Make this workspace feel at home on your device.", "将此工作空间安装到您的设备。")}</span>
-          <button
+          <Button
             className="button secondary compact"
             onClick={async () => {
               await install.prompt();
@@ -278,10 +279,10 @@ export function PwaStatus() {
             }}
           >
             {t("Install app", "安装应用")}
-          </button>
-          <button className="text-button" onClick={() => setInstall(undefined)}>
+          </Button>
+          <Button className="text-button" onClick={() => setInstall(undefined)}>
             {t("Later", "稍后")}
-          </button>
+          </Button>
         </div>
       )}
       {error && !sidebarError && (

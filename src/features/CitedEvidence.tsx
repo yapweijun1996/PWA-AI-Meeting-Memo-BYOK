@@ -1,3 +1,4 @@
+import { Button } from "../components/controls";
 import { translateUi } from "../i18n";
 import { useState } from "react";
 import type { Meeting, MemoItem, Segment } from "../domain/model";
@@ -28,13 +29,13 @@ export function CitedEvidence({ meeting, item, sourceIndex, onSelect }: {
             if (!segment) return <span key={`${source.id}:${source.revision}`}>[{t("Cited revision unavailable", "引用的修订版本不可用")} · r{source.revision}] </span>;
             const name = segment.speakerIds.length ? speakerName(meeting, segment.speakerIds) : t("Unknown speaker", "未知说话人");
             const time = segment.start === null ? t("Time unknown", "时间未知") : `${formatTime(segment.start)} – ${formatTime(segment.end!)}`;
-            return <span key={`${source.id}:${source.revision}`}><button type="button" aria-label={`${name} · ${time} · r${source.revision}: ${segment.text}`} onClick={() => onSelect(segment)}>{segment.text}</button>{" "}</span>;
+            return <span key={`${source.id}:${source.revision}`}><Button type="button" aria-label={`${name} · ${time} · r${source.revision}: ${segment.text}`} onClick={() => onSelect(segment)}>{segment.text}</Button>{" "}</span>;
           })}
         </p>
         {item.sources.length > pageSize && <div className="evidence-pages">
           <span className="small muted">{start + 1}–{Math.min(start + pageSize, item.sources.length)} / {item.sources.length}</span>
-          <button type="button" className="text-button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>{t("Previous passages", "上一页段落")}</button>
-          <button type="button" className="text-button" disabled={start + pageSize >= item.sources.length} onClick={() => setPage(currentPage + 1)}>{t("Next passages", "下一页段落")}</button>
+          <Button type="button" className="text-button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>{t("Previous passages", "上一页段落")}</Button>
+          <Button type="button" className="text-button" disabled={start + pageSize >= item.sources.length} onClick={() => setPage(currentPage + 1)}>{t("Next passages", "下一页段落")}</Button>
         </div>}
       </div>}
     </details>

@@ -1,3 +1,4 @@
+import { IconButton } from "./controls";
 import { Icon } from "./Icon";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { X, FileAudio, MessageSquareText } from "lucide-react";
@@ -53,13 +54,13 @@ export function Modal({
     <dialog ref={ref} className={className} aria-label={title} onCancel={onClose}>
       <header className="modal-head">
         <h2>{title}</h2>
-        <button
+        <IconButton
           className="icon-button"
           onClick={onClose}
-          aria-label={language === "zh-CN" ? "关闭对话框" : "Close dialog"}
+          label={language === "zh-CN" ? "关闭对话框" : "Close dialog"}
         >
           <Icon glyph={X} size="transport" />
-        </button>
+        </IconButton>
       </header>
       {error && (
         <div className="notice danger modal-error" role="alert">

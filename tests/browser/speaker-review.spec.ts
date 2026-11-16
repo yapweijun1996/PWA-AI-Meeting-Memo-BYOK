@@ -139,6 +139,9 @@ async function isolateSyntheticDecoderEvents(page: Page) {
   // native WAV rejection from overriding the explicit state events in tests
   // that exercise projection/colors; real decoding is verified separately.
   await page.addInitScript(() => {
+    // UI fixture attachment consent is outside playback projection acceptance.
+    // These fixtures do not claim native confirmation or audio decoder acceptance.
+    window.confirm = () => true;
     Object.defineProperty(HTMLMediaElement.prototype, "error", { configurable: true, get: () => null });
     for (const type of ["error", "playing", "canplay", "waiting", "pause", "ended"]) {
       document.addEventListener(type, event => {
@@ -152,7 +155,9 @@ async function createFixture(
   page: Page,
   audioName = "speaker-review.wav",
   meeting = fixtureMeeting(),
+  nativeClock = false,
 ) {
+  if (!nativeClock) await isolateSyntheticDecoderEvents(page);
   await page.addInitScript(() => {
     HTMLMediaElement.prototype.play = function (this: HTMLMediaElement) {
       Object.defineProperty(this, "paused", { configurable: true, value: false });
@@ -186,6 +191,12 @@ async function createFixture(
   });
   await expect(page.locator(".recording-info")).toContainText(audioName);
   await expect(page.locator("audio")).toHaveAttribute("src", /^blob:/);
+  if (!nativeClock) await page.locator("audio").evaluate((element) => {
+    // UI fixtures already synthesize play/pause. Keep their seek position owned
+    // by the fixture too; native decoder events must not rewind synthetic state.
+    let position = 0;
+    Object.defineProperty(element, "currentTime", {configurable: true, get: () => position, set: value => {position = value;}});
+  });
   await page.locator("audio").evaluate((element) => {
     try {
       Object.defineProperty(element, "duration", {
@@ -1380,7 +1391,7 @@ test("immersive highlights follow the real media clock without timeupdate", asyn
     text: `word${index}`,
     originalText: `word${index}`,
   }));
-  await createFixture(page, "clock-fixture.wav", fixture);
+  await createFixture(page, "clock-fixture.wav", fixture, true);
   const audio = page.locator("audio");
   await audio.evaluate((element) => {
     const media = element as HTMLMediaElement;

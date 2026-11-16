@@ -4,6 +4,10 @@ Status: DS04 includes a runnable synthetic [actual-component catalogue](../catal
 
 | Component / owner | Inputs and variants | Interaction and accessibility contract |
 | --- | --- | --- |
+| `Button`, `src/components/controls.tsx` | Native button props and ref, optional `pending` | Preserve native form defaults and feature-owned handlers. Pending disables activation and exposes `aria-busy`; it does not create or retry operations. |
+| `IconButton`, `src/components/controls.tsx` | Button props, required nonempty `label` | A named native button, defaulting to `type="button"`. The caller owns its glyph, target size and action. |
+| `Field`, `src/components/controls.tsx` | Label, one control, optional hint/error | Retain control identity, value, ref and existing descriptions; associate added hint/error text and mark invalid errors. Feature state owns drafts and validation. |
+| `Tabs` / `Tab`, `src/components/controls.tsx` | Controlled selection and change callback; native tab props | Horizontal arrow/Home/End navigation wraps and skips disabled tabs. A refused change restores selected focus. Features retain panel relationships, drafts and navigation guards. |
 | `Modal`, `src/components/ui.tsx` | `title`, `onClose`, children, optional class name | Wrap the native dialog; keep Escape/cancel and native or marked initial focus. After unmount, restore the previously focused opener without scrolling only if it remains connected and no other valid focus, explicit inert ancestor or competing open dialog prevents it. StrictMode replay cancels obsolete restoration. Feature-owned focus choices take precedence. Global operation errors remain visible alerts; preserve unsaved work before closing. |
 | `Icon`, `src/components/Icon.tsx` | Existing Lucide component as `glyph`, named `size`, native Lucide/SVG props | Adds no DOM wrapper or second glyph registry. Physical dimensions belong to `ICON_SIZES`; preserve `aria-label`, decorative hiding, stroke, class and ref props. The containing interactive control still owns its accessible name and touch target. |
 | `Brand`, `src/components/ui.tsx` | Standard and `small` variants | Shared brand and localized tagline. Do not copy brand markup into views. |
@@ -25,7 +29,7 @@ Status: DS04 includes a runnable synthetic [actual-component catalogue](../catal
 
 ## Usage boundaries
 
-Use the existing native dialog and disclosure semantics where they provide the tested behavior. DS03 separately owns consolidation of repeated interactive controls; this inventory does not imply that a universal Button, Field or Tabs API already exists. Do not merge `MemoDateField` into a text editor solely to make the inventory shorter.
+Use the existing native dialog and disclosure semantics where they provide the tested behavior. DS03 centralizes buttons and the Settings/workspace tab interaction; Settings key fields demonstrate the shared field contract. Feature-specific editors and other fields retain their existing owners. Do not merge `MemoDateField` into a text editor solely to make the inventory shorter.
 
 The runtime application mounts the shared tooltip and toast layers once. Transient success and loading states must correspond to real state transitions. Errors, unsaved drafts, source revisions and confirmation remain owned by their feature; shared presentation must not hide or overwrite them.
 

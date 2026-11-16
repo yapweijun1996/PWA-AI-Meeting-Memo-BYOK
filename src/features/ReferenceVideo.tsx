@@ -1,3 +1,4 @@
+import { Button } from "../components/controls";
 import { Icon } from "../components/Icon";
 import { translateUi } from "../i18n";
 import { useEffect, useMemo, useState } from "react";
@@ -194,14 +195,14 @@ export function ReferenceVideo({
           </p>
         </div>
         {suggestedId && !value?.youtubeId && (
-          <button
+          <Button
             type="button"
             className="button secondary compact"
             onClick={useSuggestion}
             disabled={disabled}
           >
             {t("Use filename suggestion", "使用文件名建议")}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -209,14 +210,14 @@ export function ReferenceVideo({
         <div className="reference-video-player">
           <div className="reference-video-player-head">
             <strong>{t("Reference video loaded", "参考视频已加载")}</strong>
-            <button
+            <Button
               type="button"
               className="text-button"
               onClick={() => setActive(null)}
               aria-label={t("Stop reference video", "停止参考视频")}
             >
               <Icon glyph={StopCircle} size="small" /> {t("Stop", "停止")}
-            </button>
+            </Button>
           </div>
           <iframe
             src={active.source}
@@ -280,22 +281,22 @@ export function ReferenceVideo({
       )}
       {error && <p className="notice danger" role="alert">{error}</p>}
       <div className="reference-video-actions">
-        <button
+        <Button
           type="button"
           className="button secondary compact"
           onClick={() => void saveDraft()}
           disabled={disabled || !isDraftDifferent}
         >
           <Icon glyph={Save} size="compact" /> {t("Save reference", "保存参考")}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           className="button primary compact"
           onClick={() => void watchSample()}
           disabled={disabled || !draftId}
         >
           <Icon glyph={Eye} size="compact" /> {t("Watch this sample", "观看此样本")}
-        </button>
+        </Button>
         {external && (
           <a
             className="text-button"

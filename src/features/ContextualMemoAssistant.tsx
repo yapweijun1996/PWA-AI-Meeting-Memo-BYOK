@@ -1,3 +1,4 @@
+import { Button } from "../components/controls";
 import { useMemo, useState } from "react";
 import type { Meeting } from "../domain/model";
 import { Modal } from "../components/ui";
@@ -73,18 +74,18 @@ export function ContextualMemoAssistant({ meeting, selection, onMeetingUpdate, o
       <div className="contextual-destination"><strong>{t("Provider and model", "服务商及模型")}</strong>: {provider.provider === "openai" ? "OpenAI" : "OpenRouter"} · {provider.model}<br />{t("Cost: unknown. One confirmed request may be charged.", "费用未知。确认后将发送一次可能收费的请求。")}</div>
       <h3>{t("Selected text", "所选文字")}</h3>
       <div className="contextual-text">{selection.originalText.slice(selection.start, selection.end)}</div>
-      <button type="button" className="text-button" disabled={busy} onClick={onOpenEvidence}>{t("Check original sources", "核实原话")}</button>
+      <Button type="button" className="text-button" disabled={busy} onClick={onOpenEvidence}>{t("Check original sources", "核实原话")}</Button>
       {unresolved && <><p>{t("Review these unresolved requests in the relevant provider accounts:", "请在对应服务商账户中核对以下未确定请求：")}</p><ul>{unresolvedJobs.map(value => <li key={value.id}>{value.provider} · {value.model} · {value.createdAt} · {t("Request ID", "请求 ID")}: {value.requestId || t("unavailable", "不可用")}</li>)}</ul><label className="contextual-review"><input type="checkbox" checked={reviewedUnknown} onChange={event => setReviewedUnknown(event.target.checked)} disabled={busy} /> {t(`I checked the provider account for all ${unresolvedCount} unresolved suggestion request(s) and understand another attempt may be charged.`, `我已核对全部 ${unresolvedCount} 次未确定建议请求的服务商账单，并了解再次请求可能收费。`)}</label></>}
       {error && <div role="alert" className="notice danger">{error}</div>}
       {suggestion && <section className="contextual-comparison">
         <h3>{t("Suggested replacement", "建议替换为")}</h3>
         <div className="contextual-text">{suggestion}</div>
         <p className="small muted">{t("Review the meaning yourself. Applying changes only the selection, keeps source references and marks this note for review; the suggestion is not verified evidence.", "请自行核对含义。应用只更改所选文字，保留来源并将笔记标为待复核；建议不代表证据已验证。")}</p>
-        <button type="button" className="button primary" disabled={busy} onClick={() => void apply()}>{t("Apply selected change", "应用所选修改")}</button>
+        <Button type="button" className="button primary" disabled={busy} onClick={() => void apply()}>{t("Apply selected change", "应用所选修改")}</Button>
       </section>}
       <div className="contextual-actions">
-        {busy ? <button type="button" className="button secondary" onClick={cancelProcessing}>{t("Stop waiting", "停止等待")}</button> : <button type="button" className="button secondary" disabled={!snapshot || (unresolved && !reviewedUnknown)} onClick={() => void send()}>{t("Confirm and send", "确认并发送")}</button>}
-        <button type="button" className="button secondary" onClick={onClose}>{t("Close", "关闭")}</button>
+        {busy ? <Button type="button" className="button secondary" onClick={cancelProcessing}>{t("Stop waiting", "停止等待")}</Button> : <Button type="button" className="button secondary" disabled={!snapshot || (unresolved && !reviewedUnknown)} onClick={() => void send()}>{t("Confirm and send", "确认并发送")}</Button>}
+        <Button type="button" className="button secondary" onClick={onClose}>{t("Close", "关闭")}</Button>
       </div>
       {busy && <p role="status">{t("Waiting for the provider. Closing the page may leave a billable unknown outcome.", "正在等待服务商。关闭页面可能留下仍会计费的未知结果。")}</p>}
     </div>

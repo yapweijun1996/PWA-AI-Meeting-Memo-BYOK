@@ -1,3 +1,4 @@
+import { Button } from "../components/controls";
 import { useState } from "react";
 import type { Meeting, MemoItem, Segment } from "../domain/model";
 import { translateUi } from "../i18n";
@@ -41,21 +42,21 @@ export function EvidenceSources({ meeting, item, indexes, sourceIndex, onSelect 
   return <div className="source-links" aria-label={t("Source references", "来源引用")}>
     <span>{t("Source", "来源")} · {item.sources.length}</span>
     {groups.slice(0, 2).map(group => <p className="evidence-preview" key={`${group.first.id}:${group.first.revision}`}>
-      <button type="button" className="text-button" aria-label={`${t("Open cited fragments in preview", "打开预览中的引用片段")}: ${group.text.slice(0, 160)}`} onClick={() => onSelect(group.first, group.refs)}><span className="evidence-preview-text">{group.text.length > 160 ? `${group.text.slice(0, 160)}…` : group.text}</span></button>
+      <Button type="button" className="text-button" aria-label={`${t("Open cited fragments in preview", "打开预览中的引用片段")}: ${group.text.slice(0, 160)}`} onClick={() => onSelect(group.first, group.refs)}><span className="evidence-preview-text">{group.text.length > 160 ? `${group.text.slice(0, 160)}…` : group.text}</span></Button>
       {group.refs.length > 1 && <span className="small muted"> · {group.refs.length} {t("cited fragments", "个引用片段")}</span>}
     </p>)}
     {visible.map((source, index) => {
       const segment = sourceIndex.get(`${source.id}:${source.revision}`);
       const number = indexes.get(source.id);
       const label = `${t("Passage", "段落")} ${number === undefined ? `${start + index + 1} ${t("(historical)", "（历史）")}` : number + 1} · r${source.revision}`;
-      return segment ? <button key={`${source.id}:${source.revision}`} className="source-link" onClick={() => onSelect(segment)}>{label}</button> : <span key={`${source.id}:${source.revision}`} className="source-link" aria-label={`${label}: ${t("Cited revision unavailable", "引用的修订版本不可用")}`}>{label} · {t("unavailable", "不可用")}</span>;
+      return segment ? <Button key={`${source.id}:${source.revision}`} className="source-link" onClick={() => onSelect(segment)}>{label}</Button> : <span key={`${source.id}:${source.revision}`} className="source-link" aria-label={`${label}: ${t("Cited revision unavailable", "引用的修订版本不可用")}`}>{label} · {t("unavailable", "不可用")}</span>;
     })}
-    {item.sources.length > 3 && !expanded && <button type="button" className="text-button" onClick={() => setExpanded(true)}>{t(`Show all ${item.sources.length} sources`, `查看全部 ${item.sources.length} 条引用`)}</button>}
+    {item.sources.length > 3 && !expanded && <Button type="button" className="text-button" onClick={() => setExpanded(true)}>{t(`Show all ${item.sources.length} sources`, `查看全部 ${item.sources.length} 条引用`)}</Button>}
     {expanded && <>
       <span className="small muted">{start + 1}–{Math.min(start + pageSize, item.sources.length)} / {item.sources.length}</span>
-      <button type="button" className="text-button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>{t("Previous sources", "上一页引用")}</button>
-      <button type="button" className="text-button" disabled={start + pageSize >= item.sources.length} onClick={() => setPage(currentPage + 1)}>{t("Next sources", "下一页引用")}</button>
-      <button type="button" className="text-button" onClick={() => { setExpanded(false); setPage(0); }}>{t("Show fewer sources", "收起引用")}</button>
+      <Button type="button" className="text-button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>{t("Previous sources", "上一页引用")}</Button>
+      <Button type="button" className="text-button" disabled={start + pageSize >= item.sources.length} onClick={() => setPage(currentPage + 1)}>{t("Next sources", "下一页引用")}</Button>
+      <Button type="button" className="text-button" onClick={() => { setExpanded(false); setPage(0); }}>{t("Show fewer sources", "收起引用")}</Button>
     </>}
   </div>;
 }

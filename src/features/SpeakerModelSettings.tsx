@@ -1,3 +1,4 @@
+import { Button } from "../components/controls";
 import { useEffect, useState } from "react";
 import { SPEAKER_REMOTE_MODEL_FILES, SPEAKER_REMOTE_MODEL_SOURCE } from "../audio/speaker-embedding";
 import { deleteRemoteSpeakerModel, isRemoteSpeakerModelInstalled } from "../audio/speaker-model-store";
@@ -45,9 +46,9 @@ export function SpeakerModelSettings({ t }: { t: (en: string, zh: string) => str
       <p className="muted">
         {t("The model is fetched from huggingface.co only after you confirm. No recording, transcript, vector or key is sent. Deleting it does not affect meetings.", "只有在您确认后才会从 huggingface.co 获取模型。不会发送录音、转录、向量或密钥。删除模型不会影响会议。")}
       </p>
-      <button className="button secondary" disabled={state !== "installed" || busy} onClick={() => void remove()}>
+      <Button className="button secondary" disabled={state !== "installed" || busy} onClick={() => void remove()}>
         {t("Delete speaker model", "删除说话人模型")}
-      </button>
+      </Button>
     </section>
   );
 }
