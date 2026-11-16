@@ -150,13 +150,6 @@ test("records reported speech cost separately from the dated pre-send estimate",
   await dialog.getByLabel("Meeting title").fill("Cost test");
   await dialog.getByText("Start from a transcript instead").click();
   await dialog.getByLabel("Transcript", { exact: true }).fill("Synthetic text");
-  await dialog
-    .getByRole("button", { name: "Create meeting", exact: true })
-    .click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(
-    page.getByRole("heading", { name: "Cost test", exact: true }),
-  ).toBeVisible();
   const wav = Buffer.alloc(32044);
   wav.write("RIFF");
   wav.writeUInt32LE(32036, 4);
@@ -170,9 +163,19 @@ test("records reported speech cost separately from the dated pre-send estimate",
   wav.writeUInt16LE(16, 34);
   wav.write("data", 36);
   wav.writeUInt32LE(32000, 40);
-  await page
-    .getByLabel("Attach audio", { exact: true })
+  // Save the recording with the new meeting instead of attaching through a
+  // workspace input that can be replaced during the initial route handoff.
+  await dialog
+    .getByLabel("Audio recording", { exact: true })
     .setInputFiles({ name: "test.wav", mimeType: "audio/wav", buffer: wav });
+  await expect(dialog.getByText("test.wav", { exact: true })).toBeVisible();
+  await dialog
+    .getByRole("button", { name: "Create meeting", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Cost test", exact: true }),
+  ).toBeVisible();
   const recordingInfo = page.locator(".recording-info");
   await expect(
     recordingInfo.getByText("test.wav", { exact: true }),
