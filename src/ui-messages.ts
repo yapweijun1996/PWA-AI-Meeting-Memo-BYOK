@@ -36,6 +36,7 @@ const messages: Record<string, string> = {
   "Attach the original recording before transcription.": "转录前请附加原始录音。",
   "This meeting changed. Reload before starting a request.": "会议已更改。开始请求前请重新加载。",
   "Another tab is processing this meeting.": "另一个标签页正在处理此会议。",
+  "Local voice analysis requires browser support for cross-tab locking. Use a supported browser or continue without voice analysis.": "本地声音分析需要浏览器支持跨标签页锁定。请使用支持此功能的浏览器，或不使用声音分析继续。",
   "Request submitted. Keep this window open.": "请求已提交，请保持此窗口打开。",
   "Completed. Review the generated result.": "已完成，请审阅生成结果。",
   "Result saved in transcription history; source changed while processing.": "结果已保存到转录历史；处理期间来源发生了更改。",

@@ -54,6 +54,7 @@ import { deleteLongAudio, getLongAudioChunk, getLongAudioManifest, type LongAudi
 import { ChunkedAudio, type PlayerLike } from "../audio/chunked-audio";
 import { getKey, getSelection, getSpeechEstimate, getUiLanguage } from "../providers/credentials";
 import { beginRequest, cancelProcessing, finishRequest, runJob, isProcessingMeeting } from "../jobs/runner";
+import { requireVoiceAnalysisLocks, withVoiceAnalysisLock } from "../jobs/voice-analysis-lock";
 import { analyzeExistingMeetingAcoustics, describeAcousticState } from "../jobs/acoustic-continuity";
 import { analyzeSingleRecordingVoices, singleRecordingFormat } from "../jobs/single-recording-voices";
 import { getChunkedProgress, runChunkedSpeech } from "../jobs/chunked-runner";
@@ -467,6 +468,7 @@ export function MeetingWorkspace({
     let acousticProvider: WavLmSpeakerEmbeddingProvider | undefined;
     let acousticRequestController: AbortController | undefined;
     try {
+      if (stage === "speech" && acousticConsent) requireVoiceAnalysisLocks();
       if (stage === "speech" && m.audio?.chunked && acousticConsent) {
         setProcessingKind("local");
         acousticRequestController = beginRequest(m.id);
@@ -574,35 +576,39 @@ export function MeetingWorkspace({
   }
   /** Local voice check for one non-chunked recording; saves the result and returns a notice. */
   async function checkSingleRecordingVoices(source: Meeting): Promise<string> {
-    setProcessingKind("local");
-    const controller = beginRequest(source.id);
-    const provider = new WavLmSpeakerEmbeddingProvider({ allowRemoteDownload: true });
-    try {
-      const single = await analyzeSingleRecordingVoices(source, {
-        provider,
-        consent: true,
-        signal: controller.signal,
-        onProgress: (progress) => {
-          if (progress.phase === "model") {
-            const detail = progress.total ? ` ${Math.round(progress.done / progress.total * 100)}%` : "";
-            setChunkProgressText(t(`Preparing local speaker model${detail}`, `正在准备本地说话人模型${detail}`));
-          } else if (progress.phase === "sample") {
-            setChunkProgressText(t(`Analyzing local voice sample ${progress.done} of ${progress.total}`, `正在分析第 ${progress.done}/${progress.total} 个本地声音样本`));
-          } else {
-            setChunkProgressText(t("Grouping anonymous voices", "正在归并匿名声音"));
-          }
-        },
-      });
-      await persist(single.meeting);
-      const { comparedLabels, mergedLabels, unresolvedLabels } = single.summary;
-      return t(
-        `Local voice check: ${comparedLabels} speaker labels compared, ${mergedLabels} merged by voice, ${unresolvedLabels} left unresolved. Undo restores the previous speakers.`,
-        `本地声音检查：比较了 ${comparedLabels} 个说话人标签，按声音合并 ${mergedLabels} 个，${unresolvedLabels} 个保持未解决。撤销可恢复之前的说话人。`,
-      );
-    } finally {
-      provider.dispose();
-      finishRequest(controller);
-    }
+    return withVoiceAnalysisLock(source.id, async () => {
+      setProcessingKind("local");
+      const controller = beginRequest(source.id);
+      const provider = new WavLmSpeakerEmbeddingProvider({ allowRemoteDownload: true });
+      try {
+        const latest = await getMeeting(source.id);
+        if (!latest || latest.version !== source.version) throw new Error("This meeting changed. Reload before starting a request.");
+        const single = await analyzeSingleRecordingVoices(source, {
+          provider,
+          consent: true,
+          signal: controller.signal,
+          onProgress: (progress) => {
+            if (progress.phase === "model") {
+              const detail = progress.total ? ` ${Math.round(progress.done / progress.total * 100)}%` : "";
+              setChunkProgressText(t(`Preparing local speaker model${detail}`, `正在准备本地说话人模型${detail}`));
+            } else if (progress.phase === "sample") {
+              setChunkProgressText(t(`Analyzing local voice sample ${progress.done} of ${progress.total}`, `正在分析第 ${progress.done}/${progress.total} 个本地声音样本`));
+            } else {
+              setChunkProgressText(t("Grouping anonymous voices", "正在归并匿名声音"));
+            }
+          },
+        });
+        await persist(single.meeting);
+        const { comparedLabels, mergedLabels, unresolvedLabels } = single.summary;
+        return t(
+          `Local voice check: ${comparedLabels} speaker labels compared, ${mergedLabels} merged by voice, ${unresolvedLabels} left unresolved. Undo restores the previous speakers.`,
+          `本地声音检查：比较了 ${comparedLabels} 个说话人标签，按声音合并 ${mergedLabels} 个，${unresolvedLabels} 个保持未解决。撤销可恢复之前的说话人。`,
+        );
+      } finally {
+        provider.dispose();
+        finishRequest(controller);
+      }
+    });
   }
   async function analyzeAcousticVoices() {
     setAcousticConfirm(false);
@@ -612,39 +618,45 @@ export function MeetingWorkspace({
     let controller: AbortController | undefined;
     let acousticProvider: WavLmSpeakerEmbeddingProvider | undefined;
     try {
-      const latest = await getMeeting(m.id);
-      if (!latest) throw new Error("This meeting is no longer available.");
-      if (!latest.audio?.chunked) {
+      // Single-recording analysis acquires this lock in checkSingleRecordingVoices.
+      if (!m.audio?.chunked) {
+        const latest = await getMeeting(m.id);
+        if (!latest) throw new Error("This meeting is no longer available.");
         const text = await checkSingleRecordingVoices(latest);
         navigateTab("speakers");
         setNotice(text);
         return;
       }
-      const manifest = await getLongAudioManifest(latest.id);
-      if (!manifest) throw new Error("The chunk manifest is missing. Reattach or restore the long recording before local analysis.");
-      controller = beginRequest(latest.id);
-      acousticProvider = new WavLmSpeakerEmbeddingProvider({ allowRemoteDownload: true });
-      const expectedVoices = /^\d{1,2}$/.test(expectedSpeakers.trim()) && Number(expectedSpeakers) >= 1 ? Number(expectedSpeakers) : undefined;
-      const analyzed = await analyzeExistingMeetingAcoustics(latest, {
-        expectedVoices,
-        manifest,
-        provider: acousticProvider,
-        consent: true,
-        signal: controller.signal,
-        onProgress: (progress) => {
-          if (progress.phase === "model") {
-            const detail = progress.model?.total ? ` ${Math.round((progress.model.loaded ?? 0) / progress.model.total * 100)}%` : "";
-            setChunkProgressText(t(`Preparing local speaker model${detail}`, `正在准备本地说话人模型${detail}`));
-          } else if (progress.phase === "sample") {
-            setChunkProgressText(t(`Analyzing local voice sample in part ${(progress.chunkIndex ?? 0) + 1}`, `正在分析第 ${(progress.chunkIndex ?? 0) + 1} 部分的本地声音样本`));
-          } else {
-            setChunkProgressText(t("Associating anonymous voices across parts", "正在跨部分关联匿名声音"));
-          }
-        },
+      await withVoiceAnalysisLock(m.id, async () => {
+        const latest = await getMeeting(m.id);
+        if (!latest) throw new Error("This meeting is no longer available.");
+        if (!latest.audio?.chunked) throw new Error("This meeting changed. Reload before starting a request.");
+        const manifest = await getLongAudioManifest(latest.id);
+        if (!manifest) throw new Error("The chunk manifest is missing. Reattach or restore the long recording before local analysis.");
+        controller = beginRequest(latest.id);
+        acousticProvider = new WavLmSpeakerEmbeddingProvider({ allowRemoteDownload: true });
+        const expectedVoices = /^\d{1,2}$/.test(expectedSpeakers.trim()) && Number(expectedSpeakers) >= 1 ? Number(expectedSpeakers) : undefined;
+        const analyzed = await analyzeExistingMeetingAcoustics(latest, {
+          expectedVoices,
+          manifest,
+          provider: acousticProvider,
+          consent: true,
+          signal: controller.signal,
+          onProgress: (progress) => {
+            if (progress.phase === "model") {
+              const detail = progress.model?.total ? ` ${Math.round((progress.model.loaded ?? 0) / progress.model.total * 100)}%` : "";
+              setChunkProgressText(t(`Preparing local speaker model${detail}`, `正在准备本地说话人模型${detail}`));
+            } else if (progress.phase === "sample") {
+              setChunkProgressText(t(`Analyzing local voice sample in part ${(progress.chunkIndex ?? 0) + 1}`, `正在分析第 ${(progress.chunkIndex ?? 0) + 1} 部分的本地声音样本`));
+            } else {
+              setChunkProgressText(t("Associating anonymous voices across parts", "正在跨部分关联匿名声音"));
+            }
+          },
+        });
+        await persist(analyzed);
+        navigateTab("speakers");
+        setNotice(`${t("Anonymous voice continuity was updated locally. Ambiguous voices remain unresolved.", "匿名声音连续性已在本地更新。模糊声音保持未解决状态。")} ${await acousticSummaryText(latest.id)}`);
       });
-      await persist(analyzed);
-      navigateTab("speakers");
-      setNotice(`${t("Anonymous voice continuity was updated locally. Ambiguous voices remain unresolved.", "匿名声音连续性已在本地更新。模糊声音保持未解决状态。")} ${await acousticSummaryText(latest.id)}`);
     } catch (error) {
       onError(error instanceof Error ? error.message : "Local speaker analysis did not complete.");
     } finally {

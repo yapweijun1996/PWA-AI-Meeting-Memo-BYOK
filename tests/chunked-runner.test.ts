@@ -37,6 +37,22 @@ const response = (text: string, time: number) => ({ speakers: [], segments: [seg
 afterEach(() => { mocks.transcribe.mockReset(); mocks.getKey.mockReturnValue("test-key"); });
 
 describe("chunked speech runner", () => {
+  it("does not submit paid chunks when requested voice analysis cannot acquire cross-tab locks", async () => {
+    const meeting = await prepare();
+    const original = Object.getOwnPropertyDescriptor(navigator, "locks");
+    Object.defineProperty(navigator, "locks", { configurable: true, value: undefined });
+    try {
+      await expect(runChunkedSpeech(meeting, {
+        selection,
+        acoustic: { provider: { load: vi.fn(), embed: vi.fn(), dispose: vi.fn() }, consent: true },
+      })).rejects.toThrow("cross-tab locking");
+      expect(mocks.transcribe).not.toHaveBeenCalled();
+      expect((await getMeeting(meeting.id))?.jobs).toEqual([]);
+    } finally {
+      if (original) Object.defineProperty(navigator, "locks", original);
+      else Reflect.deleteProperty(navigator, "locks");
+    }
+  });
   it("transcribes each chunk once, records indexed jobs, and merges absolute timestamps", async () => {
     mocks.transcribe.mockImplementation(async (_audio: Blob, _key: string, _signal: AbortSignal, _selection: unknown, filename: string) => response(filename.includes("0001") ? "one" : filename.includes("0002") ? "two" : "three", 1));
     const meeting = await prepare();

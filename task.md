@@ -6,6 +6,13 @@ Speaker review redesign: implemented a single searchable, filterable queue, sele
 
 # Implementation tasks
 
+## Delivery execution — 2026-11-16
+
+The owner authorized sequential completion, per-task commits, merge and push to `main`. Delivery uses the separate `PWA-AI-Meeting-Memo-BYOK-delivery` worktree; the original workspace is preserved. Checked items require the stated evidence; device/account/licence-dependent acceptance remains open until actually verified.
+
+- [x] Publish the evidence-backed SSOT/PWA assessment and follow-up list (`91790d0`).
+- [x] Protect manual and post-transcription local voice analysis with the existing meeting-level Web Lock through final save. Refuse unsafe analysis when locks are unavailable, preserve ordinary transcription, and recover explicitly after the owning tab closes. Local verification: 279 unit tests on Node 22.23.3, lint, production build and artifact check; 14 Chromium/WebKit chunked-transcription and voice-analysis browser cases, including preserved source/undo and unknown-billing behavior. PWA lifecycle checks are recorded in the delivery report; no voice-accuracy claim.
+
 ## SSOT and PWA gap follow-up — 2026-11-16
 
 Current assessment: **partially aligned, not fully compliant**. [gap.md](gap.md) owns the versioned KB source references, applicability decisions, evidence, priorities and acceptance criteria. This section owns execution status. Historical checked SSOT work below remains a checkpoint, not evidence of complete current compliance. These tasks are follow-up recommendations; this documentation update does not authorize deployment or wholesale UI migration.

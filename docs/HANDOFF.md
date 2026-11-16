@@ -98,7 +98,7 @@ Voice-related unit tests run in about 3 seconds: `npx vitest run tests/acoustic-
 
 1. **The dev server reloads the page on every source save.** A local voice analysis takes minutes and is killed by each reload, leaving the checkpoint `running`. When several people or agents edit the tree, run long analyses from a static build instead: `npx vite build --outDir <scratch dir>` then `npx vite preview --outDir <scratch dir> --host 127.0.0.1 --port 5173 --strictPort`. Same origin, same IndexedDB.
 2. **IndexedDB is per origin.** `127.0.0.1:5173`, `127.0.0.1:4173` and the Pages URL do not share meetings or keys.
-3. **Two tabs on one meeting can run the same analysis.** Keep one.
+3. Voice analysis uses the meeting's Web Lock through its final save. A second tab is refused while another meeting job holds that lock. If Web Locks are unavailable, local voice analysis stops with a message; ordinary transcription can continue without opting into voice analysis. Closing the owning tab releases its lock. An explicit re-analysis restarts derived decisions and reuses compatible saved vectors; it does not resubmit paid audio.
 4. A re-run after a merge used to find nothing to change because merged speakers lost their original label ids; this is handled by aliases computed from the immutable provider run (`runs[].originalSegments`). Undo, then re-run, if a result looks wrong.
 5. Re-analysis recomputes vectors whenever the meeting revision changed (about 2 minutes for 57 samples on the test machine).
 

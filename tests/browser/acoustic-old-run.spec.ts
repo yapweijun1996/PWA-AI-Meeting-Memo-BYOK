@@ -284,14 +284,15 @@ const readySpeakerManifest = {
   })),
 };
 
-function installDeterministicLocalEmbedding(page: Page) {
-  return page.addInitScript(() => {
+function installDeterministicLocalEmbedding(page: Page, holdModel = false) {
+  return page.addInitScript((hold) => {
     class DeterministicWorker extends EventTarget {
       postMessage(message: {
         type: string;
         requestId: number;
         samples?: Float32Array;
       }) {
+        if (hold && message.type === "load") return;
         queueMicrotask(() => {
           if (message.type === "load") {
             this.dispatchEvent(
@@ -357,7 +358,7 @@ function installDeterministicLocalEmbedding(page: Page) {
       writable: true,
       value: DeterministicAudioContext,
     });
-  });
+  }, holdModel);
 }
 
 async function seedOldRun(page: Page, fixture: OldRunFixture) {
@@ -413,6 +414,19 @@ async function readMeeting(page: Page) {
       }),
     meetingId,
   );
+}
+
+async function readCheckpointState(page: Page) {
+  return page.evaluate((id) => new Promise<string | null>((resolve, reject) => {
+    const request = indexedDB.open("meeting-memo-byok-v1");
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const database = request.result;
+      const get = database.transaction("acousticCheckpoints", "readonly").objectStore("acousticCheckpoints").get(id);
+      get.onerror = () => reject(get.error);
+      get.onsuccess = () => { database.close(); resolve(get.result?.state ?? null); };
+    };
+  }), meetingId);
 }
 
 async function readOldStoreCounts(page: Page) {
@@ -514,4 +528,65 @@ test("re-analyzes an old completed chunked run without provider traffic or data 
   const undone = await readMeeting(page);
   expect(transcriptSnapshot(undone)).toEqual(transcriptSnapshot(before));
   expect(undone.runs).toHaveLength(1);
+});
+
+test("prevents concurrent analysis and allows recovery after the owning tab closes", async ({ page, context }) => {
+  await context.route("https://**/*", (route) => route.abort());
+  await context.route("**/speaker-assets/manifest.json", (route) => route.fulfill({
+    contentType: "application/json", body: JSON.stringify(readySpeakerManifest),
+  }));
+  await installDeterministicLocalEmbedding(page, true);
+  await page.goto(base);
+  test.skip(!(await page.evaluate(() => Boolean(navigator.locks))), "Web Locks unavailable in this browser");
+  await seedOldRun(page, oldRunFixture());
+  await page.reload();
+  await page.evaluate((id) => { location.hash = `#/meetings/${id}`; }, meetingId);
+  await expect(page.getByRole("heading", { name: "Old completed chunked run", exact: true })).toBeVisible();
+  const before = await readMeeting(page);
+
+  const other = await context.newPage();
+  await installDeterministicLocalEmbedding(other);
+  await other.goto(`${base}#/meetings/${meetingId}`);
+  await expect(other.getByRole("heading", { name: "Old completed chunked run", exact: true })).toBeVisible();
+  const start = async (target: Page) => {
+    await target.getByRole("button", { name: "Auto-match voices", exact: true }).click();
+    await target.getByRole("dialog").getByRole("button", { name: "Download and analyze locally", exact: true }).click();
+  };
+  await start(page);
+  await expect.poll(() => other.evaluate(async (id) =>
+    (await navigator.locks.query()).held?.some((lock) => lock.name === `meeting-memo-job:${id}`), meetingId)).toBe(true);
+  await expect.poll(() => readCheckpointState(other)).toBe("running");
+  await start(other);
+  await expect(other.getByText("Another tab is processing this meeting.")).toBeVisible();
+  expect(await readMeeting(other)).toEqual(before);
+  expect(await readCheckpointState(other)).toBe("running");
+
+  await page.close();
+  await expect.poll(() => other.evaluate(async (id) =>
+    (await navigator.locks.query()).held?.some((lock) => lock.name === `meeting-memo-job:${id}`) ?? false, meetingId)).toBe(false);
+  await start(other);
+  await expect(other.getByText(/Anonymous voice continuity was updated locally\./)).toBeVisible({ timeout: 90_000 });
+  expect(await readCheckpointState(other)).toBe("completed");
+  const after = await readMeeting(other);
+  expect((after.runs as unknown[])[0]).toEqual((before.runs as unknown[])[0]);
+  expect(transcriptSnapshot(after).map(({ id, text, originalText }) => ({ id, text, originalText }))).toEqual(
+    transcriptSnapshot(before).map(({ id, text, originalText }) => ({ id, text, originalText })),
+  );
+  expect(after.undo).toHaveLength(1);
+});
+
+test("refuses local voice analysis when cross-tab locks are unavailable", async ({ page }) => {
+  await installDeterministicLocalEmbedding(page);
+  await page.addInitScript(() => Object.defineProperty(navigator, "locks", { configurable: true, value: undefined }));
+  await page.goto(base);
+  await seedOldRun(page, oldRunFixture());
+  await page.reload();
+  await page.evaluate((id) => { location.hash = `#/meetings/${id}`; }, meetingId);
+  await expect(page.getByRole("heading", { name: "Old completed chunked run", exact: true })).toBeVisible();
+  const before = await readMeeting(page);
+  await page.getByRole("button", { name: "Auto-match voices", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Download and analyze locally", exact: true }).click();
+  await expect(page.getByText("Local voice analysis requires browser support for cross-tab locking. Use a supported browser or continue without voice analysis.")).toBeVisible();
+  expect(await readMeeting(page)).toEqual(before);
+  expect(await readCheckpointState(page)).toBeNull();
 });

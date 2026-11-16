@@ -17,6 +17,7 @@ import {
 import { getMeeting, saveMeeting } from "../storage/repository";
 import { beginRequest, finishRequest, isProcessing } from "./runner";
 import { runAcousticContinuity, type AcousticContinuityProgress } from "./acoustic-continuity";
+import { requireVoiceAnalysisLocks } from "./voice-analysis-lock";
 import type { BrowserSpeakerEmbeddingProvider } from "../audio/speaker-embedding";
 
 export async function getChunkedProgress(m: Meeting): Promise<{ total: number; done: number; nextIndex: number; blockedIndex: number | null }> {
@@ -47,6 +48,7 @@ type Confirmed = {
 };
 
 export async function runChunkedSpeech(m: Meeting, confirmed: Confirmed): Promise<Meeting> {
+  if (confirmed.acoustic) requireVoiceAnalysisLocks();
   if (isProcessing() && !confirmed.requestController) throw new Error("Finish the current request before starting another.");
   if (m.jobs.some((job) => job.state === "in_flight" && !job.chunk))
     throw new Error("A request is active or its outcome needs review. Resolve it before submitting again.");

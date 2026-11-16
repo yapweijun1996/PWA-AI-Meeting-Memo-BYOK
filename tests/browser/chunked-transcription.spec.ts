@@ -71,6 +71,25 @@ function installSpeechRoute(page: Page, options: {
   return { finished, get count() { return count; }, get maxInFlight() { return maxInFlight; } };
 }
 
+test("without cross-tab locks, opting into voice analysis sends nothing and transcription can continue without it", async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, "locks", { configurable: true, value: undefined }));
+  const routes = installSpeechRoute(page);
+  await routes.finished;
+  await prepare(page, "Voice lock unavailable");
+  await page.getByRole("button", { name: "Transcribe", exact: true }).click();
+  let dialog = page.getByRole("dialog");
+  await dialog.getByRole("group", { name: "Automatic speaker continuity" }).getByRole("checkbox").check();
+  await dialog.getByRole("button", { name: /^Confirm and send \d+ requests$/ }).click();
+  await expect(page.getByText("Local voice analysis requires browser support for cross-tab locking. Use a supported browser or continue without voice analysis.")).toBeVisible();
+  expect(routes.count).toBe(0);
+  await page.getByRole("button", { name: "Transcribe", exact: true }).click();
+  dialog = page.getByRole("dialog");
+  await dialog.getByRole("group", { name: "Automatic speaker continuity" }).getByRole("checkbox").uncheck();
+  await dialog.getByRole("button", { name: /^Confirm and send \d+ requests$/ }).click();
+  await expect(page.getByText("CHUNK_RESULT_1", { exact: true })).toBeVisible();
+  expect(routes.count).toBeGreaterThanOrEqual(2);
+});
+
 test("chunked transcription confirms before sequential per-part requests and merges timestamps", async ({ page }) => {
   const routes = installSpeechRoute(page);
   await routes.finished;
