@@ -2528,6 +2528,8 @@ details[open] > summary {
 }
 @media (min-width: 601px) and (max-width: 1000px) {
   .immersive-stage { flex: 0 0 auto; }
+  /* Focus mode shows no transcript below the stage: fill the screen so cinematic centring has room. */
+  .immersive-stage[data-cinematic="true"] { flex: 1 1 auto; }
 }
 @media (max-width: 600px) {
   .immersive-content { overflow: hidden; }
