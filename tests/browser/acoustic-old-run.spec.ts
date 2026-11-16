@@ -362,6 +362,8 @@ function installDeterministicLocalEmbedding(page: Page, holdModel = false) {
 }
 
 async function seedOldRun(page: Page, fixture: OldRunFixture) {
+  await expect(page.getByRole("heading", { name: "Your meetings.", exact: true, level: 1 })).toBeVisible();
+  await expect(page.locator(".loading-library")).toHaveCount(0);
   await page.evaluate(
     ({ meeting, manifest, chunkBytes }) =>
       new Promise<void>((resolve, reject) => {
@@ -485,7 +487,6 @@ test("re-analyzes an old completed chunked run without provider traffic or data 
   });
   await installDeterministicLocalEmbedding(page);
   await page.goto(base);
-  await expect(page.getByRole("heading", { name: "Your meetings.", exact: true })).toBeVisible();
 
   const fixture = oldRunFixture();
   await seedOldRun(page, fixture);
@@ -494,11 +495,12 @@ test("re-analyzes an old completed chunked run without provider traffic or data 
     chunkSpeech: 0,
     transcriptPages: 0,
   });
-  await page.reload();
   await page.evaluate((id) => {
     location.hash = `#/meetings/${id}`;
   }, meetingId);
-  await expect(page.getByRole("heading", { name: "Old completed chunked run", exact: true })).toBeVisible();
+  // Set the initial route before reloading; a startup hashchange listener may not be attached yet.
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Old completed chunked run", exact: true, level: 1 })).toBeVisible();
   const before = await readMeeting(page);
   expect(before.runs).toHaveLength(1);
   expect(before.segments).toHaveLength(8);
@@ -539,17 +541,19 @@ test("prevents concurrent analysis and allows recovery after the owning tab clos
   await page.goto(base);
   test.skip(!(await page.evaluate(() => Boolean(navigator.locks))), "Web Locks unavailable in this browser");
   await seedOldRun(page, oldRunFixture());
-  await page.reload();
   await page.evaluate((id) => { location.hash = `#/meetings/${id}`; }, meetingId);
-  await expect(page.getByRole("heading", { name: "Old completed chunked run", exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Old completed chunked run", exact: true, level: 1 })).toBeVisible();
   const before = await readMeeting(page);
 
   const other = await context.newPage();
   await installDeterministicLocalEmbedding(other);
   await other.goto(`${base}#/meetings/${meetingId}`);
-  await expect(other.getByRole("heading", { name: "Old completed chunked run", exact: true })).toBeVisible();
+  await expect(other.getByRole("heading", { name: "Old completed chunked run", exact: true, level: 1 })).toBeVisible();
   const start = async (target: Page) => {
-    await target.getByRole("button", { name: "Auto-match voices", exact: true }).click();
+    const analyze = target.getByRole("button", { name: "Auto-match voices", exact: true });
+    await expect(analyze).toBeEnabled();
+    await analyze.click();
     await target.getByRole("dialog").getByRole("button", { name: "Download and analyze locally", exact: true }).click();
   };
   await start(page);
@@ -580,11 +584,13 @@ test("refuses local voice analysis when cross-tab locks are unavailable", async 
   await page.addInitScript(() => Object.defineProperty(navigator, "locks", { configurable: true, value: undefined }));
   await page.goto(base);
   await seedOldRun(page, oldRunFixture());
-  await page.reload();
   await page.evaluate((id) => { location.hash = `#/meetings/${id}`; }, meetingId);
-  await expect(page.getByRole("heading", { name: "Old completed chunked run", exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Old completed chunked run", exact: true, level: 1 })).toBeVisible();
   const before = await readMeeting(page);
-  await page.getByRole("button", { name: "Auto-match voices", exact: true }).click();
+  const analyze = page.getByRole("button", { name: "Auto-match voices", exact: true });
+  await expect(analyze).toBeEnabled();
+  await analyze.click();
   await page.getByRole("dialog").getByRole("button", { name: "Download and analyze locally", exact: true }).click();
   await expect(page.getByText("Local voice analysis requires browser support for cross-tab locking. Use a supported browser or continue without voice analysis.")).toBeVisible();
   expect(await readMeeting(page)).toEqual(before);
