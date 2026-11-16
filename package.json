@@ -11,11 +11,12 @@
     "build": "tsc -b && vite build && node scripts/build-pwa.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc -b",
-    "lint": "eslint src tests",
+    "lint": "eslint src tests scripts/check-ssot.mjs",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test:pwa": "node scripts/test-update.mjs",
-    "check:artifact": "node scripts/check-artifact.mjs"
+    "check:artifact": "node scripts/check-artifact.mjs",
+    "check:ssot": "node scripts/check-ssot.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.2",
@@ -36,6 +37,7 @@
     "@vitejs/plugin-react": "6.2.1",
     "eslint": "10.14.0",
     "fake-indexeddb": "6.2.7",
+    "lightningcss": "1.33.0",
     "prettier": "3.9.10",
     "typescript": "6.0.3",
     "typescript-eslint": "8.72.1",

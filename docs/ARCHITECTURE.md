@@ -229,6 +229,16 @@ To prevent visual drift, duplicated hex literals, and conflicting status labels 
    - Mobile viewports (`<= 720px`) enforce single-column stacking, `>= 16px` form controls (preventing iOS Safari auto-zoom), safe-area insets, and a persistent accessible bottom audio player.
 
 
+### Static design-debt gate
+
+`npm run check:ssot` runs `scripts/check-ssot.mjs` without changing source or its reviewed `scripts/ssot-baseline.json`. The publication workflow runs it before the build. Lightning CSS parses CSS and the TypeScript compiler parses TS/TSX; malformed input or baseline configuration fails the command. The scope is `src` CSS/TS/TSX plus the browser-chrome color in `index.html`, excluding dependencies, generated output and test fixtures.
+
+The gate inventories raw colors, radius, shadow, font-size and z-index values, including supported static inline declarations. Root token custom properties in `src/style.css` and `src/theme.css` are authoritative declarations; component-scoped custom properties are not a blanket exemption. Variable-only values and CSS resets do not add debt. A per-file/per-rule count may decrease but must not grow: removing a color in one file cannot pay for a new file's color. Cross-file duplicate simple base classes track their owner paths; another owner fails. Same-file responsive overrides do not become new owners.
+
+The checked baseline records existing debt rather than granting compliance. Artwork and intentional mobile form sizing remain in the inventory instead of receiving whole-file exemptions. A reviewed migration may lower the baseline using the explicit `--write-baseline` command and must review its diff; CI never regenerates it. Do not regenerate merely to pass a new violation. No generated token artifact exists, so this gate does not claim generator freshness.
+
+This is a bounded static ratchet. Count-neutral replacement within a file/rule, dynamically constructed style values, complex selector ownership, computed contrast, accessibility and runtime behavior require separate review and tests. Passing the gate does not establish complete design-system or PWA acceptance.
+
 ## Interface presentation state
 
 `src/theme.css` owns the root theme and palette overrides; components consume shared semantic color tokens. `src/appearance.ts` persists the device-local font family, text scale, theme and palette independently of meeting data and provider keys. The language selector uses a separate local preference so older builds can still parse the settings record; Malay currently has partial UI translations with English fallback.

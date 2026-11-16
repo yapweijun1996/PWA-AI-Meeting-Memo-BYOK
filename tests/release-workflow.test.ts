@@ -9,7 +9,7 @@ const workflow = readFileSync(new URL("../.github/workflows/pages.yml", import.m
 it("requires all verification before uploading or publishing, without failure overrides", () => {
   const verify = workflow.split("  verify:\n")[1]?.split("\n  publish:")[0];
   expect(verify).toBeDefined();
-  const commands = ["npm ci", "npm run lint", "npm run test:unit", "npm run build",
+  const commands = ["npm ci", "npm run lint", "npm run test:unit", "npm run check:ssot", "npm run build",
     "npx playwright install --with-deps chromium webkit", "npm run test:e2e", "npm run test:pwa", "npm run check:artifact"];
   let previous = -1;
   for (const command of commands) {

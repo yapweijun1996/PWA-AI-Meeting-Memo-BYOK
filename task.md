@@ -19,7 +19,7 @@ Current assessment: **partially aligned, not fully compliant**. [gap.md](gap.md)
 
 - [x] Assess the relevant KB token/component standards against current local code and record evidence-backed gaps and project-specific exceptions in `gap.md`.
 - [x] REL01 — Require lint, unit/contracts, build/types, Chromium/WebKit, PWA and artifact verification before publication. Main `01dbe20` passed hosted run `43798887650` (281 unit tests, 297 browser cases passed / 3 skipped) and exact-build production readback. Negative dependency/failure-override mutations were rejected. PR trigger/permission wiring is contract-tested; live PR-trigger execution remains unverified because PR creation was denied by the integration (403). See `docs/VALIDATION.md`.
-- [ ] DS05 — Add a scoped SSOT violation ratchet with reviewed exceptions, regression tests and CI integration.
+- [ ] DS05 — Scoped parser-backed ratchet implemented and independently verified locally: 301 unit tests, lint, build/types and artifact PASS; 387 existing debt counts and one duplicate selector inventoried. Await hosted execution of the new CI step and exact release readback before closeout; see `docs/VALIDATION.md`.
 - [ ] DS01/DS02 — Inventory literals and repeated roles; choose the authoritative token source model, centralize semantic roles and browser-chrome values, and verify synchronization if generation is adopted.
 - [ ] DS04 — Document component owners, variants, accessibility and interaction contracts with an actual-component catalogue.
 - [ ] DS03 — Consolidate repeated interactive patterns incrementally; preserve dialog focus, keyboard/touch, memo drafts and review behavior.

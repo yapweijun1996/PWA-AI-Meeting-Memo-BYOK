@@ -36,6 +36,8 @@ jobs:
         run: npm run lint
       - name: Run unit and contract tests
         run: npm run test:unit
+      - name: Prevent new design-system debt
+        run: npm run check:ssot
       - name: Build the static application
         run: npm run build
       - name: Install the test browsers
