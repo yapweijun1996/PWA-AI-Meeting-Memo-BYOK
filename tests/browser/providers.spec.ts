@@ -271,7 +271,12 @@ test("memo submissions require confirmation, preserve evidence and mark source c
   await expect(
     page.getByText("The source is corrected.", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  // Navigation deliberately refuses dirty drafts. Let blur-triggered local writes finish first.
+  const memoTab = page.getByRole("tab", { name: /Meeting notes/ });
+  await memoTab.focus();
+  await expect(page.locator('[data-unsaved-edit="true"]')).toHaveCount(0);
+  await memoTab.click();
+  await expect(memoTab).toHaveAttribute("aria-selected", "true");
   await page.getByLabel("action note").fill("Human amended follow-up.");
   const keyboardAccept = page.getByRole("button", { name: /Accept/ }).first();
   await page.getByLabel("action note").focus();
