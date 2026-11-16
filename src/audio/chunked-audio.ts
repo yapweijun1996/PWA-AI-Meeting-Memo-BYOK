@@ -38,7 +38,7 @@ export type PlayerLike = Pick<
   | "pause"
   | "addEventListener"
   | "removeEventListener"
->;
+> & { getAudioElement?: () => HTMLMediaElement | null };
 
 type WindowPlan = {
   bytes: Uint8Array;
@@ -175,6 +175,11 @@ export class ChunkedAudio extends EventTarget implements PlayerLike {
   get error() { return this.mediaError; }
   get readyState() { return this.element.readyState; }
   get networkState() { return this.element.networkState; }
+
+  getAudioElement(): HTMLMediaElement | null {
+    return typeof HTMLMediaElement !== "undefined" && this.element instanceof HTMLMediaElement
+      ? this.element : null;
+  }
 
   async play(): Promise<void> {
     if (this.disposed) throw new Error("Chunked audio has been disposed.");

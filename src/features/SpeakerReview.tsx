@@ -29,6 +29,7 @@ import type { SpeakerLink } from "../domain/long-audio";
 import type { AcousticEmbeddingRecord } from "../domain/acoustic-speaker";
 import { suggestVoiceMatches, type VoiceSuggestion } from "../domain/voice-suggestions";
 import type { PlaybackClockStore, PlaybackStatus } from "./usePlaybackClock";
+import type { PlaybackEnergyStore } from "../audio/playback-energy";
 import { suggestVideoId } from "../domain/reference-video";
 import { ImmersivePlayback } from "./ImmersivePlayback";
 
@@ -49,6 +50,7 @@ export function SpeakerReview({
   duration,
   position,
   clock,
+  energy,
   playing,
   playbackStatus,
   locked,
@@ -80,6 +82,7 @@ export function SpeakerReview({
   position: number;
   /** Exact playhead; PlaybackMode subscribes to it and only renders on caption/speaker boundaries. */
   clock: PlaybackClockStore;
+  energy: PlaybackEnergyStore;
   playing: boolean;
   playbackStatus: PlaybackStatus;
   locked: boolean;
@@ -510,6 +513,7 @@ export function SpeakerReview({
           meeting={meeting}
           avatars={avatars}
           clock={clock}
+          energy={energy}
           playing={activelyPlaying}
           playbackStatus={playbackStatus}
           audioAvailable={audioAvailable}
@@ -692,6 +696,7 @@ function PlaybackMode({
   meeting,
   avatars,
   clock,
+  energy,
   playing,
   playbackStatus,
   audioAvailable,
@@ -706,6 +711,7 @@ function PlaybackMode({
   meeting: Meeting;
   avatars: Record<string, string>;
   clock: PlaybackClockStore;
+  energy: PlaybackEnergyStore;
   playing: boolean;
   playbackStatus: PlaybackStatus;
   audioAvailable: boolean;
@@ -846,8 +852,15 @@ function PlaybackMode({
     return () => cancelAnimationFrame(frame);
   }, [activeCaptionId, followPlayback, start]);
 
+  const energyScope = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const update = () => energyScope.current?.style.setProperty("--playback-audio-energy-scale", String(1 + energy.getEnergy() * 0.12));
+    update();
+    return energy.subscribe(update);
+  }, [energy]);
+
   return (
-    <div className="playback-mode">
+    <div ref={energyScope} className="playback-mode">
       <div className="playback-left-stack">
         <section className="playback-stage" aria-label={t("Live playback", "实时播放")}>
           <div className="playback-stage-heading">

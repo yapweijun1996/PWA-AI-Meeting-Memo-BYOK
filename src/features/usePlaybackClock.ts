@@ -1,6 +1,7 @@
 import { flushSync } from "react-dom";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { PlayerLike } from "../audio/chunked-audio";
+import { createPlaybackEnergyStore, PlaybackEnergySampler, playbackEnergyHub, type PlaybackEnergyStore } from "../audio/playback-energy";
 
 export type PlaybackStatus =
   | "idle"
@@ -48,9 +49,10 @@ export type PlaybackClock = {
   refresh: () => void;
   /** Exact playhead for components that should not re-render on every sample. */
   store: PlaybackClockStore;
+  energy: PlaybackEnergyStore;
 };
 
-type PlaybackSnapshot = Omit<PlaybackClock, "refresh" | "store">;
+type PlaybackSnapshot = Omit<PlaybackClock, "refresh" | "store" | "energy">;
 
 /**
  * `position` in React state is only for coarse UI (time label, range input, speaker toolbar).
@@ -99,6 +101,7 @@ export function usePlaybackClock(
 ): PlaybackClock {
   const refreshRef = useRef<() => void>(() => undefined);
   const [store] = useState(createPlaybackClockStore);
+  const [energy] = useState(createPlaybackEnergyStore);
   const [clock, setClock] = useState<PlaybackSnapshot>(() => ({
     position: 0,
     duration: finite(initialDuration, 0),
@@ -111,6 +114,7 @@ export function usePlaybackClock(
     if (!enabled) {
       refreshRef.current = () => undefined;
       store.set(0);
+      energy.set(0);
       setClock((current) =>
         current.position === 0 && current.playing === false && current.status === "idle"
           ? current
@@ -128,6 +132,27 @@ export function usePlaybackClock(
       refreshRef.current = () => undefined;
       return;
     }
+
+    const sampler = new PlaybackEnergySampler(playbackEnergyHub);
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let disposed = false;
+    let waiting = false;
+    const mediaElement = () => audio instanceof HTMLMediaElement ? audio : audio.getAudioElement?.() ?? null;
+    const resetEnergy = () => { sampler.reset(); energy.set(0); };
+    const sampleEnergy = () => {
+      sampler.restore(mediaElement());
+      if (motion.matches || waiting || audio.paused || audio.ended || audio.error || document.hidden) resetEnergy();
+      else energy.set(sampler.sample(mediaElement()));
+    };
+    const prepareEnergy = () => {
+      const element = mediaElement();
+      if (document.hidden || audio.paused || !element || (motion.matches && !playbackEnergyHub.hasSource(element))) return;
+      void sampler.prepare().then(() => { if (!disposed) sampleEnergy(); });
+    };
+    const motionChanged = () => { resetEnergy(); if (!motion.matches) prepareEnergy(); };
+    motion.addEventListener("change", motionChanged);
+    // Reconnect a cached element immediately after an effect replay; never create a context here.
+    sampler.restore(mediaElement());
 
     const read = (status?: PlaybackStatus, resetBuffering = false, coarse = false) => {
       const position = finite(audio.currentTime, 0);
@@ -172,6 +197,7 @@ export function usePlaybackClock(
       // Sample actual media time on each foreground frame. Boundary-based
       // subscribers still render only when their derived interval changes.
       read(undefined, false, true);
+      sampleEnergy();
       frame = requestAnimationFrame(sample);
     };
     const startSampling = () => {
@@ -182,37 +208,44 @@ export function usePlaybackClock(
     const visibilityChanged = () => {
       stopSampling();
       read();
+      resetEnergy();
+      if (!document.hidden) prepareEnergy();
       startSampling();
     };
     const handlers: Array<[keyof HTMLMediaElementEventMap, () => void]> = [
       ["loadedmetadata", () => read(undefined, true)],
       ["durationchange", () => read(undefined, true)],
       ["timeupdate", () => read(undefined, false, true)],
-      ["seeking", () => read()],
+      ["seeking", () => { resetEnergy(); read(); }],
       ["seeked", () => read()],
       ["ratechange", () => read()],
-      ["play", () => { read("playing"); startSampling(); }],
-      ["playing", () => { read("playing"); startSampling(); }],
-      ["pause", () => { stopSampling(); read(audio.ended ? "ended" : "paused"); }],
-      ["waiting", () => { stopSampling(); read("buffering"); }],
-      ["canplay", () => { read(audio.paused ? "paused" : "playing"); startSampling(); }],
-      ["ended", () => { stopSampling(); read("ended"); }],
-      ["error", () => { stopSampling(); read("error"); }],
+      ["play", () => { waiting = false; read("playing"); prepareEnergy(); startSampling(); }],
+      ["playing", () => { waiting = false; read("playing"); prepareEnergy(); startSampling(); }],
+      ["pause", () => { stopSampling(); resetEnergy(); read(audio.ended ? "ended" : "paused"); }],
+      ["waiting", () => { waiting = true; stopSampling(); resetEnergy(); read("buffering"); }],
+      ["canplay", () => { waiting = false; read(audio.paused ? "paused" : "playing"); prepareEnergy(); startSampling(); }],
+      ["ended", () => { stopSampling(); resetEnergy(); read("ended"); }],
+      ["error", () => { stopSampling(); resetEnergy(); read("error"); }],
     ];
     for (const [event, handler] of handlers) audio.addEventListener(event, handler);
     document.addEventListener("visibilitychange", visibilityChanged);
     read();
+    prepareEnergy();
     startSampling();
     return () => {
+      disposed = true;
       stopSampling();
+      resetEnergy();
+      sampler.release();
+      motion.removeEventListener("change", motionChanged);
       document.removeEventListener("visibilitychange", visibilityChanged);
       for (const [event, handler] of handlers) audio.removeEventListener(event, handler);
       if (refreshRef.current === read) refreshRef.current = () => undefined;
     };
-  }, [audioRef, enabled, initialDuration, store]);
+  }, [audioRef, enabled, initialDuration, store, energy]);
 
   const refresh = useCallback(() => {
     flushSync(() => refreshRef.current());
   }, []);
-  return { ...clock, refresh, store };
+  return { ...clock, refresh, store, energy };
 }

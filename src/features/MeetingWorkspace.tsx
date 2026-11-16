@@ -1429,6 +1429,7 @@ export function MeetingWorkspace({
             duration={duration}
             position={position}
             clock={playback.store}
+            energy={playback.energy}
             playing={playing}
             playbackStatus={playback.status}
             locked={locked}

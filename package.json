@@ -11,7 +11,7 @@
     "build": "tsc -b && vite build && node scripts/build-pwa.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc -b",
-    "lint": "eslint src tests catalogue scripts/check-ssot.mjs scripts/browser-chrome.mjs scripts/browser-chrome.d.mts scripts/build-pwa.mjs scripts/benchmark-playback.mjs vite.config.ts vite.catalogue.config.ts playwright.catalogue.config.ts",
+    "lint": "eslint src tests catalogue scripts/check-ssot.mjs scripts/browser-chrome.mjs scripts/browser-chrome.d.mts scripts/build-pwa.mjs scripts/benchmark-playback.mjs scripts/probe-playback-audio.mjs vite.config.ts vite.catalogue.config.ts playwright.catalogue.config.ts",
     "benchmark:playback": "node --experimental-strip-types scripts/benchmark-playback.mjs",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
@@ -20,7 +20,8 @@
     "check:ssot": "node scripts/check-ssot.mjs",
     "catalogue:build": "npm run typecheck && vite build --config vite.catalogue.config.ts",
     "catalogue:preview": "vite preview --config vite.catalogue.config.ts",
-    "test:catalogue": "npm run catalogue:build && playwright test --config playwright.catalogue.config.ts"
+    "test:catalogue": "npm run catalogue:build && playwright test --config playwright.catalogue.config.ts",
+    "probe:playback-audio": "node scripts/probe-playback-audio.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "1.5.2",

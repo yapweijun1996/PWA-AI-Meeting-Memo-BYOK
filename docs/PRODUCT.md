@@ -104,7 +104,7 @@ Caption grouping is a read-only presentation over original fragments and source 
 
 #### Group-chat playback stage, audio-reactive avatars, and synchronized captions (planned 2026-11-06)
 
-The sequential group-chat layout is implemented with an N-speaker roster, source-fragment highlighting, state-preserving seeking, bounded timed/untimed views and explicit follow recovery. The former duplicated hero/live-caption layout is removed. Audio-energy sampling and pulse halos remain planned; the activity glyph currently reflects exact source attribution only.
+The sequential group-chat layout is implemented with an N-speaker roster, source-fragment highlighting, state-preserving seeking, bounded timed/untimed views and explicit follow recovery. The former duplicated hero/live-caption layout is removed. The group-chat view now samples recording-level Web Audio energy for bounded active-label halos, with silent/paused/buffering/reduced-motion fallbacks. Overlapping labels share the recording's overall energy; it is not isolated per-person volume or identity evidence. The activity glyph still reflects exact source attribution only. See [audio-path ownership, reproducible checks and remaining device limits](PLAYBACK-ENERGY.md). Immersive attribution effects described above remain distinct from this group-chat energy feature.
 
 To make multi-speaker playback easier to scan than a split live-caption box plus separate transcript cards, the Playback view adopts a **WhatsApp-style sequential group-chat stream** paired with a persistent top speaker avatar stage:
 

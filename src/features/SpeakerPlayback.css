@@ -17,7 +17,7 @@
   overflow-wrap: anywhere;
   color: var(--text-heading);
 }
-.playback-current-speaker .speaker-avatar { width: 26px; height: 26px; flex: 0 0 26px; }
+.playback-current-speaker .speaker-avatar { width: 26px; height: 26px; flex: 0 0 26px; position: relative; }
 .playback-current-speaker > span:not(.speaker-avatar) { font-size: var(--text-xs); color: var(--text-muted); }
 .playback-current-content {
   min-height: 4.5rem;
@@ -75,3 +75,20 @@
 .playback-stage .playback-stage-heading { margin-bottom: 6px; }
 
 .playback-context-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* One recording-level sample is shared by every source-attributed active label. */
+.playback-current-speaker .speaker-avatar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--color-accent);
+  border-radius: inherit;
+  pointer-events: none;
+  transform: scale(1);
+}
+.playback-current-speaker[data-speaker-active="true"] .speaker-avatar::after {
+  transform: scale(var(--playback-audio-energy-scale, 1));
+}
+@media (prefers-reduced-motion: reduce) {
+  .playback-current-speaker[data-speaker-active="true"] .speaker-avatar::after { transform: scale(1); }
+}
