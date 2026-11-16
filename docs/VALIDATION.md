@@ -6,7 +6,11 @@ The sidebar's Update now entry now replaces itself with Confirm update and an ad
 
 Focused browser coverage stubs only the service-worker registration boundary and runs the production component and update handler. A separate real-worker lifecycle test now cancels a sidebar confirmation, verifies the initial release and installed waiting worker remain, then confirms through the sidebar for N-to-N+1. Existing banner guards, draft preservation, activation-failure ACK barrier and forward recovery assertions remain.
 
-Validation and publication are pending. The original missing-sidebar-confirmation failure and subsequent failed fixture/style iterations are retained in ignored per-run evidence. An already-open old build must complete its existing confirmation flow once to receive this code; this change cannot alter code that is already cached and running.
+Root viewed the final 1440x900, 768x1024, 390x844 and collapsed short-height captures: subjective score 90; Confirm retains the original padded bottom and the new Cancel target is at least 44x44. The test checks anchoring within 1px, keyboard Cancel/focus return, English/Chinese, scroll stability, one confirmation owner, local draft blockers, failure/retry and no activation on the first click or Cancel. Registration stubs establish UI behavior; they do not prove the real worker lifecycle.
+
+After merging concurrent voice changes through `aa472ad`, independent pinned Node 22.23.3 verification passed lint, **54 files / 369 unit tests**, types/build, SSOT (354 debt units and one duplicate unchanged), artifact checks, **10 Chromium/WebKit sidebar cases** and the complete real-worker PWA script in both engines. The latter passed N-to-N+1 through sidebar confirmation, active-request/editor protection, saved draft, old-asset/unrelated-cache preservation, visible activation failure and forward recovery, retaining the ACK-before-clock-advance barrier. No provider request or model download was needed. Physical devices and assistive technology remain unverified; the complete unrelated browser suite was not rerun.
+
+Hosted publication/readback is pending. The original missing-sidebar-confirmation failure and subsequent failed fixture/style iterations are retained in ignored per-run evidence. An already-open old build must complete its existing confirmation flow once to receive this code; this change cannot alter code that is already cached and running.
 
 ## Speaker-model consent disclosure — 2026-11-16
 
