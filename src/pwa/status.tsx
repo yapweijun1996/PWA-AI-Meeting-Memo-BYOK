@@ -2,7 +2,7 @@ import { translateUi } from "../i18n";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { version as appVersion } from "../../package.json";
-import { Download, RefreshCw, WifiOff } from "lucide-react";
+import { AlertTriangle, Check, Download, RefreshCw, WifiOff, X } from "lucide-react";
 import { isProcessing } from "../jobs/runner";
 import { flushWrites } from "../storage/repository";
 import { avatarWritesPending, flushAvatarWrites } from "../storage/speaker-avatars";
@@ -14,6 +14,9 @@ export function PwaStatus() {
   const displayBuild = __BUILD_ID__.startsWith("local-") ? `local-${__BUILD_ID__.slice(-8)}` : __BUILD_ID__.slice(0, 8);
   const t = (en: string, zh: string) => translateUi(language, en, zh);
   const confirmButton = useRef<HTMLButtonElement>(null);
+  const sidebarUpdateButton = useRef<HTMLButtonElement>(null);
+  const bannerUpdateButton = useRef<HTMLButtonElement>(null);
+  const [confirmation, setConfirmation] = useState<{ origin: "sidebar" | "banner"; open: boolean }>({ origin: "banner", open: false });
   const [refreshReady, setRefreshReady] = useState(false);
   const [sidebarSlot, setSidebarSlot] = useState<HTMLElement | null>(null);
   const [checking, setChecking] = useState(false);
@@ -21,7 +24,6 @@ export function PwaStatus() {
   useEffect(() => { setSidebarSlot(document.getElementById("pwa-sidebar-slot")); }, []);
   const [waiting, setWaiting] = useState<ServiceWorker>(),
     [updating, setUpdating] = useState(false),
-    [confirming, setConfirming] = useState(false),
     [error, setError] = useState(""),
     [offline, setOffline] = useState(!navigator.onLine);
   const [install, setInstall] = useState<
@@ -114,7 +116,7 @@ export function PwaStatus() {
     } catch { setCheckMessage(t("Could not check for updates. Try again.", "\u65e0\u6cd5\u68c0\u67e5\u66f4\u65b0\uff0c\u8bf7\u91cd\u8bd5\u3002")); }
     finally { setChecking(false); }
   }
-  useEffect(() => { if (confirming) confirmButton.current?.focus(); }, [confirming]);
+  useEffect(() => { if (confirmation.open) confirmButton.current?.focus({ preventScroll: true }); }, [confirmation]);
   function blocker(): string {
     if (document.querySelector("dialog[open]")) return "Save or close the open editor before updating.";
     if (isSettingsDirty()) return "Save your settings before updating.";
@@ -123,19 +125,27 @@ export function PwaStatus() {
     if (document.querySelector('[data-unsaved-edit="true"]')) return "Save or close the open editor before updating.";
     return "";
   }
-  function requestUpdate() {
+  function requestUpdate(origin: "sidebar" | "banner") {
     const reason = blocker();
     setError(reason);
-    setConfirming(reason === "");
+    setConfirmation({ origin, open: reason === "" });
+  }
+  function closeConfirmation() {
+    setConfirmation(current => ({ ...current, open: false }));
+  }
+  function cancelUpdate() {
+    const origin = confirmation.origin;
+    closeConfirmation();
+    requestAnimationFrame(() => (origin === "sidebar" ? sidebarUpdateButton : bannerUpdateButton).current?.focus({ preventScroll: true }));
   }
   async function update() {
     const reason = blocker();
     if (reason) {
       setError(reason);
-      setConfirming(false);
+      closeConfirmation();
       return;
     }
-    setConfirming(false);
+    closeConfirmation();
     setUpdating(true);
     try {
       await flushWrites();
@@ -202,13 +212,26 @@ export function PwaStatus() {
     registration.addEventListener("updatefound", activateLatest);
     activateLatest();
   }
+  const errorText = language === "zh-CN" ? ({
+    "Offline installation is unavailable. Your local meetings can still be backed up.": "离线安装不可用。您仍可备份本地会议。",
+    "Save or close the open editor before updating.": "更新前请保存或关闭打开的编辑器。",
+    "Wait for the profile image to finish saving before updating.": "\u66f4\u65b0\u524d\u8bf7\u7b49\u5f85\u5934\u50cf\u4fdd\u5b58\u5b8c\u6210\u3002",
+    "Save your settings before updating.": "更新前请先保存设置。",
+    "Finish the active provider request before updating.": "更新前请等待当前服务商请求完成。",
+    "Save your changes before updating.": "更新前请先保存更改。",
+    "Update did not activate. Try again when connected.": "更新未能激活。请联网后重试。",
+  } as Record<string, string>)[error] ?? translateMessage(error, language) : error;
+  const sidebarError = confirmation.origin === "sidebar" && !!error;
   return (
     <>
       {sidebarSlot && createPortal(<div className="pwa-sidebar">
         <span className="pwa-version" data-tooltip={__BUILD_ID__}>{t("Version", "\u7248\u672c")} {appVersion} - {displayBuild}</span>
-        {(waiting || refreshReady) ? <button type="button" className="pwa-sidebar-button" aria-label={t("Open update confirmation", "\u6253\u5f00\u66f4\u65b0\u786e\u8ba4")} onClick={() => { requestUpdate(); document.querySelector(".notice.update")?.scrollIntoView({ block: "nearest" }); }} disabled={updating}><RefreshCw size={15} />{updating ? t("Updating...", "\u6b63\u5728\u66f4\u65b0...") : t("Update now", "\u7acb\u5373\u66f4\u65b0")}</button>
+        {confirmation.open && confirmation.origin === "sidebar" && !updating ? <div className="pwa-sidebar-actions">
+          <button ref={confirmButton} type="button" className="pwa-sidebar-button pwa-sidebar-confirm" aria-label={t("Confirm update", "确认更新")} onClick={() => void update()}><Check size={15} />{t("Confirm update", "确认更新")}</button>
+          <button type="button" className="pwa-sidebar-button pwa-sidebar-cancel" aria-label={t("Cancel", "取消")} data-tooltip={t("Cancel", "取消")} onClick={cancelUpdate}><X size={15} /></button>
+        </div> : (waiting || refreshReady) ? <button ref={sidebarUpdateButton} type="button" className="pwa-sidebar-button" aria-label={t("Open update confirmation", "\u6253\u5f00\u66f4\u65b0\u786e\u8ba4")} onClick={() => requestUpdate("sidebar")} disabled={updating}><RefreshCw size={15} />{updating ? t("Updating...", "\u6b63\u5728\u66f4\u65b0...") : t("Update now", "\u7acb\u5373\u66f4\u65b0")}</button>
           : <button type="button" className="pwa-sidebar-button" onClick={() => void checkForUpdates()} disabled={checking}><RefreshCw size={15} className={checking ? "pwa-check-spin" : undefined} />{checking ? t("Checking...", "\u6b63\u5728\u68c0\u67e5...") : t("Check for updates", "\u68c0\u67e5\u66f4\u65b0")}</button>}
-        <span className="pwa-check-message" role="status">{checkMessage}</span>
+        <span className={`pwa-check-message${sidebarError ? " pwa-update-error" : ""}`} role="status" data-tooltip={sidebarError ? errorText : undefined} tabIndex={sidebarError ? 0 : undefined}>{sidebarError ? <><AlertTriangle size={15} /><span>{errorText}</span></> : checkMessage}</span>
       </div>, sidebarSlot)}
       {offline && (
         <div className="notice">
@@ -220,19 +243,20 @@ export function PwaStatus() {
         <div className="notice update" role="status">
           <RefreshCw size={17} className={updating ? "pwa-check-spin" : undefined} />
           <span>{t("A new version is ready. Save your work before updating.", "新版本已准备好。更新前请先保存工作。")}</span>
-          {confirming && !updating ? (
+          {confirmation.open && confirmation.origin === "banner" && !updating ? (
             <>
               <button ref={confirmButton} className="button secondary compact" onClick={() => void update()}>
                 {t("Confirm update", "确认更新")}
               </button>
-              <button className="text-button" onClick={() => setConfirming(false)}>
+              <button className="text-button" onClick={cancelUpdate}>
                 {t("Cancel", "取消")}
               </button>
             </>
           ) : (
             <button
               className="button secondary compact"
-              onClick={requestUpdate}
+              ref={bannerUpdateButton}
+              onClick={() => requestUpdate("banner")}
               disabled={updating}
             >
               {updating ? t("Updating…", "正在更新…") : t("Update now", "立即更新")}
@@ -259,17 +283,9 @@ export function PwaStatus() {
           </button>
         </div>
       )}
-      {error && (
+      {error && !sidebarError && (
         <div className="notice" role="status">
-          {language === "zh-CN" ? ({
-            "Offline installation is unavailable. Your local meetings can still be backed up.": "离线安装不可用。您仍可备份本地会议。",
-            "Save or close the open editor before updating.": "更新前请保存或关闭打开的编辑器。",
-            "Wait for the profile image to finish saving before updating.": "\u66f4\u65b0\u524d\u8bf7\u7b49\u5f85\u5934\u50cf\u4fdd\u5b58\u5b8c\u6210\u3002",
-            "Save your settings before updating.": "更新前请先保存设置。",
-            "Finish the active provider request before updating.": "更新前请等待当前服务商请求完成。",
-            "Save your changes before updating.": "更新前请先保存更改。",
-            "Update did not activate. Try again when connected.": "更新未能激活。请联网后重试。",
-          } as Record<string, string>)[error] ?? translateMessage(error, language) : error}
+          {errorText}
         </div>
       )}
     </>

@@ -206,13 +206,19 @@ try {
       await page
         .getByRole("button", { name: "Save correction", exact: true })
         .click();
-      await page.getByRole("button", { name: "Update now", exact: true }).click();
+      const sidebarUpdate = page.locator(".pwa-sidebar").getByRole("button", { name: "Open update confirmation", exact: true });
+      await sidebarUpdate.click();
+      await page.locator(".pwa-sidebar").getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(sidebarUpdate).toBeFocused();
+      assert.equal(await page.evaluate(async () => (await navigator.serviceWorker.ready).waiting?.state), "installed");
+      await expect(page.locator('meta[name="pwa-test-release"]')).toHaveAttribute("content", "initial");
+      await sidebarUpdate.click();
       await Promise.all([
         page.waitForEvent(
           "framenavigated",
           (frame) => frame === page.mainFrame(),
         ),
-        page.getByRole("button", { name: "Confirm update", exact: true }).click(),
+        page.locator(".pwa-sidebar").getByRole("button", { name: "Confirm update", exact: true }).click(),
       ]);
       await page
         .getByRole("heading", { name: "Preserved across update", exact: true })

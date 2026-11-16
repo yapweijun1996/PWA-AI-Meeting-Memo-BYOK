@@ -42,6 +42,7 @@ The owner authorized sequential completion, per-task commits, merge and push to 
 
 ## Sidebar update button — 2026-11-16
 
+- [ ] Confirm updates in the initiating sidebar area, with local Cancel/error feedback and no jump to the main notice. Verify bottom placement, focus, bilingual responsive states and the real protected N-to-N+1 lifecycle before publication.
 - [x] Keep the update button at the sidebar's padded bottom with empty or visible feedback. Status messages appear above it, and the empty live region stays available without reserving a row. Independent Chromium/WebKit checks passed for expanded, collapsed, short-height and mobile drawer layouts, including recent-list scrolling. Publication is tracked in `docs/VALIDATION.md`.
 
 ## Faster GitHub publication — 2026-11-16

@@ -1,5 +1,13 @@
 # Validation record
 
+## Sidebar-local update confirmation — 2026-11-16
+
+The sidebar's Update now entry now replaces itself with Confirm update and an adjacent Cancel action at the sidebar bottom. Confirmation records its initiating location, so only that location renders Confirm; the main notice remains independently usable. Focus uses `preventScroll`, Cancel returns to the initiating update button without activating the worker, and sidebar-origin blockers/failures use the sidebar's existing live region. The shared blocker, pending-write flushes, activation deadline and worker/controller handling are unchanged.
+
+Focused browser coverage stubs only the service-worker registration boundary and runs the production component and update handler. A separate real-worker lifecycle test now cancels a sidebar confirmation, verifies the initial release and installed waiting worker remain, then confirms through the sidebar for N-to-N+1. Existing banner guards, draft preservation, activation-failure ACK barrier and forward recovery assertions remain.
+
+Validation and publication are pending. The original missing-sidebar-confirmation failure and subsequent failed fixture/style iterations are retained in ignored per-run evidence. An already-open old build must complete its existing confirmation flow once to receive this code; this change cannot alter code that is already cached and running.
+
 ## Speaker-model consent disclosure — 2026-11-16
 
 The pure `SpeakerModelNotice` renderer replaces duplicated blanket licence-absence text in local-analysis and transcription confirmation. It links the reviewed upstream card/licence and pinned conversion card, states that conversion notices/compliance remains open, and keeps the existing host/IP metadata, approximately 102 MB, pinned SHA-256, browser cache/deletion and uncalibrated-quality disclosures. Local analysis retains its local-only boundary; transcription separately discloses provider upload and does not claim that the recording stays local. No processing, request, matching, key or persistence logic changed; no model weights were downloaded or published.

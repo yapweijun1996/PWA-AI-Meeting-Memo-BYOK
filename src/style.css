@@ -4166,6 +4166,16 @@ details[open] > summary {
 .pwa-version, .pwa-check-message { color: var(--palette-12); font-size: var(--text-xs); overflow-wrap: anywhere; }
 .pwa-sidebar-button { order: 2; display: inline-flex; align-items: center; gap: 7px; justify-self: start; border: 0; background: transparent; color: var(--color-accent-text); padding: 6px 0; cursor: pointer; font-weight: 600; }
 .pwa-sidebar-button:disabled { opacity: .6; cursor: wait; }
+.pwa-sidebar-actions { order: 2; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; align-items: end; }
+.pwa-sidebar-actions .pwa-sidebar-cancel { width: 44px; min-width: 44px; min-height: 44px; padding-inline: 8px; }
+.pwa-update-error { display: flex; align-items: flex-start; gap: 5px; }
+.pwa-update-error > svg { flex: none; }
+@media (min-width: 761px) {
+  .sidebar-collapsed .pwa-sidebar-actions { grid-template-columns: minmax(0, 1fr); }
+  .sidebar-collapsed .pwa-sidebar-confirm { grid-column: 1; grid-row: 2; }
+  .sidebar-collapsed .pwa-sidebar-cancel { grid-column: 1; grid-row: 1; }
+  .sidebar-collapsed .pwa-update-error { justify-content: center; }
+}
 @media (min-width: 761px) { .sidebar-collapsed .pwa-version, .sidebar-collapsed .pwa-check-message, .sidebar-collapsed .pwa-sidebar-button { font-size: 0; } .sidebar-collapsed .pwa-sidebar-button { justify-self: center; } }
 
 :root[data-font-size="large"] { --font-scale: 1.15; }
