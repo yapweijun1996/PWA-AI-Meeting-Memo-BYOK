@@ -18,7 +18,7 @@ The owner authorized sequential completion, per-task commits, merge and push to 
 Current assessment: **partially aligned, not fully compliant**. [gap.md](gap.md) owns the versioned KB source references, applicability decisions, evidence, priorities and acceptance criteria. This section owns execution status. Historical checked SSOT work below remains a checkpoint, not evidence of complete current compliance. These tasks are follow-up recommendations; this documentation update does not authorize deployment or wholesale UI migration.
 
 - [x] Assess the relevant KB token/component standards against current local code and record evidence-backed gaps and project-specific exceptions in `gap.md`.
-- [ ] REL01 — Make verification a required publication dependency; cover PR checks, failing-check publication refusal and current-main artifact eligibility.
+- [ ] REL01 — Verification gating is implemented and locally checked; await the hosted main run and served-build readback before closing. Read-only PR wiring is contract-tested; live PR creation was denied by the GitHub integration (403), so PR-trigger execution is unverified. See `docs/VALIDATION.md` for retained initial failures and corrected focused results.
 - [ ] DS05 — Add a scoped SSOT violation ratchet with reviewed exceptions, regression tests and CI integration.
 - [ ] DS01/DS02 — Inventory literals and repeated roles; choose the authoritative token source model, centralize semantic roles and browser-chrome values, and verify synchronization if generation is adopted.
 - [ ] DS04 — Document component owners, variants, accessibility and interaction contracts with an actual-component catalogue.

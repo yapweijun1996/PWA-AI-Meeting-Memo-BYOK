@@ -134,6 +134,20 @@ function wavFile(seconds = 40) {
   return buffer;
 }
 
+async function isolateSyntheticDecoderEvents(page: Page) {
+  // Synthetic play/pause drivers do not establish native codec support. Keep
+  // native WAV rejection from overriding the explicit state events in tests
+  // that exercise projection/colors; real decoding is verified separately.
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLMediaElement.prototype, "error", { configurable: true, get: () => null });
+    for (const type of ["error", "playing", "canplay", "waiting", "pause", "ended"]) {
+      document.addEventListener(type, event => {
+        if (event.isTrusted && event.target instanceof HTMLMediaElement) event.stopImmediatePropagation();
+      }, true);
+    }
+  });
+}
+
 async function createFixture(
   page: Page,
   audioName = "speaker-review.wav",
@@ -414,6 +428,7 @@ test("group chat keeps a persistent speaker stage above chronological bubbles", 
 });
 
 test("current captions show timed attribution without inventing activity in pauses or gaps", async ({ page }) => {
+  await isolateSyntheticDecoderEvents(page);
   const meeting = fixtureMeeting();
   const baseSegment = meeting.segments[0];
   meeting.segments = [
@@ -613,6 +628,7 @@ test("caption identities stay distinct and readable with chunk labels and long c
 
 test("real playback colors follow every palette with readable semantic states", async ({ page, context }) => {
   test.setTimeout(120_000);
+  await isolateSyntheticDecoderEvents(page);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await createFixture(page);
   await page.getByRole("button", { name: "Playback mode", exact: true }).click();
