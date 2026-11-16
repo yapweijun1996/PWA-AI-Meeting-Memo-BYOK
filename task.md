@@ -44,7 +44,7 @@ The owner authorized sequential completion, per-task commits, merge and push to 
 
 ## Sidebar update button — 2026-11-16
 
-- [ ] Confirm updates in the initiating sidebar area, with local Cancel/error feedback and no jump to the main notice. Verify bottom placement, focus, bilingual responsive states and the real protected N-to-N+1 lifecycle before publication.
+- [x] Confirm updates in the initiating sidebar area, with local Cancel/error feedback and no jump to the main notice. Independent 10-case Chromium/WebKit sidebar checks, real two-engine protected PWA lifecycle and 369 unit tests passed. Main `e4a5362` published in successful run `43834561831`; eight fresh production scenarios matched its full SHA and verified responsive confirmation/Cancel/focus without activation. Physical-device acceptance remains open; see `docs/VALIDATION.md`.
 - [x] Keep the update button at the sidebar's padded bottom with empty or visible feedback. Status messages appear above it, and the empty live region stays available without reserving a row. Independent Chromium/WebKit checks passed for expanded, collapsed, short-height and mobile drawer layouts, including recent-list scrolling. Publication is tracked in `docs/VALIDATION.md`.
 
 ## Faster GitHub publication — 2026-11-16
