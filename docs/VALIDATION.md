@@ -575,3 +575,10 @@ Implemented from `3be50ea` in the isolated macOS worktree; the Windows-only unac
 - PASS: both Chromium/WebKit real-worker PWA scripts for N-to-N+1, active-request/editor protection, saved drafts, old assets/unrelated caches, activation failure ACK and forward recovery. These are desktop browser runs, not physical installed-device evidence.
 - Compatibility: preference and job/plan fields are optional for old data. Older strict-schema clients may reject newly saved fields; update all tabs before using the new preference. Model language adherence and real translation quality are NOT_RUN.
 - Prior P0 delivery: `3be50ea5a2685904509ce7dd26d2376c996b0508` was pushed to `main`; hosted run `43843372903` completed successfully, and a read-only fetch of the worker-listed application bundle contained that exact SHA. The worker version itself is an asset digest, not the source SHA. This is artifact identity evidence, not a real paid-flow acceptance claim.
+
+
+## Hosted large-fixture execution budget — 2026-11-16
+
+Language commit `4fc79df` did not publish: run `43844215438` stopped at unit tests (388/390 passed). The new full-size incident test took 5,202 ms against Vitest's default 5,000 ms; the existing repeated-64-MiB memo-review boundary test also timed out. No functional assertion failure was reported, and publication was skipped. The earlier P0 release remains the last successful published version until the corrective workflow succeeds.
+
+The two explicitly large correctness fixtures now have a bounded 30-second test budget. Fixture sizes, all assertions, two-worker isolation, application/provider deadlines and every other test timeout remain unchanged. These fixtures are not specified application latency benchmarks; reducing their data or dropping backup/source/recovery assertions would weaken the gate. Local pinned Node 22.23.3 rerun passed 390/390, lint, SSOT, types/build and artifact checks. Hosted verification of this correction is pending at this checkpoint.

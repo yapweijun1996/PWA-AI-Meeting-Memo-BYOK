@@ -232,6 +232,7 @@ function incidentMeeting() {
   return m;
 }
 
+// Full-size persistence/restore fixture; hosted two-core runners need more than the 5 s unit default.
 test("word-level incident saves oversized extractions and completes exactly three extractions and one synthesis", async () => {
   vi.stubGlobal("window", new EventTarget());
   vi.stubGlobal("navigator", {});
@@ -273,7 +274,7 @@ test("word-level incident saves oversized extractions and completes exactly thre
   expect(validateMeeting(JSON.parse(JSON.stringify(result))).memoPipelines).toEqual(result.memoPipelines);
   const restored = await readBackup(new File([JSON.stringify(result)], "incident.json"));
   expect(restored.meeting.memoPipelines).toEqual(result.memoPipelines);
-});
+}, 30_000);
 
 test("oversized synthesis keeps paid successes, blocks locally and never submits or retries synthesis", async () => {
   vi.stubGlobal("window", new EventTarget());

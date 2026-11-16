@@ -97,6 +97,7 @@ describe("memo review", () => {
     expect(() => validateMeeting(obsolete)).toThrow("schema version 2");
   });
 
+  // Exercises repeated real 64 MiB serializations; this is a correctness gate, not a 5 s benchmark.
   it("prevents new writes from growing an oversized backup and permits reducing legacy data", async () => {
     const m = fixture(), memoId = m.memos[0].id, itemId = m.memos[0].items[0].id;
     const edited = editMemoItem(m, memoId, itemId, { text: "New human edit" });
@@ -116,5 +117,5 @@ describe("memo review", () => {
     expect(ensureRestorableBackup(legacy, smaller)).toBe(smaller);
     expect(() => ensureRestorableBackup(smaller, legacy)).toThrow("backup limit");
     expect(legacy.memos[0].items[0].text).toBe("New human edit");
-  });
+  }, 30_000);
 });
