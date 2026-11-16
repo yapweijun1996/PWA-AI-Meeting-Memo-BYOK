@@ -26,7 +26,7 @@ Current assessment: **partially aligned, not fully compliant**. [gap.md](gap.md)
 - [ ] DS06 — Expand theme/palette contrast and screenshot acceptance across representative workflows and 390/768/1440 viewports.
 - [ ] DS07 — Reproduce or rule out cold-launch theme flash, then implement and verify early restoration if required.
 - [ ] DS08 — Define shared icon sizing and explicit artwork exceptions without duplicating the Lucide registry or changing speaker identity semantics.
-- [ ] DS09 — Decide whether system theme, density and design kits are product requirements; document deferrals or verify adopted axes independently.
+- [x] DS09 — Retain the existing explicit theme/palette/font/size controls; defer optional system-theme following, density and design kits. The scope decision and future acceptance conditions are in `docs/PRODUCT.md`; no capability or migration is claimed.
 - [ ] REL02 — Complete pinned Node 22 release checks and physical iOS/Android installed, offline, suspension, safe-area and screen-reader acceptance.
 - [ ] REL03 — Close speaker-model licensing/delivery, labelled matching evaluation and deployed download/offline/mobile recovery gates; retain separate accuracy limitations.
 - [x] DOC01 — Reconcile historical SSOT, immersive, fragment and release checklists against owning code and verified evidence; see the scoped 2026-11-16 reconciliation below. Other historical acceptance is retained rather than newly re-audited. Combined device, audio-energy and model-quality gates remain open.
