@@ -126,6 +126,7 @@ export function MeetingWorkspace({
     [sampleRange, setSampleRange] = useState<{ start: number; end: number } | null>(null),
     [audioStopToken, setAudioStopToken] = useState(0);
   const player = useRef<PlayerLike | null>(null),
+    playbackIntent = useRef(0),
     playUntil = useRef<number | null>(null),
     // Ranges still to play after the current cue (voice comparison plays two samples in a row).
     cueQueue = useRef<{ start: number; end: number }[]>([]);
@@ -205,6 +206,7 @@ export function MeetingWorkspace({
     return () => removeEventListener("memo-processing-changed", changed);
   }, [m.id]);
   useEffect(() => {
+    playbackIntent.current += 1;
     let cancelled = false,
       object = "";
     if (m.audio?.chunked) {
@@ -447,6 +449,35 @@ export function MeetingWorkspace({
       /* feedback is displayed without clearing the editor */
     }
   }
+  async function startPlayback(message = "Playback could not start.") {
+    const audio = player.current;
+    if (!audio) return;
+    const intent = ++playbackIntent.current;
+    try {
+      await audio.play();
+    } catch (error) {
+      if (intent !== playbackIntent.current || audio !== player.current) return;
+      setNotice(message);
+      throw error;
+    }
+    if (intent === playbackIntent.current && audio === player.current) {
+      setNotice(current => current === "Playback could not start." || current === "Playback could not start. Check this browser supports the recording format." ? "" : current);
+    }
+  }
+  function pausePlayback() {
+    playbackIntent.current += 1;
+    player.current?.pause();
+  }
+  async function togglePlayback() {
+    const audio = player.current;
+    if (!audio) return;
+    if (!audio.paused && !audio.ended) pausePlayback();
+    else {
+      setAudioStopToken(value => value + 1);
+      playUntil.current = null;
+      await startPlayback();
+    }
+  }
   function cueRange(start: number, end: number | null) {
     if (!player.current) {
       setNotice("This source has no playable local audio range.");
@@ -458,13 +489,7 @@ export function MeetingWorkspace({
     playUntil.current = end;
     player.current.currentTime = start;
     playback.refresh();
-    void player.current
-      .play()
-      .catch(() =>
-        setNotice(
-          "Playback could not start. Check this browser supports the recording format.",
-        ),
-      );
+    void startPlayback("Playback could not start. Check this browser supports the recording format.").catch(() => undefined);
   }
   /** Play several ranges one after another; any other cue or seek replaces the sequence. */
   function cueSequence(ranges: { start: number; end: number }[]) {
@@ -1407,18 +1432,10 @@ export function MeetingWorkspace({
             onExportVoiceEvaluation={() => void exportVoiceEvaluationFile()}
             onMarkDifferent={(first, second) => void persistQuietly(markSpeakersDifferent(m, first, second))}
             onClearDifferent={(speakerId) => void persistQuietly(clearSpeakerVoiceDecisions(m, speakerId))}
-            onPause={() => player.current?.pause()}
+            onPause={pausePlayback}
             playbackRate={playback.rate}
             onChangeRate={(rate) => { if (player.current) player.current.playbackRate = rate; }}
-            onTogglePlayback={async () => {
-              if (playing) player.current?.pause();
-              else {
-                setAudioStopToken((value) => value + 1);
-                playUntil.current = null;
-                try { await player.current?.play(); }
-                catch (error) { setNotice("Playback could not start."); throw error; }
-              }
-            }}
+            onTogglePlayback={togglePlayback}
             onChange={async (fn) => {
               // Speaker edits must propagate CAS/storage failures so the
               // editor can keep its draft and expose a retryable error.
@@ -1460,7 +1477,7 @@ export function MeetingWorkspace({
                 onSave={async (value: ReferenceVideoValue | null) => {
                   await persist({ ...m, referenceVideo: value });
                 }}
-                onBeforeWatch={() => player.current?.pause()}
+                onBeforeWatch={pausePlayback}
               />
             }
           />
@@ -1866,14 +1883,7 @@ export function MeetingWorkspace({
           <Button
             className="play-button"
             aria-label={playing ? t("Pause audio", "暂停录音") : t("Play audio", "播放录音")}
-            onClick={() => {
-              if (playing) player.current?.pause();
-              else {
-                setAudioStopToken((value) => value + 1);
-                playUntil.current = null;
-                void player.current?.play().catch(() => setNotice("Playback could not start."));
-              }
-            }}
+            onClick={() => {void togglePlayback().catch(() => undefined);}}
           >
             {playing ? <Icon glyph={Pause} size="control" /> : <Icon glyph={Play} size="control" />}
           </Button>

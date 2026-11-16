@@ -70,6 +70,7 @@ export default function App() {
     [loading, setLoading] = useState(true);
   const currentRoute = useRef(route);
   currentRoute.current = route;
+  const meetingRouteId = route.match(/^\/meetings\/([^/]+)/)?.[1];
   const [error, setError] = useState(getSettingsStorageError()),
     [search, setSearch] = useState(""),
     [filter, setFilter] = useState("all"),
@@ -194,7 +195,7 @@ export default function App() {
   async function created(m: Meeting) {
     await refresh();
     setNewOpen(false);
-    setCurrent(m);
+    setLoading(true);
     navigate(`/meetings/${m.id}`);
   }
   async function restore(file?: File) {
@@ -450,7 +451,7 @@ export default function App() {
           {route === "/settings" ? (
             <Settings />
           ) : route.startsWith("/meetings/") ? (
-            current ? (
+            current && current.id === meetingRouteId ? (
               <MeetingWorkspace
                 key={current.id}
                 meeting={current}

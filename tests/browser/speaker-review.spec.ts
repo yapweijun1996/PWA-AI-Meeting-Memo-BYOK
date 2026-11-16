@@ -2414,3 +2414,195 @@ for (const width of [390, 768, 1440])
     await expect(dialog.locator(".immersive-untimed")).toBeVisible();
     expect(await storedMeeting(page)).toEqual(before);
   });
+
+type AsyncPlaybackFixtureWindow = Window & {
+  rejectObsoletePlayback?: () => void;
+  finishDelayedFullscreenExit?: () => Promise<void>;
+  fixtureFullscreen?: {count: () => number; settle: (index: number, fail: boolean) => void};
+};
+
+async function settleFixtureFrames(page: Page) {
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+}
+
+async function installDeferredFullscreen(page: Page) {
+  await page.evaluate(() => {
+    let active: HTMLElement | null = null;
+    const requests: {element: HTMLElement; resolve: () => void; reject: (error: Error) => void}[] = [];
+    Object.defineProperty(document, "fullscreenElement", {configurable: true, get: () => active});
+    HTMLElement.prototype.requestFullscreen = function() {
+      return new Promise<void>((resolve, reject) => requests.push({element: this, resolve, reject}));
+    };
+    document.exitFullscreen = async () => {active = null; document.dispatchEvent(new Event("fullscreenchange"));};
+    (window as AsyncPlaybackFixtureWindow).fixtureFullscreen = {
+      count: () => requests.length,
+      settle(index, fail) {
+        const request = requests[index];
+        if (!request) throw new Error("Missing deferred fullscreen request.");
+        if (fail) request.reject(new Error("Obsolete fullscreen rejection"));
+        else {active = request.element; document.dispatchEvent(new Event("fullscreenchange")); request.resolve();}
+      },
+    };
+  });
+}
+
+for (const method of ["button", "keyboard"] as const)
+  test(`immersive ignores an obsolete playback rejection after a newer ${method} success`, async ({page}) => {
+    await createFixture(page);
+    const before = await storedMeeting(page);
+    await page.evaluate(() => {HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("Synthetic fallback"));});
+    await page.locator("audio").evaluate(element => {
+      const audio = element as HTMLMediaElement;
+      const play = audio.play.bind(audio);
+      let attempt = 0;
+      audio.play = () => ++attempt === 1 ? new Promise<void>((_resolve, reject) => {
+        (window as AsyncPlaybackFixtureWindow).rejectObsoletePlayback = () => reject(new Error("Obsolete play rejection"));
+      }) : play();
+    });
+    await page.getByRole("button", {name: "Immersive playback", exact: true}).click();
+    const dialog = page.getByRole("dialog", {name: "Immersive playback"});
+    if (method === "button") {
+      await dialog.getByRole("button", {name: "Play audio", exact: true}).click();
+      await dialog.getByRole("button", {name: "Play audio", exact: true}).click();
+    } else {
+      await dialog.locator(".immersive-stage").focus();
+      await page.keyboard.press("Space");
+      await page.keyboard.press("Space");
+    }
+    await expect(dialog.getByRole("button", {name: "Pause audio", exact: true})).toBeVisible();
+    await page.evaluate(() => (window as AsyncPlaybackFixtureWindow).rejectObsoletePlayback!());
+    await settleFixtureFrames(page);
+    await expect(dialog.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByText("Playback could not start.", {exact: true})).toHaveCount(0);
+    await expect(dialog.getByRole("button", {name: "Pause audio", exact: true})).toBeVisible();
+    expect(await storedMeeting(page)).toEqual(before);
+  });
+
+test("a late fullscreen rejection cannot replace a newer immersive session", async ({page}) => {
+  await createFixture(page);
+  await installDeferredFullscreen(page);
+  const opener = page.getByRole("button", {name: "Immersive playback", exact: true});
+  await opener.click();
+  const dialog = page.getByRole("dialog", {name: "Immersive playback"});
+  await dialog.getByRole("button", {name: "Exit immersive", exact: true}).click();
+  await expect(opener).toBeFocused();
+  await opener.click();
+  expect(await page.evaluate(() => (window as AsyncPlaybackFixtureWindow).fixtureFullscreen!.count())).toBe(2);
+  await page.evaluate(() => (window as AsyncPlaybackFixtureWindow).fixtureFullscreen!.settle(1, false));
+  await expect(dialog.getByRole("button", {name: "Exit full screen", exact: true})).toBeVisible();
+  await page.evaluate(() => (window as AsyncPlaybackFixtureWindow).fixtureFullscreen!.settle(0, true));
+  await settleFixtureFrames(page);
+  await expect(dialog.getByText("Full screen is unavailable; using the in-page view.", {exact: true})).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", {name: "Exit full screen", exact: true})).toBeVisible();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+});
+
+test("a late fullscreen fulfillment after closing restores the player and page", async ({page}) => {
+  await createFixture(page);
+  await installDeferredFullscreen(page);
+  const opener = page.getByRole("button", {name: "Immersive playback", exact: true});
+  await opener.scrollIntoViewIfNeeded();
+  const scroll = await page.evaluate(() => ({x: scrollX, y: scrollY, overflow: document.body.style.overflow}));
+  await opener.click();
+  const dialog = page.getByRole("dialog", {name: "Immersive playback"});
+  await dialog.getByRole("button", {name: "Exit immersive", exact: true}).click();
+  await expect(opener).toBeFocused();
+  await page.evaluate(() => (window as AsyncPlaybackFixtureWindow).fixtureFullscreen!.settle(0, false));
+  await settleFixtureFrames(page);
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+  await expect(opener).toBeFocused();
+  expect(await page.evaluate(() => ({x: scrollX, y: scrollY, overflow: document.body.style.overflow}))).toEqual(scroll);
+});
+
+test("a failed fullscreen exit keeps actual state and permits a successful retry", async ({page}) => {
+  await page.setViewportSize({width: 390, height: 844});
+  await createFixture(page);
+  await installDeferredFullscreen(page);
+  await page.getByRole("button", {name: "Immersive playback", exact: true}).click();
+  await page.evaluate(() => (window as AsyncPlaybackFixtureWindow).fixtureFullscreen!.settle(0, false));
+  const dialog = page.getByRole("dialog", {name: "Immersive playback"});
+  await expect(dialog.getByRole("button", {name: "Exit full screen", exact: true})).toBeVisible();
+  await page.evaluate(() => {
+    const exit = document.exitFullscreen.bind(document);
+    let attempt = 0;
+    document.exitFullscreen = () => ++attempt === 1 ? Promise.reject(new Error("Synthetic exit failure")) : exit();
+  });
+  await dialog.getByRole("button", {name: "Exit full screen", exact: true}).click();
+  await expect(dialog.getByRole("alert")).toHaveText("Full screen could not change. Try again or use your browser controls.");
+  await expect(dialog.getByText("Full screen is unavailable; using the in-page view.", {exact: true})).toHaveCount(0);
+  await expect(dialog.getByRole("button", {name: "Exit full screen", exact: true})).toBeVisible();
+  await dialog.getByRole("button", {name: "Exit full screen", exact: true}).click();
+  await expect(dialog.getByRole("button", {name: "Enter full screen", exact: true})).toBeVisible();
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+});
+
+test("a delayed fullscreen exit restores focus and scroll after native focus movement", async ({page}) => {
+  await createFixture(page);
+  await installDeferredFullscreen(page);
+  await page.locator(".audio-player").getByRole("button", {name: "Play audio", exact: true}).click();
+  const opener = page.getByRole("button", {name: "Immersive playback", exact: true});
+  await opener.scrollIntoViewIfNeeded();
+  const scroll = await page.evaluate(() => ({x: scrollX, y: scrollY}));
+  await opener.click();
+  await page.getByRole("dialog", {name: "Immersive playback"}).getByRole("button", {name: "Exit immersive", exact: true}).click();
+  await expect(opener).toBeFocused();
+  await page.evaluate(() => {
+    const exit = document.exitFullscreen.bind(document);
+    document.exitFullscreen = () => new Promise<void>(resolve => {
+      (window as AsyncPlaybackFixtureWindow).finishDelayedFullscreenExit = async () => {await exit(); resolve();};
+    });
+    (window as AsyncPlaybackFixtureWindow).fixtureFullscreen!.settle(0, false);
+  });
+  await page.waitForFunction(() => Boolean((window as AsyncPlaybackFixtureWindow).finishDelayedFullscreenExit));
+  await page.evaluate(({y}) => {
+    document.body.tabIndex = -1;
+    document.body.focus();
+    window.scrollTo(0, y === 0 ? 100 : 0);
+  }, scroll);
+  await page.evaluate(() => (window as AsyncPlaybackFixtureWindow).finishDelayedFullscreenExit!());
+  await settleFixtureFrames(page);
+  await expect(opener).toBeFocused();
+  expect(await page.evaluate(() => ({x: scrollX, y: scrollY}))).toEqual(scroll);
+  expect(await page.locator("audio").evaluate(element => (element as HTMLMediaElement).paused)).toBe(false);
+});
+
+test("a rejected immersive close retains visible fullscreen controls for recovery", async ({page}) => {
+  await createFixture(page);
+  await installDeferredFullscreen(page);
+  await page.getByRole("button", {name: "Immersive playback", exact: true}).click();
+  await page.evaluate(() => (window as AsyncPlaybackFixtureWindow).fixtureFullscreen!.settle(0, false));
+  const dialog = page.getByRole("dialog", {name: "Immersive playback"});
+  await page.evaluate(() => {document.exitFullscreen = () => Promise.reject(new Error("Synthetic close failure"));});
+  await dialog.getByRole("button", {name: "Exit immersive", exact: true}).click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("alert")).toHaveText("Full screen could not change. Try again or use your browser controls.");
+  await expect(dialog.getByRole("button", {name: "Exit full screen", exact: true})).toBeVisible();
+  await expect(dialog.getByRole("button", {name: "Exit immersive", exact: true})).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+});
+
+test("a delayed fullscreen exit preserves a newly focused speaker draft", async ({page}) => {
+  await createFixture(page);
+  await installDeferredFullscreen(page);
+  await page.getByRole("button", {name: "Immersive playback", exact: true}).click();
+  await page.evaluate(() => (window as AsyncPlaybackFixtureWindow).fixtureFullscreen!.settle(0, false));
+  await page.evaluate(() => {
+    const exit = document.exitFullscreen.bind(document);
+    document.exitFullscreen = () => new Promise<void>(resolve => {
+      (window as AsyncPlaybackFixtureWindow).finishDelayedFullscreenExit = async () => {await exit(); resolve();};
+    });
+  });
+  await page.getByRole("dialog", {name: "Immersive playback"}).getByRole("button", {name: "Exit immersive", exact: true}).click();
+  const input = page.getByRole("textbox", {name: "Name for speaker 1", exact: true});
+  await input.fill("A retained local draft");
+  const scroll = await page.evaluate(() => ({x: scrollX, y: scrollY}));
+  await page.evaluate(() => (window as AsyncPlaybackFixtureWindow).finishDelayedFullscreenExit!());
+  await settleFixtureFrames(page);
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue("A retained local draft");
+  expect(await page.evaluate(() => ({x: scrollX, y: scrollY}))).toEqual(scroll);
+});

@@ -41,6 +41,10 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
   const native = useRef(false);
   const exitingFullscreen = useRef<Promise<void> | null>(null);
   const openRef = useRef(false);
+  const fullscreenIntent = useRef(0);
+  const playbackIntent = useRef(0);
+  const viewSession = useRef(0);
+  const restorePage = useRef<(() => void) | undefined>(undefined);
   const [open, setOpen] = useState(false);
   const [fallback, setFallback] = useState(false);
   const [fullscreenActive, setFullscreenActive] = useState(false);
@@ -50,6 +54,7 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
   const [showRoster, setShowRoster] = useState(false);
   const [speakerLayout, setSpeakerLayout] = useState<"single" | "table">("single");
   const [controlError, setControlError] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState(false);
   const [size, setSize] = useState("normal");
   const [follow, setFollow] = useState(true);
   const [page, setPage] = useState(0);
@@ -108,47 +113,125 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
   const visible = matchingCaptions.slice(start, start + 40);
   const active = current[0]?.id ?? retainedCaptions.find((caption) => visible.includes(caption))?.id ?? visible[0]?.id;
 
+  function exitClosedFullscreen(element: HTMLElement) {
+    if (exitingFullscreen.current) return exitingFullscreen.current;
+    const session = viewSession.current;
+    const restore = restorePage.current;
+    const pending = (async () => {
+      try {
+        await document.exitFullscreen();
+        restore?.();
+      } catch {
+        if (session !== viewSession.current || openRef.current || host.current !== element || document.fullscreenElement !== element) return;
+        // A failed native exit must retain a visible player and recovery controls.
+        openRef.current = true;
+        native.current = true;
+        setOpen(true);
+        setFullscreenActive(true);
+        setFallback(false);
+        setFullscreenError(true);
+      }
+    })();
+    exitingFullscreen.current = pending;
+    void pending.then(() => {if (exitingFullscreen.current === pending) exitingFullscreen.current = null;});
+    return pending;
+  }
+
   function close() {
+    fullscreenIntent.current += 1;
+    playbackIntent.current += 1;
     openRef.current = false;
     native.current = false;
     setFullscreenActive(false);
-    if (document.fullscreenElement === host.current) exitingFullscreen.current = document.exitFullscreen().catch(() => undefined);
+    if (host.current && document.fullscreenElement === host.current) void exitClosedFullscreen(host.current);
     setOpen(false);
   }
   function enter() {
     const element = host.current;
     if (!element) return;
+    const intent = ++fullscreenIntent.current;
+    playbackIntent.current += 1;
+    viewSession.current += 1;
     openRef.current = true;
     element.hidden = false;
     setOpen(true);
     setFallback(false);
     setControlError(false);
+    setFullscreenError(false);
     if (!element.requestFullscreen) { setFallback(true); return; }
     try {
       void element.requestFullscreen().then(() => {
-        if (!openRef.current && document.fullscreenElement === element) void document.exitFullscreen().catch(() => undefined);
+        if (intent !== fullscreenIntent.current) {
+          if (!openRef.current && document.fullscreenElement === element) void exitClosedFullscreen(element);
+          return;
+        }
+        if (!openRef.current && document.fullscreenElement === element) void exitClosedFullscreen(element);
         else if (document.fullscreenElement === element) { native.current = true; setFullscreenActive(true); }
         else if (openRef.current) setFallback(true);
-      }).catch(() => { if (openRef.current) setFallback(true); });
-    } catch { setFallback(true); }
+      }).catch(() => { if (intent === fullscreenIntent.current && openRef.current) setFallback(true); });
+    } catch { if (intent === fullscreenIntent.current && openRef.current) setFallback(true); }
   }
 
   function toggleFullscreen() {
     const element = host.current;
     if (!element) return;
+    const intent = ++fullscreenIntent.current;
+    setFullscreenError(false);
+    const current = () => intent === fullscreenIntent.current && openRef.current;
+    const failed = () => {
+      if (!current()) return;
+      const active = document.fullscreenElement === element;
+      native.current = active;
+      setFullscreenActive(active);
+      setFallback(!active);
+      setFullscreenError(true);
+    };
     if (document.fullscreenElement === element) {
       native.current = false;
-      void document.exitFullscreen().then(() => setFullscreenActive(false)).catch(() => { native.current = true; setFallback(true); });
+      try { void document.exitFullscreen().then(() => { if (current()) {setFullscreenActive(false); setFallback(false);} }).catch(failed); }
+      catch { failed(); }
     } else if (element.requestFullscreen) {
-      try { void element.requestFullscreen().then(() => { setFullscreenActive(document.fullscreenElement === element); setFallback(false); }).catch(() => setFallback(true)); }
-      catch { setFallback(true); }
-    } else setFallback(true);
+      try { void element.requestFullscreen().then(() => {
+        if (!current()) {
+          if (!openRef.current && document.fullscreenElement === element) void exitClosedFullscreen(element);
+          return;
+        }
+        const active = document.fullscreenElement === element;
+        native.current = active;
+        setFullscreenActive(active);
+        setFallback(!active);
+      }).catch(failed); }
+      catch { failed(); }
+    } else failed();
+  }
+
+  function togglePlayback() {
+    const intent = ++playbackIntent.current;
+    void commands.current.onTogglePlayback().then(() => {
+      if (openRef.current && intent === playbackIntent.current) setControlError(false);
+    }).catch(() => {
+      if (openRef.current && intent === playbackIntent.current) setControlError(true);
+    });
   }
 
   useEffect(() => {
     if (!open) return;
+    openRef.current = true;
+    native.current = document.fullscreenElement === host.current;
     const previousOverflow = document.body.style.overflow;
     const scrollX = window.scrollX, scrollY = window.scrollY;
+    const session = viewSession.current;
+    const restore = () => {
+      if (openRef.current || session !== viewSession.current || !opener.current?.isConnected) return;
+      const focused = document.activeElement;
+      if (focused instanceof HTMLElement && focused !== document.body && focused !== document.documentElement && focused !== opener.current &&
+          focused.isConnected && focused.matches('a[href], button, input, select, textarea, summary, [contenteditable="true"]') &&
+          !host.current?.contains(focused) && !focused.matches(":disabled") &&
+          !focused.closest("[hidden], [inert]") && focused.getClientRects().length) return;
+      window.scrollTo(scrollX, scrollY);
+      opener.current.focus({preventScroll: true});
+    };
+    restorePage.current = restore;
     document.body.style.overflow = "hidden";
     exitButton.current?.focus();
     const changed = () => {
@@ -162,7 +245,7 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
       if (event.target === stage.current && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
         if (event.key === " " && !event.repeat) {
           event.preventDefault();
-          void commands.current.onTogglePlayback().then(() => setControlError(false)).catch(() => setControlError(true));
+          togglePlayback();
           return;
         }
         if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
@@ -183,17 +266,14 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
     document.addEventListener("keydown", key);
     return () => {
       openRef.current = false;
+      fullscreenIntent.current += 1;
+      playbackIntent.current += 1;
       native.current = false;
-      const pendingExit = exitingFullscreen.current ?? (document.fullscreenElement === host.current ? document.exitFullscreen().catch(() => undefined) : null);
-      exitingFullscreen.current = null;
+      const pendingExit = exitingFullscreen.current ?? (host.current && document.fullscreenElement === host.current ? exitClosedFullscreen(host.current) : null);
       document.removeEventListener("fullscreenchange", changed);
       document.removeEventListener("keydown", key);
       document.body.style.overflow = previousOverflow;
-      void Promise.resolve(pendingExit).then(() => {
-        if (openRef.current) return;
-        window.scrollTo(scrollX, scrollY);
-        opener.current?.focus({ preventScroll: true });
-      });
+      void Promise.resolve(pendingExit).then(restore);
     };
   }, [open]);
 
@@ -310,6 +390,7 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
         <header ref={header} hidden={!controlsVisible} className="immersive-header"><strong>MeetingMemo</strong><span role="group" aria-label={t("Meeting title", "会议标题")}>{meeting.title}</span><Button className="immersive-fullscreen-toggle" type="button" onClick={toggleFullscreen} aria-label={fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Enter full screen", "\u8fdb\u5165\u5168\u5c4f")}>{fullscreenActive ? <Icon glyph={Minimize2} size="status" /> : <Icon glyph={Maximize2} size="status" />}<span className="immersive-fullscreen-label">{fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Full screen", "\u5168\u5c4f")}</span></Button><Button className="immersive-exit-button" ref={exitButton} type="button" onClick={close} aria-label={t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}><Icon glyph={Minimize2} size="status" /><span className="immersive-exit-label">{t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}</span></Button></header>
         {fallback && <p className="immersive-fallback" role="status">{t("Full screen is unavailable; using the in-page view.", "无法使用全屏，正在使用页面内视图。")}</p>}
         {controlError && <p className="immersive-fallback" role="alert">{t("Playback could not start.", "无法开始播放。")}</p>}
+        {fullscreenError && <p className="immersive-fallback" role="alert">{t("Full screen could not change. Try again or use your browser controls.", "无法切换全屏。请重试或使用浏览器控制。")}</p>}
         <div className="immersive-content">
           <section ref={stage} tabIndex={0} className="immersive-stage" data-cinematic={showTable && !controlsVisible && !panel && !showRoster} aria-label={t("Speaker and captions", "说话人和字幕")} aria-describedby="immersive-keyboard-help">
             <div ref={rosterBar} hidden={!controlsVisible} className="immersive-roster-bar">
@@ -381,7 +462,7 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
         <footer ref={controls} hidden={!controlsVisible} className="immersive-controls">
           <div className="immersive-timeline"><span>{formatTime(position)}</span><input type="range" aria-label={t("Playback position", "播放位置")} min="0" max={duration || 1} step="0.1" value={Math.min(position, duration || 1)} onChange={(event) => onSeek(Number(event.target.value))} /><span>{formatTime(duration)}</span></div>
           <div className="immersive-control-row">
-          <Button type="button" onClick={() => { void onTogglePlayback().then(() => setControlError(false)).catch(() => setControlError(true)); }} aria-label={playing ? t("Pause audio", "暂停录音") : t("Play audio", "播放录音")}>{playing ? <Icon glyph={Pause} size="transport" /> : <Icon glyph={Play} size="transport" />}</Button>
+          <Button type="button" onClick={togglePlayback} aria-label={playing ? t("Pause audio", "暂停录音") : t("Play audio", "播放录音")}>{playing ? <Icon glyph={Pause} size="transport" /> : <Icon glyph={Play} size="transport" />}</Button>
           <Button type="button" onClick={() => onSeek(Math.max(0, position - 15))} aria-label={t("Back 15 seconds", "后退15秒")}><Icon glyph={RotateCcw} size="control" /> 15</Button>
           <Button type="button" onClick={() => onSeek(Math.min(duration, position + 15))} aria-label={t("Forward 15 seconds", "前进15秒")}><Icon glyph={RotateCw} size="control" /> 15</Button>
           <select aria-label={t("Playback speed", "播放速度")} value={String(rate)} onChange={(event) => onChangeRate(Number(event.target.value))}>{[0.75, 1, 1.25, 1.5, 2].map((value) => <option key={value} value={value}>{value}×</option>)}</select>
