@@ -12,6 +12,8 @@ test("fragmented AAC becomes independently decodable, timed chunks", async ({ pa
   expect(plan.totalSeconds).toBeGreaterThan(11.9);
   const payloads = await Promise.all(plan.chunks.map(async chunk => Buffer.from(await (await readMp4Chunk(source, plan, chunk.index)).arrayBuffer()).toString("base64")));
   await page.goto("./");
+  test.skip(!(await page.evaluate(() => typeof OfflineAudioContext !== "undefined")),
+    "This browser runtime has no native OfflineAudioContext; container parsing/import remain covered separately.");
   const decoded = await page.evaluate(async (chunks) => {
     const context = new OfflineAudioContext(1, 44100, 44100);
     return Promise.all(chunks.map(async chunk => {
