@@ -1,3 +1,4 @@
+import { previewHistoryCleanup } from "../domain/history-cleanup";
 import { Icon } from "../components/Icon";
 import { memoLanguageName, type MemoOutputLanguage } from "../domain/memo-language";
 import { usePlayerClearance } from "./usePlayerClearance";
@@ -111,6 +112,7 @@ export function MeetingWorkspace({
     [highlight, setHighlight] = useState(""),
     [pendingOnly, setPendingOnly] = useState(false);
   const [speakerFilter, setSpeakerFilter] = useState("");
+  const [historyCleanup, setHistoryCleanup] = useState<ReturnType<typeof previewHistoryCleanup>>();
   const [processingKind, setProcessingKind] = useState<"local" | "provider">("provider");
   const [transcriptPage, setTranscriptPage] = useState(0);
   const [expandedGroup, setExpandedGroup] = useState("");
@@ -1915,6 +1917,20 @@ export function MeetingWorkspace({
           {tab === "memo" && <button type="button" className="player-expand text-button" aria-expanded={!miniPlayer} onClick={() => setMiniPlayer(value => !value)}>{miniPlayer ? t("Expand", "展开") : t("Minimize", "收起")}</button>}
         </div>
       )}
+      {historyCleanup && <Modal title={t("Reduce local history", "精简本地历史")} onClose={() => setHistoryCleanup(undefined)}>
+        <div className="modal-body">
+          <p>{t(`Remove ${historyCleanup.undoCount} transcript/speaker undo snapshots and ${historyCleanup.redundantHistoryCount} redundant history entries?`, `清除 ${historyCleanup.undoCount} 个转录／说话人撤销快照和 ${historyCleanup.redundantHistoryCount} 个重复历史条目？`)}</p>
+          <p>{t(`Meeting document: ${(historyCleanup.beforeBytes / 1048576).toFixed(2)} MiB → ${(historyCleanup.afterBytes / 1048576).toFixed(2)} MiB.`, `会议文档：${(historyCleanup.beforeBytes / 1048576).toFixed(2)} MiB → ${(historyCleanup.afterBytes / 1048576).toFixed(2)} MiB。`)}</p>
+          <p>{t("Current edits, every distinct old revision, provider originals, notes, citations, saved plans and note-edit undo are retained. Clearing transcript/speaker undo cannot be undone. Export a backup first if you need those snapshots.", "保留当前修改、所有不同的旧修订、服务商原始输出、笔记、引用、已保存计划和笔记编辑撤销。清除转录／说话人撤销后无法恢复；如需这些快照，请先导出备份。")}</p>
+        </div>
+        <footer className="modal-actions">
+          <button type="button" className="button secondary" onClick={() => setHistoryCleanup(undefined)}>{t("Cancel", "取消")}</button>
+          <button type="button" className="button primary" disabled={locked || (!historyCleanup.undoCount && !historyCleanup.redundantHistoryCount)} onClick={() => {
+            if (m.version !== historyCleanup.version) { onError(t("The meeting changed. Close this preview and open it again.", "会议已更改，请关闭并重新打开预览。")); return; }
+            void persistQuietly(historyCleanup.result).then(() => setHistoryCleanup(undefined)).catch(() => {});
+          }}>{t("Confirm cleanup", "确认清理")}</button>
+        </footer>
+      </Modal>}
       {acousticConfirm && (
         <Modal
           title={t("Automatically match anonymous voices?", "自动关联匿名声音吗？")}
@@ -2257,6 +2273,11 @@ export function MeetingWorkspace({
             <p className="small muted">
               {t("Changes mark generated notes for re-review.", "更改后，生成的笔记将标记为需要重新审阅。")}
             </p>
+            <button type="button" className="button secondary" disabled={locked || (!m.undo.length && !m.history.length)} onClick={(event) => {
+              event.currentTarget.focus({preventScroll: true});
+              try { setHistoryCleanup(previewHistoryCleanup(m)); }
+              catch (error) { onError(error instanceof Error ? error.message : "Could not preview local history."); }
+            }}>{t("Reduce local history", "精简本地历史")}</button>
             <button type="submit" className="button primary" disabled={locked}>
               {t("Save details", "保存资料")}
             </button>

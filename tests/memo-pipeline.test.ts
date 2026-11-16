@@ -130,7 +130,9 @@ test("multi-step generation persists attempts, original evidence and final sourc
   expect(restored.meeting.memoPipelines).toEqual(result.memoPipelines);
   expect(restored.meeting.memos).toEqual(result.memos);
   const bad = structuredClone(result);
-  bad.memoPipelines![0].snapshot.segments[0].text = "Changed evidence";
+  const snapshot = bad.memoPipelines![0].snapshot;
+  if ("segments" in snapshot) snapshot.segments[0].text = "Changed evidence";
+  else snapshot.sourceRefs[0].revision = 999;
   expect(() => validateMeeting(bad)).toThrow("match meeting evidence");
 });
 
@@ -338,4 +340,40 @@ test("saved plan language survives pause and resume while legacy plans keep meet
   fetch.mockClear();
   await runMemoPipeline(legacyMeeting, selection, oldPlan);
   for (const [, options] of fetch.mock.calls) expect(JSON.parse(options.body).instructions).toContain("Write the notes in the meeting language");
+});
+
+
+test("new plans store references instead of another transcript copy and preserve legacy plan reading", async () => {
+  vi.stubGlobal("window", new EventTarget());
+  vi.stubGlobal("navigator", {});
+  const m = await saveMeeting(longMeeting());
+  const p = planMemo(m, selection.provider, selection.model)!;
+  expect(p.snapshot).not.toHaveProperty("segments");
+  expect("sourceRefs" in p.snapshot && p.snapshot.sourceRefs).toEqual(m.segments.map(({id, revision}) => ({id, revision})));
+  const {sourceRefs: _refs, ...metadata} = p.snapshot as Exclude<typeof p.snapshot, {segments: unknown}>;
+  const legacy = {...p, snapshot: {...metadata, segments: structuredClone(m.segments)}};
+  expect(JSON.stringify(p).length).toBeLessThan(JSON.stringify(legacy).length / 2);
+  vi.stubGlobal("fetch", vi.fn(async (_url: unknown, options: {body: string}) => response(options.body)));
+  const result = await runMemoPipeline(m, selection, legacy);
+  expect(result.memoPipelines![0].state).toBe("completed");
+  expect(validateMeeting(JSON.parse(JSON.stringify(result))).memos[0].items[0].sources).toEqual(result.memos[0].items[0].sources);
+  const legacyBackup = await readBackup(new File([JSON.stringify(result)], "legacy-plan.json"));
+  expect(legacyBackup.meeting.memoPipelines).toEqual(result.memoPipelines);
+});
+
+test("referenced plan refuses missing evidence instead of substituting the current revision", () => {
+  const m = longMeeting();
+  const p = planMemo(m, selection.provider, selection.model)!;
+  expect("sourceRefs" in p.snapshot).toBe(true);
+  if (!("sourceRefs" in p.snapshot)) throw new Error("Expected referenced plan");
+  const modified = structuredClone(m);
+  modified.segments[0].revision++;
+  expect(() => extractionInput(modified, p, 0)).toThrow("match meeting evidence");
+  modified.history = [m.segments[0]];
+  expect(extractionInput(modified, p, 0).segments[0]).toEqual(m.segments[0]);
+  const saved = {...modified, memoPipelines:[p]};
+  expect(validateMeeting(saved).memoPipelines![0].snapshot).toEqual(p.snapshot);
+  const bad = structuredClone(saved);
+  if ("sourceRefs" in bad.memoPipelines[0].snapshot) bad.memoPipelines[0].snapshot.sourceRefs.push({...p.snapshot.sourceRefs[0]});
+  expect(() => validateMeeting(bad)).toThrow("Duplicate pipeline source ID");
 });

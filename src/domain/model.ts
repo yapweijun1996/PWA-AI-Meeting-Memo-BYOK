@@ -168,6 +168,9 @@ const PipelineSnapshotSchema = SnapshotSchema.extend({
   kind: z.enum(["general", "erp"]),
   glossary: z.string().max(2000),
 }).strict();
+const ReferencedPipelineSnapshotSchema = PipelineSnapshotSchema.omit({segments: true}).extend({
+  sourceRefs: z.array(z.object({id: transcriptId, revision: z.number().int().positive()}).strict()).min(1).max(20000),
+}).strict();
 export const MemoPipelineSchema = z
   .object({
     id: key,
@@ -176,7 +179,7 @@ export const MemoPipelineSchema = z
     createdAt: z.string(),
     sourceRevision: z.number().int().positive(),
     outputLanguage: z.enum(MEMO_OUTPUT_LANGUAGES).optional(),
-    snapshot: PipelineSnapshotSchema,
+    snapshot: z.union([PipelineSnapshotSchema, ReferencedPipelineSnapshotSchema]),
     state: z.enum(["ready", "running", "paused", "blocked", "completed"]),
     chunks: z.array(z.array(transcriptId).min(1).max(20000)).min(1).max(8),
     results: z
@@ -310,6 +313,17 @@ export type Job = z.infer<typeof JobSchema>;
 export type { ReferenceVideo };
 export const ref = (s: { id: string; revision: number }) =>
   `${s.id}:${s.revision}`;
+/** Resolve saved plan references against immutable current/history revisions, including legacy copies. */
+export function pipelineSourceSegments(m: Meeting, pipeline: NonNullable<Meeting["memoPipelines"]>[number]): Segment[] {
+  if ("segments" in pipeline.snapshot) return pipeline.snapshot.segments;
+  const evidence = new Map([...m.history, ...m.segments].map(source => [ref(source), source]));
+  return pipeline.snapshot.sourceRefs.map(source => {
+    const segment = evidence.get(ref(source));
+    if (!segment) throw new Error("Pipeline sources do not match meeting evidence.");
+    return segment;
+  });
+}
+
 export function validateMeeting(value: unknown): Meeting {
   const parsed = MeetingSchema.safeParse(value);
   if (!parsed.success)
@@ -367,19 +381,20 @@ export function validateMeeting(value: unknown): Meeting {
         .slice(0, 10) !== pipeline.snapshot.date
     )
       throw new Error("Invalid pipeline meeting date.");
+    const snapshotSegments = pipelineSourceSegments(m, pipeline);
     const labels = new Set(pipeline.snapshot.speakers.map((s) => s.id));
     if (
       labels.size !== pipeline.snapshot.speakers.length ||
-      pipeline.snapshot.segments.some((s) =>
+      snapshotSegments.some((s) =>
         s.speakerIds.some((id) => !labels.has(id)),
       )
     )
       throw new Error("Invalid pipeline speaker reference.");
     const captured = new Map(
-      pipeline.snapshot.segments.map((s) => [ref(s), s]),
+      snapshotSegments.map((s) => [ref(s), s]),
     );
     if (
-      pipeline.snapshot.segments.some(
+      snapshotSegments.some(
         (s) => immutable.get(ref(s)) !== JSON.stringify(s),
       )
     )
@@ -401,14 +416,14 @@ export function validateMeeting(value: unknown): Meeting {
     )
       throw new Error("Invalid completed memo pipeline.");
     if (
-      new Set(pipeline.snapshot.segments.map((s) => s.id)).size !==
-      pipeline.snapshot.segments.length
+      new Set(snapshotSegments.map((s) => s.id)).size !==
+      snapshotSegments.length
     )
       throw new Error("Duplicate pipeline source ID.");
     const core = pipeline.chunks.flat();
     if (
-      core.length !== pipeline.snapshot.segments.length ||
-      core.some((v, i) => v !== pipeline.snapshot.segments[i].id)
+      core.length !== snapshotSegments.length ||
+      core.some((v, i) => v !== snapshotSegments[i].id)
     )
       throw new Error("Invalid pipeline source coverage.");
     for (const result of pipeline.results) {

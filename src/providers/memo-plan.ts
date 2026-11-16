@@ -1,5 +1,5 @@
 import { getMemoOutputLanguage } from "./credentials";
-import { id, MAX_JOBS, MAX_MEETING_JSON_BYTES, type Meeting, type MemoItem } from "../domain/model";
+import { id, pipelineSourceSegments, MAX_JOBS, MAX_MEETING_JSON_BYTES, type Meeting, type MemoItem } from "../domain/model";
 import { buildMemoInput, MEMO_INPUT_MAX_CHARS, MemoInputError, type MemoInput } from "./memo-input";
 
 export type MemoPipeline = NonNullable<Meeting["memoPipelines"]>[number];
@@ -8,7 +8,15 @@ export type Extraction = NonNullable<MemoPipeline["results"][number]>;
 export function pipelineMeeting(m: Meeting, p: MemoPipeline): Meeting {
   return {
     ...m,
-    ...structuredClone(p.snapshot),
+    title: p.snapshot.title,
+    date: p.snapshot.date,
+    timezone: p.snapshot.timezone,
+    revision: p.snapshot.revision,
+    languages: p.snapshot.languages,
+    kind: p.snapshot.kind,
+    glossary: p.snapshot.glossary,
+    speakers: structuredClone(p.snapshot.speakers),
+    segments: structuredClone(pipelineSourceSegments(m, p)),
     jobs: [],
     memos: [],
     runs: [],
@@ -48,7 +56,7 @@ export function planMemo(
       glossary: m.glossary,
       revision: m.revision,
       speakers: structuredClone(m.speakers),
-      segments: structuredClone(m.segments),
+      sourceRefs: m.segments.map(({id, revision}) => ({id, revision})),
     },
     state: "ready",
     chunks: [],

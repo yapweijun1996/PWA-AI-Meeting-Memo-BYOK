@@ -255,3 +255,10 @@ The interface uses shared loading placeholders only while local library or meeti
 ### Early appearance restoration
 
 The browser-chrome build plugin emits a small content-hashed classic script in the HTML head, after static metadata and before application execution. It restores only allowlisted theme/palette preferences from their shared JSON contract; the two opaque chrome colors are parsed from `src/theme.css`. Runtime appearance listeners use the same keys/allowlists. The script uses the Pages base, requires only the existing self-script CSP, and is included in versioned app-shell precaching. Storage denial/invalid values use explicit defaults. This does not promise native installed splash behavior.
+
+
+### Referenced memo checkpoints and history cleanup
+
+New memo plans freeze metadata/speakers and an ordered list of exact source ID/revision pairs. At request/resume time, resolve them against immutable current/history evidence, never substitute the current revision for a missing one. Validation still checks source coverage/order, uniqueness, speaker references, exact quotes and completed memo linkage. Legacy embedded-snapshot plans remain readable through the same source resolver; the meeting schema version stays 2 with a strict alternative snapshot shape. Older clients reject referenced checkpoints, so all tabs must update first.
+
+History cleanup is an explicit, revision-checked local write after preview in Meeting details. It clears transcript/speaker undo and removes only duplicate history copies already present as current evidence or retained once in history. It retains all distinct old revisions, provider originals, note-edit undo, citations, plans, recordings and voice data. It does not revise current transcript evidence or contact a provider. Active requests refuse cleanup, save conflicts preserve the data, and preview/cancel write nothing. The storage monitor remains read-only.

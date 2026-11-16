@@ -173,7 +173,7 @@ export async function runMemoPipeline(
                 (s) => `${s.id}:${s.revision}`,
               ),
             );
-            const old = p.snapshot.segments.filter(
+            const old = frozen.segments.filter(
               (s) => !known.has(`${s.id}:${s.revision}`),
             );
             return {
