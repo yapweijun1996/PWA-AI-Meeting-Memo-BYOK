@@ -134,7 +134,7 @@ async function restoreMeeting(page: Page, language: "en" | "zh-CN") {
   if (language === "zh-CN") {
     await page.getByRole("tab", { name: "Appearance" }).click();
     await page.getByLabel("Display language / 显示语言").selectOption(language);
-    await page.getByRole("button", { name: "保存设置", exact: true }).click();
+    await page.getByRole("button", { name: "保存所有设置", exact: true }).click();
   }
   page.once("dialog", (dialog) => void dialog.accept());
   await page.locator(".nav-file input").setInputFiles({
@@ -146,6 +146,7 @@ async function restoreMeeting(page: Page, language: "en" | "zh-CN") {
   await page
     .getByRole("tab", { name: language === "en" ? /Meeting notes/ : /会议笔记/ })
     .click();
+  await page.getByRole("button", { name: language === "en" ? /^Edit note ·/ : /^编辑笔记 ·/ }).first().click();
   await page.locator(".memo-list textarea").first().waitFor();
 }
 

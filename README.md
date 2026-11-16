@@ -4,7 +4,7 @@ A browser-first workspace for recordings, speaker corrections, evidence-linked m
 
 **Status:** implemented browser beta. Local automated checks cover the review, recovery, speaker-listening and source-video workflows. Real recording accuracy, paid account access, and physical-phone acceptance remain user-run gates; this is not a claim of validated diarization quality.
 
-Live app: **https://yapweijun1996.github.io/PWA-AI-Meeting-Memo-BYOK/**. GitHub Actions builds and publishes main commits without running the automated test suite; run the checks below locally. Successful deployment and live-browser evidence are recorded in [validation](docs/VALIDATION.md).
+Live app: **https://yapweijun1996.github.io/PWA-AI-Meeting-Memo-BYOK/**. The publication workflow requires lint, unit, build, Chromium/WebKit browser, PWA lifecycle and artifact checks before a main artifact is uploaded and published. Pull requests run verification without deployment permissions. Run the checks below locally before delivery; successful deployment and live-browser evidence are recorded in [validation](docs/VALIDATION.md).
 
 ## Use the workspace
 1. Create a meeting and attach a recording up to 4 GiB. MP3 and M4A/MP4 files larger than 24,000,000 bytes are split into locally stored chunks; shorter files keep the existing path. Paste a transcript or import a Meeting Memo JSON transcript instead.

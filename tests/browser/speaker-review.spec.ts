@@ -479,8 +479,8 @@ test("group chat preserves all identities, untimed evidence and reduced motion",
   await bubble.click();
   await expect(page.locator(".playback-caption-row.is-active [data-fragment-active=true]")).not.toHaveCount(0);
   const list = page.locator(".playback-transcript-list");
-  const box = (await list.boundingBox())!;
-  await page.mouse.click(box.x + box.width - 2, box.y + 10);
+  await list.hover();
+  await page.mouse.wheel(0, 120);
   await expect(page.getByRole("button", { name: "Follow playback", exact: true })).toBeVisible();
 });
 
@@ -777,6 +777,7 @@ test("long transcript pages and note citations reach the exact source", async ({
   await page.getByRole("button", { name: "Next", exact: true }).click();
   await expect(page.getByRole("navigation", { name: "Transcript pages" })).toContainText("41–80 / 125");
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await page.getByRole("button", { name: "Passage 125 · r1" }).click();
   await page.getByRole("button", { name: "View current passage" }).click();
   await expect(page.locator(".passage.highlight")).toContainText("Long caption 120");
@@ -1534,6 +1535,7 @@ test("sample playback and name confirmation keep the identity review explicit", 
   await page.getByRole("button", { name: "View current transcript", exact: true }).click();
   await expect(page.getByRole("tab", { name: /Transcript/ })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await page.locator(".original-text").first().locator("summary").click();
   await expect(page.getByText("Original generated summary", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: /Transcript/ }).click();

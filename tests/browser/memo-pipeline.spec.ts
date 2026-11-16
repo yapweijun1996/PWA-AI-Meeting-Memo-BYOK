@@ -183,6 +183,10 @@ for (const failOnce of [false, true])
       await dialog.getByRole("checkbox").check();
       await send.click();
     }
+    // Simple Mode presents saved notes as paragraphs; inspect the editable
+    // review view explicitly rather than expecting an always-open editor.
+    await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic multi-step candidate.");
+    await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
     await expect(page.getByLabel("summary note")).toHaveValue(
       "Synthetic multi-step candidate.",
     );
@@ -192,6 +196,7 @@ for (const failOnce of [false, true])
     const requests = count;
     await page.reload();
     await page.getByRole("tab", { name: /Meeting notes/ }).click();
+    await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
     await expect(page.getByLabel("summary note")).toHaveValue(
       "Synthetic multi-step candidate.",
     );
