@@ -44,6 +44,8 @@ jobs:
         run: npx playwright install --with-deps chromium webkit
       - name: Verify browser workflows
         run: npm run test:e2e
+      - name: Verify shared component contracts
+        run: npm run test:catalogue
       - name: Verify offline updates and recovery
         run: npm run test:pwa
       - name: Verify the publication boundary

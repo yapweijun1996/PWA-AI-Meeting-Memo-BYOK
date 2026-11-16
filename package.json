@@ -11,12 +11,15 @@
     "build": "tsc -b && vite build && node scripts/build-pwa.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc -b",
-    "lint": "eslint src tests scripts/check-ssot.mjs scripts/browser-chrome.mjs scripts/browser-chrome.d.mts scripts/build-pwa.mjs",
+    "lint": "eslint src tests catalogue scripts/check-ssot.mjs scripts/browser-chrome.mjs scripts/browser-chrome.d.mts scripts/build-pwa.mjs vite.config.ts vite.catalogue.config.ts playwright.catalogue.config.ts",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test:pwa": "node scripts/test-update.mjs",
     "check:artifact": "node scripts/check-artifact.mjs",
-    "check:ssot": "node scripts/check-ssot.mjs"
+    "check:ssot": "node scripts/check-ssot.mjs",
+    "catalogue:build": "npm run typecheck && vite build --config vite.catalogue.config.ts",
+    "catalogue:preview": "vite preview --config vite.catalogue.config.ts",
+    "test:catalogue": "npm run catalogue:build && playwright test --config playwright.catalogue.config.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.2",

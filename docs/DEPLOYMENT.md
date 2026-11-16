@@ -24,17 +24,20 @@ Use a static Vite build producing `dist/`, an npm lockfile, and the same pinned 
 
 | Script | Expected responsibility |
 | --- | --- |
-| `npm run lint` | Application source and test lint |
-| `npm run typecheck` | Type checking without emitting |
+| `npm run lint` | Application/catalogue source, tests and explicitly maintained build/config helpers |
+| `npm run typecheck` | Application, tests and catalogue/config type checking without emitting JavaScript |
 | `npm run test:unit` | Noninteractive domain/storage-adapter tests |
 | `npm run build` | Production static assets and generated PWA files |
 | `npm run test:e2e` | Browser smoke and critical recovery tests against the production build at its project base path |
+| `npm run check:ssot` | Parser-backed per-file/rule design-debt and simple-class owner ratchet; no baseline writes |
+| `npm run catalogue:build` / `catalogue:preview` | Developer reference in ignored `private-fixtures/catalogue-dist`, previewed locally on 4183 |
+| `npm run test:catalogue` | Independent Chromium/WebKit shared-component contracts, including type check and isolated catalogue build |
 | `npm run test:pwa` | Two-engine lifecycle checks: request/editor protection, activation/progress/failure, saved draft, previous assets and forward recovery |
 | `npm run check:artifact` | Static-only dist contents, manifest identity/scope and known credential/fixture pattern checks |
 
 The E2E script must start a static preview server and shut it down, with Playwright configured for the same base path. Offline/update flows need dedicated tests; a dev-server run is insufficient. These scripts and Playwright tests are present; `test:pwa` additionally checks update activation and `check:artifact` checks the release boundary.
 
-The active workflow verifies pushes to `main`, pull requests targeting `main`, and manual dispatches. The read-only `verify` job runs lint, unit/contract tests, build (including TypeScript), Chromium/WebKit browser tests, PWA lifecycle checks and the static artifact check in sequence. Only a successful non-PR `main` run uploads `dist/`; the `publish` job requires `verify` and retains the latest-main-head check. A failed prerequisite skips publication under GitHub's [job dependency semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-jobs). There is no failure override. Manual dispatch from other branches and PR runs never deploy. The previously verified `github-pages` environment restriction remains `main` only; workflow changes do not alter repository/environment permissions. The workflow under [examples](examples/github-pages.yml) remains an inactive reference.
+The active workflow verifies pushes to `main`, pull requests targeting `main`, and manual dispatches. The `verify` job has read-only repository permissions and runs lint, unit/contracts, the SSOT ratchet, build (including TypeScript), Chromium/WebKit application tests, independent catalogue contracts, PWA lifecycle and the static artifact check in sequence. The catalogue build does not replace `dist`. Only a successful non-PR `main` run uploads `dist/`; the `publish` job requires `verify` and retains the latest-main-head check. A failed prerequisite skips publication under GitHub's [job dependency semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-jobs). There is no failure override. Manual dispatch from other branches and PR runs never deploy. The previously verified `github-pages` environment restriction remains `main` only; workflow changes do not alter repository/environment permissions. The workflow under [examples](examples/github-pages.yml) remains an inactive reference.
 
 Browser and PWA checks run locally and in the publication workflow. The runner installs the locked Playwright Chromium/WebKit versions and their OS dependencies before executing the built app. Provider requests remain mocked/synthetic; this does not validate authenticated account access or physical phones. `tests/release-workflow.test.ts` protects verification order, absence of failure overrides, PR isolation and the existing deployment permissions/head guard. Static contract checks do not substitute for a successful hosted run and actual release readback.
 

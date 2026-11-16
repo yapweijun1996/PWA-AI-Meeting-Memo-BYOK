@@ -78,14 +78,18 @@ Checks:
 npm run lint
 npm run typecheck
 npm run test:unit
+npm run check:ssot
 npm run build
 npx playwright install chromium webkit
 npm run test:e2e
+npm run test:catalogue
 npm run test:pwa
 npm run check:artifact
 ```
 
 Provider browser tests block service workers and unhandled external requests while mocking responses. They exercise real IndexedDB, UI, and request orchestration; they do not test vendor accuracy. No development API key or `.env` file is needed.
+
+The developer-only [component catalogue](docs/UI-COMPONENTS.md) imports the actual shared components. Run `npm run catalogue:build` then `npm run catalogue:preview` to inspect it at `http://127.0.0.1:4183/`. Its output stays in ignored `private-fixtures/catalogue-dist`; it is not an application route or part of the Pages artifact.
 
 Meeting records now use schema v2; v1 backups remain readable. Older app versions may safely reject v2 data. Save drafts and update all open tabs before editing; prefer a forward fix over rolling back to a v1-only client. Backup/restore retains plan checkpoints without provider keys.
 
