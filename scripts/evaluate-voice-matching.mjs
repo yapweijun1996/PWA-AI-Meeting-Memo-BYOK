@@ -292,6 +292,8 @@ export function replayVoiceMatching(data, matcher) {
       floorCosine: options.floorCosine ?? matcher.PART_MATCH_POLICY.floorCosine,
       margin: options.margin ?? matcher.PART_MATCH_POLICY.margin,
       centre: options.centre ?? "samples",
+      ...(options.purityCheck === false ? { purityMargin: null } : {}),
+      ...(options.forceHeadCount ? { headCountFloorCosine: Number.NEGATIVE_INFINITY } : {}),
     };
     const result = matcher.matchLabelsAcrossParts(
       {
@@ -340,6 +342,9 @@ export function replayVoiceMatching(data, matcher) {
     runs.push(run("current settings with human different pairs", { useHumanDifferentPairs: true }));
     if (people > 0) runs.push(run("reference head count with human different pairs", { expectedVoices: people, useHumanDifferentPairs: true }));
   }
+  // The two safeguards, each switched off, to see what it costs or saves on this recording.
+  runs.push(run("without the mixed-label check", { purityCheck: false }));
+  if (people > 0) runs.push(run("reference head count, forcing dissimilar voices together", { expectedVoices: people, forceHeadCount: true }));
   // The average removed before comparing: all samples (the app's default), one vote per label, one vote per voice.
   for (const centre of ["labels", "voices"]) {
     runs.push(run(`centre on ${centre}`, { centre }));

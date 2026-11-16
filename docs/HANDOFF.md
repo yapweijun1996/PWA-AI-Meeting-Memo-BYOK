@@ -1,6 +1,6 @@
 # Handoff: speaker voice matching and project state
 
-Written 2026-11-10 for the next engineer or AI agent. Read this first, then [AGENTS.md](../AGENTS.md), then the documents linked below for the area you touch. Statements are marked **verified** (checked by running code or reading a primary source in this work), **observed** (one real recording, not a benchmark) or **not verified**. Do not upgrade a claim without new evidence.
+Written 2026-11-10 for the next engineer or AI agent; section 8 and the 2026-11-16 changes are current as of 2026-11-16 (`9471b4a`). Read this first, then [AGENTS.md](../AGENTS.md), then the documents linked below for the area you touch. Statements are marked **verified** (checked by running code or reading a primary source in this work), **observed** (one real recording, not a benchmark) or **not verified**. Do not upgrade a claim without new evidence.
 
 Licence correction, 2026-11-16: the upstream Microsoft model card explicitly links CC BY-SA 3.0 terms; the earlier blanket absence claim below is historical. The pinned ONNX conversion's notices/derivation compliance remains open. Consent now links the reviewed sources and preserves distinct local-analysis/provider-transcription disclosures; [validation](VALIDATION.md#speaker-model-consent-disclosure--2026-11-16) owns its tested delivery scope. [The selection record](SPEAKER-MODEL-SELECTION.md#licence-evidence-correction--2026-11-16) owns exact sources and remaining gates. No weights are published by this correction, and matching accuracy remains unmeasured.
 
@@ -24,7 +24,8 @@ A browser-first, speaker-aware meeting memo PWA hosted on GitHub Pages. The user
 | Without a speaker count | **Observed** 7 voices plus 1 undecided on the same recording (not 4) |
 | Human-confirmed speakers absorb their voice's other labels | Implemented and unit tested |
 | Accuracy on meeting audio | **Not measured.** No labelled ground truth exists |
-| Thresholds | Uncalibrated starting values from one recording |
+| Thresholds | Uncalibrated starting values from one recording; mixed-label margin 0.2 and head-count floor 0 added 2026-11-16, also uncalibrated |
+| 2026-11-16 changes (VID02–VID09) | Vector reuse, filtered 16 kHz audio, six samples per label, human "not the same" decisions as constraints, mixed-label check, head-count floor, evaluation export and replay. Fake vectors and synthetic audio only; **none has been measured on a real recording**. See [gap.md](../gap.md#voice-identity-logic-gap-register--2026-11-16) |
 | Voice matching on the GitHub Pages demo | Route B implemented: the build ships only the runtime and the browser downloads the weights from Hugging Face after consent. **Not verified on the deployed site**; see section 8 and [SPEAKER-MODEL-DOWNLOAD-DESIGN.md](SPEAKER-MODEL-DOWNLOAD-DESIGN.md) |
 | WavLM weight licence | Upstream card links CC BY-SA 3.0; ONNX notices/derivation compliance remains unreconciled. See the 2026-11-16 correction above. |
 
@@ -115,7 +116,7 @@ const all = s => new Promise(r => { const q = db.transaction(s).objectStore(s).g
 const [assignments, identities, checkpoints] = await Promise.all(['acousticAssignments', 'acousticIdentities', 'acousticCheckpoints'].map(all));
 ```
 
-Filter by `meetingId`; an `assignment.thresholdVersion` ending in `one-to-one-centered-v1` means the multi-part consolidation produced it.
+Filter by `meetingId`; an `assignment.thresholdVersion` ending in `one-to-one-centered-v2` (`-v1` before the 2026-11-16 mixed-label and head-count safeguards) means the multi-part consolidation produced it.
 
 **Measuring a result.** After confirming speakers by ear, **Export voice evaluation data** (Speakers tab, under "Most similar voices") downloads the saved vectors and decisions with confirmed speakers as pseudonymous references. `node scripts/evaluate-voice-matching.mjs <file>` reports same-person and different-person similarity, the balanced threshold with its error rates, labels that mix people, and the saved grouping's correct, wrong and missed merges. Add `--replay` to re-run the app's multi-part matcher on the same vectors under other floors, margins, the reference head count and the human "different" pairs. It describes that one recording; the reference inherits any error the person did not catch, and settings tuned on one recording must be confirmed on another. No real recording has been measured yet. The full gap list is in [gap.md](../gap.md#voice-identity-logic-gap-register--2026-11-16).
 
@@ -137,7 +138,7 @@ From [AGENTS.md](../AGENTS.md) and the owner: acoustic evidence only (names, lab
 ## 9. Recommended next steps
 
 1. Verify route B on the deployed site (real download, WebKit, offline reload, a phone), add a Playwright test of the download flow, and resolve the weight licence question (route A: ask the publisher; or choose a model with an explicit licence).
-2. Build a small labelled evaluation (same/different pairs and, if segmenting, reference turns) from a real meeting; calibrate; compare WavLM with the sherpa-onnx route.
+2. Measure on real recordings (VID01b): re-run Auto-match voices on a meeting (vectors from earlier builds are recomputed once), confirm each speaker by listening, **Export voice evaluation data**, then `node scripts/evaluate-voice-matching.mjs <file> --replay`. Calibrate only after at least two recordings agree; compare WavLM with the sherpa-onnx route (VID13).
 3. Extend the speaker review voice hints (built 2026-11-16, see section 8 item 7): persist "not the same" decisions with revision invalidation, and record confirmations as ground truth for calibration.
 4. Run Chromium and WebKit browser acceptance for the voice flow and physical iOS/Android checks before any mobile claim.
 5. Decide whether cross-meeting identity is wanted; it needs consent, local controls, deletion and no real-world naming.

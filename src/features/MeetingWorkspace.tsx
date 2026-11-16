@@ -598,7 +598,7 @@ export function MeetingWorkspace({
       onError("Could not export voice evaluation data.");
     }
   }
-  async function acousticSummaryText(meetingId: string): Promise<string> {
+  async function acousticSummaryText(meetingId: string, expectedVoices?: number): Promise<string> {
     const s = await describeAcousticState(meetingId);
     if (!s.labels && !s.samples) {
       return t("No voice samples were analysed: no clean, timed, single-speaker passages were found.", "没有分析任何声音样本：没有找到干净、带时间、单人说话的片段。");
@@ -617,6 +617,19 @@ export function MeetingWorkspace({
       ` Sample pairs: same label median ${fmt(p.sameLabel.median)} (10th percentile ${fmt(p.sameLabel.p10)}, ${p.sameLabel.count} pairs); different labels in one part median ${fmt(p.otherLabelSamePart.median)} (90th percentile ${fmt(p.otherLabelSamePart.p90)}, ${p.otherLabelSamePart.count} pairs).`,
       ` 样本对相似度：同标签中位数 ${fmt(p.sameLabel.median)}（10% 分位 ${fmt(p.sameLabel.p10)}，${p.sameLabel.count} 对）；同段不同标签中位数 ${fmt(p.otherLabelSamePart.median)}（90% 分位 ${fmt(p.otherLabelSamePart.p90)}，${p.otherLabelSamePart.count} 对）。`,
     );
+    // The head count is not forced: voices too unlike each other stay apart for a person to review.
+    const headCountText = expectedVoices !== undefined && s.voices > expectedVoices
+      ? t(
+          ` You entered ${expectedVoices} people, but ${s.voices} voices remain: the others were too different to join automatically. Check them under "Most similar voices".`,
+          ` 您填写了 ${expectedVoices} 人，但仍有 ${s.voices} 个声音：其余的差别太大，没有自动合并。请在“最相似的声音”中检查。`,
+        )
+      : "";
+    const mixedText = b.conflict
+      ? t(
+          ` ${b.conflict} label(s) may mix two people and were left ungrouped; listen to their samples and reassign passages if needed.`,
+          ` ${b.conflict} 个标签可能混有两个人，未自动分组；请试听样本，必要时重新指定片段的说话人。`,
+        )
+      : "";
     const k = s.centered;
     const centeredText = t(
       ` After removing the recording's average voice: same label median ${fmt(k.pairs.sameLabel.median)} (10th percentile ${fmt(k.pairs.sameLabel.p10)}); different labels in one part median ${fmt(k.pairs.otherLabelSamePart.median)} (90th percentile ${fmt(k.pairs.otherLabelSamePart.p90)}); closest label in another part median ${fmt(k.closestOtherPartMedian)}.`,
@@ -625,7 +638,7 @@ export function MeetingWorkspace({
     return `${t(
       `Voice check: ${s.samples} samples analysed, ${s.labels} speaker labels resolved into ${s.voices} voices (matched ${b.matched}, new ${b.new_identity}, ambiguous ${b.ambiguous}, too few samples ${b.unresolved}, conflicting ${b.conflict}).${s.error ? ` ${s.error}` : ""}`,
       `声音检查：分析 ${s.samples} 个样本，${s.labels} 个说话人标签归为 ${s.voices} 个声音（已匹配 ${b.matched}，新建 ${b.new_identity}，存疑 ${b.ambiguous}，样本太少 ${b.unresolved}，互相矛盾 ${b.conflict}）。${s.error ? ` ${s.error}` : ""}`,
-    )}${pairText}${cross}${centeredText}`;
+    )}${headCountText}${mixedText}${pairText}${cross}${centeredText}`;
   }
   /** Local voice check for one non-chunked recording; saves the result and returns a notice. */
   async function checkSingleRecordingVoices(source: Meeting): Promise<string> {
@@ -708,7 +721,7 @@ export function MeetingWorkspace({
         });
         await persist(analyzed);
         navigateTab("speakers");
-        setNotice(`${t("Anonymous voice continuity was updated locally. Ambiguous voices remain unresolved.", "匿名声音连续性已在本地更新。模糊声音保持未解决状态。")} ${await acousticSummaryText(latest.id)}`);
+        setNotice(`${t("Anonymous voice continuity was updated locally. Ambiguous voices remain unresolved.", "匿名声音连续性已在本地更新。模糊声音保持未解决状态。")} ${await acousticSummaryText(latest.id, expectedVoices)}`);
       });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Local speaker analysis did not complete.");
