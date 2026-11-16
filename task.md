@@ -17,6 +17,11 @@ The owner authorized sequential completion, per-task commits, merge and push to 
 
 - [x] Keep the update button at the sidebar's padded bottom with empty or visible feedback. Status messages appear above it, and the empty live region stays available without reserving a row. Independent Chromium/WebKit checks passed for expanded, collapsed, short-height and mobile drawer layouts, including recent-list scrolling. Publication is tracked in `docs/VALIDATION.md`.
 
+## Faster GitHub publication — 2026-11-16
+
+- [x] Implement the owner-requested fast main lane: lint, unit/contracts, SSOT, types/build and artifact checks before upload; full browser/catalogue/PWA checks on PRs and default manual dispatch. Manual runs never deploy. Skip documentation-only main pushes and preserve current-head, permissions and serialized-deployment guards. Hosted timing/readback is recorded in `docs/VALIDATION.md`; this supersedes REL01's earlier all-browser-before-main policy.
+- [x] Correct the cost test fixture to select its WAV before meeting creation, preserving filename, duration, cost and reload assertions. Independent Chromium/WebKit rerun: 2/2 passed.
+
 ## SSOT and PWA gap follow-up — 2026-11-16
 
 Current assessment: **partially aligned, not fully compliant**. [gap.md](gap.md) owns the versioned KB source references, applicability decisions, evidence, priorities and acceptance criteria. This section owns execution status. Historical checked SSOT work below remains a checkpoint, not evidence of complete current compliance. These tasks are follow-up recommendations; this documentation update does not authorize deployment or wholesale UI migration.

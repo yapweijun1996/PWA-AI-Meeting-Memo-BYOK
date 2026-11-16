@@ -3,9 +3,17 @@ name: Verify and publish meeting memo
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      run_full:
+        description: Run browser, catalogue and PWA checks (manual runs never deploy)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -15,11 +23,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:
-      group: build-${{ github.ref }}
+      group: build-${{ github.event_name }}-${{ github.ref }}
       cancel-in-progress: true
     env:
       VITE_BASE_PATH: /PWA-AI-Meeting-Memo-BYOK/
       VITE_BUILD_ID: ${{ github.sha }}
+      RUN_FULL_CHECKS: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.run_full) }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -38,26 +47,30 @@ jobs:
         run: npm run test:unit
       - name: Prevent new design-system debt
         run: npm run check:ssot
-      - name: Build the static application
+      - name: Build the static application and check types
         run: npm run build
-      - name: Install the test browsers
-        run: npx playwright install --with-deps chromium webkit
-      - name: Verify browser workflows
-        run: npm run test:e2e
-      - name: Verify shared component contracts
-        run: npm run test:catalogue
-      - name: Verify offline updates and recovery
-        run: npm run test:pwa
       - name: Verify the publication boundary
         run: npm run check:artifact
+      - name: Install the test browsers
+        if: env.RUN_FULL_CHECKS == 'true'
+        run: npx playwright install --with-deps chromium webkit
+      - name: Verify browser workflows
+        if: env.RUN_FULL_CHECKS == 'true'
+        run: npm run test:e2e
+      - name: Verify shared component contracts
+        if: env.RUN_FULL_CHECKS == 'true'
+        run: npm run test:catalogue
+      - name: Verify offline updates and recovery
+        if: env.RUN_FULL_CHECKS == 'true'
+        run: npm run test:pwa
       - name: Upload the built site
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: dist
 
   publish:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 10
