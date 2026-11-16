@@ -6,6 +6,17 @@ Speaker review redesign: implemented a single searchable, filterable queue, sele
 
 # Implementation tasks
 
+## Meeting size limit and storage monitor — 2026-11-16
+
+Reported by the owner on a 60-minute, 12,584-passage word-level meeting after Auto-match voices: "The memo checkpoint would exceed the safe backup budget. No request was sent." This is a guard, not a malfunction, and it is not an IndexedDB limit. Cause, reproduced with the app's own planner on synthetic data (the owner's real meeting was not measured): one automatic regrouping adds an undo copy and a history copy of every passage, so the meeting document grew from 5.0 MB to 10.6 MB, above the 10 MiB plan budget; a memo plan adds a further copy.
+
+- [x] One shared limit `MAX_MEETING_JSON_BYTES` = 64 MiB replaces the separate 10 MiB (memo plan), 12 MiB (contextual suggestions), 12 MiB (memo review writes) and 12 MiB (backup `meeting.json` and JSON import) numbers. The owner asked for 1 GB; that cannot work because a meeting is one in-memory JSON document, a Chromium string holds about 512 MiB, and a backup is read whole, so 64 MiB was chosen. It is one constant if a different value is wanted. The 120 MB total backup cap is unchanged. Older builds cannot import a backup above 12 MiB (none could be created before).
+- [x] Regression tests: the 10.6 MB meeting now gets a memo plan; a 13–14 MB meeting backs up and restores; a document over the limit is rejected for both JSON and zip; the two existing limit tests size themselves from the constant.
+- [x] Settings storage monitor (read-only): browser usage and quota, persistence state, and per meeting the document size by section (passages, history, undo copies, provider runs, memos, memo plans, other), recording, voice data and images against the limit, with a warning from 75%. Reads only the meeting database, never settings or keys. 7 unit tests and 2 Chromium/WebKit browser cases (English and Simplified Chinese, no records changed, axe serious/critical clean).
+- [x] Verification 2026-11-16 (Node 25.2.1): 376 unit tests, lint, typecheck, SSOT check, build, artifact check, storage monitor browser spec 4/4. Measured IndexedDB write for a 15 MB record on this desktop: Chromium 225 ms, WebKit 462 ms.
+- [ ] Not verified: save time and memory for a meeting near 64 MiB, on a phone or in Safari on iOS; the owner's real meeting (open Settings > Storage monitor to read its numbers); storage monitor on a real recording with parts and voice data; full browser suite after this change; hosted publication.
+- [ ] Follow-up: avoid keeping an extra full copy of the transcript in each memo plan, and consider an explicit, confirmed "clear undo and old history" action, so a long meeting does not grow toward the limit.
+
 ## Voice ID production hardening — 2026-11-16
 
 Current assessment: **working prototype, not production quality; no accuracy is measured.** [gap.md](gap.md#voice-identity-logic-gap-register--2026-11-16) owns the findings, evidence labels and acceptance criteria; this section owns execution status. The findings come from a code reading at `db9e5a5` and are not reproduced by tests unless stated. This documentation update changes no application code. Scope is meeting-scoped anonymous matching; cross-meeting recognition and REL03 licensing/download gates are separate.

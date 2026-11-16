@@ -1,5 +1,5 @@
 import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
-import { validateMeeting, type Meeting, id } from "../domain/model";
+import { validateMeeting, MAX_MEETING_JSON_BYTES, type Meeting, id } from "../domain/model";
 import { getAudio } from "./repository";
 import { getSpeakerAvatars, validAvatar, flushAvatarWrites } from "./speaker-avatars";
 const MAX_BACKUP = 120 * 1024 * 1024;
@@ -41,7 +41,8 @@ export async function readBackup(
         total += info.originalSize;
         if (
           total > MAX_BACKUP ||
-          ((info.name === "meeting.json" || info.name === "speaker-avatars.json") && info.originalSize > 12 * 1024 * 1024)
+          (info.name === "meeting.json" && info.originalSize > MAX_MEETING_JSON_BYTES) ||
+          (info.name === "speaker-avatars.json" && info.originalSize > 12 * 1024 * 1024)
         )
           throw new Error("Expanded backup is too large.");
         return true;
@@ -67,8 +68,8 @@ export async function readBackup(
       audio = new Blob([bytes], { type: checked.audio.type });
     }
   } else {
-    if (file.size > 12 * 1024 * 1024)
-      throw new Error("JSON backup exceeds 12 MB.");
+    if (file.size > MAX_MEETING_JSON_BYTES)
+      throw new Error("JSON backup exceeds 64 MB.");
     value = JSON.parse(await file.text());
   }
   const m = validateMeeting(value);

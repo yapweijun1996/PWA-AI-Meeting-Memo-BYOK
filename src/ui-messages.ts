@@ -109,7 +109,7 @@ const messages: Record<string, string> = {
   "Backup has no meeting.json.": "备份中缺少 meeting.json。",
   "Recording metadata is missing.": "缺少录音元数据。",
   "Recording checksum mismatch.": "录音校验和不匹配。",
-  "JSON backup exceeds 12 MB.": "JSON 备份超过 12 MB。",
+  "JSON backup exceeds 64 MB.": "JSON 备份超过 64 MB。",
   "Choose a valid speech model in Settings.": "请在设置中选择有效的语音模型。",
   "Choose a valid memo model in Settings.": "请在设置中选择有效的笔记模型。",
   "Enter the selected provider key in Settings.": "请在设置中输入所选服务商的密钥。",

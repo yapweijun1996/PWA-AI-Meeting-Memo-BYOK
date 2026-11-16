@@ -25,6 +25,7 @@ import {
 } from "../providers/credentials";
 import { translateMessage } from "../ui-messages";
 import { SpeakerModelSettings } from "./SpeakerModelSettings";
+import { StorageMonitor } from "./StorageMonitor";
 import { saveFont, useFontChoice, saveFontSize, useFontSize, saveTheme, useThemeChoice, savePalette, usePaletteChoice, type FontChoice, type FontSize, type ThemeChoice, type PaletteChoice } from "../appearance";
 export function Settings() {
   const [activeTab, setActiveTab] = useState<"api" | "appearance">("api");
@@ -562,6 +563,7 @@ export function Settings() {
             {t("Request persistent storage", "请求持久化存储")}
           </button>
         </section>
+        <StorageMonitor t={t} />
         <SpeakerModelSettings t={t} />
         <section className="settings-panel">
           <h2>{t("About this workspace", "关于此工作空间")}</h2>
