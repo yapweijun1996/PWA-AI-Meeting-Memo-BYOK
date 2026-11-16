@@ -1,5 +1,11 @@
 # Validation record
 
+## PWA activation test synchronization — 2026-11-16
+
+The tablet candidate's original PWA run passed Chromium but failed WebKit while waiting for the existing activation-failure feedback. An instrumented unchanged-assertion WebKit run passed; it does not identify the original natural failure's exact scheduling. A controlled registration-delivery probe demonstrated the fixture gap: after `Updating…` appeared and the clock advanced 15,001ms, the registration promise resolved and only then armed the 15-second deadline. The original five-second feedback assertion failed under that controlled ordering. Diagnostic traces/events and the instrumentation's initial event-persistence limitation are retained privately.
+
+Only `scripts/test-update.mjs` changed: the intentionally nonactivating test worker acknowledges receipt of `SKIP_WAITING`; the test waits for that observable activation attempt before advancing its clock. Runtime source installs its deadline before sending the message. Existing error, draft, cache, protection and forward-recovery assertions and timeouts remain unchanged; no retries or skips were added. Author and independent root runs both passed Chromium/WebKit with ACK preceding the original clock advance. Application update behavior was not changed.
+
 ## Shared Modal focus ownership — 2026-11-16
 
 The original NewMeeting keyboard Enter/initial-focus/Escape sequence failed return-focus assertions in both engines. The complete original failure tool log remains; its original traces were overwritten by a subsequent run and are not claimed preserved. A later frozen pre-fix snapshot run reproduced both failures, with its separate log/traces retained. Shared Modal now supplies the guarded post-unmount fallback; feature-selected focus targets and new/open dialogs take precedence. Catalogue caller restoration was removed, while its invoker explicitly establishes focus before opening for WebKit pointer behavior. Existing catalogue mouse-click assertions were retained, including the intermediate WebKit failure.

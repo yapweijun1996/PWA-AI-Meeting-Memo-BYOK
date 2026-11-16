@@ -255,7 +255,7 @@ try {
       // A worker that never activates must expose failure and permit a forward fix.
       activeWorker = next
         .replace("-update-check", "-activation-failure")
-        .replace("void self.skipWaiting()", "void 0");
+        .replace("void self.skipWaiting()", 'event.source?.postMessage({ type: "PWA_TEST_ACTIVATION_ATTEMPT" })');
       await page.evaluate(async () => {
         await (await navigator.serviceWorker.ready).update();
       });
@@ -263,6 +263,14 @@ try {
         .getByRole("button", { name: "Update now", exact: true })
         .waitFor();
       await page.clock.install();
+      await page.evaluate(() => {
+        window.__pwaActivationAttempted = false;
+        navigator.serviceWorker.addEventListener("message", function acknowledge(event) {
+          if (event.data?.type !== "PWA_TEST_ACTIVATION_ATTEMPT") return;
+          window.__pwaActivationAttempted = true;
+          navigator.serviceWorker.removeEventListener("message", acknowledge);
+        });
+      });
       await page
         .getByRole("button", { name: "Update now", exact: true })
         .click();
@@ -270,6 +278,9 @@ try {
       await expect(
         page.getByRole("button", { name: "Updating…", exact: true }),
       ).toBeVisible();
+      // The runtime arms its deadline before posting SKIP_WAITING; Updating… alone precedes async save/registration work.
+      await page.waitForFunction(() => window.__pwaActivationAttempted);
+      console.log(`ACK ${name}: nonactivating worker received SKIP_WAITING before the clock advance`);
       await page.clock.fastForward(15001);
       await expect(
         page.getByText("Update did not activate. Try again when connected.", {
