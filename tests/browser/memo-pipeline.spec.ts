@@ -54,7 +54,7 @@ test("Chinese long memo confirmation is readable and sends nothing before confir
     true,
   );
 });
-for (const failOnce of [false, true])
+for (const {failOnce, wordLevel} of [{failOnce: false, wordLevel: true}, {failOnce: true, wordLevel: false}])
   test(`long memo confirms the full plan and ${failOnce ? "requires reviewed recovery" : "preserves original citations"}`, async ({
     page,
     context,
@@ -84,6 +84,20 @@ for (const failOnce of [false, true])
       const source = input.facts
         ? input.facts[0].items[0].id
         : input.segments[0].id;
+      const item = {
+        type: "summary",
+        text: "Synthetic multi-step candidate.",
+        owner_speaker_id: null,
+        due_date: null,
+        due_original: null,
+        source_segment_ids: wordLevel && !input.facts
+          ? input.segments.slice(0, 5).map((s: {id: string}) => s.id)
+          : [source],
+      };
+      if (input.facts && wordLevel) {
+        expect(input.facts[0].items[0].quote).toEqual(Array(100).fill("Budget item."));
+        expect(input.facts[0].items[0]).not.toHaveProperty("sources");
+      }
       await route.fulfill({
         headers: { "Access-Control-Allow-Origin": "*" },
         json: {
@@ -96,16 +110,7 @@ for (const failOnce of [false, true])
                 {
                   type: "output_text",
                   text: JSON.stringify({
-                    items: [
-                      {
-                        type: "summary",
-                        text: "Synthetic multi-step candidate.",
-                        owner_speaker_id: null,
-                        due_date: null,
-                        due_original: null,
-                        source_segment_ids: [source],
-                      },
-                    ],
+                    items: wordLevel && !input.facts ? Array.from({length: 6}, () => ({...item})) : [item],
                   }),
                 },
               ],
@@ -117,27 +122,32 @@ for (const failOnce of [false, true])
     const fixture = {
       ...createMeeting({ title: "Bounded long memo" }),
       synthetic: true,
-      segments: Array.from({ length: 650 }, (_, i) =>
-        segment(`${i}: ${"word ".repeat(25)}`),
+      segments: Array.from({ length: wordLevel ? 12584 : 650 }, (_, i) =>
+        wordLevel
+          ? {...segment("Budget item."), start: i / 4, end: (i + 1) / 4}
+          : segment(`${i}: ${"word ".repeat(25)}`),
       ),
     };
     const base = "/PWA-AI-Meeting-Memo-BYOK/";
     await page.goto(base);
-    await page
-      .getByRole("button", { name: "New meeting", exact: true })
-      .last()
-      .click();
-    let dialog = page.getByRole("dialog");
-    await dialog.getByLabel("Meeting title").fill(fixture.title);
-    await dialog.getByText("Start from a transcript instead").click();
-    await dialog
-      .getByLabel("Transcript", { exact: true })
-      .fill(JSON.stringify(fixture));
-    await dialog
-      .getByRole("button", { name: "Create meeting", exact: true })
-      .click();
+    let dialog;
+    if (wordLevel) {
+      // Full backup restore is the supported path for a meeting above the paste limit.
+      page.once("dialog", (confirmation) => confirmation.accept());
+      await page.getByLabel("Restore backup", {exact: true}).setInputFiles({
+        name: "synthetic-incident.json", mimeType: "application/json",
+        buffer: Buffer.from(JSON.stringify(fixture)),
+      });
+    } else {
+      await page.getByRole("button", { name: "New meeting", exact: true }).last().click();
+      dialog = page.getByRole("dialog");
+      await dialog.getByLabel("Meeting title").fill(fixture.title);
+      await dialog.getByText("Start from a transcript instead").click();
+      await dialog.getByLabel("Transcript", { exact: true }).fill(JSON.stringify(fixture));
+      await dialog.getByRole("button", { name: "Create meeting", exact: true }).click();
+    }
     await expect(
-      page.getByRole("heading", { name: fixture.title, exact: true }),
+      page.getByRole("heading", { name: wordLevel ? `${fixture.title} (restored)` : fixture.title, exact: true }),
     ).toBeVisible();
     const hash = new URL(page.url()).hash;
     await page.getByRole("link", { name: "Settings & API keys" }).click();
@@ -193,6 +203,25 @@ for (const failOnce of [false, true])
     await expect(page.getByLabel("Long memo progress")).toContainText(
       "completed",
     );
+    if (wordLevel) {
+      expect(count).toBe(4);
+      const saved = await page.evaluate(async () => {
+        const db = await new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open("meeting-memo-byok-v1");
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        const meetings = await new Promise<Array<{memoPipelines: Array<{results: unknown[]}>}>>((resolve, reject) => {
+          const request = db.transaction("meetings").objectStore("meetings").getAll();
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        db.close();
+        return meetings[0].memoPipelines[0].results.map(r => JSON.stringify(r).length);
+      });
+      expect(saved).toHaveLength(3);
+      expect(saved.every(size => size > 8000)).toBe(true);
+    }
     const requests = count;
     await page.reload();
     await page.getByRole("tab", { name: /Meeting notes/ }).click();

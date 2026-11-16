@@ -482,6 +482,8 @@ const schema = (maxSourceIds: 5 | 100) => ({
   properties: {
     items: {
       type: "array",
+      minItems: 1,
+      maxItems: 100,
       items: {
         type: "object",
         additionalProperties: false,

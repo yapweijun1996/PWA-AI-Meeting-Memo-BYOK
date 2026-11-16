@@ -5,6 +5,7 @@ import { getKey, type Selection } from "../providers/credentials";
 import {
   captureExtraction,
   extractionInput,
+  extractionInstructions,
   pipelineMeeting,
   synthesisInput,
   type MemoPipeline,
@@ -90,8 +91,14 @@ export async function runMemoPipeline(
       const leaf =
         index < p.chunks.length ? extractionInput(m, p, index) : frozen;
       // Validate the entire synthesis payload before recording a submitted attempt.
-      const prepared =
-        index === p.chunks.length ? synthesisInput(p) : undefined;
+      let prepared;
+      try {
+        prepared = index === p.chunks.length ? synthesisInput(p) : undefined;
+      } catch (error) {
+        p.state = "blocked";
+        await persist(checkpoint);
+        throw error;
+      }
       const job: Job = {
         id: id(),
         stage: "memo",
@@ -132,7 +139,7 @@ export async function runMemoPipeline(
           prepared,
           prepared
             ? " Synthesize only the supplied candidate facts and their exact source quotations. Cite candidate item ids in source_segment_ids. Preserve contradictions and uncertainty; these candidates are not human-verified. Never resolve a conflict by guessing."
-            : " Extract evidence-grounded candidate facts for a later synthesis step. Preserve numbers, dates, conditions, disagreements and brief replies. Be concise. These candidates remain subject to human review.",
+            : extractionInstructions(p),
         );
         if (prepared) {
           p.memoId = id();

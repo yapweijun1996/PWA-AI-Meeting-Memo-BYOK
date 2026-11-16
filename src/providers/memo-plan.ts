@@ -1,5 +1,5 @@
 import { id, MAX_JOBS, MAX_MEETING_JSON_BYTES, type Meeting, type MemoItem } from "../domain/model";
-import { buildMemoInput, MemoInputError, type MemoInput } from "./memo-input";
+import { buildMemoInput, MEMO_INPUT_MAX_CHARS, MemoInputError, type MemoInput } from "./memo-input";
 
 export type MemoPipeline = NonNullable<Meeting["memoPipelines"]>[number];
 export type Extraction = NonNullable<MemoPipeline["results"][number]>;
@@ -127,12 +127,7 @@ export function captureExtraction(m: Meeting, items: MemoItem[]): Extraction {
       // Full cited fragments are exact evidence, never model-invented quotations.
       quotes.set(ref.id, { ...ref, text: source.text });
     }
-  const result = { items, quotes: [...quotes.values()] };
-  if (JSON.stringify(result).length > 8000)
-    throw new Error(
-      "Extraction exceeds 8,000 characters. Results were not truncated; review the paid attempt.",
-    );
-  return result;
+  return { items, quotes: [...quotes.values()] };
 }
 
 export function synthesisInput(p: MemoPipeline): MemoInput {
@@ -155,22 +150,31 @@ export function synthesisInput(p: MemoPipeline): MemoInput {
       name,
       confirmed,
     })),
-    facts: p.results.map((result) => ({
-      items: result!.items.map(
-        ({ id, type, text, ownerId, dueDate, dueOriginal, sources }) => ({
-          id,
-          type,
-          text,
-          ownerId,
-          dueDate,
-          dueOriginal,
-          sources,
-        }),
-      ),
-      quotes: result!.quotes,
-    })),
+    facts: p.results.map((result) => {
+      const quotes = new Map(
+        result!.quotes.map((q) => [`${q.id}:${q.revision}`, q.text]),
+      );
+      return {
+        items: result!.items.map(
+          ({ id, type, text, ownerId, dueDate, dueOriginal, sources }) => ({
+            id,
+            type,
+            text,
+            ownerId,
+            dueDate,
+            dueOriginal,
+            quote: sources.map((source) => {
+              const quote = quotes.get(`${source.id}:${source.revision}`);
+              if (quote === undefined)
+                throw new Error("Extraction quote is missing.");
+              return quote;
+            }),
+          }),
+        ),
+      };
+    }),
   });
-  if (input.length > 80000)
+  if (input.length > MEMO_INPUT_MAX_CHARS)
     throw new Error(
       "Synthesis input exceeds 80,000 characters. No synthesis request was sent.",
     );
@@ -182,4 +186,10 @@ export function synthesisInput(p: MemoPipeline): MemoInput {
     compact: true,
     maxCitations: 5,
   };
+}
+
+/** A prompt budget, never a reason to discard a valid paid response. */
+export function extractionInstructions(p: MemoPipeline): string {
+  const budget = Math.floor((MEMO_INPUT_MAX_CHARS - 6000) / p.chunks.length);
+  return ` Extract evidence-grounded candidate facts for a later synthesis step. Preserve numbers, dates, conditions, disagreements and brief replies. Return at most 100 facts. Keep the serialized candidate facts and their exact cited fragment strings within ${budget} characters in total; prefer focused citations and concise claims. This is a planning target, not permission to truncate quotations or invent evidence. These candidates remain subject to human review.`;
 }

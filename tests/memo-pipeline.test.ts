@@ -248,10 +248,6 @@ test("word-level incident saves oversized extractions and completes exactly thre
       expect(input.facts[0]).not.toHaveProperty("quotes");
       const saved = (await getMeeting(m.id))!;
       expect(saved.memoPipelines![0].results.every(r => JSON.stringify(r).length > 8000)).toBe(true);
-    } else {
-      expect(request.instructions).toContain("24666");
-      expect(request.instructions).toContain("at most 100");
-      expect(request.text.format.schema.properties.items.maxItems).toBe(100);
     }
     const reply = await response(options.body).json();
     if (!input.facts) {
@@ -264,6 +260,12 @@ test("word-level incident saves oversized extractions and completes exactly thre
   vi.stubGlobal("fetch", fetch);
   const result = await runMemoPipeline(m, selection, p);
   expect(fetch).toHaveBeenCalledTimes(4);
+  for (const [, options] of fetch.mock.calls.slice(0, 3)) {
+    const request = JSON.parse(options.body);
+    expect(request.instructions).toContain("24666");
+    expect(request.instructions).toContain("at most 100");
+    expect(request.text.format.schema.properties.items.maxItems).toBe(100);
+  }
   expect(result.memoPipelines![0].state).toBe("completed");
   expect(result.jobs.every(j => j.state === "completed")).toBe(true);
   expect(result.memos[0].items[0].sources).toEqual(m.segments.slice(0, 100).map(({id, revision}) => ({id, revision})));

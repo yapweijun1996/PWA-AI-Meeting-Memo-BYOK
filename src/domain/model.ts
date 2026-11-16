@@ -410,8 +410,6 @@ export function validateMeeting(value: unknown): Meeting {
       throw new Error("Invalid pipeline source coverage.");
     for (const result of pipeline.results) {
       if (!result) continue;
-      if (JSON.stringify(result).length > 8000)
-        throw new Error("Pipeline extraction exceeds its limit.");
       for (const item of result.items)
         if (item.sources.some((s) => !captured.has(ref(s))))
           throw new Error("Invalid extraction source.");
