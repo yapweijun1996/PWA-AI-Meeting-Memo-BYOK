@@ -64,6 +64,8 @@ The local implementation does not by itself complete device, accessibility or re
 
 ## Immersive review findings — 2026-11-10
 
+Reconciliation, 2026-11-16: the observations below are a historical review snapshot. Current code provides visible exact-fragment emphasis, current-position speaker cards, confirmation labels, follow state and separate untimed access. Hosted `01dbe20` passed the synthetic browser suite; see [validation](VALIDATION.md#sequential-task-delivery-and-publication-gate--2026-11-16). The earlier missing-emphasis observation is resolved. Large-roster discoverability, real assistive technology, physical devices, representative long-recording performance and rapid fullscreen/error recovery remain open; timed-attribution glyphs do not measure audio energy.
+
 Status: **open review and verification**. These observations come from a user-provided desktop screenshot and static inspection of the local working tree, including uncommitted changes. They do not establish behavior of a deployed build. No browser, performance, device or screen-reader test was run for this review.
 
 Local follow-up: the stage now presents current attributed speakers separately from a collapsible label list, includes confirmation status and visible source-fragment emphasis, and puts untimed text in its own disclosure. The follow state is visible. This is local work, not a claim of deployed or physical-device acceptance. The observations below describe the reviewed baseline; overlap visibility, keyboard behavior, performance and device acceptance remain open where not independently verified.
