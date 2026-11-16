@@ -10,6 +10,8 @@ The `119d86b` WebKit cost failure was addressed by selecting the same synthetic 
 
 The two hosted sidebar contrast failures were reproduced as transient opacity animation defects: text contrast dropped below 4.5 during the delayed label fade, while settled labels passed. The fade/keyframes and their obsolete reduced-motion override were removed; width transitions remain. Final responsive-shell checks passed **14/14** across Chromium/WebKit with the original Axe tags, overflow checks, and new initial/real collapse-to-expand opacity and contrast assertions. No settling delay was added to hide the defect.
 
+Root viewed the final 1440x900, 768x1024, 390x844 and additional 1024x768 screenshots. The layout remains consistent and the update control stays at the padded bottom. Subjective visual score: 91/100 (18 hierarchy, 19 spacing, 14 type, 13 color, 14 consistency, 13 responsive). This is a synthetic shell review, not physical-device or full application contrast acceptance.
+
 ## Sequential task delivery and publication gate — 2026-11-16
 
 Delivered gap/task documentation as `91790d0` and the local voice-analysis lock as `469f32f`. GitHub Actions runs [43795411718](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/43795411718) and [43796001313](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/43796001313) completed successfully under the preceding build-only workflow. An isolated production Chromium at 390px read the full `469f32febe0550d76515e3f90bfa47c5e969ef1c` identity with no horizontal overflow, page exceptions or provider requests. This establishes publication and shell behavior, not deployed model quality.

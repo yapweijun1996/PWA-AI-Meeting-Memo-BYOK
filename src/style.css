@@ -4131,27 +4131,14 @@ details[open] > summary {
 @media (min-width: 761px) { .sidebar-collapsed .audio-player { left: calc(var(--sidebar-rail) + 46px); } }
 @media (min-width: 761px) and (max-width: 1200px) { .sidebar-collapsed .audio-player { left: calc(var(--sidebar-rail) + 28px); } }
 @media (max-width: 760px) { .audio-player { left: max(20px, env(safe-area-inset-left, 0px)); right: max(20px, env(safe-area-inset-right, 0px)); } }
-/* Keep labels on one line and reveal them after the sidebar has opened. */
+/* Keep expanded sidebar labels on one line without fading readable text. */
 @media (min-width: 761px) {
   .sidebar { overflow-x: hidden; }
   .sidebar .nav-text, .sidebar .nav-label, .sidebar .brand > span:last-child { white-space: nowrap; }
   .sidebar:not(.open) .nav-text { min-width: 0; }
-  .app-shell:not(.sidebar-collapsed) .sidebar .nav-text,
-  .app-shell:not(.sidebar-collapsed) .sidebar .nav-label,
-  .app-shell:not(.sidebar-collapsed) .sidebar .nav-count,
-  .app-shell:not(.sidebar-collapsed) .sidebar .sidebar-recent,
-  .app-shell:not(.sidebar-collapsed) .sidebar .brand > span:last-child,
-  .app-shell:not(.sidebar-collapsed) .sidebar .nav-trailing { animation: sidebar-label-reveal .12s ease .16s both; }
 }
-@keyframes sidebar-label-reveal { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .sidebar, .main-shell { transition: none; }
-  .app-shell:not(.sidebar-collapsed) .sidebar .nav-text,
-  .app-shell:not(.sidebar-collapsed) .sidebar .nav-label,
-  .app-shell:not(.sidebar-collapsed) .sidebar .nav-count,
-  .app-shell:not(.sidebar-collapsed) .sidebar .sidebar-recent,
-  .app-shell:not(.sidebar-collapsed) .sidebar .brand > span:last-child,
-  .app-shell:not(.sidebar-collapsed) .sidebar .nav-trailing { animation: none; }
 }
 @media (min-width: 761px) {
   .sidebar .local-label .nav-text { white-space: normal; }
