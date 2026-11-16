@@ -291,6 +291,7 @@ export function replayVoiceMatching(data, matcher) {
       ...matcher.PART_MATCH_POLICY,
       floorCosine: options.floorCosine ?? matcher.PART_MATCH_POLICY.floorCosine,
       margin: options.margin ?? matcher.PART_MATCH_POLICY.margin,
+      centre: options.centre ?? "samples",
     };
     const result = matcher.matchLabelsAcrossParts(
       {
@@ -318,6 +319,7 @@ export function replayVoiceMatching(data, matcher) {
       name,
       floorCosine: rules.floorCosine,
       margin: rules.margin,
+      centre: rules.centre,
       expectedVoices: options.expectedVoices ?? null,
       humanDifferentPairsUsed: Boolean(options.useHumanDifferentPairs),
       voices: score.voices,
@@ -337,6 +339,11 @@ export function replayVoiceMatching(data, matcher) {
   if (differentPairs.length) {
     runs.push(run("current settings with human different pairs", { useHumanDifferentPairs: true }));
     if (people > 0) runs.push(run("reference head count with human different pairs", { expectedVoices: people, useHumanDifferentPairs: true }));
+  }
+  // The average removed before comparing: all samples (the app's default), one vote per label, one vote per voice.
+  for (const centre of ["labels", "voices"]) {
+    runs.push(run(`centre on ${centre}`, { centre }));
+    if (people > 0) runs.push(run(`centre on ${centre} with the reference head count`, { centre, expectedVoices: people }));
   }
   for (const floorCosine of REPLAY_FLOORS)
     for (const margin of REPLAY_MARGINS) {

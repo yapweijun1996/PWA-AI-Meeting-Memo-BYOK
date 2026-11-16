@@ -69,9 +69,34 @@ describe("bounded acoustic sample selection", () => {
       chunk: { index: 2, ownStartSeconds: 100, ownDurationSeconds: 30, leadInSeconds: 4 },
       speech: { segments: [segment("long", ["a"], 4, 34)] },
     }]);
-    expect(result.samples).toHaveLength(3);
-    expect(result.samples.map((sample) => sample.startSeconds)).toEqual([100, 104, 108]);
+    // Up to six windows, kept a quarter second inside the turn's edges.
+    expect(result.samples).toHaveLength(6);
+    expect(result.samples.map((sample) => sample.startSeconds)).toEqual([100.25, 104.25, 108.25, 112.25, 116.25, 120.25]);
     expect(result.samples.every((sample) => sample.startSeconds >= 100 && sample.endSeconds <= 130)).toBe(true);
+  });
+
+  it("takes one window from each turn before a second window from a long turn", () => {
+    const result = selectAcousticSamples([{
+      chunk: { index: 0, ownStartSeconds: 0, ownDurationSeconds: 600, leadInSeconds: 0 },
+      speech: { segments: [
+        segment("monologue", ["a"], 0, 40),
+        segment("other", ["b"], 40, 50),
+        segment("reply one", ["a"], 100, 104),
+        segment("reply two", ["a"], 200, 203),
+        segment("reply three", ["a"], 300, 302.5),
+      ] },
+    }], { maxSamplesPerPart: 4 });
+    const own = result.samples.filter((sample) => sample.sourceSpeakerId === "a").map((sample) => sample.startSeconds);
+    // Four windows from four different turns, not four slices of the 40-second monologue.
+    expect(own).toEqual([0.25, 100.25, 200.25, 300.25]);
+  });
+
+  it("does not trim a turn that is too short to spare its edges", () => {
+    const result = selectAcousticSamples([{
+      chunk: { index: 0, ownStartSeconds: 0, ownDurationSeconds: 60, leadInSeconds: 0 },
+      speech: { segments: [segment("short", ["a"], 10, 11.8)] },
+    }]);
+    expect(result.samples.map((sample) => [sample.startSeconds, sample.endSeconds])).toEqual([[10, 11.8]]);
   });
 });
 

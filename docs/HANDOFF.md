@@ -37,6 +37,8 @@ chunked recording ─► provider transcript per part (paid, sequential, saved p
    select clean samples ─► decode only that window ─► WavLM embedding (worker) ─► save vector
    (1.5–4 s, one speaker,        (never the whole file)      (512-dim)           (IndexedDB)
     timed, no overlap)
+   Since 2026-11-16: up to 6 samples per label per part, one per turn first, 0.25 s inside
+   turn edges; filtered 16 kHz conversion; silent or clipped windows are left out.
                       │   all parts embedded
                       ▼
    matchLabelsAcrossParts  (multi-part, some part has 2+ labels)

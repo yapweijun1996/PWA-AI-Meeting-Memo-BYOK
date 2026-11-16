@@ -20,7 +20,7 @@ import { buildVoiceEvaluationExport, type VoiceEvaluationExport } from "../domai
 import { buildVoiceConstraints } from "../domain/voice-constraints";
 import type { NormalizedSpeech } from "../providers/api";
 import type { BrowserSpeakerEmbeddingProvider, SpeakerModelProgress } from "../audio/speaker-embedding";
-import { decodeAcousticWindow } from "../audio/acoustic-audio";
+import { decodeAcousticWindow, isUsableAcousticWindow } from "../audio/acoustic-audio";
 import type { LongAudioManifest } from "../storage/long-audio-store";
 import { getLongAudioChunk } from "../storage/long-audio-store";
 import { getChunkSpeech } from "../storage/chunk-speech-store";
@@ -269,6 +269,8 @@ export async function runAcousticContinuity(
         if (!embedding) {
           const chunkBlob = await getLongAudioChunk(meetingId, meta.index, { verify: true });
           const pcm = await decodeAcousticWindow(await chunkBlob.arrayBuffer(), meta, sample, { format: manifest.format, signal });
+          // Silence or a clipped passage is not voice evidence; leave the sample out.
+          if (!isUsableAcousticWindow(pcm)) continue;
           const values = await provider.embed(pcm, 16000, signal);
           embedding = {
             id: sample.id,

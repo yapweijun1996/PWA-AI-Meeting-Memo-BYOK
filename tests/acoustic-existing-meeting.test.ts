@@ -22,6 +22,8 @@ function mp3Frames(count: number): ArrayBuffer {
   return output;
 }
 
+// Audible content: silent windows are rejected as voice evidence.
+const TONE = Float32Array.from({ length: 44_100 * 30 }, (_, index) => 0.1 * Math.sin(index / 16));
 class FakeAudioContext {
   static decodedByteLengths: number[] = [];
   async decodeAudioData(input: ArrayBuffer): Promise<AudioBuffer> {
@@ -31,7 +33,7 @@ class FakeAudioContext {
       sampleRate: 44_100,
       length,
       numberOfChannels: 1,
-      getChannelData: () => new Float32Array(length),
+      getChannelData: () => TONE,
     } as unknown as AudioBuffer;
   }
   async close(): Promise<void> { return undefined; }

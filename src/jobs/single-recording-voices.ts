@@ -11,7 +11,7 @@ import {
 import type { Meeting } from "../domain/model";
 import type { NormalizedSpeech } from "../providers/api";
 import type { BrowserSpeakerEmbeddingProvider } from "../audio/speaker-embedding";
-import { decodeAcousticWindow } from "../audio/acoustic-audio";
+import { decodeAcousticWindow, isUsableAcousticWindow } from "../audio/acoustic-audio";
 import { reusableEmbedding } from "./acoustic-continuity";
 import { buildVoiceConstraints } from "../domain/voice-constraints";
 import {
@@ -117,6 +117,12 @@ export async function analyzeSingleRecordingVoices(
     }
     if (!embedding) {
       const pcm = await decodeAcousticWindow(bytes, part, sample, { format, signal });
+      // Silence or a clipped passage is not voice evidence; leave the sample out.
+      if (!isUsableAcousticWindow(pcm)) {
+        done += 1;
+        options.onProgress?.({ phase: "sample", done, total: selection.samples.length });
+        continue;
+      }
       const values = await provider.embed(pcm, 16000, signal);
       embedding = {
         id: sample.id,

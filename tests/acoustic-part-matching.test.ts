@@ -158,3 +158,51 @@ describe("one-to-one matching of provider labels across parts", () => {
     });
   });
 });
+
+describe("which average is removed before comparing", () => {
+  const parts = [
+    [{ label: "A", voice: 0 }, { label: "B", voice: 1 }, { label: "C", voice: 2 }],
+    [{ label: "A", voice: 1 }, { label: "B", voice: 2 }, { label: "C", voice: 0 }],
+    [{ label: "A", voice: 2 }, { label: "B", voice: 0 }, { label: "C", voice: 1 }],
+  ];
+  const voiceByLabel = (key: string) => parts[Number(key[0])]!.find((entry) => entry.label === key.slice(2))!.voice;
+  const grouping = (centre?: "samples" | "labels" | "voices") => {
+    const result = matchLabelsAcrossParts(
+      { meetingId: "meeting", recordingHash: HASH, sourceRevision: 1, embeddings: build(parts) },
+      undefined,
+      { version: "test", withinPartMergeCosine: 0.9, floorCosine: 0.35, margin: 0.1, centre },
+    );
+    const groups = new Map<string, number[]>();
+    for (const assignment of result.assignments) {
+      groups.set(assignment.identityId ?? assignment.sourceKey, [...(groups.get(assignment.identityId ?? assignment.sourceKey) ?? []), voiceByLabel(assignment.sourceKey)]);
+    }
+    return [...groups.values()].map((voices) => voices.sort()).sort();
+  };
+
+  it("keeps the sample average as the default", () => {
+    expect(grouping()).toEqual(grouping("samples"));
+  });
+
+  it("groups each voice across parts under every option", () => {
+    for (const centre of ["samples", "labels", "voices"] as const) {
+      expect(grouping(centre), centre).toEqual([[0, 0, 0], [1, 1, 1], [2, 2, 2]]);
+    }
+  });
+
+  it("still places a voice that dominates the recording when each voice counts once", () => {
+    // Voice 0 has two labels in every part, so it supplies half of all samples.
+    const dominated = [
+      [{ label: "A", voice: 0 }, { label: "A2", voice: 0 }, { label: "B", voice: 1 }, { label: "C", voice: 2 }],
+      [{ label: "A", voice: 0 }, { label: "A2", voice: 0 }, { label: "B", voice: 1 }, { label: "C", voice: 2 }],
+    ];
+    const result = matchLabelsAcrossParts(
+      { meetingId: "meeting", recordingHash: HASH, sourceRevision: 1, embeddings: build(dominated) },
+      undefined,
+      { version: "test", withinPartMergeCosine: 0.9, floorCosine: 0.35, margin: 0.1, centre: "voices" },
+    );
+    const voiceOf = new Map(result.assignments.map((assignment) => [assignment.sourceKey, assignment.identityId]));
+    expect(voiceOf.get("0:B")).toBe(voiceOf.get("1:B"));
+    expect(voiceOf.get("0:C")).toBe(voiceOf.get("1:C"));
+    expect(voiceOf.get("0:B")).not.toBe(voiceOf.get("0:C"));
+  });
+});

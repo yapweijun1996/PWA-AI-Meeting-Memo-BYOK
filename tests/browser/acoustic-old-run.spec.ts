@@ -313,7 +313,7 @@ function installDeterministicLocalEmbedding(page: Page, holdModel = false) {
           if (message.type !== "embed" || !message.samples) return;
           const mean = message.samples.reduce((sum, value) => sum + value, 0) / message.samples.length;
           const values = new Float32Array(512);
-          values[mean > 1.5 ? 1 : 0] = 1;
+          values[mean > 0.4 ? 1 : 0] = 1;
           this.dispatchEvent(
             new MessageEvent("message", {
               data: { type: "embedding", requestId: message.requestId, values },
@@ -337,10 +337,12 @@ function installDeterministicLocalEmbedding(page: Page, holdModel = false) {
         for (let index = 0; index < values.length; index += 1) {
           const seconds = index / sampleRate;
           values[index] =
+            // Two steady levels stand in for two voices. They stay well inside full scale:
+            // a window at or beyond it is rejected as clipped, like silence.
             seconds >= 5 && seconds < 19
-              ? 1
+              ? 0.2
               : seconds >= 25 && seconds < 39
-                ? 2
+                ? 0.6
                 : 0;
         }
         return {

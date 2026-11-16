@@ -13,17 +13,18 @@ export const ACOUSTIC_POLICY = {
    * How a voice vector is produced (window decode, 16 kHz mono, model input).
    * Separate from `version`, which names the decision thresholds: recalibrating
    * thresholds must not discard saved vectors. Change this only when the audio
-   * preparation or model input changes. The value predates the split and is
-   * kept so vectors saved by earlier builds stay valid.
+   * preparation or model input changes. v2 (2026-11-16): band-limited 16 kHz
+   * conversion replaced linear interpolation, so earlier vectors are recomputed.
    */
-  extractionVersion: "wavlm-sv-uncalibrated-v1",
+  extractionVersion: "wavlm-sv-bandlimited-16k-v2",
   calibrationStatus: "uncalibrated",
   modelId: "Xenova/wavlm-base-plus-sv",
   modelRevision: "e61029603001bd11295c36d878698708bf59190f",
   dimensions: 512,
   minSampleSeconds: 1.5,
   maxSampleSeconds: 4,
-  maxSamplesPerPart: 3,
+  /** Raised from 3 on 2026-11-16: single samples are noisy, so a label's average needs more of them. */
+  maxSamplesPerPart: 6,
   minSamplesForAssignment: 2,
   acceptCosine: 0.86,
   acceptMargin: 0.06,
@@ -165,6 +166,11 @@ export interface AcousticChunkInput {
 }
 
 const DEFAULT_MAX_GAP_SECONDS = 0.35;
+/**
+ * Stay this far inside a long provider turn. Turn edges are where the provider's
+ * speaker change is least exact, so they are the likeliest place for another voice.
+ */
+const EDGE_TRIM_SECONDS = 0.25;
 const SAMPLE_EPSILON = 1e-6;
 
 function validRange(start: number | null, end: number | null): start is number {
@@ -273,20 +279,27 @@ export function selectAcousticSamples(
 
     for (const [sourceSpeakerId, ranges] of bySpeaker) {
       ranges.sort((left, right) => left.range.start - right.range.start);
-      const candidates: { range: { start: number; end: number }; segmentIds: string[] }[] = [];
+      // `slice` is the window's position inside its turn: 0 for the first window.
+      const candidates: { range: { start: number; end: number }; segmentIds: string[]; slice: number }[] = [];
       // Long provider turns are the cleanest evidence.
       for (const value of ranges) {
+        const turnLength = value.range.end - value.range.start;
+        const trim = turnLength >= minSampleSeconds + 2 * EDGE_TRIM_SECONDS ? EDGE_TRIM_SECONDS : 0;
+        const turnStart = value.range.start + trim;
+        const turnEnd = value.range.end - trim;
         // A long clean turn can provide independent windows. Do not reuse the
         // same first four seconds for every sample or a continuous monologue
         // can never reach the multi-sample policy.
+        let slice = 0;
         for (
-          let start = value.range.start;
-          start + minSampleSeconds <= value.range.end + SAMPLE_EPSILON;
+          let start = turnStart;
+          start + minSampleSeconds <= turnEnd + SAMPLE_EPSILON;
           start += maxSampleSeconds
         ) {
-          const end = Math.min(value.range.end, start + maxSampleSeconds);
+          const end = Math.min(turnEnd, start + maxSampleSeconds);
           if (end - start < minSampleSeconds) break;
-          candidates.push({ range: { start, end }, segmentIds: [...value.segmentIds] });
+          candidates.push({ range: { start, end }, segmentIds: [...value.segmentIds], slice });
+          slice += 1;
         }
       }
       // When a speaker has brief turns, combine only adjacent turns from that
@@ -307,6 +320,7 @@ export function selectAcousticSamples(
             candidates.push({
               range: { start: first.range.start, end },
               segmentIds: [...segmentIds],
+              slice: 0,
             });
             break;
           }
@@ -314,9 +328,12 @@ export function selectAcousticSamples(
       }
       const seen = new Set<string>();
       const selected: AcousticSampleWindow[] = [];
+      // Take one window from each turn before a second window from any turn, so the
+      // samples are spread over the part instead of being slices of one monologue.
       candidates
         .sort(
           (left, right) =>
+            left.slice - right.slice ||
             right.range.end - right.range.start - (left.range.end - left.range.start) ||
             left.range.start - right.range.start,
         )
@@ -788,6 +805,25 @@ export function clusterRecordingSources(
  * values chosen from one real recording (see docs/ACOUSTIC-SPEAKER-CONTINUITY.md);
  * they must be measured on more meeting audio before any accuracy claim.
  */
+export interface PartMatchRules {
+  version: string;
+  withinPartMergeCosine: number;
+  floorCosine: number;
+  margin: number;
+  /**
+   * Which average is removed from every vector before comparing.
+   * - "samples": the average of all samples (the default, and the only one with
+   *   an observation on a real recording). A person with more samples pulls it
+   *   toward their own voice.
+   * - "labels": the average of label averages, so each label counts once.
+   * - "voices": group once with "labels", then use the average of the voices
+   *   found, so each voice counts once however many parts it speaks in.
+   * The alternatives exist to be measured (`scripts/evaluate-voice-matching.mjs
+   * --replay`); do not change the default without a result on real recordings.
+   */
+  centre?: "samples" | "labels" | "voices";
+}
+
 export const PART_MATCH_POLICY = {
   version: `${ACOUSTIC_POLICY.version}+one-to-one-centered-v1`,
   /** Two labels in one part join only when their averages are nearly identical. */
@@ -855,8 +891,31 @@ export function matchLabelsAcrossParts(
     constraints?: VoiceConstraints;
   },
   policy: AcousticPolicy = ACOUSTIC_POLICY,
-  rules: Pick<typeof PART_MATCH_POLICY, "floorCosine" | "margin" | "withinPartMergeCosine"> & { version: string } = PART_MATCH_POLICY,
+  rules: PartMatchRules = PART_MATCH_POLICY,
+  /** Internal: the vector to remove, when a first pass has already chosen it. */
+  centreOverride?: readonly number[],
 ): RecordingClusterResult {
+  if (rules.centre === "voices" && !centreOverride) {
+    const firstPass = matchLabelsAcrossParts(input, policy, { ...rules, centre: "labels" });
+    const byLabel = new Map<string, number[][]>();
+    for (const embedding of input.embeddings) {
+      const key = acousticSourceKey(embedding.chunkIndex, embedding.sourceSpeakerId);
+      byLabel.set(key, [...(byLabel.get(key) ?? []), embedding.values]);
+    }
+    const labelMean = (key: string) => averageVector(byLabel.get(key)!);
+    const placed = new Set<string>();
+    const voiceMeans = firstPass.identities
+      .map((identity) => identity.sourceKeys.filter((key) => byLabel.has(key)))
+      .filter((keys) => keys.length > 0)
+      .map((keys) => {
+        keys.forEach((key) => placed.add(key));
+        return averageVector(keys.map(labelMean));
+      });
+    // A label the first pass did not place counts as a voice of its own.
+    const unplaced = [...byLabel.keys()].filter((key) => !placed.has(key)).map(labelMean);
+    if (!voiceMeans.length && !unplaced.length) return firstPass;
+    return matchLabelsAcrossParts(input, policy, rules, averageVector([...voiceMeans, ...unplaced]));
+  }
   const groupOf = new Map<string, number>();
   (input.constraints?.mustLink ?? []).forEach((group, index) => group.forEach((key) => groupOf.set(key, index)));
   const forbiddenPairs = new Set<string>();
@@ -900,7 +959,11 @@ export function matchLabelsAcrossParts(
     grouped.set(key, [...(grouped.get(key) ?? []), embedding]);
   }
   if (!grouped.size) return { identities: [], assignments: [] };
-  const recordingAverage = averageVector([...grouped.values()].flat().map((embedding) => embedding.values));
+  const recordingAverage =
+    centreOverride ??
+    (rules.centre === "labels"
+      ? averageVector([...grouped.values()].map((list) => averageVector(list.map((embedding) => embedding.values))))
+      : averageVector([...grouped.values()].flat().map((embedding) => embedding.values)));
   const centered = (values: readonly number[]) => values.map((value, index) => value - (recordingAverage[index] ?? 0));
   const labels = [...grouped.values()]
     .map((list) => [...new Map(list.map((entry) => [entry.id, entry])).values()])
