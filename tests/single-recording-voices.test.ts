@@ -169,6 +169,15 @@ describe("local voice check for a single MP3", () => {
 
     const persisted = await saveMeeting(meeting);
     expect((await getMeeting(meetingId))?.segments[1]?.speakerIds).toEqual(persisted.segments[1]?.speakerIds);
+
+    // The merge above changed the meeting revision. The saved vectors describe the
+    // same audio windows, so a second check reuses them instead of running the model.
+    expect(persisted.revision).toBeGreaterThan(saved.revision);
+    const again = sequenceProvider([]);
+    const repeated = await analyzeSingleRecordingVoices(persisted, { provider: again, consent: true });
+    expect(again.calls).toBe(0);
+    expect(repeated.summary.comparedLabels).toBe(3);
+    expect((await listAcousticAssignments(meetingId)).every((a) => a.sourceRevision === persisted.revision)).toBe(true);
     await deleteMeeting(meetingId);
   });
 

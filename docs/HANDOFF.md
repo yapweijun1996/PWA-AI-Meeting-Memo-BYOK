@@ -102,7 +102,7 @@ Voice-related unit tests run in about 3 seconds: `npx vitest run tests/acoustic-
 2. **IndexedDB is per origin.** `127.0.0.1:5173`, `127.0.0.1:4173` and the Pages URL do not share meetings or keys.
 3. Voice analysis uses the meeting's Web Lock through its final save. A second tab is refused while another meeting job holds that lock. If Web Locks are unavailable, local voice analysis stops with a message; ordinary transcription can continue without opting into voice analysis. Closing the owning tab releases its lock. An explicit re-analysis restarts derived decisions and reuses compatible saved vectors; it does not resubmit paid audio.
 4. A re-run after a merge used to find nothing to change because merged speakers lost their original label ids; this is handled by aliases computed from the immutable provider run (`runs[].originalSegments`). Undo, then re-run, if a result looks wrong.
-5. Re-analysis recomputes vectors whenever the meeting revision changed (about 2 minutes for 57 samples on the test machine).
+5. Until 2026-11-16 re-analysis recomputed every vector whenever the meeting revision changed (about 2 minutes for 57 samples on the test machine). Saved vectors are now reused when the recording, sample window, model and `ACOUSTIC_POLICY.extractionVersion` match; only decisions are revision-bound. Change `extractionVersion` when audio preparation or model input changes, never for a threshold change.
 
 **Reading a result.** The workspace notice after **Auto-match voices** reports samples analysed, labels resolved into N voices, counts per state, pair statistics before and after removing the recording's average vector, and the closest cross-part match per label. Raw state can be read in DevTools:
 
@@ -114,6 +114,8 @@ const [assignments, identities, checkpoints] = await Promise.all(['acousticAssig
 ```
 
 Filter by `meetingId`; an `assignment.thresholdVersion` ending in `one-to-one-centered-v1` means the multi-part consolidation produced it.
+
+**Measuring a result.** After confirming speakers by ear, **Export voice evaluation data** (Speakers tab, under "Most similar voices") downloads the saved vectors and decisions with confirmed speakers as pseudonymous references. `node scripts/evaluate-voice-matching.mjs <file>` reports same-person and different-person similarity, the balanced threshold with its error rates, labels that mix people, and the saved grouping's correct, wrong and missed merges. It describes that one recording; the reference inherits any error the person did not catch. No real recording has been measured yet. The full gap list is in [gap.md](../gap.md#voice-identity-logic-gap-register--2026-11-16).
 
 ## 7. Rules that bind this work
 

@@ -13,8 +13,10 @@ import {
   type AcousticCheckpoint,
   type AcousticChunkInput,
   type AcousticEmbeddingRecord,
+  type AcousticSampleWindow,
 } from "../domain/acoustic-speaker";
 import type { Meeting } from "../domain/model";
+import { buildVoiceEvaluationExport, type VoiceEvaluationExport } from "../domain/voice-evaluation";
 import type { NormalizedSpeech } from "../providers/api";
 import type { BrowserSpeakerEmbeddingProvider, SpeakerModelProgress } from "../audio/speaker-embedding";
 import { decodeAcousticWindow } from "../audio/acoustic-audio";
@@ -78,7 +80,7 @@ function checkpointValue(
     sourceRevision: options.sourceRevision,
     modelId: ACOUSTIC_POLICY.modelId,
     modelRevision: ACOUSTIC_POLICY.modelRevision,
-    extractionVersion: ACOUSTIC_POLICY.version,
+    extractionVersion: ACOUSTIC_POLICY.extractionVersion,
     thresholdVersion: ACOUSTIC_POLICY.version,
     calibrationStatus: ACOUSTIC_POLICY.calibrationStatus,
     state: "running",
@@ -102,6 +104,33 @@ function sourceEmbeddings(
     (embedding) =>
       embedding.chunkIndex === chunkIndex && embedding.sourceSpeakerId === sourceSpeakerId,
   );
+}
+
+/**
+ * A saved vector depends only on the recording, the sample window and how the
+ * vector was produced. It does not depend on the meeting revision, so renaming a
+ * speaker or applying an earlier grouping must not force it to be recomputed.
+ * Decisions built from vectors stay bound to their revision.
+ */
+export function reusableEmbedding(
+  embedding: AcousticEmbeddingRecord | undefined,
+  sample: AcousticSampleWindow,
+  recordingHash: string,
+): AcousticEmbeddingRecord | undefined {
+  if (
+    !embedding ||
+    embedding.recordingHash !== recordingHash ||
+    embedding.chunkIndex !== sample.chunkIndex ||
+    embedding.sourceSpeakerId !== sample.sourceSpeakerId ||
+    embedding.sample.startSeconds !== sample.startSeconds ||
+    embedding.sample.endSeconds !== sample.endSeconds ||
+    embedding.modelId !== ACOUSTIC_POLICY.modelId ||
+    embedding.modelRevision !== ACOUSTIC_POLICY.modelRevision ||
+    embedding.extractionVersion !== ACOUSTIC_POLICY.extractionVersion
+  ) {
+    return undefined;
+  }
+  return embedding;
 }
 
 function abortIfRequested(signal?: AbortSignal): void {
@@ -196,7 +225,7 @@ export async function runAcousticContinuity(
     existing.sourceRevision === options.sourceRevision &&
     existing.modelId === ACOUSTIC_POLICY.modelId &&
     existing.modelRevision === ACOUSTIC_POLICY.modelRevision &&
-    existing.extractionVersion === ACOUSTIC_POLICY.version &&
+    existing.extractionVersion === ACOUSTIC_POLICY.extractionVersion &&
     existing.thresholdVersion === ACOUSTIC_POLICY.version &&
     existing.calibrationStatus === ACOUSTIC_POLICY.calibrationStatus;
   let checkpoint = compatible
@@ -225,17 +254,11 @@ export async function runAcousticContinuity(
       const usedIdentityIds = new Set<string>();
       for (const sample of selection.samples) {
         abortIfRequested(signal);
-        let embedding = await getAcousticEmbedding(meetingId, sample.id);
-        if (embedding && (
-          embedding.recordingHash !== options.recordingHash ||
-          embedding.sourceRevision !== options.sourceRevision ||
-          embedding.chunkIndex !== sample.chunkIndex ||
-          embedding.sourceSpeakerId !== sample.sourceSpeakerId ||
-          embedding.modelId !== ACOUSTIC_POLICY.modelId ||
-          embedding.modelRevision !== ACOUSTIC_POLICY.modelRevision ||
-          embedding.extractionVersion !== ACOUSTIC_POLICY.version
-        )) {
-          embedding = undefined;
+        let embedding = reusableEmbedding(await getAcousticEmbedding(meetingId, sample.id), sample, options.recordingHash);
+        if (embedding && embedding.sourceRevision !== options.sourceRevision) {
+          // The vector is still valid; record that this revision's analysis uses it.
+          embedding = { ...embedding, sourceRevision: options.sourceRevision };
+          await putAcousticEmbedding(embedding);
         }
         if (!embedding) {
           const chunkBlob = await getLongAudioChunk(meetingId, meta.index, { verify: true });
@@ -251,7 +274,7 @@ export async function runAcousticContinuity(
             sample,
             modelId: ACOUSTIC_POLICY.modelId,
             modelRevision: ACOUSTIC_POLICY.modelRevision,
-            extractionVersion: ACOUSTIC_POLICY.version,
+            extractionVersion: ACOUSTIC_POLICY.extractionVersion,
             values,
             createdAt: now(),
           };
@@ -341,7 +364,7 @@ export async function runAcousticContinuity(
             sourceSpeakerId,
             embeddings,
             expectedModelRevision: ACOUSTIC_POLICY.modelRevision,
-            expectedExtractionVersion: ACOUSTIC_POLICY.version,
+            expectedExtractionVersion: ACOUSTIC_POLICY.extractionVersion,
           },
           identities,
         );
@@ -384,7 +407,7 @@ export async function runAcousticContinuity(
           embedding.sourceRevision === options.sourceRevision &&
           embedding.modelId === ACOUSTIC_POLICY.modelId &&
           embedding.modelRevision === ACOUSTIC_POLICY.modelRevision &&
-          embedding.extractionVersion === ACOUSTIC_POLICY.version,
+          embedding.extractionVersion === ACOUSTIC_POLICY.extractionVersion,
       );
       // Removing the recording's average voice only helps when the recording has
       // different voices to tell apart: some part must contain 2+ labels. With one
@@ -551,6 +574,20 @@ export async function listCurrentAcousticEmbeddings(meetingId: string): Promise<
     listAcousticEmbeddings(meetingId),
   ]);
   return embeddingsOfCheckpoint(checkpoint, embeddings);
+}
+
+/**
+ * Read-only: the latest analysis's vectors and decisions with the meeting's
+ * confirmed speakers as reference, for offline measurement. Nothing is sent anywhere.
+ */
+export async function exportVoiceEvaluation(meetingId: string): Promise<VoiceEvaluationExport> {
+  const [meeting, embeddings, assignments] = await Promise.all([
+    getMeeting(meetingId),
+    listCurrentAcousticEmbeddings(meetingId),
+    listAcousticAssignments(meetingId),
+  ]);
+  if (!meeting) throw new Error("The meeting no longer exists.");
+  return buildVoiceEvaluationExport(meeting, embeddings, assignments);
 }
 
 /** Read-only summary of saved local voice analysis, so results are visible after the fact. */

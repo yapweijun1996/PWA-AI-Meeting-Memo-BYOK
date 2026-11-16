@@ -36,9 +36,11 @@ class FakeAudioContext {
   async close(): Promise<void> { return undefined; }
 }
 
+let embedCalls = 0;
 const provider: BrowserSpeakerEmbeddingProvider = {
   async load() { return undefined; },
   async embed() {
+    embedCalls += 1;
     const values = Array.from({ length: 512 }, (_, index) => index === 0 ? 1 : 0);
     return values;
   },
@@ -112,6 +114,16 @@ describe("existing meeting local acoustic analysis", () => {
     expect(reloaded?.segments[0]?.speakerIds).toEqual(persisted.segments[0]?.speakerIds);
     expect(undoEdit(persisted).segments.map((value) => value.speakerIds)).toEqual(sourceSegments.map((value) => value.speakerIds));
     expect(FakeAudioContext.decodedByteLengths.every((value) => value < encoded.byteLength * 0.9)).toBe(true);
+
+    // Applying the grouping changed the meeting revision. Re-analysis must reuse the
+    // saved vectors of the same audio windows: no decode and no model run.
+    expect(persisted.revision).toBeGreaterThan(saved.revision);
+    const callsBefore = embedCalls;
+    const decodesBefore = FakeAudioContext.decodedByteLengths.length;
+    expect(callsBefore).toBeGreaterThan(0);
+    await analyzeExistingMeetingAcoustics(persisted, { manifest, provider, consent: true, signal: undefined });
+    expect(embedCalls).toBe(callsBefore);
+    expect(FakeAudioContext.decodedByteLengths.length).toBe(decodesBefore);
     await deleteMeeting(meetingId);
     (await db()).close();
   });

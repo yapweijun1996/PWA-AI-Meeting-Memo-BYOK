@@ -9,6 +9,14 @@ import { ref, type Meeting } from "./model";
  */
 export const ACOUSTIC_POLICY = {
   version: "wavlm-sv-uncalibrated-v1",
+  /**
+   * How a voice vector is produced (window decode, 16 kHz mono, model input).
+   * Separate from `version`, which names the decision thresholds: recalibrating
+   * thresholds must not discard saved vectors. Change this only when the audio
+   * preparation or model input changes. The value predates the split and is
+   * kept so vectors saved by earlier builds stay valid.
+   */
+  extractionVersion: "wavlm-sv-uncalibrated-v1",
   calibrationStatus: "uncalibrated",
   modelId: "Xenova/wavlm-base-plus-sv",
   modelRevision: "e61029603001bd11295c36d878698708bf59190f",
@@ -589,7 +597,7 @@ export function chooseAcousticAssignment(
     recordingHash: input.recordingHash,
     sourceRevision: input.sourceRevision,
     modelRevision: input.embeddings[0]?.modelRevision ?? policy.modelRevision,
-    extractionVersion: input.embeddings[0]?.extractionVersion ?? policy.version,
+    extractionVersion: input.embeddings[0]?.extractionVersion ?? policy.extractionVersion,
     centroid: mean(evidence.map((embedding) => embedding.values)),
     anchors: evidence
       .slice(0, policy.maxRepresentativesPerIdentity)

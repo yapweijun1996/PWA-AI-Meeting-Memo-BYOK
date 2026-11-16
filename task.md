@@ -6,6 +6,30 @@ Speaker review redesign: implemented a single searchable, filterable queue, sele
 
 # Implementation tasks
 
+## Voice ID production hardening — 2026-11-16
+
+Current assessment: **working prototype, not production quality; no accuracy is measured.** [gap.md](gap.md#voice-identity-logic-gap-register--2026-11-16) owns the findings, evidence labels and acceptance criteria; this section owns execution status. The findings come from a code reading at `db9e5a5` and are not reproduced by tests unless stated. This documentation update changes no application code. Scope is meeting-scoped anonymous matching; cross-meeting recognition and REL03 licensing/download gates are separate.
+
+- [x] Read the full voice pipeline (sample selection, decode, model worker, single-file and multi-part matching, projection, review hints) and record logic gaps VID01–VID14 in `gap.md`.
+- [x] Voice hints in speaker review ("Most similar voices", `92f3eba`): 8 unit tests and one seeded Chromium/WebKit flow; back-to-back playback in Chromium only; not checked on a real recording.
+- [x] VID01a (P0) — Offline evaluation harness: "Export voice evaluation data" in speaker review (pseudonyms only; no names, text or recording hash) and `scripts/evaluate-voice-matching.mjs`. Local verification on Node 25.2.1: 8 new unit tests, 336 unit tests in total, lint, typecheck, SSOT check, build, and one Chromium/WebKit export flow. Fake vectors only.
+- [ ] VID01b (P0) — Measure real recordings: confirm speakers by ear, export, record per-recording results for at least two meetings. Inputs available outside Git: the 59:06 recording in the handoff and an owner-supplied four-speaker MP3 (60:05, 85.2 MB, 48 kHz stereo). Needs the owner: transcribing the new MP3 is a paid request, and confirming speakers is a listening task.
+- [x] VID02 (P0) — Saved vectors are reused across meeting revisions and have their own extraction version. Unit tests on the chunked and single-file paths show zero decodes and zero model runs on a re-run after a revision change. Not timed on a real recording.
+- [ ] VID09 (P1) — Persist "same / not the same" decisions with revision invalidation, use them as matcher constraints and export them as evaluation labels.
+- [ ] VID03 (P1) — Band-limited 16 kHz conversion independent of the device rate, plus a silence/level gate.
+- [ ] VID04 (P1) — More and better-spread samples per label, trimmed at turn edges, weighted by length.
+- [ ] VID05 (P1) — Replace the sample-weighted recording average with a balanced or fixed centre.
+- [ ] VID06 (P1) — Label purity check in the multi-part matcher; impure labels stay unmerged and are offered for splitting.
+- [ ] VID07 (P1) — Global constrained clustering compared against the current greedy part-by-part matcher.
+- [ ] VID08 (P1) — Estimate the head count from data; forced merges below the floor become review suggestions.
+- [ ] VID10 (P1) — Measure the raw-cosine single-file and one-label-per-part paths, then align their scoring.
+- [ ] VID11 (P2) — Low-confidence suggestions for labels with too few samples.
+- [ ] VID12 (P2) — Evaluate local segmentation against provider labels.
+- [ ] VID13 (P2) — Compare speaker models and quantisation on the evaluation set.
+- [ ] VID14 (P2) — Verify and plan each part once; time each stage.
+
+Order: VID01 and VID02, then VID09, then VID03–VID05 as measured comparisons, then the rest. No item from VID03 onward may be checked on reasoning alone; each needs a VID01 result.
+
 ## Delivery execution — 2026-11-16
 
 The owner authorized sequential completion, per-task commits, merge and push to `main`. Delivery uses the separate `PWA-AI-Meeting-Memo-BYOK-delivery` worktree; the original workspace is preserved. Checked items require the stated evidence; device/account/licence-dependent acceptance remains open until actually verified.

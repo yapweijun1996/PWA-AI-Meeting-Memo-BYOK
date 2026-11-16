@@ -117,6 +117,7 @@ const messages: Record<string, string> = {
   "OpenAI file transcription supports MP3, MP4, MPEG, MPGA, M4A, WAV and WebM. Choose a supported file or import a transcript.": "OpenAI 文件转录支持 MP3、MP4、MPEG、MPGA、M4A、WAV 和 WebM。请选择受支持的文件或导入转录。",
   "Could not remove stored keys.": "无法清除保存的密钥。",
   "Could not save settings on this device.": "无法在此设备保存设置。",
+  "Could not export voice evaluation data.": "无法导出声音评测数据。",
   "Usage estimate is unavailable.": "无法估算存储用量。",
   "Calculating…": "正在计算…",
   "The meeting could not be saved.": "无法保存会议。",

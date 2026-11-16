@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 import { ACOUSTIC_POLICY } from "../../src/domain/acoustic-speaker";
 
@@ -666,6 +667,20 @@ test("suggests the most similar voice in speaker review and merges it reversibly
   );
   expect((merged.runs as unknown[])[0]).toEqual((beforeMerge.runs as unknown[])[0]);
   expect((merged.undo as unknown[]).length).toBe((beforeMerge.undo as unknown[]).length + 1);
+
+  // The evaluation export downloads the saved vectors with pseudonyms only: no names, no transcript text.
+  const downloading = page.waitForEvent("download");
+  await hints.getByRole("button", { name: "Export voice evaluation data", exact: true }).click();
+  const file = await downloading;
+  expect(file.suggestedFilename()).toMatch(/-voice-evaluation\.json$/);
+  const exportedText = await readFile(await file.path(), "utf8");
+  const exported = JSON.parse(exportedText) as { kind: string; samples: { values: number[]; reference: string | null }[] };
+  expect(exported.kind).toBe("voice-evaluation-export");
+  expect(exported.samples.length).toBeGreaterThan(0);
+  expect(exported.samples.every((sample) => sample.values.length === 512)).toBe(true);
+  expect(exportedText).not.toContain("Speaker A");
+  for (const segment of transcriptSnapshot(merged)) expect(exportedText).not.toContain(String(segment.text));
+  await expect(page.getByText(/Exported \d+ voice samples/)).toBeVisible();
 
   // The head-count shortcut opens the existing local analysis dialog.
   await hints.getByRole("button", { name: "Regroup with a head count", exact: true }).click();
