@@ -277,15 +277,14 @@ test("scoped worker supports offline reload without caching API data", async ({
     return result;
   });
   const appOrigin = new URL(page.url()).origin;
+  const cachedUrls = cached.map((url) => new URL(url));
+  expect(cachedUrls.every((url) =>
+    url.origin === appOrigin && url.pathname.startsWith(base) && !url.search && !url.hash,
+  )).toBe(true);
+  // A bundled module named openai-responses is an app asset, not a provider response.
   expect(
-    cached.every((url) => url.startsWith(appOrigin + base)),
-  ).toBe(true);
-  expect(
-    cached.some(
-      (url) =>
-        url.includes("openai") ||
-        url.includes("deepgram") ||
-        url.includes("openrouter"),
+    cachedUrls.some(
+      (url) => ["api.openai.com", "api.deepgram.com", "openrouter.ai"].includes(url.hostname),
     ),
   ).toBe(false);
   await context.setOffline(false);
