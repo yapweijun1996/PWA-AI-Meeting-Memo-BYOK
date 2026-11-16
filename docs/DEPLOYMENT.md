@@ -43,6 +43,8 @@ PRs targeting `main` also run Chromium/WebKit application tests, independent cat
 
 Only a successful **push** to `main` uploads `dist/` and can publish. The `publish` job requires `verify` and retains the latest-main-head check. Failed prerequisites skip publication, with no failure override. Verification concurrency is scoped by event and ref, preventing a manual check from cancelling a main-push check; deployment remains serialized without cancellation. The existing `github-pages` environment restriction remains `main` only. The workflow under [examples](examples/github-pages.yml) remains an inactive reference.
 
+Wait for an active code publication to finish before pushing a documentation-only closeout. The current-head guard requires an exact SHA: a newer skipped documentation head would otherwise suppress that older run's publication without starting a replacement run. The release owner must verify publication before the closeout, as in the sequential delivery workflow.
+
 Full runs install the locked Playwright Chromium/WebKit versions and OS dependencies before executing the built app. Provider requests remain mocked/synthetic; this does not validate authenticated account access or physical phones. `tests/release-workflow.test.ts` protects fast/full selection, verification order, documentation filtering, absence of failure overrides, PR/manual isolation and deployment permissions/head guard. Static contracts do not substitute for hosted execution and release readback.
 
 The example uses action commit pins taken from the official Vite deployment guidance and checked for existence against their official repositories on 2026-11-04. Review pin updates and transitive dependencies normally; a resolvable commit alone is not a security audit.
