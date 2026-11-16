@@ -669,3 +669,6 @@ One candidate build failed on fixture-only TypeScript shapes. A mistakenly start
 
 
 Final release gates passed: 421 unit tests in 59 files, lint, types/build, SSOT 107 and artifact checks on Node 22.23.3. Both real-worker PWA engines passed N→N+1, active-request/editor guards, saved drafts, old assets, unrelated cache preservation, visible activation failure and forward recovery. The playback-race checklist scope is verified; physical/native-audio and complete contrast acceptance remain separate. Publication is pending this checkpoint.
+
+
+**Hosted closeout:** main `f7e3d1d0b7b6a2c8f976756b8c0a18761d81bed1` passed [run 43863426371](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/43863426371). Fresh 390x844 Chromium 156.0.8078.4 and WebKit 27.2 profiles read that exact runtime build ID and passed dialog keyboard return, local meeting creation, synthetic WAV attachment/reload, Settings arrow/End tab navigation and narrow overflow checks. Both recorded zero page errors and zero requests outside this app's production path. These isolated profiles held no real keys or recordings; no provider request was sent. This verifies the delivered controls/creation surface, not physical phones, native audio-clock support, complete contrast or matching quality. The original main working tree was synchronized by clean fast-forward.
