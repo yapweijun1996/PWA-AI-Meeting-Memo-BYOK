@@ -20,6 +20,7 @@ The owner authorized sequential completion, per-task commits, merge and push to 
 ## Faster GitHub publication — 2026-11-16
 
 - [x] Implement the owner-requested fast main lane: lint, unit/contracts, SSOT, types/build and artifact checks before upload; full browser/catalogue/PWA checks on PRs and default manual dispatch. Manual runs never deploy. Skip documentation-only main pushes and preserve current-head, permissions and serialized-deployment guards. Hosted timing/readback is recorded in `docs/VALIDATION.md`; this supersedes REL01's earlier all-browser-before-main policy.
+- [x] Verify hosted fast publication and the deployed sidebar: run `43816062043` published `4a1bfd5` in 63 seconds, including 328 unit tests and all fast gates. Fresh 390px Chromium readback matched the full SHA, with stable bottom button placement, feedback above it and no overflow/errors/provider requests. Full PR/manual execution and physical devices remain separate gates.
 - [x] Correct the cost test fixture to select its WAV before meeting creation, preserving filename, duration, cost and reload assertions. Independent Chromium/WebKit rerun: 2/2 passed.
 
 ## SSOT and PWA gap follow-up — 2026-11-16
