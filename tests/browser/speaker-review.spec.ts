@@ -2297,3 +2297,109 @@ test("Chinese transcript filter keeps its checkbox and label on one line", async
   expect(dimensions.style).toBe("nowrap");
   expect(dimensions.height).toBeLessThan(50);
 });
+
+for (const width of [390, 768, 1440])
+  test(`Single and rare immersive states bind semantic roles at ${width}px`, async ({page}, info) => {
+    await page.emulateMedia({reducedMotion: "reduce"});
+    await isolateSyntheticDecoderEvents(page);
+    await page.addInitScript(() => {
+      window.confirm = () => true; // Fixture attachment consent, outside the style acceptance scope.
+      HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("synthetic fallback"));
+    });
+    const meeting = fixtureMeeting();
+    meeting.speakers[0].confirmed = true;
+    meeting.segments.push({...meeting.segments[0], id: crypto.randomUUID(), start: 2.3, end: 2.6, speakerIds: [], text: "Unknown attribution", originalText: "Unknown attribution"});
+    await createFixture(page, "semantic-single.wav", meeting);
+    const before = await storedMeeting(page);
+    await page.setViewportSize({width, height: 1000});
+    await page.locator("audio").evaluate(element => {
+      Object.defineProperty(element, "error", {configurable: true, get: () => null});
+      (element as HTMLMediaElement).currentTime = 2;
+      element.dispatchEvent(new Event("seeked"));
+    });
+    await page.getByRole("button", {name: "Immersive playback", exact: true}).click();
+    const dialog = page.getByRole("dialog", {name: "Immersive playback"});
+    await dialog.getByRole("button", {name: "Single", exact: true}).click();
+    await expect(dialog.locator(".immersive-current-speaker")).toHaveCount(2);
+    await expect(dialog.locator(".immersive-current-speakers")).toContainText("Name confirmed");
+    await expect(dialog.locator(".immersive-current-speakers")).toContainText("Unconfirmed");
+    for (const theme of ["light", "dark"])
+      for (const palette of ["forest", "ocean", "violet", "amber"])
+        for (const size of ["normal", "xxlarge"]) {
+          await page.evaluate(({theme, palette, size}) => {
+            for (const [key, value] of [["meeting-memo:theme", theme], ["meeting-memo:palette", palette], ["meeting-memo:font-size", size]]) {
+              localStorage.setItem(key, value);
+              window.dispatchEvent(new StorageEvent("storage", {key}));
+            }
+          }, {theme, palette, size});
+          await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+          await expect(page.locator("html")).toHaveAttribute("data-palette", palette);
+          await expect(page.locator("html")).toHaveAttribute("data-font-size", size);
+          const checks = await dialog.evaluate(element => {
+            const contracts = [
+              [".immersive-fallback", "background-color", "--immersive-fallback-bg"],
+              [".immersive-current-speaker", "border-top-left-radius", "--radius-immersive-current-speaker"],
+              [".immersive-confirmation", "font-size", "--font-size-immersive-label"],
+              [".immersive-control-row button", "border-top-left-radius", "--radius-immersive-control"],
+              [".immersive-caption-content [data-current='true']", "color", "--immersive-caption-current-text"],
+              [".immersive-caption-content [data-current='true']", "background-color", "--immersive-caption-current-bg"],
+              [".immersive-caption-content [data-current='true']", "border-top-left-radius", "--radius-immersive-caption-fragment"],
+            ];
+            return contracts.map(([selector, property, token]) => {
+              const target = element.querySelector(selector);
+              if (!target) throw new Error(`Missing native state: ${selector}`);
+              if (!getComputedStyle(target).getPropertyValue(token).trim()) throw new Error(`Missing token: ${token}`);
+              const reference = document.createElement("span");
+              reference.style.setProperty(property, `var(${token})`);
+              element.append(reference);
+              const result = {selector, property, actual: getComputedStyle(target).getPropertyValue(property), expected: getComputedStyle(reference).getPropertyValue(property)};
+              reference.remove();
+              return result;
+            });
+          });
+          for (const check of checks) expect(check.actual, `${theme}/${palette}/${size}: ${check.selector} ${check.property}`).toBe(check.expected);
+          expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+        }
+    await page.screenshot({path: info.outputPath(`single-dark-${width}.png`)});
+    await page.locator("audio").evaluate(element => {
+      Object.defineProperty(element, "paused", {configurable: true, value: false});
+      element.dispatchEvent(new Event("play"));
+      element.dispatchEvent(new Event("playing"));
+    });
+    const active = dialog.locator('.immersive-current-speaker[data-active="true"]');
+    await expect(active).toHaveCount(2);
+    const activeRoles = await active.first().evaluate(element => {
+      const probe = document.createElement("span");
+      probe.style.cssText = "background:var(--immersive-speaker-active-bg);box-shadow:var(--shadow-immersive-speaker-active)";
+      element.append(probe);
+      const expected = getComputedStyle(probe);
+      const avatar = getComputedStyle(element.querySelector(".immersive-avatar")!);
+      const result = {actual: [getComputedStyle(element).backgroundColor, avatar.boxShadow], expected: [expected.backgroundColor, expected.boxShadow], animation: avatar.animationName};
+      probe.remove();
+      return result;
+    });
+    expect(activeRoles.actual).toEqual(activeRoles.expected);
+    expect(activeRoles.animation).toBe("none");
+    await page.locator("audio").evaluate(element => (element as HTMLMediaElement).pause());
+    await expect(active).toHaveCount(0);
+    await page.locator("audio").evaluate(element => {
+      (element as HTMLMediaElement).currentTime = 2.4;
+      element.dispatchEvent(new Event("seeked"));
+    });
+    await expect(dialog.locator(".immersive-current-speakers")).toContainText("Unknown speaker");
+    await dialog.getByRole("button", {name: "Reading", exact: true}).click();
+    await dialog.getByLabel("Search transcript", {exact: true}).fill("no-matching-source-unique");
+    await expect(dialog.locator(".immersive-empty")).toHaveText("No transcript matches.");
+    const emptyColors = await dialog.locator(".immersive-empty").evaluate(element => {
+      const reference = document.createElement("span");
+      reference.style.color = "var(--immersive-transcript-muted)";
+      element.append(reference);
+      const result = [getComputedStyle(element).color, getComputedStyle(reference).color];
+      reference.remove();
+      return result;
+    });
+    expect(emptyColors[0]).toBe(emptyColors[1]);
+    await dialog.getByLabel("Search transcript", {exact: true}).fill("trustworthy timing");
+    await expect(dialog.locator(".immersive-untimed")).toBeVisible();
+    expect(await storedMeeting(page)).toEqual(before);
+  });
