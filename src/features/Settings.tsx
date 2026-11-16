@@ -1,3 +1,4 @@
+import type { MemoLanguagePreference } from "../domain/memo-language";
 import { translateUi } from "../i18n";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -13,6 +14,7 @@ import {
   getSpeechRate,
   getSpeechRateContext,
   getUiLanguage,
+  getMemoLanguagePreference,
   setUiLanguageOverride,
   getSelection,
   getSettingsRevision,
@@ -43,6 +45,7 @@ export function Settings() {
     [openrouter, setOpenrouter] = useState(getKey("openrouter")),
     [speech, setSpeech] = useState(getSelection("speech")),
     [memo, setMemo] = useState(getSelection("memo")),
+    [memoLanguage, setMemoLanguage] = useState(getMemoLanguagePreference()),
     [speechRate, setSpeechRate] = useState(
       () => getSpeechRate()?.toString() ?? "",
     ),
@@ -63,6 +66,7 @@ export function Settings() {
         keys: { openai: getKey("openai"), openrouter: getKey("openrouter") },
         speech: getSelection("speech"),
         memo: getSelection("memo"),
+        memoLanguage: getMemoLanguagePreference(),
         speechRate: getSpeechRate()?.toString() ?? "",
         rateSource: getSpeechRateContext()?.source ?? "",
         rateDate: getSpeechRateContext()?.date ?? "",
@@ -76,6 +80,7 @@ export function Settings() {
       keys: { openai, openrouter },
       speech,
       memo,
+      memoLanguage,
       speechRate,
       rateSource,
       rateDate,
@@ -160,6 +165,7 @@ export function Settings() {
           keys: { openai: openai.trim(), openrouter: openrouter.trim() },
           speech: { ...speech, model: speech.model.trim() },
           memo: { ...memo, model: memo.model.trim() },
+          memoLanguage,
           speechRate: speechRate === "" ? null : Number(speechRate),
           speechRateContext: rateFor && rateSource.trim() && rateDate ? { ...rateFor, source: rateSource.trim(), date: rateDate } : null,
           uiLanguage: uiLanguage === "ms" ? "en" : uiLanguage,
@@ -179,6 +185,7 @@ export function Settings() {
           keys: { openai: openai.trim(), openrouter: openrouter.trim() },
           speech: { ...speech, model: speech.model.trim() },
           memo: { ...memo, model: memo.model.trim() },
+          memoLanguage,
           speechRate,
           rateSource: rateSource.trim(),
           rateDate,
@@ -214,6 +221,7 @@ export function Settings() {
           keys: { openai: "", openrouter: "" },
           speech: getSelection("speech"),
           memo: getSelection("memo"),
+          memoLanguage: getMemoLanguagePreference(),
           speechRate: getSpeechRate(),
           speechRateContext: getSpeechRateContext(),
           uiLanguage: getUiLanguage() === "ms" ? "en" : getUiLanguage() as "en" | "zh-CN",
@@ -463,6 +471,18 @@ export function Settings() {
                     }
                   />
                 </label>
+                {stage === "memo" && <label>
+                  {t("Memo output language", "纪要输出语言")}
+                  <select aria-label={t("Memo output language", "纪要输出语言")} value={memoLanguage} disabled={saving}
+                    onChange={(event) => setMemoLanguage(event.target.value as MemoLanguagePreference)}>
+                    <option value="interface">{t("Follow interface language", "跟随界面语言")}</option>
+                    <option value="meeting">{t("Meeting language", "会议语言")}</option>
+                    <option value="en">English</option>
+                    <option value="zh-CN">简体中文</option>
+                    <option value="ms">Bahasa Melayu</option>
+                  </select>
+                  <span className="small muted">{t("Applies to new generations. Saved plans retain their confirmed language; existing notes and transcript text stay unchanged.", "用于新生成。已保存计划保留确认时的语言；现有笔记和转录文本保持不变。")}</span>
+                </label>}
                 <datalist id={`${stage}-models`}>
                   <option value={defaultModel(choice.provider, stage)} />
                   {stage === "memo" && (

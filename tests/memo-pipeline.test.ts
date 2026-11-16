@@ -313,3 +313,28 @@ test("the largest valid extraction fact count retains exact ordered quotes witho
   expect(extractionInstructions(p)).toContain("at most 100");
   expect(() => captureExtraction(m, [{...items[0], sources: [{...refs[0], revision: 2}]}])).toThrow("source is invalid");
 });
+
+
+test("saved plan language survives pause and resume while legacy plans keep meeting language", async () => {
+  vi.stubGlobal("window", new EventTarget());
+  vi.stubGlobal("navigator", {});
+  const fetch = vi.fn(async (_url: unknown, options: {body: string}) => response(options.body));
+  vi.stubGlobal("fetch", fetch);
+  const m = await saveMeeting(longMeeting());
+  const p = {...planMemo(m, selection.provider, selection.model)!, outputLanguage: "ms" as const};
+  await expect(runMemoPipeline(m, selection, p, false, value => {
+    if (value.jobs.filter(j => j.state === "completed").length === 1) cancelPipeline();
+  })).rejects.toThrow("paused");
+  const paused = (await getMeeting(m.id))!;
+  const resumed = await runMemoPipeline(paused, selection, paused.memoPipelines![0]);
+  expect(resumed.memoPipelines![0].outputLanguage).toBe("ms");
+  expect(resumed.jobs.every(j => j.outputLanguage === "ms")).toBe(true);
+  for (const [, options] of fetch.mock.calls) expect(JSON.parse(options.body).instructions).toContain("Write the notes in Malay");
+  expect(fetch).toHaveBeenCalledTimes(p.chunks.length + 1);
+  const legacyMeeting = await saveMeeting(longMeeting());
+  const oldPlan = {...planMemo(legacyMeeting, selection.provider, selection.model)!};
+  delete oldPlan.outputLanguage;
+  fetch.mockClear();
+  await runMemoPipeline(legacyMeeting, selection, oldPlan);
+  for (const [, options] of fetch.mock.calls) expect(JSON.parse(options.body).instructions).toContain("Write the notes in the meeting language");
+});

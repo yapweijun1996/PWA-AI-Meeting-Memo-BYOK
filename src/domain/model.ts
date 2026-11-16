@@ -1,3 +1,4 @@
+import { MEMO_OUTPUT_LANGUAGES } from "./memo-language";
 import { z } from "zod";
 import { ReferenceVideoSchema, type ReferenceVideo } from "./reference-video";
 export const id = () => crypto.randomUUID();
@@ -144,6 +145,7 @@ export const JobSchema = z
       })
       .strict()
       .optional(),
+    outputLanguage: z.enum(MEMO_OUTPUT_LANGUAGES).optional(),
     pipelineId: key.optional(),
     stepIndex: z.number().int().min(0).max(8).optional(),
     contextual: z.object({
@@ -173,6 +175,7 @@ export const MemoPipelineSchema = z
     model: z.string().min(1).max(100),
     createdAt: z.string(),
     sourceRevision: z.number().int().positive(),
+    outputLanguage: z.enum(MEMO_OUTPUT_LANGUAGES).optional(),
     snapshot: PipelineSnapshotSchema,
     state: z.enum(["ready", "running", "paused", "blocked", "completed"]),
     chunks: z.array(z.array(transcriptId).min(1).max(20000)).min(1).max(8),

@@ -1,3 +1,4 @@
+import { resolveMemoLanguage, type MemoLanguagePreference } from "../domain/memo-language";
 import {
   readSettings,
   writeSettings,
@@ -54,6 +55,8 @@ export const getUiLanguage = (): "en" | "zh-CN" | "ms" => {
   try { const value = localStorage.getItem(languageOverrideKey); if (value === "en" || value === "zh-CN" || value === "ms") return value; } catch { /* Fall back to the stored settings record. */ }
   return settings.uiLanguage ?? "en";
 };
+export const getMemoLanguagePreference = (): MemoLanguagePreference => settings.memoLanguage ?? "interface";
+export const getMemoOutputLanguage = () => resolveMemoLanguage(getMemoLanguagePreference(), getUiLanguage());
 export function setUiLanguageOverride(language: "en" | "zh-CN" | "ms") { localStorage.setItem(languageOverrideKey, language); window.dispatchEvent(new Event("memo-keys-changed")); }
 if (typeof window !== "undefined") window.addEventListener("storage", (event) => { if (event.key === languageOverrideKey || event.key === null) window.dispatchEvent(new Event("memo-keys-changed")); });
 export const getSpeechRateContext = () => settings.speechRateContext ?? null;

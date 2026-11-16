@@ -1,3 +1,4 @@
+import { getMemoOutputLanguage } from "./credentials";
 import { id, MAX_JOBS, MAX_MEETING_JSON_BYTES, type Meeting, type MemoItem } from "../domain/model";
 import { buildMemoInput, MEMO_INPUT_MAX_CHARS, MemoInputError, type MemoInput } from "./memo-input";
 
@@ -37,6 +38,7 @@ export function planMemo(
     model,
     createdAt: new Date().toISOString(),
     sourceRevision: m.revision,
+    outputLanguage: getMemoOutputLanguage(),
     snapshot: {
       title: m.title,
       date: m.date,

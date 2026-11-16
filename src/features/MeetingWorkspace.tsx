@@ -1,3 +1,4 @@
+import { memoLanguageName, type MemoOutputLanguage } from "../domain/memo-language";
 import { usePlayerClearance } from "./usePlayerClearance";
 import { translateUi } from "../i18n";
 import { planMemo, type MemoPipeline } from "../providers/memo-plan";
@@ -54,7 +55,7 @@ import { inspectAudio } from "../audio/files";
 import { importLongRecording, isLongRecordingCandidate } from "../audio/long-import";
 import { deleteLongAudio, getLongAudioChunk, getLongAudioManifest, type LongAudioManifest } from "../storage/long-audio-store";
 import { ChunkedAudio, type PlayerLike } from "../audio/chunked-audio";
-import { getKey, getSelection, getSpeechEstimate, getUiLanguage } from "../providers/credentials";
+import { getKey, getSelection, getSpeechEstimate, getUiLanguage, getMemoOutputLanguage } from "../providers/credentials";
 import { beginRequest, cancelProcessing, finishRequest, runJob, isProcessingMeeting } from "../jobs/runner";
 import { requireVoiceAnalysisLocks, withVoiceAnalysisLock } from "../jobs/voice-analysis-lock";
 import { analyzeExistingMeetingAcoustics, describeAcousticState, exportVoiceEvaluation, listCurrentAcousticEmbeddings } from "../jobs/acoustic-continuity";
@@ -165,7 +166,7 @@ export function MeetingWorkspace({
   const evidenceTrigger = useRef<HTMLElement | null>(null);
   const [evidence, setEvidence] = useState<Segment>();
   const [evidenceRefs, setEvidenceRefs] = useState<{ id: string; revision: number }[]>([]);
-  const [confirmed, setConfirmed] = useState<{ selection: Selection; plan?: MemoPipeline | null }>();
+  const [confirmed, setConfirmed] = useState<{ selection: Selection; outputLanguage?: MemoOutputLanguage; plan?: MemoPipeline | null }>();
   const [uiLanguage, setUiLanguage] = useState(getUiLanguage());
   const t = (en: string, zh: string) => translateUi(uiLanguage, en, zh);
   function navigateTab(next: string) {
@@ -488,7 +489,7 @@ export function MeetingWorkspace({
         setChunkManifest(manifest);
         setChunkProgress(progress);
       }
-      setConfirmed({selection,plan});
+      setConfirmed({selection, plan, outputLanguage: plan ? plan.outputLanguage ?? "meeting" : getMemoOutputLanguage()});
       setConfirmStage(stage);
     } catch(error) { onError(error instanceof Error ? error.message : "Could not prepare the memo plan."); }
   }
@@ -1985,6 +1986,10 @@ export function MeetingWorkspace({
               </dd>
               <dt>{t("Model", "模型")}</dt>
               <dd>{(confirmed?.selection ?? getSelection(confirmStage)).model}</dd>
+              {confirmStage === "memo" && <>
+                <dt>{t("Memo output language", "纪要输出语言")}</dt>
+                <dd>{memoLanguageName(confirmed?.outputLanguage ?? getMemoOutputLanguage())}</dd>
+              </>}
               <dt>{t("Estimated charge", "预计费用")}</dt>
               <dd>
                 {confirmStage === "speech" && m.audio?.chunked

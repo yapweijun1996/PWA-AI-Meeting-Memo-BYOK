@@ -1,3 +1,4 @@
+import type { MemoOutputLanguage } from "../domain/memo-language";
 import {
   runMemoPipeline,
   pipelineActive,
@@ -12,6 +13,7 @@ import { generateMemo, transcribe, ProviderError } from "../providers/api";
 import {
   getKey,
   getSelection,
+  getMemoOutputLanguage,
   getSpeechEstimate,
 } from "../providers/credentials";
 import { buildMemoInput } from "../providers/memo-input";
@@ -43,6 +45,7 @@ export async function runJob(
   stage: Job["stage"],
   confirmed?: {
     selection: Selection;
+    outputLanguage?: MemoOutputLanguage;
     plan?: MemoPipeline | null;
     reviewedRetry?: boolean;
     onCheckpoint?: (m: Meeting) => void;
@@ -67,6 +70,7 @@ export async function runJob(
       confirmed.reviewedRetry,
       confirmed.onCheckpoint,
     );
+  const outputLanguage = confirmed?.outputLanguage ?? getMemoOutputLanguage();
   const provider = selection.provider === "openai" ? "OpenAI" : "OpenRouter";
   const key = getKey(selection.provider);
   if (!key) throw new Error(`Add your ${provider} key in Settings first.`);
@@ -94,6 +98,7 @@ export async function runJob(
       inputRevision: m.revision,
       provider: selection.provider,
       model: selection.model,
+      ...(stage === "memo" ? {outputLanguage} : {}),
       estimateUsd: estimate?.amount ?? null,
       estimateDetails: estimate
         ? {
@@ -137,6 +142,9 @@ export async function runJob(
                 reportedCostUsd = cost;
               },
               selection,
+              undefined,
+              "",
+              outputLanguage,
             );
       let latest = await getMeeting(m.id);
       if (!latest) throw new Error("The meeting was removed while processing.");

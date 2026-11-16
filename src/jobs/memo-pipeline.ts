@@ -112,6 +112,7 @@ export async function runMemoPipeline(
         inputRevision: p.sourceRevision,
         provider: p.provider,
         model: p.model,
+        outputLanguage: p.outputLanguage ?? "meeting",
         message: `Memo step ${index + 1}/${p.chunks.length + 1}. Keep this page open.`,
         estimateUsd: null,
       };
@@ -140,6 +141,7 @@ export async function runMemoPipeline(
           prepared
             ? " Synthesize only the supplied candidate facts and their exact source quotations. Cite candidate item ids in source_segment_ids. Preserve contradictions and uncertainty; these candidates are not human-verified. Never resolve a conflict by guessing."
             : extractionInstructions(p),
+          p.outputLanguage ?? "meeting",
         );
         if (prepared) {
           p.memoId = id();
