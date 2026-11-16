@@ -2061,6 +2061,170 @@ test("immersive captions fit the stage when transcript width and viewport change
   expect(await caption.evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
 });
 
+for (const fontSize of ["normal", "xxlarge"] as const) {
+  test(`immersive tablet stage keeps four-speaker layout and transcript reachable at ${fontSize} text size`, async ({ page }) => {
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await page.addInitScript((size) => localStorage.setItem("meeting-memo:font-size", size), fontSize);
+    await page.addInitScript(() => {
+      HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable"));
+    });
+    const meeting = fixtureMeeting();
+    meeting.speakers.push(...[3, 4].map((number) => ({
+      id: `${String(number).repeat(8)}-${String(number).repeat(4)}-4${String(number).repeat(3)}-8${String(number).repeat(3)}-${String(number).repeat(12)}`,
+      name: `Speaker ${number}`,
+      confirmed: false,
+      sourceLabels: ["fixture"],
+    })));
+    await createFixture(page, "immersive-tablet.wav", meeting);
+    await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Immersive playback", exact: true });
+    await dialog.getByRole("button", { name: "Table", exact: true }).click();
+    await dialog.getByLabel("Playback position", { exact: true }).fill("0.2");
+    if (fontSize === "xxlarge") {
+      await expect(dialog.getByLabel("Caption size", { exact: true })).toHaveValue("normal");
+      await dialog.getByLabel("Caption size", { exact: true }).selectOption("xlarge");
+    }
+    await dialog.getByRole("button", { name: "Reading", exact: true }).click();
+
+    const layout = await dialog.evaluate((element) => {
+      const rect = (selector: string) => {
+        const box = element.querySelector<HTMLElement>(selector)!.getBoundingClientRect();
+        return { top: box.top, bottom: box.bottom, left: box.left, right: box.right };
+      };
+      const stage = element.querySelector<HTMLElement>(".immersive-stage")!;
+      const stageBox = stage.getBoundingClientRect();
+      const transcriptBox = element.querySelector<HTMLElement>(".immersive-transcript")!.getBoundingClientRect();
+      const tableBox = element.querySelector<HTMLElement>(".immersive-table-speakers")!.getBoundingClientRect();
+      const labels = [...element.querySelectorAll<HTMLElement>(".immersive-table-speaker")].map((label) => {
+        const box = label.getBoundingClientRect();
+        return { top: box.top, bottom: box.bottom, withinStage: stage.contains(label) && box.top >= stageBox.top && box.bottom <= stageBox.bottom };
+      });
+      const captions = element.querySelector<HTMLElement>(".immersive-captions")!.getBoundingClientRect();
+      return {
+        fontSize: document.documentElement.dataset.fontSize,
+        stage: rect(".immersive-stage"),
+        transcript: { top: transcriptBox.top, bottom: transcriptBox.bottom },
+        tableWithinStage: stage.contains(element.querySelector(".immersive-table-speakers"))
+          && tableBox.top >= stageBox.top && tableBox.bottom <= stageBox.bottom,
+        captionsWithinStage: stage.contains(element.querySelector(".immersive-captions"))
+          && captions.top >= stageBox.top && captions.bottom <= stageBox.bottom,
+        labels,
+        contentScrollHeight: element.querySelector<HTMLElement>(".immersive-content")!.scrollHeight,
+        contentClientHeight: element.querySelector<HTMLElement>(".immersive-content")!.clientHeight,
+      };
+    });
+    expect(layout.fontSize).toBe(fontSize);
+    expect(layout.tableWithinStage).toBe(true);
+    expect(layout.captionsWithinStage).toBe(true);
+    expect(layout.labels).toHaveLength(4);
+    expect(layout.labels.every((label) => label.withinStage)).toBe(true);
+    expect(layout.stage.bottom).toBeLessThanOrEqual(layout.transcript.top + 1);
+    expect(layout.contentScrollHeight).toBeGreaterThan(layout.contentClientHeight);
+    for (let number = 1; number <= 4; number++) {
+      await expect(dialog.locator(".immersive-table-speakers").getByText(`Speaker ${number}`, { exact: true })).toBeVisible();
+    }
+
+    await dialog.getByRole("button", { name: "Close transcript", exact: true }).click();
+    await expect(dialog.locator(".immersive-transcript")).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "Reading", exact: true })).toBeFocused();
+
+    await dialog.getByRole("button", { name: "Single", exact: true }).click();
+    await expect(dialog.getByRole("button", { name: "Single", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(dialog.locator(".immersive-current-speakers")).toBeVisible();
+    await dialog.getByRole("button", { name: "Reading", exact: true }).click();
+    const singleLayout = await dialog.evaluate((element) => {
+      const stage = element.querySelector<HTMLElement>(".immersive-stage")!;
+      const stageBox = stage.getBoundingClientRect();
+      const transcript = element.querySelector<HTMLElement>(".immersive-transcript")!.getBoundingClientRect();
+      const speakers = element.querySelector<HTMLElement>(".immersive-current-speakers")!;
+      const speakerBox = speakers.getBoundingClientRect();
+      const captions = element.querySelector<HTMLElement>(".immersive-captions")!.getBoundingClientRect();
+      return {
+        speakersWithinStage: stage.contains(speakers) && speakerBox.top >= stageBox.top && speakerBox.bottom <= stageBox.bottom,
+        speakerCount: speakers.querySelectorAll(".immersive-current-speaker").length,
+        captionsWithinStage: stage.contains(element.querySelector(".immersive-captions")) && captions.top >= stageBox.top && captions.bottom <= stageBox.bottom,
+        stageBottom: stageBox.bottom,
+        transcriptTop: transcript.top,
+      };
+    });
+    expect(singleLayout.speakersWithinStage).toBe(true);
+    expect(singleLayout.speakerCount).toBeGreaterThan(0);
+    expect(singleLayout.captionsWithinStage).toBe(true);
+    expect(singleLayout.stageBottom).toBeLessThanOrEqual(singleLayout.transcriptTop + 1);
+
+    const content = dialog.locator(".immersive-content");
+    expect(await content.evaluate((element) => element.scrollHeight)).toBeGreaterThan(await content.evaluate((element) => element.clientHeight));
+    await content.hover({ position: { x: 4, y: 40 } });
+    await page.mouse.wheel(0, 320);
+    await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    const search = dialog.getByLabel("Search transcript", { exact: true });
+    await search.click();
+    await expect(search).toBeFocused();
+    await search.fill("second speaker");
+    await expect(dialog.locator(".immersive-transcript-list")).toContainText("The second speaker answers the question.");
+    await dialog.getByRole("button", { name: "Close transcript", exact: true }).click();
+    await expect(dialog.locator(".immersive-transcript")).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "Reading", exact: true })).toBeFocused();
+
+    await dialog.getByRole("button", { name: "Table", exact: true }).click();
+    await expect(dialog.locator(".immersive-table-speakers .immersive-table-speaker")).toHaveCount(4);
+  });
+}
+
+test("immersive tablet stage sizing stays within the 601–1000px breakpoint", async ({ page }) => {
+  await page.addInitScript(() => {
+    HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable"));
+  });
+  const meeting = fixtureMeeting();
+  meeting.speakers.push(...[3, 4].map((number) => ({
+    id: `${String(number).repeat(8)}-${String(number).repeat(4)}-4${String(number).repeat(3)}-8${String(number).repeat(3)}-${String(number).repeat(12)}`,
+    name: `Speaker ${number}`,
+    confirmed: false,
+    sourceLabels: ["fixture"],
+  })));
+  await createFixture(page, "immersive-breakpoints.wav", meeting);
+  await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Immersive playback", exact: true });
+  await dialog.getByRole("button", { name: "Table", exact: true }).click();
+  await dialog.getByRole("button", { name: "Reading", exact: true }).click();
+
+  for (const width of [601, 768, 1000, 600, 1001, 390, 1440]) {
+    await page.setViewportSize({ width, height: width <= 600 ? 844 : 1024 });
+    const layout = await dialog.evaluate((element) => {
+      const content = element.querySelector<HTMLElement>(".immersive-content")!;
+      const stage = element.querySelector<HTMLElement>(".immersive-stage")!;
+      const transcript = element.querySelector<HTMLElement>(".immersive-transcript")!;
+      const stageBox = stage.getBoundingClientRect();
+      const transcriptBox = transcript.getBoundingClientRect();
+      const style = getComputedStyle(stage);
+      return {
+        width: innerWidth,
+        stageFlex: style.flex,
+        contentDirection: getComputedStyle(content).flexDirection,
+        transcriptPosition: getComputedStyle(transcript).position,
+        stage: { left: stageBox.left, right: stageBox.right, top: stageBox.top, bottom: stageBox.bottom },
+        transcript: { left: transcriptBox.left, right: transcriptBox.right, top: transcriptBox.top, bottom: transcriptBox.bottom },
+        contentOverflow: getComputedStyle(content).overflow,
+      };
+    });
+    if (width >= 601 && width <= 1000) {
+      expect(layout.stageFlex, `tablet stage flex at ${width}px`).toBe("0 0 auto");
+      expect(layout.contentDirection, `tablet flow at ${width}px`).toBe("column");
+      expect(layout.transcriptPosition, `tablet transcript flow at ${width}px`).toBe("static");
+      expect(layout.stage.bottom, `tablet stage ends before transcript at ${width}px`).toBeLessThanOrEqual(layout.transcript.top + 1);
+    } else if (width <= 600) {
+      expect(layout.stageFlex, `mobile stage flex at ${width}px`).toBe("1 1 0%");
+      expect(layout.transcriptPosition, `mobile transcript overlay at ${width}px`).toBe("absolute");
+      expect(layout.contentOverflow, `mobile canvas remains clipped at ${width}px`).toBe("hidden");
+    } else {
+      expect(layout.stageFlex, `desktop stage flex at ${width}px`).toBe("1 1 0%");
+      expect(layout.contentDirection, `desktop row at ${width}px`).toBe("row");
+      expect(layout.transcriptPosition, `desktop transcript flow at ${width}px`).toBe("static");
+      expect(layout.stage.right).toBeLessThanOrEqual(layout.transcript.left + 1);
+    }
+  }
+});
+
 test("immersive fullscreen control returns to the player without stopping playback", async ({ page, browserName }) => {
   test.skip(browserName !== "chromium", "Native fullscreen is verified in Chromium; WebKit falls back when unsupported.");
   await createFixture(page);

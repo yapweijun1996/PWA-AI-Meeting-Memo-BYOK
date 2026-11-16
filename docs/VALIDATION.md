@@ -1,5 +1,13 @@
 # Validation record
 
+## Tablet immersive stage containment — 2026-11-16
+
+Fresh current-source reproduction at 768x1024 showed the four-speaker Table/Reading stage ending at 436.3px, caption ending at 682.2px and transcript starting at 448.3px. A single `flex: 0 0 auto` declaration, scoped to 601–1000px, prevents the stage from shrinking below its contents. Desktop row and mobile overlay/inner scrolling are retained. Root viewed actual 1440x900, 768x1024 and 390x844 views plus the tablet search state; subjective score 88 (17 hierarchy, 17 spacing, 13 typography, 14 color, 14 consistency, 13 responsive).
+
+Independent Node 22.23.3 checks passed normal lint, 328 unit tests, SSOT 354 unchanged, types/build/artifact and **8/8 Chromium/WebKit immersive cases** in 34.8s. Coverage includes normal/maximum app text, Table and Single with Reading, stage/label/caption containment, real wheel scrolling, unforced search/close/focus, 601/768/1000 boundaries and unchanged 600/1001/390/1440 modes. The first author run's assumption that clicking an already-visible search field must scroll failed; traces were retained and the replacement check uses real wheel input rather than weakening containment or forcing clicks. The PWA readiness investigation below was resolved before release; independent two-engine protection/failure/recovery passed.
+
+A separate root synthetic in-page probe measured stage bottom 696.2px, caption bottom 682.2px and transcript top 708.2px in both engines, with working wheel/search/close, zero measured console/page errors and zero external requests. This is layout evidence with controlled media/fullscreen behavior, not native codec, physical-device or speaker-quality acceptance. Hosted publication/readback is pending. The remaining semantic migration must start from this corrected layout; the combined responsive/device tasks remain open.
+
 ## PWA activation test synchronization — 2026-11-16
 
 The tablet candidate's original PWA run passed Chromium but failed WebKit while waiting for the existing activation-failure feedback. An instrumented unchanged-assertion WebKit run passed; it does not identify the original natural failure's exact scheduling. A controlled registration-delivery probe demonstrated the fixture gap: after `Updating…` appeared and the clock advanced 15,001ms, the registration promise resolved and only then armed the 15-second deadline. The original five-second feedback assertion failed under that controlled ordering. Diagnostic traces/events and the instrumentation's initial event-persistence limitation are retained privately.
