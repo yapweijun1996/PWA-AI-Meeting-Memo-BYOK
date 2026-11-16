@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
+import { ACOUSTIC_POLICY } from "../../src/domain/acoustic-speaker";
 
 /**
  * Pending integration in feat/browser-speaker-continuity. This browser test
@@ -670,3 +671,131 @@ test("suggests the most similar voice in speaker review and merges it reversibly
   await hints.getByRole("button", { name: "Regroup with a head count", exact: true }).click();
   await expect(page.getByRole("dialog").getByText("How many people spoke? (optional)")).toBeVisible();
 });
+
+for (const language of ["en", "zh-CN"] as const) {
+  test(`discloses model licence sources and activates them by keyboard without model or API requests (${language})`, async ({ page, context, browserName }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const chinese = language === "zh-CN";
+    const label = (english: string, translated: string) => chinese ? translated : english;
+    const reviewedConversion = "https://huggingface.co/Xenova/wavlm-base-plus-sv/blob/e61029603001bd11295c36d878698708bf59190f/README.md";
+    // Legal evidence stays pinned: a model change must trigger a new licence review.
+    expect(reviewedConversion).toBe(`https://huggingface.co/${ACOUSTIC_POLICY.modelId}/blob/${ACOUSTIC_POLICY.modelRevision}/README.md`);
+    const windowsWebKit = browserName === "webkit" && process.platform === "win32";
+    if (windowsWebKit) {
+      test.info().annotations.push({ type: "coverage-gap", description: "Windows WebKit: focused-anchor Enter activation only; sequential Tab reachability remains unverified. Prior failed navigation traces are retained in the REL03 evidence." });
+    }
+    const outgoing: string[] = [];
+    const activations: { url: string; referrer: string | null }[] = [];
+    let expectedSource: string | null = null;
+    await context.route("https://**/*", (route) => {
+      const request = route.request();
+      if (request.url() === expectedSource) {
+        activations.push({ url: request.url(), referrer: request.headers().referer ?? null });
+        return route.fulfill({ contentType: "text/html", body: '<!doctype html><link rel="icon" href="data:,"><title>Mock model source</title><h1>Mock model source</h1>' });
+      }
+      outgoing.push(request.url());
+      return route.abort();
+    });
+    await installDeterministicLocalEmbedding(page);
+    await page.goto(base);
+    await seedOldRun(page, oldRunFixture());
+    await page.evaluate((id) => { location.hash = `#/meetings/${id}`; }, meetingId);
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Old completed chunked run", exact: true, level: 1 })).toBeVisible();
+    await page.locator(".topbar-language select").selectOption(language);
+    await expect(page.locator("html")).toHaveAttribute("lang", language);
+    const before = await readMeeting(page);
+
+    for (const consentContext of ["local-analysis", "transcription"] as const) {
+      const local = consentContext === "local-analysis";
+      const previousActivations = activations.length;
+      const opener = page.getByRole("button", { name: local ? label("Auto-match voices", "自动关联声音") : label("Transcribe", "转录"), exact: true });
+      await expect(opener).toBeEnabled();
+      await opener.focus();
+      await expect(opener).toBeFocused();
+      await page.keyboard.press("Enter");
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+      for (const disclosure of ["102 MB", "huggingface.co", "SHA-256", "CC BY-SA 3.0", label("browser details", "浏览器信息"), label("deleted in Settings", "在设置中删除")]) {
+        await expect(dialog).toContainText(disclosure);
+      }
+      await expect(dialog.getByText(label("Microsoft’s upstream model card links CC BY-SA 3.0. Review of the ONNX conversion’s attribution and licence notices is still open.", "Microsoft 上游模型卡链接至 CC BY-SA 3.0。ONNX 转换版本的署名与许可证声明仍待核查。"), { exact: true })).toBeVisible();
+      await expect(dialog).not.toContainText(/has not declared a licence|未声明许可证/);
+      await expect(dialog).toContainText(local
+        ? label("no audio, transcript, vector or key is sent anywhere", "不会发送录音、转录、向量或密钥")
+        : label("not sent with the transcription request", "不会随转录请求发送"));
+      if (local) {
+        await expect(dialog.getByRole("checkbox")).toHaveCount(0);
+        await expect(dialog.getByRole("button", { name: label("Download and analyze locally", "下载并在本地分析"), exact: true })).toBeEnabled();
+      } else {
+        const continuity = dialog.getByRole("checkbox");
+        await expect(continuity).toHaveCount(1);
+        await expect(continuity).not.toBeChecked();
+        await continuity.check();
+        await expect(continuity).toBeChecked();
+        await expect(dialog.getByRole("button", { name: label("Confirm and send 2 requests", "确认并发送 2 次请求"), exact: true })).toBeDisabled();
+        await expect(dialog).not.toContainText(label("no audio, transcript, vector or key is sent anywhere", "不会发送录音、转录、向量或密钥"));
+      }
+
+      const summary = dialog.locator("summary").filter({ hasText: label("Model sources and licence", "模型来源与许可证") });
+      await summary.focus();
+      await expect(summary).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect(summary.locator("..")).toHaveAttribute("open", "");
+      expect(activations).toHaveLength(previousActivations);
+      expect(outgoing).toEqual([]);
+      for (const [name, href] of [
+        [label("Microsoft model card", "Microsoft 模型卡"), "https://huggingface.co/microsoft/wavlm-base-plus-sv/blob/feb593a6c23c1cc3d9510425c29b0a14d2b07b1e/README.md"],
+        [label("Upstream licence (CC BY-SA 3.0)", "上游许可证（CC BY-SA 3.0）"), "https://github.com/microsoft/UniSpeech/blob/8f8cbd22d352fc59dfd5bf19de979b05bb5c7938/LICENSE"],
+        [label("Xenova ONNX model card", "Xenova ONNX 模型卡"), reviewedConversion],
+      ]) {
+        const link = dialog.getByRole("link", { name, exact: true });
+        await expect(link).toBeVisible();
+        await expect(link).toHaveAttribute("href", href);
+        await expect(link).toHaveAttribute("target", "_blank");
+        await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+        // Explicit focus proves activation only in Windows WebKit, never sequential Tab reachability.
+        if (windowsWebKit) await link.focus();
+        else await page.keyboard.press("Tab");
+        await expect(link).toBeFocused();
+        const beforeActivation = activations.length;
+        expectedSource = href;
+        const popupPromise = context.waitForEvent("page");
+        await page.keyboard.press("Enter");
+        const popup = await popupPromise;
+        await expect(popup).toHaveURL(href);
+        await expect(popup.getByRole("heading", { name: "Mock model source", exact: true })).toBeVisible();
+        expect(await popup.evaluate(() => window.opener === null)).toBe(true);
+        expect(activations).toHaveLength(beforeActivation + 1);
+        expect(activations.at(-1)).toEqual({ url: href, referrer: null });
+        await popup.close();
+        expectedSource = null;
+        await page.bringToFront();
+        await expect(link).toBeFocused();
+      }
+      if (local) {
+        await page.keyboard.press("Tab");
+        await expect(dialog.getByRole("spinbutton")).toBeFocused();
+      }
+      await page.keyboard.press("Tab");
+      const cancel = dialog.getByRole("button", { name: label("Cancel", "取消"), exact: true });
+      await expect(cancel).toBeFocused();
+      await expect(cancel).toBeInViewport({ ratio: 1 });
+      const confirmation = dialog.getByRole("button", { name: local ? label("Download and analyze locally", "下载并在本地分析") : label("Confirm and send 2 requests", "确认并发送 2 次请求"), exact: true });
+      await expect(confirmation).toBeInViewport({ ratio: 1 });
+      if (local) {
+        await page.keyboard.press("Tab");
+        await expect(confirmation).toBeFocused();
+      }
+      expect(outgoing).toEqual([]);
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      await expect(opener).toBeFocused();
+      await expect(page.getByRole("alert")).toHaveCount(0);
+      expect(await readMeeting(page)).toEqual(before);
+      expect(await readCheckpointState(page)).toBeNull();
+      expect(outgoing).toEqual([]);
+      expect(activations).toHaveLength(previousActivations + 3);
+    }
+  });
+}

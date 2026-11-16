@@ -76,6 +76,7 @@ import { ReferenceVideo } from "./ReferenceVideo";
 import { usePlaybackClock } from "./usePlaybackClock";
 import { useUiLanguage } from "../ui-language";
 import { translateMessage } from "../ui-messages";
+import { SpeakerModelNotice } from "./SpeakerModelNotice";
 export function MeetingWorkspace({
   meeting: m,
   onUpdate,
@@ -1885,9 +1886,7 @@ export function MeetingWorkspace({
           <div className="modal-body">
             <div className="notice">
               <ShieldCheck size={18} />
-              <span>
-                {t("If this build does not include the speaker model, it is downloaded once (about 102 MB) from huggingface.co after you confirm and checked against a pinned SHA-256. That host sees the request (your IP address and browser details). Audio is decoded in bounded windows; no audio, transcript, vector or key is sent anywhere. The model stays in this browser and can be deleted in Settings. The publisher has not declared a licence for these weights.", "如果此版本未内置说话人模型，确认后会从 huggingface.co 一次性下载（约 102 MB），并用固定的 SHA-256 校验。该网站会看到下载请求（您的 IP 地址和浏览器信息）。录音只在受限窗口中解码；不会发送录音、转录、向量或密钥。模型保存在此浏览器中，可在设置中删除。权重的发布方未声明许可证。")}
-              </span>
+              <SpeakerModelNotice t={t} context="local-analysis" />
             </div>
             <p className="muted">
               {t("The model policy is uncalibrated. The app associates only sufficiently supported same-meeting voices; overlap, missing timing and conflicting evidence remain unresolved. Human names and edits are preserved and the operation can be undone as a new revision.", "模型策略尚未校准。应用只关联证据充分的同一会议声音；重叠、缺少时间或冲突证据保持未解决。人工姓名和编辑会保留，操作会作为新修订并可撤销。")}
@@ -2020,9 +2019,7 @@ export function MeetingWorkspace({
                     />
                   </label>
                 )}
-                <p className="small muted">
-                  {t("Uses bounded local acoustic samples only; model thresholds are uncalibrated. Unknown or conflicting voices remain unresolved. The model and vectors stay in this browser and are not sent with the transcription request. If the model is not bundled with this build, confirming starts a one-time download from huggingface.co, which sees your IP address and browser details; the file is checked against a pinned SHA-256 and can be deleted in Settings. The publisher has not declared a licence for the weights.", "仅使用受限的本地声学样本；模型阈值尚未校准。未知或冲突声音会保持未解决。模型和向量保留在此浏览器中，不会随转录请求发送。如果此版本未内置模型，确认后会开始从 huggingface.co 一次性下载，该网站会看到您的 IP 地址和浏览器信息；文件会用固定的 SHA-256 校验，可在设置中删除。权重的发布方未声明许可证。")}
-                </p>
+                <SpeakerModelNotice t={t} context="transcription" />
               </div>
             )}
             <p className="muted">
