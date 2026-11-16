@@ -4,7 +4,7 @@ Status: DS04 includes a runnable synthetic [actual-component catalogue](../catal
 
 | Component / owner | Inputs and variants | Interaction and accessibility contract |
 | --- | --- | --- |
-| `Modal`, `src/components/ui.tsx` | `title`, `onClose`, children, optional class name | Wrap the native dialog; use its modal semantics, Escape/cancel path and an initial-focus target where needed. Global operation errors are visible alerts. Caller/native dialog behavior owns return focus; the catalogue explicitly restores its opener after unmount and tests Escape and Close. This is not a universal restoration claim for every application caller. Preserve unsaved work before closing. |
+| `Modal`, `src/components/ui.tsx` | `title`, `onClose`, children, optional class name | Wrap the native dialog; keep Escape/cancel and native or marked initial focus. After unmount, restore the previously focused opener without scrolling only if it remains connected and no other valid focus, explicit inert ancestor or competing open dialog prevents it. StrictMode replay cancels obsolete restoration. Feature-owned focus choices take precedence. Global operation errors remain visible alerts; preserve unsaved work before closing. |
 | `Brand`, `src/components/ui.tsx` | Standard and `small` variants | Shared brand and localized tagline. Do not copy brand markup into views. |
 | `Empty`, `src/components/ui.tsx` | Title and explanatory children | Describe the actual empty state and expose the relevant next action. Do not manufacture meeting content or workflow metrics. |
 | `Pill`, `src/components/ui.tsx` | `neutral`, `green`, `sand`, `danger`, `light` | Noninteractive status text. Use paired semantic foreground/background roles; do not turn a span into an unlabeled control. Color supplements the visible status. |
@@ -25,6 +25,8 @@ Status: DS04 includes a runnable synthetic [actual-component catalogue](../catal
 Use the existing native dialog and disclosure semantics where they provide the tested behavior. DS03 separately owns consolidation of repeated interactive controls; this inventory does not imply that a universal Button, Field or Tabs API already exists. Do not merge `MemoDateField` into a text editor solely to make the inventory shorter.
 
 The runtime application mounts the shared tooltip and toast layers once. Transient success and loading states must correspond to real state transitions. Errors, unsaved drafts, source revisions and confirmation remain owned by their feature; shared presentation must not hide or overwrite them.
+
+Dialog invokers own identifying their trigger. Keyboard activation naturally focuses it; a pointer invoker that needs the same guarantee can focus `event.currentTarget` before opening, as the catalogue does. `Modal` does not infer a mouse target when the browser left focus on the body. A feature may explicitly choose another return target, such as the source-evidence control, without duplicating the default fallback. The catalogue no longer maintains a separate restoration effect.
 
 ## Run and verify the catalogue
 

@@ -14,6 +14,8 @@ export function Modal({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  const restoreFrame = useRef<number | null>(null);
   const language = useUiLanguage();
   const [error, setError] = useState("");
   useEffect(() => {
@@ -24,9 +26,27 @@ export function Modal({
   }, []);
   useEffect(() => {
     const d = ref.current;
-    d?.showModal();
-    d?.querySelector<HTMLElement>("[data-initial-focus]")?.focus();
-    return () => d?.close();
+    if (!d) return;
+    if (restoreFrame.current !== null) cancelAnimationFrame(restoreFrame.current);
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active !== document.body && active !== document.documentElement && !d.contains(active)) {
+      opener.current = active;
+    }
+    d.showModal();
+    d.querySelector<HTMLElement>("[data-initial-focus]")?.focus();
+    return () => {
+      d.close();
+      // Wait for removal and caller-owned focus effects; StrictMode replay cancels this frame.
+      restoreFrame.current = requestAnimationFrame(() => {
+        restoreFrame.current = null;
+        const target = opener.current;
+        const focused = document.activeElement;
+        if (d.isConnected || !target?.isConnected || target.closest("[inert]")) return;
+        if (focused && focused !== document.body && focused !== document.documentElement && focused.isConnected) return;
+        if (Array.from(document.querySelectorAll("dialog[open]")).some(dialog => !dialog.contains(target))) return;
+        target.focus({ preventScroll: true });
+      });
+    };
   }, []);
   return (
     <dialog ref={ref} className={className} aria-label={title} onCancel={onClose}>

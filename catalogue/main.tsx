@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Brand, Empty, Modal, Pill } from "../src/components/ui";
 import { LoadingPlaceholder } from "../src/components/LoadingPlaceholder";
@@ -16,20 +16,12 @@ const editorInitial = "The next review step is documented here.\nSelect a line a
 
 function Catalogue() {
   const [modalOpen, setModalOpen] = useState(false);
-  const modalOpener = useRef<HTMLButtonElement>(null);
-  const modalWasOpen = useRef(false);
   const [loading, setLoading] = useState(false);
   const [editorValue, setEditorValue] = useState(editorInitial);
   const [editorDirty, setEditorDirty] = useState(false);
   const [editorSave, setEditorSave] = useState("Saved in this tab's memory");
   const failNextSave = useRef(false);
   const loadingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    // Restore after the dialog unmounts, when the opener is no longer inert.
-    if (!modalOpen && modalWasOpen.current) modalOpener.current?.focus();
-    modalWasOpen.current = modalOpen;
-  }, [modalOpen]);
 
   function simulateLocalLoad() {
     if (loadingTimer.current) clearTimeout(loadingTimer.current);
@@ -89,7 +81,7 @@ function Catalogue() {
           <section className="catalogue-card" aria-labelledby="dialog-title">
             <div className="catalogue-section-heading"><div><p className="catalogue-kicker">src/components/ui.tsx</p><h2 id="dialog-title">Native dialog</h2></div></div>
             <p className="catalogue-copy">The shared wrapper opens a native modal dialog and focuses its marked target.</p>
-            <button ref={modalOpener} type="button" className="button primary" data-modal-opener onClick={() => setModalOpen(true)}>Open sample dialog</button>
+            <button type="button" className="button primary" data-modal-opener onClick={event => { event.currentTarget.focus(); setModalOpen(true); }}>Open sample dialog</button>
             {modalOpen && <Modal title="Component sample" onClose={() => setModalOpen(false)} className="catalogue-dialog">
               <div className="modal-body">
               <p>This dialog has no persistent draft. Escape or close it to dismiss it.</p>
