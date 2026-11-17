@@ -1,4 +1,4 @@
-import { Button } from "../components/controls";
+import { Button, Field } from "../components/controls";
 import { Icon } from "../components/Icon";
 import { CheckCircle2, CircleAlert, Settings2, ShieldCheck, Sparkles, Wallet } from "lucide-react";
 import type { Meeting, MemoAgentPlan } from "../domain/model";
@@ -8,6 +8,7 @@ import { getKey, type Selection } from "../providers/credentials";
 import type { MemoPipeline } from "../providers/memo-plan";
 import { supportsAgentMemo } from "../providers/memo-agent-plan";
 import { translateMessage } from "../ui-messages";
+import { resolveAgentRoute, type AgentRoute } from "../domain/memo-agent-route";
 import "./memo-confirmation.css";
 
 export type MemoConfirmation = {
@@ -27,6 +28,7 @@ export function MemoGenerationConfirmation({
   onCostAcknowledged,
   onReviewedRetry,
   onToggleReview,
+  onRouteChange,
   onReview,
   onClose,
   onGenerate,
@@ -39,12 +41,15 @@ export function MemoGenerationConfirmation({
   onCostAcknowledged: (value: boolean) => void;
   onReviewedRetry: (value: boolean) => void;
   onToggleReview: (value: boolean) => void;
+  onRouteChange: (route: AgentRoute) => void;
   onReview: (target: "speakers" | "transcript" | "fields") => void;
   onClose: () => void;
   onGenerate: () => void;
 }) {
   const t = (en: string, zh: string) => translateUi(language, en, zh);
   const { selection, plan, agentPlan } = confirmation;
+  const route = agentPlan ? resolveAgentRoute(agentPlan) : undefined;
+  const routeLocked = Boolean(agentPlan && meeting.memoAgents?.some(saved => saved.id === agentPlan.id));
   const speakers = meeting.speakers.filter(speaker => !speaker.confirmed).length;
   const passages = meeting.segments.filter(segment => !segment.reviewed).length;
   const missingFields = meeting.segments.filter(segment => !segment.speakerIds.length || segment.start === null || segment.end === null).length;
@@ -100,11 +105,24 @@ export function MemoGenerationConfirmation({
         {supportsAgentMemo(selection) ? <>
           <label className="checkbox-label confirmation-consent memo-confirm-checkbox"><input type="checkbox" checked={!!agentPlan} onChange={event => onToggleReview(event.target.checked)} /><span>{t("Use selective transcript review (Pi, optional)", "使用选择性转录复核（Pi，可选）")}</span></label>
           {agentPlan ? <>
+            {route && <>
+              <div className="memo-route-fields">
+                <Field label={t("Reasoning effort", "推理强度")}><select disabled={routeLocked} value={route.reasoning} onChange={event => onRouteChange({ ...route, reasoning: event.target.value as AgentRoute["reasoning"] })}>
+                  <option value="low">{t("Low", "低")}</option><option value="medium">{t("Medium", "中")}</option><option value="high">{t("High", "高")}</option>
+                </select></Field>
+                <Field label={t("Output token limit", "输出 token 上限")}><select disabled={routeLocked} value={route.maxOutputTokens} onChange={event => onRouteChange({ ...route, maxOutputTokens: Number(event.target.value) as AgentRoute["maxOutputTokens"] })}>
+                  <option value={4096}>4,096</option><option value={16384}>16,384</option><option value={32768}>32,768</option>
+                </select></Field>
+              </div>
+              {routeLocked && <p className="memo-confirm-hint">{t("Continuing the saved route and parameters. They cannot change during this review.", "将继续使用已保存的路线和参数；本轮复核中不可更换。")}</p>}
+              <p className="memo-confirm-hint">{t("Manual route; live account compatibility and memo quality are not benchmark-verified. Higher limits do not guarantee better results.", "手动路线；真实账户兼容性及纪要质量尚未经基准验证。更高上限不保证更好的结果。")}</p>
+              {selection.provider === "openrouter" && <p className="memo-confirm-hint">{t("OpenRouter → OpenAI only. Automatic provider fallback is disabled; unavailable routes stop the review.", "仅使用 OpenRouter → OpenAI。已禁用服务商自动回退；路线不可用时会停止复核。")}</p>}
+            </>}
             <p className="memo-confirm-hint">{t("Pi continues gathering evidence without a fixed request count. Repeated lookups without progress pause the review. This is selective coverage; total cost is unknown.", "Pi 会持续收集证据，不设固定请求次数；重复查询没有进展时会暂停。这仍是选择性覆盖，总费用未知。")}</p>
             <p className="memo-confirm-hint">{t("Space is checked before each request. If the meeting record fills, review pauses and saved responses remain.", "每次请求前都会检查空间；会议记录空间不足时复核会暂停，已保存的回应仍保留。")}</p>
             <details className="memo-confirm-details"><summary>{t("Review limits", "复核限制")}</summary><p>{t("Request or save failure stops the run. Reload never resumes it automatically. Limits: 256 KiB per request, 4 MiB per response, 8 KiB per lookup.", "请求或保存失败即停止；重新加载不会自动恢复。限制：每次请求 256 KiB、每次回应 4 MiB、每次查询 8 KiB。")}</p></details>
           </> : <p className="memo-confirm-hint">{t("Pi reads selected excerpts; it does not guarantee a complete review.", "Pi 读取选取的片段，不保证完整审阅。")}</p>}
-        </> : <p className="memo-confirm-hint">{t("Pi review is available with OpenAI GPT-6 Luna.", "Pi 复核适用于 OpenAI GPT-6 Luna。")}</p>}
+        </> : <p className="memo-confirm-hint">{t("Pi review supports OpenAI gpt-6-luna or OpenRouter openai/gpt-6-luna. Select an explicit route in Settings.", "Pi 复核支持 OpenAI gpt-6-luna 或 OpenRouter openai/gpt-6-luna。请在设置中选择明确路线。")}</p>}
       </section>
 
       <section className="memo-confirm-section memo-confirm-cost" aria-labelledby="memo-cost-title">

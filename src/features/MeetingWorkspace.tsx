@@ -2009,6 +2009,12 @@ export function MeetingWorkspace({
             reviewedRetry={reviewedRetry}
             onCostAcknowledged={setCostAcknowledged}
             onReviewedRetry={setReviewedRetry}
+            onRouteChange={route => {
+              if (!confirmed.agentPlan || m.memoAgents?.some(plan => plan.id === confirmed.agentPlan!.id)) return;
+              setConfirmed({ ...confirmed, agentPlan: { ...confirmed.agentPlan, route } });
+              setCostAcknowledged(false);
+              setReviewedRetry(false);
+            }}
             onToggleReview={enabled => {
               try {
                 const agentPlan = enabled ? resumableAgentMemo(m, confirmed.selection) ?? planAgentMemo(m, confirmed.selection, getMemoOutputLanguage()) : undefined;

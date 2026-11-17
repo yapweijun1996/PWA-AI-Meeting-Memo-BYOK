@@ -100,6 +100,27 @@ dialog.memo-confirm-dialog[open] {
   margin-top: 6px;
 }
 
+.memo-route-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: 8px 12px;
+  margin-block: 8px;
+}
+
+.memo-route-fields label,
+.memo-route-fields select {
+  min-width: 0;
+  width: 100%;
+}
+
+.memo-route-fields label {
+  margin-bottom: 0;
+}
+
+.memo-route-fields select {
+  block-size: 44px;
+}
+
 .memo-confirm-checks {
   display: grid;
   gap: 5px;

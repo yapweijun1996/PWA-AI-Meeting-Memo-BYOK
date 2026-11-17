@@ -1,5 +1,10 @@
 // Translate only application-owned fixed messages; never rewrite user content.
 const messages: Record<string, string> = {
+  "The provider reported a different Pi model route. Review the saved response before continuing.": "服务商报告了不同的 Pi 模型路线；继续前请核对已保存的回应。",
+  "Pi review requires a supported explicit model route. Choose a supported model in Settings.": "Pi 复核需要受支持的明确模型路线，请在设置中选择支持的模型。",
+  "The saved Pi model route does not match its provider and model.": "保存的 Pi 路线与服务商及模型不匹配，已停止处理。",
+  "The saved assistant response does not match its Pi model route.": "保存的模型回应与 Pi 路线不匹配，已停止处理。",
+  "Add the selected provider API key in Settings before Pi review. Sign-in tokens are not supported.": "请先在设置中添加所选服务商的 API 密钥；不支持使用登录令牌。",
   "Completed transcription results are missing from this browser or backup. Continue in the original browser that retains them. To deliberately transcribe again, create a separate meeting; no new request was sent.": "此浏览器或备份缺少已完成的分段转录结果。请回到仍保留这些结果的原浏览器继续。若决定重新付费转录，请另建会议；尚未发送新的请求。",
   "Recording identity could not be verified. Use the original recording; for an older restored backup, export a new backup from the original meeting first. Existing data was retained.": "无法核实录音是否匹配，请使用原始录音。若恢复的是旧版备份，请先从原会议重新导出备份。现有数据已保留。",
   "Another import changed this recording. Existing data was retained.": "另一项导入已更改此录音。现有数据已保留。",

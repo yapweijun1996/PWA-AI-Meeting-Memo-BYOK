@@ -145,7 +145,13 @@ for (const language of ["en", "zh-CN"] as const)
           )
           .toBeGreaterThan(0);
       }
-      await footer.getByRole("note").focus();
+      // Finish pointer scrolling before the keyboard-only tooltip assertion.
+      // A stationary pointer over Settings can otherwise replace the focus hint.
+      await page.mouse.move(0, 0);
+      const storageNote = footer.getByRole("note");
+      await storageNote.scrollIntoViewIfNeeded();
+      await storageNote.focus();
+      await expect(storageNote).toBeFocused();
       await expect(page.getByRole("tooltip")).toContainText(
         chinese
           ? "已保存在此设备 · 本地存储"

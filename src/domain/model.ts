@@ -1,6 +1,7 @@
 import { MEMO_OUTPUT_LANGUAGES } from "./memo-language";
 import { z } from "zod";
-import {AgentContextItemSchema, MEMO_AGENT_LEGACY_REQUEST_LIMIT, MEMO_AGENT_MAX_TOOLS_PER_RESPONSE, MEMO_AGENT_MODEL, MEMO_AGENT_RECORD_BYTES} from "./memo-agent-contract";
+import {AgentContextItemSchema, MEMO_AGENT_LEGACY_REQUEST_LIMIT, MEMO_AGENT_MAX_TOOLS_PER_RESPONSE, MEMO_AGENT_RECORD_BYTES} from "./memo-agent-contract";
+import { AgentRouteSchema, resolveAgentRoute } from "./memo-agent-route";
 import { ReferenceVideoSchema, type ReferenceVideo } from "./reference-video";
 // A synthesis can cite up to five extraction facts, each with up to 100 sources.
 export const MAX_MEMO_ITEM_SOURCES = 500;
@@ -138,6 +139,7 @@ export const JobSchema = z
       .optional(),
     provider: z.enum(["openai", "openrouter"]).optional(),
     model: z.string().min(1).max(100).optional(),
+    upstreamProvider: z.string().min(1).max(80).optional(),
     reportedCostUsd: z.number().finite().nonnegative().nullable().optional(),
     message: z.string().max(1000),
     inputRevision: z.number().int().positive(),
@@ -178,7 +180,8 @@ const ReferencedPipelineSnapshotSchema = PipelineSnapshotSchema.omit({segments: 
 }).strict();
 export const MAX_JOBS = 400;
 export const MemoAgentPlanSchema = z.object({
-  id: key, provider: z.literal("openai"), model: z.literal(MEMO_AGENT_MODEL),
+  id: key, provider: z.enum(["openai", "openrouter"]), model: z.string().min(1).max(100),
+  route: AgentRouteSchema.optional(),
   createdAt: z.iso.datetime(), sourceRevision: z.number().int().positive(),
   outputLanguage: z.enum(MEMO_OUTPUT_LANGUAGES), snapshot: ReferencedPipelineSnapshotSchema,
   requestLimit: z.literal(MEMO_AGENT_LEGACY_REQUEST_LIMIT).nullable(), jobIds: z.array(key).max(MAX_JOBS),
@@ -395,6 +398,7 @@ export function validateMeeting(value: unknown): Meeting {
     if (job.agentId && (job.stage !== "memo" || job.pipelineId || job.contextual || !agents.has(job.agentId))) throw new Error("Unresolved memo agent job.");
   }
   for (const plan of agents.values()) {
+    resolveAgentRoute(plan);
     new Intl.DateTimeFormat("en", {timeZone: plan.snapshot.timezone}).format();
     if (plan.sourceRevision !== plan.snapshot.revision || !/^\d{4}-\d{2}-\d{2}$/.test(plan.snapshot.date) || new Date(`${plan.snapshot.date}T12:00:00Z`).toISOString().slice(0,10) !== plan.snapshot.date)
       throw new Error("Invalid agent source snapshot.");

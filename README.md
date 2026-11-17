@@ -4,7 +4,7 @@
 
 A browser-first workspace for recordings, speaker corrections, evidence-linked meeting notes, and local backups. Bring your own OpenAI or OpenRouter keys; no companion or application server is required.
 
-OpenAI GPT-6 Luna also offers an optional Pi selective-review mode: bounded local transcript search/range tools, useful continuation without a fixed cumulative request count, and saved response receipts. It does not promise complete transcript coverage. The standard memo flow remains the default. See [limits and recovery](docs/PI-MEMO-READINESS.md); live provider/account quality remains unverified.
+OpenAI `gpt-6-luna` and OpenRouter `openai/gpt-6-luna` offer an optional Pi selective-review mode: bounded local transcript search/range tools, useful continuation without a fixed cumulative request count, and saved response receipts. It does not promise complete transcript coverage. Routes and execution parameters are saved explicitly; OpenRouter is pinned to the OpenAI upstream without fallback. These are two transport routes for the same model, not a measured multi-model quality router. See [routing status](docs/MODEL-ROUTING.md). The standard memo flow remains the default. See [limits and recovery](docs/PI-MEMO-READINESS.md); live provider/account quality remains unverified.
 
 **Status:** implemented browser beta. Local automated checks cover the review, recovery, speaker-listening and source-video workflows. Real recording accuracy, paid account access, and physical-phone acceptance remain user-run gates; this is not a claim of validated diarization quality.
 

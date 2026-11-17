@@ -11,16 +11,16 @@ import {
   MEMO_AGENT_MAX_RANGE_SEGMENTS,
   MEMO_AGENT_MAX_CALL_ID_LENGTH,
   MEMO_AGENT_MAX_TOOL_NAME_LENGTH,
-  MEMO_AGENT_MODEL,
   MEMO_AGENT_RECORD_BYTES,
   MEMO_AGENT_TOOL_BYTES,
 } from "../domain/memo-agent-contract";
 import type { MemoOutputLanguage } from "../domain/memo-language";
 import type { Selection } from "./credentials";
+import { agentRouteProfile, newAgentRoute } from "../domain/memo-agent-route";
 
 const encoder = new TextEncoder();
 export const supportsAgentMemo = (selection: Selection) =>
-  selection.provider === "openai" && selection.model === MEMO_AGENT_MODEL;
+  agentRouteProfile(selection) !== undefined;
 
 /** Reserve the next response, both final note copies and one bounded tool burst. */
 export function agentStorageReserve() {
@@ -56,8 +56,7 @@ export function planAgentMemo(
   selection: Selection,
   outputLanguage: MemoOutputLanguage,
 ): MemoAgentPlan {
-  if (!supportsAgentMemo(selection))
-    throw new Error("Selective review currently requires OpenAI GPT-6 Luna.");
+  const route = newAgentRoute(selection);
   if (!meeting.segments.some((source) => source.text.trim()))
     throw new Error("Add transcript text before planning a selective review.");
   if (
@@ -70,8 +69,9 @@ export function planAgentMemo(
     );
   const plan: MemoAgentPlan = {
     id: id(),
-    provider: "openai",
-    model: MEMO_AGENT_MODEL,
+    provider: selection.provider,
+    model: selection.model,
+    route,
     createdAt: new Date().toISOString(),
     sourceRevision: meeting.revision,
     outputLanguage,

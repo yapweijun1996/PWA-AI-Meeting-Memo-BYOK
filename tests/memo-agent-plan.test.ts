@@ -223,3 +223,10 @@ test("saved assistant records cannot switch provider, add system messages or exe
     ),
   ).toThrow();
 });
+
+test("saved response API and model must match the frozen route", () => {
+  const message = { role: "assistant", api: "openai-completions", provider: "openrouter", model: "openai/gpt-6-luna", timestamp: 1, content: [], stopReason: "stop", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 } };
+  const plan = planAgentMemo(sampleMeeting(), selection, "en");
+  expect(() => readAgentAssistant(JSON.stringify(message), plan.route)).toThrow("does not match");
+  expect(() => readAgentAssistant(JSON.stringify({ ...message, api: "openai-responses" }))).toThrow("does not match");
+});

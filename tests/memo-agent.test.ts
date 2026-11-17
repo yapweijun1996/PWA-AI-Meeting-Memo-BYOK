@@ -206,7 +206,8 @@ test("real Pi SSE transport saves each receipt, exact local tool evidence and fi
       const body = JSON.parse(init.body);
       expect(body.store).toBe(false);
       expect(body.stream).toBe(true);
-      expect(body.reasoning.effort).toBe("low");
+      expect(body.reasoning.effort).toBe("high");
+      expect(body.max_output_tokens).toBe(32768);
       expect(init.cache).toBe("no-store");
       expect(init.credentials).toBe("omit");
       expect(init.redirect).toBe("error");
@@ -761,4 +762,96 @@ test("legacy six-request checkpoints continue explicitly without losing receipts
   const exported = await readBackup(new File([await backupMeeting(completed)], "continued.zip"));
   expect(exported.meeting.jobs).toHaveLength(7);
   expect(exported.meeting.memoAgents![0].requestLimit).toBeNull();
+});
+
+const routerSelection = { provider: "openrouter" as const, model: "openai/gpt-6-luna" };
+function routerSse(delta: object, finish: string, extra: object = {}) {
+  return new Response(`data: ${JSON.stringify({ id: "synthetic-router-response", model: routerSelection.model, provider: "OpenAI", choices: [{ index: 0, delta, finish_reason: finish }], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 }, ...extra })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
+}
+const routerReasoning = [{ type: "reasoning.encrypted", id: "synthetic-reasoning", data: "opaque-router-signature", format: "openai-responses-v1", index: 0 }];
+const routerCall = () => routerSse({ reasoning_details: routerReasoning, tool_calls: [{ index: 0, id: "call-router", type: "function", function: { name: "read_transcript_range", arguments: '{"startIndex":0,"count":2}' } }] }, "tool_calls");
+const routerFinal = (source: string) => routerSse({ content: final(source).content[0].text }, "stop");
+
+test("OpenRouter Pi saves exact route, tool evidence, actual usage and backup without changing original notes", async () => {
+  const { meeting, signal } = await setup();
+  const plan = planAgentMemo(meeting, routerSelection, "zh-CN");
+  plan.route = { ...plan.route!, reasoning: "medium", maxOutputTokens: 16384 };
+  let calls = 0;
+  const request = vi.fn(async (url, init) => {
+    expect(url).toBe("https://openrouter.ai/api/v1/chat/completions");
+    const persisted = (await getMeeting(meeting.id))!;
+    expect(persisted.memoAgents![0].route).toEqual(plan.route);
+    expect(persisted.jobs.at(-1)).toMatchObject({ state: "in_flight", provider: "openrouter", model: routerSelection.model });
+    const body = JSON.parse(init.body);
+    expect(body).toMatchObject({ reasoning: { effort: "medium" }, max_tokens: 16384, provider: { only: ["openai"], allow_fallbacks: false, require_parameters: true } });
+    expect(init).toMatchObject({ redirect: "error", cache: "no-store", credentials: "omit" });
+    if (++calls === 1) return routerCall();
+    expect(body.messages.some((message: { role: string }) => message.role === "tool")).toBe(true);
+    expect(body.messages.find((message: { role: string }) => message.role === "assistant").reasoning_details).toEqual(routerReasoning);
+    return routerFinal(meeting.segments[0].id);
+  });
+  vi.stubGlobal("fetch", request);
+  const completed = await runAgentMemo(meeting, plan, key, signal);
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(completed.memoAgents![0]).toMatchObject({ state: "completed", route: plan.route });
+  expect(completed.memos.slice(0, meeting.memos.length)).toEqual(meeting.memos);
+  expect(completed.memos.at(-1)?.model).toContain("OpenRouter: openai/gpt-6-luna");
+  expect(completed.jobs.every(job => job.upstreamProvider === "OpenAI" && job.usage?.inputTokens === 100 && job.reportedCostUsd === null)).toBe(true);
+  const restored = await readBackup(new File([await backupMeeting(completed)], "router.zip"));
+  expect(restored.meeting.memoAgents).toEqual(completed.memoAgents);
+  expect(restored.meeting.jobs).toEqual(completed.jobs);
+  expect(JSON.stringify(restored.meeting)).not.toContain(key);
+});
+
+test("legacy OpenAI checkpoints resume with low/4096 and keep their missing route field", async () => {
+  const { meeting, plan, signal } = await setup();
+  delete plan.route;
+  let calls = 0;
+  const request = vi.fn(async (_url, init) => {
+    const body = JSON.parse(init.body);
+    expect(body.reasoning.effort).toBe("low");
+    expect(body.max_output_tokens).toBe(4096);
+    return ++calls === 1 ? agentSse([call()]) : agentSse([final(meeting.segments[0].id)]);
+  });
+  vi.stubGlobal("fetch", request);
+  const completed = await runAgentMemo(meeting, plan, key, signal);
+  expect(completed.memoAgents![0].route).toBeUndefined();
+  expect(request).toHaveBeenCalledTimes(2);
+});
+
+test("interrupted OpenRouter review requires explicit authorization and resumes the frozen route", async () => {
+  const { meeting, signal } = await setup();
+  const plan = planAgentMemo(meeting, routerSelection, "en");
+  let calls = 0;
+  const request = vi.fn(async () => {
+    if (++calls === 1) return routerCall();
+    throw new Error("Synthetic interrupted transfer");
+  });
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
+  const saved = (await getMeeting(meeting.id))!;
+  expect(saved.jobs.at(-1)?.state).toBe("outcome_unknown");
+  expect(request).toHaveBeenCalledTimes(2);
+  await expect(runAgentMemo(saved, saved.memoAgents![0], key, signal)).rejects.toThrow("previous paid outcome");
+  await expect(runAgentMemo(saved, { ...saved.memoAgents![0], route: { ...plan.route!, reasoning: "low" } }, key, signal, true)).rejects.toThrow("confirmed review changed");
+  expect(request).toHaveBeenCalledTimes(2);
+  request.mockImplementation(async () => routerFinal(meeting.segments[0].id));
+  const completed = await runAgentMemo(saved, saved.memoAgents![0], key, signal, true);
+  expect(request).toHaveBeenCalledTimes(3);
+  expect(completed.memoAgents![0].route).toEqual(plan.route);
+  expect(completed.memoAgents![0].state).toBe("completed");
+});
+
+test.each([{ provider: "Azure" }, { model: "other/model" }, { provider: key }])("a reported OpenRouter substitution %j stops without fallback", async extra => {
+  const { meeting, signal } = await setup();
+  const plan = planAgentMemo(meeting, routerSelection, "en");
+  const request = vi.fn(async () => routerSse({ content: "Unapproved model result" }, "stop", extra));
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
+  expect(request).toHaveBeenCalledTimes(1);
+  const saved = (await getMeeting(meeting.id))!;
+  expect(saved.jobs[0].state).toBe("outcome_unknown");
+  expect(saved.jobs[0].assistantRecord).toContain("different Pi model route");
+  expect(JSON.stringify(saved)).not.toContain(key);
+  expect(saved.memos).toEqual(meeting.memos);
 });

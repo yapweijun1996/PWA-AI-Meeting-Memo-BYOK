@@ -69,10 +69,11 @@ async function stream(route: Route, items: Record<string, unknown>[]) {
     body: sse(items),
   });
 }
-async function setup(page: Page, passageCount = 2) {
+async function setup(page: Page, passageCount = 2, provider: "openai" | "openrouter" = "openai") {
   await page.context().route("https://**/*", (route) => route.abort());
   await page.goto("./#/settings");
-  await page.getByLabel("OpenAI API key", { exact: true }).fill(key);
+  await page.getByLabel(provider === "openai" ? "OpenAI API key" : "OpenRouter API key", { exact: true }).fill(key);
+  await page.getByLabel("Memo provider", { exact: true }).selectOption(provider);
   await page
     .getByRole("button", { name: "Save settings", exact: true })
     .click();
@@ -615,4 +616,63 @@ test("local response recovery waits for a real cross-tab processing lock without
     .poll(async () => (await backup(page)).jobs[0]?.state)
     .toBe("completed");
   await other.close();
+});
+
+for (const width of [390, 1440]) {
+  test(`OpenRouter Pi route is confirmed, persisted and completed at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    const fixture = await setup(page, 2, "openrouter");
+    let calls = 0;
+    await page.route("https://openrouter.ai/api/v1/chat/completions", async route => {
+      const body = route.request().postDataJSON();
+      expect(body).toMatchObject({ model: "openai/gpt-6-luna", reasoning: { effort: "medium" }, max_tokens: 16384, provider: { only: ["openai"], order: ["openai"], allow_fallbacks: false, require_parameters: true } });
+      const first = calls++ === 0;
+      const delta = first ? { tool_calls: [{ index: 0, id: "call-router", type: "function", function: { name: "read_transcript_range", arguments: '{"startIndex":0,"count":2}' } }] } : { content: memo(fixture.segments[0].id).content[0].text };
+      await route.fulfill({ contentType: "text/event-stream", headers: { "Access-Control-Allow-Origin": "*" }, body: `data: ${JSON.stringify({ id: "synthetic-router", model: "openai/gpt-6-luna", provider: "OpenAI", choices: [{ index: 0, delta, finish_reason: first ? "tool_calls" : "stop" }], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } })}\n\ndata: [DONE]\n\n` });
+    });
+    const dialog = await confirm(page);
+    await expect(dialog.getByRole("combobox", { name: "Reasoning effort", exact: true })).toHaveValue("high");
+    await expect(dialog.getByRole("combobox", { name: "Output token limit", exact: true })).toHaveValue("32768");
+    await dialog.getByRole("combobox", { name: "Reasoning effort", exact: true }).selectOption("medium");
+    await dialog.getByRole("combobox", { name: "Output token limit", exact: true }).selectOption("16384");
+    await expect(dialog.getByRole("button", { name: "Generate new notes", exact: true })).toBeDisabled();
+    await expect(dialog).toContainText("not benchmark-verified");
+    await expect(dialog).toContainText("Automatic provider fallback is disabled");
+    expect(calls).toBe(0);
+    expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    expect((await dialog.getByRole("combobox", { name: "Reasoning effort", exact: true }).boundingBox())!.height).toBeGreaterThanOrEqual(42);
+    expect((await new AxeBuilder({ page }).include("dialog[open]").analyze()).violations).toEqual([]);
+    await dialog.getByRole("combobox", { name: "Reasoning effort", exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`router-${width}.png`) });
+    await dialog.getByRole("checkbox", { name: "I understand the selected data will be sent and may incur API charges.", exact: true }).check();
+    await dialog.getByRole("button", { name: "Generate new notes", exact: true }).click();
+    await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic selective review result");
+    expect(calls).toBe(2);
+    expect((await backup(page)).memoAgents[0]).toMatchObject({ state: "completed", route: { version: 1, profile: "openrouter-luna-v1", reasoning: "medium", maxOutputTokens: 16384 } });
+    await page.reload();
+    await page.getByRole("tab", { name: /Meeting notes/ }).click();
+    await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic selective review result");
+    expect(calls).toBe(2);
+  });
+}
+
+test("failed OpenRouter route stops once and reload preserves the locked parameters", async ({ page }) => {
+  await setup(page, 2, "openrouter");
+  let calls = 0;
+  await page.route("https://openrouter.ai/api/v1/chat/completions", async route => {
+    calls++;
+    await route.fulfill({ status: 503, contentType: "application/json", body: '{"error":{"message":"Synthetic unavailable route"}}' });
+  });
+  let dialog = await confirm(page);
+  await dialog.getByRole("button", { name: "Generate new notes", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Selective review progress" })).toContainText("Review the recorded outcome");
+  expect(calls).toBe(1);
+  await page.reload();
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  dialog = await confirm(page);
+  await expect(dialog.getByRole("combobox", { name: "Reasoning effort", exact: true })).toBeDisabled();
+  await expect(dialog.getByRole("combobox", { name: "Output token limit", exact: true })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Generate new notes", exact: true })).toBeDisabled();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(calls).toBe(1);
 });
