@@ -547,6 +547,7 @@ export default function App() {
                       <Button
                         key={value}
                         className={filter === value ? "selected" : ""}
+                        aria-pressed={filter === value}
                         onClick={() => setFilter(value)}
                       >
                         {label}
