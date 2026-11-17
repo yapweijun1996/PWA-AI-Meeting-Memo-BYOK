@@ -19,6 +19,7 @@ import type { MemoOutputLanguage } from "../domain/memo-language";
 import type { Selection } from "./credentials";
 import { agentRouteProfile, newAgentRoute, resolveAgentRoute } from "../domain/memo-agent-route";
 
+import { remainingAgentRequests } from "../domain/memo-agent-requests";
 import { readAgentAssistant } from "./agent-record";
 
 const encoder = new TextEncoder();
@@ -159,4 +160,9 @@ export function hasSavedAgentFinal(meeting: Meeting, plan: MemoAgentPlan): boole
   } catch {
     return false;
   }
+}
+
+/** At the ceiling, generation can only recover an existing final response locally. */
+export function canRecoverAgentFinalLocally(meeting: Meeting, plan: MemoAgentPlan): boolean {
+  return remainingAgentRequests(plan) === 0 && hasSavedAgentFinal(meeting, plan);
 }

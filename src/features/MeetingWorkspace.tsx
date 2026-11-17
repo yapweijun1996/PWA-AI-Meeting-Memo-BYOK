@@ -5,7 +5,7 @@ import { usePlayerClearance } from "./usePlayerClearance";
 import { translateUi } from "../i18n";
 import { planMemo, type MemoPipeline } from "../providers/memo-plan";
 import { resumablePipeline } from "../jobs/memo-pipeline";
-import {planAgentMemo, resumableAgentMemo, supportsAgentMemo} from "../providers/memo-agent-plan";
+import {canRecoverAgentFinalLocally, planAgentMemo, resumableAgentMemo, supportsAgentMemo} from "../providers/memo-agent-plan";
 import {AgentResponseRecovery} from "./AgentResponseRecovery";
 import {pendingAgentReceipt} from "../jobs/agent-recovery";
 import { speakerBackground } from "../components/speaker-appearance";
@@ -540,17 +540,18 @@ export function MeetingWorkspace({
   }
   async function process() {
     if (!confirmStage) return;
+    const localOnly = confirmStage === "memo" && Boolean(confirmed?.agentPlan && canRecoverAgentFinalLocally(m, confirmed.agentPlan));
     if (confirmStage === "memo") {
-      if (!confirmed || !costAcknowledged || !getKey(confirmed.selection.provider) || (confirmed.planError && !confirmed.agentPlan)) return;
+      if (!confirmed || (!localOnly && (!costAcknowledged || !getKey(confirmed.selection.provider))) || (confirmed.planError && !confirmed.agentPlan)) return;
       const previousAttempt = confirmed.agentPlan
         ? m.jobs.some(job => job.agentId === confirmed.agentPlan!.id && job.state !== "completed")
         : confirmed.plan && m.jobs.some(job => job.pipelineId === confirmed.plan!.id && job.state !== "completed");
-      if (previousAttempt && !reviewedRetry) return;
+      if (!localOnly && previousAttempt && !reviewedRetry) return;
     }
     const stage = confirmStage;
     setConfirmStage(undefined);
     setProcessing(true);
-    setProcessingKind("provider");
+    setProcessingKind(localOnly ? "local" : "provider");
     setChunkProgressText("");
     if (stage === "memo") navigateTab("memo");
     setNotice("");
@@ -593,7 +594,7 @@ export function MeetingWorkspace({
               setChunkProgress({ total, done, nextIndex: index + 1, blockedIndex: null });
             },
           })
-        : await runJob(m, stage, confirmed ? {...confirmed,reviewedRetry,onCheckpoint:onUpdate} : undefined);
+        : await runJob(m, stage, confirmed ? {...confirmed,reviewedRetry,localOnly,onCheckpoint:onUpdate} : undefined);
       onUpdate(completed);
       setViewVersion(undefined);
       let voiceNote = "";

@@ -21,6 +21,7 @@ import {
 import {
   agentMeeting,
   assertAgentStorageBudget,
+  hasSavedAgentFinal,
 } from "../providers/memo-agent-plan";
 import {
   readAgentTranscript,
@@ -39,7 +40,6 @@ import { hasPendingAgentReceipt, retainAgentReceipt } from "./agent-recovery";
 
 import { remainingAgentRequests, agentRequestInstruction, AGENT_REQUEST_LIMIT_MESSAGE } from "../domain/memo-agent-requests";
 import { resolveAgentRoute } from "../domain/memo-agent-route";
-import { agentModel, assertAgentTransport, streamAgentRoute } from "../providers/memo-agent-transport";
 
 const encoder = new TextEncoder();
 const localText = (value: string, key: string) => {
@@ -83,17 +83,16 @@ export async function runAgentMemo(
   signal: AbortSignal,
   reviewedRetry = false,
   onCheckpoint?: (meeting: Meeting) => void,
+  localOnly = false,
 ): Promise<Meeting> {
   if (hasPendingAgentReceipt())
     throw new Error(
       "Save or export the unsaved review response before another provider request.",
     );
   const route = resolveAgentRoute(proposed);
-  const model = agentModel(route);
   const readAgentAssistant = (record: string) => decodeAgentAssistant(record, route);
-  const requestError = (message: string) => createRequestError(model, message);
   key = key.trim();
-  if (!key.startsWith("sk-"))
+  if (!localOnly && !key.startsWith("sk-"))
     throw new Error(
       "Add the selected provider API key in Settings before Pi review. Sign-in tokens are not supported.",
     );
@@ -124,7 +123,10 @@ export async function runAgentMemo(
       throw new Error(
         "The confirmed review changed. Open its confirmation again.",
       );
+    if (localOnly && (!savedPlan || !hasSavedAgentFinal(current, plan)))
+      throw new Error("No saved final response is available for local recovery.");
     if (
+      !localOnly &&
       plan.jobIds.some((jobId) =>
         current!.jobs.some(
           (job) => job.id === jobId && job.state !== "completed",
@@ -291,7 +293,7 @@ export async function runAgentMemo(
           await finalize(record);
           return current!;
         } catch (error) {
-          if (plan.state === "completed") throw error;
+          if (localOnly || plan.state === "completed") throw error;
           plan.context.push({
             kind: "user",
             text: "The saved final result failed local validation. Read any missing evidence and return valid evidence-grounded JSON. Do not repeat unsupported claims.",
@@ -306,6 +308,10 @@ export async function runAgentMemo(
         });
       }
     }
+    if (localOnly) throw new Error("No saved final response is available for local recovery.");
+    const { agentModel, assertAgentTransport, streamAgentRoute } = await import("../providers/memo-agent-transport");
+    const model = agentModel(route);
+    const requestError = (message: string) => createRequestError(model, message);
     // Explicit continuation upgrades legacy metadata without resetting durable attempts.
     plan.requestLimit = MEMO_AGENT_MAX_REQUESTS;
     plan.state = "running";

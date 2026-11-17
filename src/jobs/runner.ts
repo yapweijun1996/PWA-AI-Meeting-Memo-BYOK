@@ -51,6 +51,7 @@ export async function runJob(
     plan?: MemoPipeline | null;
     agentPlan?: MemoAgentPlan;
     reviewedRetry?: boolean;
+    localOnly?: boolean;
     onCheckpoint?: (m: Meeting) => void;
   },
 ): Promise<Meeting> {
@@ -61,7 +62,8 @@ export async function runJob(
     throw new Error(
       "A request is active or its outcome needs review. Resolve it before submitting again.",
     );
-  if (m.jobs.length >= MAX_JOBS || m.memos.length >= 30 || m.runs.length >= 30)
+  const localOnly = stage === "memo" && Boolean(confirmed?.agentPlan && confirmed.localOnly);
+  if (!localOnly && (m.jobs.length >= MAX_JOBS || m.memos.length >= 30 || m.runs.length >= 30))
     throw new Error(
       "Meeting history limit reached. Back up this meeting and create a new one before further processing.",
     );
@@ -72,7 +74,7 @@ export async function runJob(
     const requestController=beginRequest(m.id);
     try {
       const {runAgentMemo}=await import("./memo-agent");
-      return await runAgentMemo(m,confirmed.agentPlan,getKey(selection.provider),requestController.signal,confirmed.reviewedRetry,confirmed.onCheckpoint);
+      return await runAgentMemo(m,confirmed.agentPlan,localOnly ? "" : getKey(selection.provider),requestController.signal,confirmed.reviewedRetry,confirmed.onCheckpoint,localOnly);
     } finally {finishRequest(requestController);}
   }
   if (stage === "memo" && confirmed?.plan)
