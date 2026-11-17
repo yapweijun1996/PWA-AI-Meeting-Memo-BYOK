@@ -155,6 +155,17 @@ checks. Verification and independent screenshot results follow execution.
   The native-clock gate ran last and passed with 37 observations, no mismatches
   and no cross-frame rejection. Fresh integrated phone and desktop screenshots
   also received independent visual approval.
+- Main subsequently advanced to `4e8a413` with shared appearance and language
+  controls. Rebased without conflicts and retained those changes. The new
+  responsive fixture now uses the existing `changeTopbarLanguage` helper to
+  operate the real menu. Build, lint, SSOT, artifact, 520 unit tests, 39 catalogue
+  cases and both PWA lifecycle checks passed on this final integration.
+- Final integration browser run passed **621 tests with three existing skips**
+  and no failures (13.5 minutes). Selecting the nine relevant suites also
+  selected the native-clock project; its dependencies expanded the run to all
+  624 cases in 51 files. The final native-clock gate passed with 52 observations,
+  no mismatches and no cross-frame rejection. This supersedes the earlier
+  605-pass run as final source-integration evidence.
 
 Final local commands used Node 22.22.0, within the repository's required range:
 
@@ -162,12 +173,21 @@ Final local commands used Node 22.22.0, within the repository's required range:
 | --- | --- |
 | `npm run build` | PASS: TypeScript and static production build |
 | `npm run lint` / `npm run typecheck` | PASS, including the corrected probe |
-| `npm run test:unit` | PASS: 519 tests |
+| `npm run test:unit` | PASS: 520 tests |
 | `npm run check:ssot` | PASS: reduced 54-unit baseline, no increased allowance |
 | `npm run check:artifact` | PASS: static artifact and publication boundary |
-| `npm run test:catalogue` | PASS: 37 browser cases |
+| `npm run test:catalogue` | PASS: 39 browser cases |
 | `npm run test:pwa` | PASS: Chromium and WebKit update/recovery |
-| `PLAYBACK_UX_SCREENSHOTS=1 npm run test:e2e` | PASS: 605; SKIP: 3 existing WebKit-specific exclusions |
+| Final integration browser command below | PASS: 621; SKIP: 3 existing WebKit-specific exclusions |
+
+```sh
+PLAYBACK_UX_SCREENSHOTS=1 npm run test:e2e -- \
+  tests/browser/speaker-review.spec.ts tests/browser/appearance-system.spec.ts \
+  tests/browser/settings-appearance.spec.ts tests/browser/sidebar-confirmation.spec.ts \
+  tests/browser/theme-matrix.spec.ts tests/browser/localization.spec.ts \
+  tests/browser/workspace.spec.ts tests/browser/sidebar-check-feedback.spec.ts \
+  tests/browser/theme-token-roles.spec.ts
+```
 
 ## Verification scope and recovery
 

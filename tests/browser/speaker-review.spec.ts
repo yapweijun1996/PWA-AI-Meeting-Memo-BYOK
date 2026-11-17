@@ -1199,7 +1199,7 @@ for (const width of [1440, 768, 390]) for (const theme of ["light", "dark"]) {
     fixture.speakers.forEach(speaker => { speaker.name += " (part 1)"; });
     await createFixture(page, "speaker-review.wav", fixture);
     const before = sourceSnapshot(await storedMeeting(page));
-    await page.getByLabel("Display language", { exact: true }).selectOption("zh-CN");
+    await changeTopbarLanguage(page, "zh-CN");
     await page.getByRole("button", { name: "播放模式", exact: true }).click();
     await page.locator("audio").evaluate(element => {
       (element as HTMLMediaElement).currentTime = 0.2;
