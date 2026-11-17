@@ -437,11 +437,11 @@ The browser application, bounded long-memo pipeline and automatic Pages publicat
 | Evidence | Current result |
 | --- | --- |
 | Design and implementation on `main` | Each completed task has its own committed/pushed checkpoint in [implementation evidence](docs/IMPLEMENTATION-LOG.md) and Git history |
-| Current application release | `01dbe20`, [run 43798887650](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/43798887650): verify and publish PASS on Node 22.23.3; 281 unit tests, 297 browser cases passed / 3 skipped, PWA/artifact PASS |
-| Production readback | Exact served `01dbe20fa9e6242e10abc6765b9f82cd85961e6d`; fresh 390px Chromium, no horizontal overflow, page exceptions or provider requests |
+| Latest scoped application release | `4e8a413`, [run 44078416649](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/44078416649): verify and publish PASS on Node 22.23.3. Local: 520 unit tests, 39 catalogue cases, both-engine PWA and artifact PASS. Full browser run: 608 PASS / 3 skipped / 1 timing FAIL; unchanged timing case passed three isolated reruns. See [validation](docs/VALIDATION.md). |
+| Production readback | Exact served `4e8a413cbcc4ab6602a8528964692e7ad1f7c23f`; fresh Chromium/WebKit passed 38/38 hosted cases, including favicon palette/reload/cross-tab synchronization, responsive language/appearance controls, draft preservation and local-only recovery. Provider/model traffic blocked; real-worker evidence is the separate local PWA run. |
 | Historical additional local acceptance | Earlier v1/v2 compatibility, native Chromium playback and synthetic-owner-archive checks remain checkpoint evidence in validation; they are not fresh device or codec acceptance |
 | Active auto-deployment | [Trusted-main workflow](.github/workflows/pages.yml) checks before publishing only `dist/`; no provider keys are used |
-| Historical releases and repaired failures | Preserved in [validation](docs/VALIDATION.md); earlier failures do not describe the current release |
+| Historical releases and observed failures | Preserved in [validation](docs/VALIDATION.md), including the current full-suite timing excursion and its passing isolated reruns; historical checkpoints are not current release identities. |
 | Live provider/device evaluation | Exact authorized browser calls and Chrome speaker/time delivery are recorded; annotated model quality, production account/CORS reconciliation and physical-phone acceptance remain NOT RUN |
 
 Remaining acceptance gates are deliberate and stay unchecked:
