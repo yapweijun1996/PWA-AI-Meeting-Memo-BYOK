@@ -1646,24 +1646,37 @@ test("immersive highlights follow the real media clock without timeupdate", asyn
     const media = document.querySelector<HTMLAudioElement>("audio")!;
     const samples: number[] = [];
     let frames = 0;
+    let maxObservationDelayMs = 0;
     const deadline = performance.now() + 7000;
     await new Promise<void>((resolve, reject) => {
-      const tick = () => {
-        const time = media.currentTime;
-        const index = Math.floor((time - 0.2) / 0.2);
-        const marked = document.querySelector<HTMLElement>('.immersive-captions [data-current="true"]')?.textContent?.trim();
-        if (index >= 1 && index < 14) {
-          frames += 1;
-          if (marked !== `word${index}`) samples.push(time - (0.2 + index * 0.2));
-        }
-        if (time >= 3) resolve();
-        else if (performance.now() > deadline) reject(new Error("Native audio did not advance."));
-        else requestAnimationFrame(tick);
+      // Observe the completed rendering turn, after the application's clock rAF
+      // and React commit. Two independent rAF callbacks have no fixed order.
+      const tick = (frameTime: number) => {
+        let laterFrame = false;
+        const guard = requestAnimationFrame(() => { laterFrame = true; });
+        setTimeout(() => {
+          cancelAnimationFrame(guard);
+          const time = media.currentTime;
+          const index = Math.floor((time - 0.2) / 0.2);
+          if (laterFrame && index >= 1 && index < 14) {
+            reject(new Error(`Caption observation crossed into a later rendering frame at ${time}s.`));
+            return;
+          }
+          maxObservationDelayMs = Math.max(maxObservationDelayMs, performance.now() - frameTime);
+          const marked = document.querySelector<HTMLElement>('.immersive-captions [data-current="true"]')?.textContent?.trim();
+          if (index >= 1 && index < 14) {
+            frames += 1;
+            if (marked !== `word${index}`) samples.push(time - (0.2 + index * 0.2));
+          }
+          if (time >= 3) resolve();
+          else if (performance.now() > deadline) reject(new Error("Native audio did not advance."));
+          else requestAnimationFrame(tick);
+        }, 0);
       };
       requestAnimationFrame(tick);
     });
     media.pause();
-    return { frames, mismatches: samples.length, maxSeconds: Math.max(0, ...samples) };
+    return { frames, mismatches: samples.length, maxSeconds: Math.max(0, ...samples), maxObservationDelayMs };
   });
   console.log(`Native synthetic highlight clock: ${JSON.stringify(sample)}`);
   expect(sample.frames).toBeGreaterThan(20);

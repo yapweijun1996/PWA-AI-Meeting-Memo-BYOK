@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+const nativeClock = /immersive highlights follow the real media clock without timeupdate$/;
 export default defineConfig({
   testDir: "./tests/browser",
   fullyParallel: false,
@@ -18,7 +19,10 @@ export default defineConfig({
     timeout: 30000,
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "chromium", grepInvert: nativeClock, use: { ...devices["Desktop Chrome"] } },
     { name: "webkit", use: { ...devices["Desktop Safari"] } },
+    // The native-clock measurement must not compete with other browser workloads.
+    { name: "chromium-native-clock", testMatch: "speaker-review.spec.ts", grep: nativeClock,
+      dependencies: ["chromium", "webkit"], use: { ...devices["Desktop Chrome"] } },
   ],
 });

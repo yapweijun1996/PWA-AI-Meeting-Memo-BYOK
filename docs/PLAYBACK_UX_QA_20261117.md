@@ -117,6 +117,57 @@ checks. Verification and independent screenshot results follow execution.
 - Build, lint, SSOT, artifact checks and 519 unit tests passed before integrating
   concurrent speaker-review and playback-follow fixes from main. The lowered
   SSOT baseline records removed decorative literals; no allowance was raised.
+- Rebased onto `64d1801` without conflicts, preserving the concurrent speaker
+  review and playback-follow corrections. The integrated build, lint, SSOT,
+  artifact and 519-unit-test checks passed. All 37 shared-component browser
+  cases and Chromium/WebKit PWA update/recovery checks passed.
+- The first full integrated browser run had 604 passes, three existing WebKit
+  skips and one native-clock probe failure. Isolated repetition still failed
+  three of five times. Instrumentation established an observation-order defect:
+  the probe read the previous highlight, then the correct DOM mutation occurred
+  0.9–2.3 ms later in the same rendering turn. Other runs observed the mutation
+  before the probe. No playback clock or boundary implementation was changed.
+- The probe now reads actual media time and DOM synchronously in one next-task
+  observation after each animation frame. It never polls for a matching word,
+  and rejects observations crossing into a later frame in the measured window.
+  The original frame count, mismatch ratio, 120 ms residual and seven-second
+  deadline remain. This measures completed-frame synchronization, not a hard
+  wall-clock audio-to-paint latency guarantee. Independent review approved it.
+- Temporary negative controls correctly failed the unchanged mismatch assertion:
+  frozen highlights mismatched 29/29 observations; one-word lag mismatched 35/35.
+  These controls were removed from the test after verification. The first lag
+  experiment hit the frame guard during unmeasured startup, so the guard was
+  scoped to the same measured interval as the original assertions before the
+  successful negative-control experiment.
+- A guarded repeat performed alongside lint/type checking had nine passes and
+  one explicitly rejected cross-frame observation. The default Playwright suite
+  now isolates the native-clock gate in `chromium-native-clock`, after both
+  functional projects finish. Discovery lists 608 tests, including exactly one
+  active native-clock case and the original WebKit skip. Chromium-only runs
+  exclude this gate; if its dependencies fail, report it as NOT_RUN.
+- The final guarded, isolated native-clock gate passed ten consecutive runs:
+  `npm run test:e2e -- --project=chromium-native-clock --no-deps --workers=1 --repeat-each=10`.
+  No lint, compilation or other browser workload ran alongside this measurement.
+  Lint and type checking passed separately afterward. Full-suite evidence below
+  uses the default dependency order rather than `--no-deps`.
+- Final default suite: `PLAYBACK_UX_SCREENSHOTS=1 npm run test:e2e` passed
+  605 tests with three existing WebKit skips and no failures (12.1 minutes).
+  The native-clock gate ran last and passed with 37 observations, no mismatches
+  and no cross-frame rejection. Fresh integrated phone and desktop screenshots
+  also received independent visual approval.
+
+Final local commands used Node 22.22.0, within the repository's required range:
+
+| Command | Result |
+| --- | --- |
+| `npm run build` | PASS: TypeScript and static production build |
+| `npm run lint` / `npm run typecheck` | PASS, including the corrected probe |
+| `npm run test:unit` | PASS: 519 tests |
+| `npm run check:ssot` | PASS: reduced 54-unit baseline, no increased allowance |
+| `npm run check:artifact` | PASS: static artifact and publication boundary |
+| `npm run test:catalogue` | PASS: 37 browser cases |
+| `npm run test:pwa` | PASS: Chromium and WebKit update/recovery |
+| `PLAYBACK_UX_SCREENSHOTS=1 npm run test:e2e` | PASS: 605; SKIP: 3 existing WebKit-specific exclusions |
 
 ## Verification scope and recovery
 
