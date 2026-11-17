@@ -60,6 +60,13 @@ test("collapsed update controls stay centered and describe their actions", async
   const confirm = sidebar.getByRole("button", { name: "Confirm update", exact: true });
   const cancel = sidebar.getByRole("button", { name: "Cancel", exact: true });
   await expect(confirm).toBeFocused();
+  // A delayed pointer exit from the collapsing sidebar must not dismiss a keyboard-owned tip.
+  for (const trigger of [page.getByRole("button", { name: "Expand sidebar", exact: true }), confirm]) {
+    await trigger.evaluate(element => {
+      element.dispatchEvent(new PointerEvent("pointerout", { bubbles: true, relatedTarget: document.body, pointerType: "mouse" }));
+    });
+    await expect(confirm).toHaveAttribute("aria-describedby", /app-tooltip/);
+  }
   expect(Math.abs(await center(storage) - await center(confirm.locator("svg")))).toBeLessThanOrEqual(1);
   await expect(page.getByRole("tooltip")).toHaveText("Confirm update");
   await page.keyboard.press("Tab");

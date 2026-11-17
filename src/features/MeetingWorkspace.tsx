@@ -9,7 +9,7 @@ import {canRecoverAgentFinalLocally, planAgentMemo, resumableAgentMemo, supports
 import {AgentResponseRecovery} from "./AgentResponseRecovery";
 import {pendingAgentReceipt} from "../jobs/agent-recovery";
 import { speakerBackground } from "../components/speaker-appearance";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   ArrowLeft,
   AudioLines,
@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 import type { Meeting, MemoItem, Segment } from "../domain/model";
 import type { ReferenceVideo as ReferenceVideoValue } from "../domain/reference-video";
-import { groupTranscript } from "../domain/transcript-groups";
+import { groupTranscript, transcriptTextSeparator } from "../domain/transcript-groups";
 import { summarizeMeetingAccounting } from "../domain/accounting";
 import { id, importTranscript } from "../domain/model";
 import {
@@ -119,6 +119,7 @@ export function MeetingWorkspace({
   const [processingKind, setProcessingKind] = useState<"local" | "provider">("provider");
   const [transcriptPage, setTranscriptPage] = useState(0);
   const [expandedGroup, setExpandedGroup] = useState("");
+  const [inspectedFragment, setInspectedFragment] = useState("");
   const [url, setUrl] = useState(""),
     [audioMissing, setAudioMissing] = useState(false),
     [chunkManifest, setChunkManifest] = useState<LongAudioManifest>(),
@@ -1264,6 +1265,9 @@ export function MeetingWorkspace({
                 const first = group.segments[0];
                 const last = group.segments[group.segments.length - 1];
                 const reviewed = group.segments.filter((segment) => segment.reviewed).length;
+                // Inspection is a view selection; it never rewrites or bulk-selects sources.
+                const inspected = group.segments.find((segment) => segment.id === highlight)
+                  ?? group.segments.find((segment) => segment.id === inspectedFragment) ?? first;
                 return <div key={first.id} className="transcript-group">
                   {group.segments.length > 1 && <div className="transcript-group-summary">
                     <div className="passage-meta">
@@ -1295,7 +1299,18 @@ export function MeetingWorkspace({
                   <details open={group.segments.length === 1 || expandedGroup === first.id || group.segments.some((segment) => segment.id === highlight)}
                     onToggle={(event) => { if (group.segments.length > 1) { setExpandedGroup(event.currentTarget.open ? first.id : ""); if (!event.currentTarget.open) setHighlight(""); } }}>
                     <summary className={group.segments.length === 1 ? "single-fragment-summary" : undefined}>{t("View source fragments", "查看来源片段")}</summary>
-                    {group.segments.map((s) => (
+                    {group.segments.length > 1 && <div className="source-inspector" role="group" aria-label={t("Sentence source fragments", "句子来源片段")}>
+                      <p className="small muted">{t("Select text to inspect or correct its original fragment.", "点击句中内容，查看或更正对应的原始片段。")}</p>
+                      <p className="source-fragment-text">{group.segments.map((fragment, index) => <Fragment key={fragment.id}>
+                        {index > 0 ? transcriptTextSeparator(group.segments[index - 1].text, fragment.text) : ""}
+                        <Button type="button" className="source-fragment" aria-pressed={fragment.id === inspected.id}
+                          aria-label={t(`Inspect source fragment ${index + 1}: ${fragment.text}`, `查看来源片段 ${index + 1}：${fragment.text}`)}
+                          onClick={() => { setInspectedFragment(fragment.id); setHighlight(""); }}>
+                          {fragment.text}
+                        </Button>
+                      </Fragment>)}</p>
+                    </div>}
+                    {[inspected].map((s) => (
                 <article
                   id={`segment-${s.id}`}
                   key={`${s.id}:${s.revision}`}

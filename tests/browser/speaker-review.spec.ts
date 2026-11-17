@@ -882,7 +882,9 @@ test("transcript groups preserve fragment review, undo and filtering", async ({ 
   await expect(page.locator(".bulk-bar")).toContainText("4 passages selected");
   await page.getByRole("button", { name: "Clear", exact: true }).click();
   await page.getByText("View source fragments", { exact: true }).click();
-  await expect(page.locator(".passage")).toHaveCount(4);
+  await expect(page.locator(".passage")).toHaveCount(1);
+  await expect(page.locator(".source-fragment")).toHaveCount(4);
+  await expect(page.locator(".source-fragment-text")).toHaveText("Hello, world.");
   await expect(page.getByText("world", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Mark group reviewed", exact: true }).click();
   await expect(page.locator(".transcript-group-summary")).toContainText("4/4 reviewed");
@@ -893,6 +895,84 @@ test("transcript groups preserve fragment review, undo and filtering", async ({ 
   await page.getByLabel("Filter by speaker").selectOption("");
   await page.reload();
   await expect(page.locator(".transcript-group-summary")).toContainText("Hello, world.");
+});
+
+test("sentence source inspector preserves exact edits, split, undo and citation targets", async ({ page }) => {
+  const fixture = fixtureMeeting();
+  fixture.segments = ["Hello", ",", "world", "."].map((text, index) => ({
+    ...fixture.segments[0], id: `40000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    start: index * 0.2, end: (index + 1) * 0.2, text, originalText: text,
+  }));
+  fixture.memos[0].items[0].sources = [{ id: fixture.segments[2].id, revision: 1 }];
+  fixture.memos[0].originalItems[0].sources = [{ id: fixture.segments[2].id, revision: 1 }];
+  await createFixture(page, "speaker-review.wav", fixture);
+  await seedMemoFixture(page, fixture.memos[0]);
+  await page.reload();
+  const before = sourceSnapshot(await storedMeeting(page));
+  await page.getByRole("tab", { name: /Transcript/ }).click();
+  await page.getByText("View source fragments", { exact: true }).click();
+  const word = page.getByRole("button", { name: "Inspect source fragment 3: world", exact: true });
+  await word.focus();
+  await page.keyboard.press("Space");
+  await expect(word).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".passage")).toHaveCount(1);
+  await expect(page.locator(".passage")).toHaveAttribute("id", `segment-${fixture.segments[2].id}`);
+  expect(sourceSnapshot(await storedMeeting(page))).toBe(before);
+  await page.getByRole("button", { name: "Edit passage", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Transcript text", exact: true })).toHaveValue("world");
+  await page.getByRole("textbox", { name: "Transcript text", exact: true }).fill("team");
+  await page.getByRole("button", { name: "Save correction", exact: true }).click();
+  await expect(page.locator(".transcript-group-summary")).toContainText("Hello, team.");
+  await expect(page.locator(".passage .original-text")).toContainText("world");
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(page.locator(".transcript-group-summary")).toContainText("Hello, world.");
+  await expect(word).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Split", exact: true }).click();
+  await page.getByRole("button", { name: "Split passage", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(page.locator(".transcript-group-summary")).toContainText("Hello, world.");
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
+  await page.getByRole("button", { name: "Passage 3 · r1", exact: true }).click();
+  await page.getByRole("button", { name: "View current passage", exact: true }).click();
+  await expect(page.locator(".passage.highlight")).toHaveAttribute("id", `segment-${fixture.segments[2].id}`);
+  await expect(page.locator(".passage.highlight > .passage-content > p")).toHaveText("world");
+  if (process.env.PLAYBACK_UX_SCREENSHOTS === "1") {
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.locator(width < 600 ? ".passage" : ".transcript-group").evaluate(element => element.scrollIntoView({ block: "center" }));
+      await page.screenshot({ path: test.info().outputPath(`sentence-inspector-${width}.png`), animations: "disabled" });
+    }
+  }
+});
+
+test("long CJK source sentences remain readable and selectable on a phone", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const fixture = fixtureMeeting();
+  fixture.segments = Array.from({ length: 80 }, (_, index) => ({
+    ...fixture.segments[0], id: `40000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    start: index * 0.2, end: (index + 1) * 0.2,
+    text: index % 2 ? "文" : "中", originalText: index % 2 ? "文" : "中",
+  }));
+  fixture.memos = [];
+  await createFixture(page, "speaker-review.wav", fixture);
+  const before = sourceSnapshot(await storedMeeting(page));
+  await page.getByRole("tab", { name: /Transcript/ }).click();
+  await page.getByText("View source fragments", { exact: true }).click();
+  await expect(page.locator(".source-fragment-text")).toHaveText("中文".repeat(40));
+  await expect(page.locator(".source-fragment")).toHaveCount(80);
+  await page.locator(".source-fragment").last().focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".source-fragment").last()).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".passage")).toHaveCount(1);
+  await expect(page.getByLabel("Select passage 80", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Edit passage", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Transcript text", exact: true })).toHaveValue("文");
+  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
+  expect(await page.locator(".transcript-panel").evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  expect(sourceSnapshot(await storedMeeting(page))).toBe(before);
+  expect((await new AxeBuilder({ page }).include(".transcript-panel").withTags(["wcag2a", "wcag2aa"]).analyze()).violations).toEqual([]);
 });
 
 test("long transcript pages and note citations reach the exact source", async ({ page }) => {

@@ -36,7 +36,10 @@ export function TooltipLayer() {
     const move = (event: PointerEvent) => { if (active.current && event.pointerType !== "touch") show(active.current, event.clientX, event.clientY); };
     const out = (event: PointerEvent) => {
       if (dismissedByEscape && event.target instanceof Node && dismissedByEscape.contains(event.target) && !(event.relatedTarget instanceof Node && dismissedByEscape.contains(event.relatedTarget))) dismissedByEscape = null;
-      if (active.current && !(event.relatedTarget instanceof Node && active.current.contains(event.relatedTarget))) clear();
+      // Pointer exits from other controls must not dismiss the keyboard's tooltip.
+      if (active.current && event.target instanceof Node && active.current.contains(event.target) &&
+        !active.current.contains(document.activeElement) &&
+        !(event.relatedTarget instanceof Node && active.current.contains(event.relatedTarget))) clear();
     };
     const focus = (event: FocusEvent) => {
       const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-tooltip]") : null;
