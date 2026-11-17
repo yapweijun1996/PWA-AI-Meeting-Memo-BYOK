@@ -4223,6 +4223,10 @@ details[open] > summary {
 .pwa-sidebar-button:hover:not(:disabled) { background: var(--palette-124); border-color: var(--palette-131); }
 .pwa-sidebar-button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .pwa-check-message { padding: 7px 9px; border-radius: var(--radius-pwa-feedback); background: var(--palette-31); line-height: 1.4; }
+.pwa-check-message:not(:empty) { display: flex; align-items: center; gap: 6px; }
+.pwa-check-dismiss { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; color: inherit; border-radius: var(--radius-button); }
+.pwa-check-dismiss:hover { background: var(--surface-subtle); }
+.pwa-check-dismiss:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 @media (min-width: 761px) { .sidebar-collapsed .pwa-sidebar-button { width: 44px; min-height: 44px; padding: 8px; gap: 0; } }
 .recording-info strong { font-size: var(--text-base); font-weight: 700; color: var(--text-heading); line-height: 1.35; }
 .recording-info small { margin-top: 4px; color: var(--text-body); font-weight: 500; }
@@ -4409,6 +4413,19 @@ body:has(.audio-player) .toast-layer { bottom: calc(150px + env(safe-area-inset-
   .sidebar .local-label .nav-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sidebar .pwa-sidebar { position: relative; }
   .sidebar .pwa-check-message { position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; min-height: 0; z-index: var(--layer-pwa-feedback); background: var(--palette-31); }
+}
+@media (min-width: 761px) {
+  .sidebar-collapsed .pwa-check-message:not(:empty) {
+    position: fixed;
+    left: calc(var(--sidebar-rail) + 8px);
+    right: auto;
+    bottom: calc(max(20px, env(safe-area-inset-bottom, 0px)) + 52px);
+    width: max-content;
+    max-width: min(320px, calc(100vw - var(--sidebar-rail) - 24px));
+    min-height: 0;
+    font-size: var(--text-xs);
+    z-index: var(--layer-pwa-feedback);
+  }
 }
 
 /* Keep the recent list scannable while retaining access to the full library. */

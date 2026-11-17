@@ -246,6 +246,16 @@ export function PwaStatus() {
   const sidebarError = confirmation.origin === "sidebar" && !!error;
   const sidebarUpdateText = updating ? t("Updating...", "\u6b63\u5728\u66f4\u65b0...") : t("Update now", "\u7acb\u5373\u66f4\u65b0");
   const sidebarCheckText = checking ? t("Checking...", "\u6b63\u5728\u68c0\u67e5...") : t("Check for updates", "\u68c0\u67e5\u66f4\u65b0");
+  function dismissSidebarFeedback() {
+    setCheckMessage("");
+    if (sidebarError) setError("");
+    requestAnimationFrame(() => {
+      const button = (confirmation.open && confirmation.origin === "sidebar" ? confirmButton : sidebarUpdateButton).current;
+      if (!button || button.disabled || !button.isConnected) return;
+      button.focus({ preventScroll: true });
+      revealSidebarControls(button);
+    });
+  }
   return (
     <>
       {sidebarSlot && createPortal(<div className="pwa-sidebar">
@@ -254,8 +264,11 @@ export function PwaStatus() {
           <Button ref={confirmButton} type="button" className="pwa-sidebar-button pwa-sidebar-confirm" aria-label={t("Confirm update", "确认更新")} data-tooltip={t("Confirm update", "确认更新")} onClick={() => void update()}><Icon glyph={Check} size="compact" />{t("Confirm update", "确认更新")}</Button>
           <Button type="button" className="pwa-sidebar-button pwa-sidebar-cancel" aria-label={t("Cancel", "取消")} data-tooltip={t("Cancel", "取消")} onClick={cancelUpdate}><Icon glyph={X} size="compact" /></Button>
         </div> : (waiting || refreshReady) ? <Button ref={sidebarUpdateButton} type="button" className="pwa-sidebar-button" aria-label={t("Open update confirmation", "\u6253\u5f00\u66f4\u65b0\u786e\u8ba4")} data-tooltip={sidebarUpdateText} onClick={() => requestUpdate("sidebar")} disabled={updating}><Icon glyph={RefreshCw} size="control" />{sidebarUpdateText}</Button>
-          : <Button type="button" className="pwa-sidebar-button" data-tooltip={sidebarCheckText} onClick={() => void checkForUpdates()} disabled={checking}><Icon glyph={RefreshCw} size="control" className={checking ? "pwa-check-spin" : undefined} />{sidebarCheckText}</Button>}
-        <span className={`pwa-check-message${sidebarError ? " pwa-update-error" : ""}`} role="status" data-tooltip={sidebarError ? errorText : undefined} tabIndex={sidebarError ? 0 : undefined}>{sidebarError ? <><Icon glyph={AlertTriangle} size="compact" /><span>{errorText}</span></> : checkMessage}</span>
+          : <Button ref={sidebarUpdateButton} type="button" className="pwa-sidebar-button" data-tooltip={sidebarCheckText} onClick={() => void checkForUpdates()} disabled={checking}><Icon glyph={RefreshCw} size="control" className={checking ? "pwa-check-spin" : undefined} />{sidebarCheckText}</Button>}
+        <span className={`pwa-check-message${sidebarError ? " pwa-update-error" : ""}`} role="status" data-tooltip={sidebarError ? errorText : undefined} tabIndex={sidebarError ? 0 : undefined}>
+          {sidebarError ? <><Icon glyph={AlertTriangle} size="compact" /><span>{errorText}</span></> : checkMessage}
+          {(sidebarError || checkMessage) && <Button type="button" className="pwa-check-dismiss" aria-label={t("Dismiss update message", "关闭更新提示")} onClick={dismissSidebarFeedback}><Icon glyph={X} size="compact" aria-hidden="true" /></Button>}
+        </span>
       </div>, sidebarSlot)}
       {offline && (
         <div className="notice">

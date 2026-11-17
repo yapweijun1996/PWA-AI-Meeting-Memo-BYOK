@@ -56,15 +56,16 @@ test("collapsed update controls stay centered and describe their actions", async
   expect(Math.abs(await center(storage) - await center(opener.locator("svg")))).toBeLessThanOrEqual(1);
   await opener.focus();
   await expect(page.getByRole("tooltip")).toHaveText("Update now");
-  await opener.click();
+  await page.keyboard.press("Enter");
   const confirm = sidebar.getByRole("button", { name: "Confirm update", exact: true });
   const cancel = sidebar.getByRole("button", { name: "Cancel", exact: true });
   await expect(confirm).toBeFocused();
   expect(Math.abs(await center(storage) - await center(confirm.locator("svg")))).toBeLessThanOrEqual(1);
   await expect(page.getByRole("tooltip")).toHaveText("Confirm update");
-  await cancel.focus();
+  await page.keyboard.press("Tab");
+  await expect(cancel).toBeFocused();
   await expect(page.getByRole("tooltip")).toHaveText("Cancel");
-  await cancel.click();
+  await page.keyboard.press("Enter");
   await expect(opener).toBeFocused();
   expect(await messages(page)).toEqual([]);
 });
@@ -195,6 +196,9 @@ test("sidebar blockers and registration failures stay local and confirmation rec
     await opener.click();
     await expect(controls.getByRole("status")).toHaveText("Save your settings before updating.");
     expect(await messages(page)).toEqual([]);
+    await controls.getByRole("button", { name: "Dismiss update message", exact: true }).click();
+    await expect(controls.getByRole("status")).toBeEmpty();
+    await expect(opener).toBeFocused();
   }
   await page.getByRole("tab", { name: "API & models", exact: true }).click();
   await expect(model).toHaveValue("synthetic-unsaved-model");
