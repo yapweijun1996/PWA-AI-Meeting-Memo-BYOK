@@ -3,12 +3,12 @@ import { planAgentMemo } from "../../src/providers/memo-agent-plan";
 import { recordAgentAssistant } from "../../src/providers/agent-record";
 
 /** Synthetic restored checkpoints only; no provider response or private transcript. */
-export function agentLocalFinalFixture({ attempts = 100, fullHistory = false, invalid = false } = {}) {
+export function agentLocalFinalFixture({ attempts = 100, fullHistory = false, invalid = false, provider = "openai" as "openai" | "openrouter" } = {}) {
   const meeting = sampleMeeting();
-  const plan = planAgentMemo(meeting, { provider: "openai", model: "gpt-6-luna" }, "en");
+  const plan = planAgentMemo(meeting, { provider, model: provider === "openai" ? "gpt-6-luna" : "openai/gpt-6-luna" }, "en");
   const now = new Date().toISOString();
   const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
-  const base = { role: "assistant" as const, api: "openai-responses" as const, provider: "openai", model: "gpt-6-luna", timestamp: 1, usage };
+  const base = { role: "assistant" as const, api: provider === "openai" ? "openai-responses" as const : "openai-completions" as const, provider, model: plan.model, timestamp: 1, usage };
   const records = [
     recordAgentAssistant({ ...base, stopReason: "toolUse", content: [{ type: "toolCall", id: "local-range", name: "read_transcript_range", arguments: { startIndex: 0, count: 1 } }] }, ""),
     recordAgentAssistant({ ...base, stopReason: "stop", content: [{ type: "text", text: JSON.stringify({ items: [{ type: "summary", text: "Recovered from saved evidence.", owner_speaker_id: null, due_date: null, due_original: null, source_segment_ids: [meeting.segments[invalid ? 1 : 0].id] }] }) }] }, ""),

@@ -13,11 +13,11 @@ async function fixture(options = {}) {
   const original = agentLocalFinalFixture(options);
   const restored = await readBackup(new File([await backupMeeting(original)], "synthetic-final.zip"));
   const meeting = await saveMeeting(restored.meeting);
-  return { meeting, confirmed: { selection: { provider: "openai" as const, model: "gpt-6-luna" }, agentPlan: meeting.memoAgents![0], localOnly: true } };
+  return { meeting, confirmed: { selection: { provider: meeting.memoAgents![0].provider, model: meeting.memoAgents![0].model }, agentPlan: meeting.memoAgents![0], localOnly: true } };
 }
 
-test("local final recovery needs no key or billing confirmation and works with full request and run ledgers", async () => {
-  const { meeting, confirmed } = await fixture({ fullHistory: true });
+for (const provider of ["openai", "openrouter"] as const) test(`${provider} local final recovery needs no key or billing confirmation and works with full request and run ledgers`, async () => {
+  const { meeting, confirmed } = await fixture({ fullHistory: true, provider });
   const recovered = await runJob(meeting, "memo", confirmed);
   expect(fetch).not.toHaveBeenCalled();
   expect(recovered.jobs).toEqual(meeting.jobs);

@@ -538,6 +538,22 @@ export function MeetingWorkspace({
       setConfirmStage(stage);
     } catch(error) { onError(error instanceof Error ? error.message : "Could not prepare the memo plan."); }
   }
+  function prepareSavedAgentConfirmation(planId: string) {
+    const agentPlan = m.memoAgents?.find(plan => plan.id === planId);
+    if (!agentPlan || agentPlan.state === "completed" || agentPlan.sourceRevision !== m.revision) {
+      onError("The confirmed review changed. Open its confirmation again.");
+      return;
+    }
+    setReviewedRetry(false);
+    setCostAcknowledged(false);
+    setConfirmed({
+      selection: { provider: agentPlan.provider, model: agentPlan.model },
+      plan: null,
+      agentPlan,
+      outputLanguage: agentPlan.outputLanguage,
+    });
+    setConfirmStage("memo");
+  }
   async function process() {
     if (!confirmStage) return;
     const localOnly = confirmStage === "memo" && Boolean(confirmed?.agentPlan && canRecoverAgentFinalLocally(m, confirmed.agentPlan));
@@ -1785,7 +1801,7 @@ export function MeetingWorkspace({
         <span>{t(`${plan.consulted.length}/${plan.snapshot.sourceRefs.length} passages read in local lookups; this is not full coverage or a quality score.`, `本地读取已涉及 ${plan.consulted.length}/${plan.snapshot.sourceRefs.length} 段；这不代表完整覆盖或质量评分。`)}</span>
         <span>{t("State","状态")}: {uiLanguage === "zh-CN" ? ({ready:"待执行",running:"执行中",paused:"已暂停",blocked:"已停止，需核对",completed:"已完成"})[plan.state] : plan.state}</span>
         {plan.failure && <p>{translateMessage(plan.failure.message,uiLanguage)}</p>}
-        {!processing && plan.state!=="completed" && plan.sourceRevision===m.revision && <Button className="button secondary" onClick={()=>void prepareConfirmation("memo")}>{t("Review generation plan","查看生成计划")}</Button>}
+        {!processing && plan.state!=="completed" && plan.sourceRevision===m.revision && <Button className="button secondary" onClick={()=>prepareSavedAgentConfirmation(plan.id)}>{t("Review generation plan","查看生成计划")}</Button>}
         {!!plan.jobIds.length && <Button className="button secondary" onClick={()=>download(new Blob([JSON.stringify({format:"meeting-memo-agent-records",version:1,plan,jobs:m.jobs.filter(job=>job.agentId===plan.id)})],{type:"application/json"}),`${safeFilename(m.title)}-review-records.json`)}>{t("Export recorded responses","导出已记录回应")}</Button>}
       </section>)}
       {(m.memoPipelines ?? []).map(p => (
@@ -2017,6 +2033,10 @@ export function MeetingWorkspace({
               setReviewedRetry(false);
             }}
             onToggleReview={enabled => {
+              if (!enabled && confirmed.agentPlan && m.memoAgents?.some(plan => plan.id === confirmed.agentPlan!.id)) {
+                void prepareConfirmation("memo");
+                return;
+              }
               try {
                 const agentPlan = enabled ? resumableAgentMemo(m, confirmed.selection) ?? planAgentMemo(m, confirmed.selection, getMemoOutputLanguage()) : undefined;
                 setConfirmed({ ...confirmed, agentPlan, outputLanguage: agentPlan?.outputLanguage ?? confirmed.plan?.outputLanguage ?? getMemoOutputLanguage() });

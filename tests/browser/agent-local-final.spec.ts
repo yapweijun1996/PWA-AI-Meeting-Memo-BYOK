@@ -3,8 +3,8 @@ import { agentLocalFinalFixture } from "../fixtures/agent-local-final";
 
 test.use({ serviceWorkers: "block", viewport: { width: 390, height: 844 } });
 
-for (const invalid of [false, true]) test(`restored final response ${invalid ? "rejects unsupported evidence" : "recovers"} without keys, consent or another request`, async ({ page }) => {
-  const fixture = agentLocalFinalFixture({ fullHistory: true, invalid });
+for (const provider of ["openai", "openrouter"] as const) for (const invalid of [false, true]) test(`${provider} restored final response ${invalid ? "rejects unsupported evidence" : "recovers"} without keys, consent or another request`, async ({ page }) => {
+  const fixture = agentLocalFinalFixture({ fullHistory: true, invalid, provider });
   let requests = 0;
   await page.context().route("https://**/*", route => { requests++; return route.abort(); });
   await page.goto("./");
@@ -12,13 +12,23 @@ for (const invalid of [false, true]) test(`restored final response ${invalid ? "
   await page.getByLabel("Restore backup", { exact: true }).setInputFiles({ name: "local-final.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(fixture)) });
   await expect(page.getByRole("heading", { name: fixture.title + " (restored)", exact: true })).toBeVisible();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
-  await page.getByRole("button", { name: "Generate new version", exact: true }).click();
+  await page.getByRole("region", { name: "Selective review progress", exact: true }).getByRole("button", { name: "Review generation plan", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByRole("checkbox", { name: "Use selective transcript review (Pi, optional)", exact: true }).check();
+  await expect(dialog.getByRole("checkbox", { name: "Use selective transcript review (Pi, optional)", exact: true })).toBeChecked();
+  await expect(dialog).toContainText(provider === "openai" ? "OpenAI · api.openai.com" : "OpenRouter · openrouter.ai");
   await expect(dialog).toContainText("100 of 100 requests recorded; 0 remaining");
   await expect(dialog).toContainText("Nothing is sent to a provider.");
   await expect(dialog.getByRole("checkbox", { name: /I understand|I reviewed/ })).toHaveCount(0);
   await expect(dialog.getByText("Add your key in Settings first")).toHaveCount(0);
+  if (provider === "openrouter" && !invalid) {
+    await dialog.getByRole("checkbox", { name: "Use selective transcript review (Pi, optional)", exact: true }).uncheck();
+    await expect(dialog).toContainText("OpenAI · api.openai.com");
+    await expect(dialog.getByRole("checkbox", { name: "I understand the selected data will be sent and may incur API charges.", exact: true })).not.toBeChecked();
+    await expect(dialog.getByRole("button", { name: "Generate new notes", exact: true })).toBeDisabled();
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.getByRole("region", { name: "Selective review progress", exact: true }).getByRole("button", { name: "Review generation plan", exact: true }).click();
+    await expect(dialog).toContainText("OpenRouter · openrouter.ai");
+  }
   const recover = dialog.getByRole("button", { name: "Recover saved notes", exact: true });
   await expect(recover).toBeEnabled();
   await recover.click();
