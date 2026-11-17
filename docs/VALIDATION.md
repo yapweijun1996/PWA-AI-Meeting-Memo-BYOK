@@ -867,3 +867,33 @@ The PWA runs cover N→N+1, active-request/editor protection, preserved drafts, 
 Fresh isolated hosted Chromium/WebKit profiles passed **24/24** synthetic Pi acceptance cases, with the full application SHA asserted before and after every case. This includes the OpenRouter tool/notes round trip at 390/1440px, explicit medium/16384 parameters, consent reset, unchanged saved parameters after failure/reload, and no repeat on a 503. Existing OpenAI nine-turn/40-lookup, large meeting, quota/export/local-save and cross-tab recovery cases also passed. Service workers were blocked for deterministic hosted UI tests. External traffic was blocked except the published app and intercepted synthetic provider responses; no real keys or private meetings were read.
 
 The first hosted adaptation had 18 PASS / 6 FAIL: a large-meeting fixture blocked all HTTPS including the app, and the build-identity preflight loaded the page before quota fault-injection scripts were installed. Both were private harness errors. Allowing only the app origin and returning to `about:blank` after the build preflight restored the intended test setup; all 24 cases then passed without application changes. These failures were retained in the local logs, not silently counted as PASS. This documentation-only closeout does not change the verified application artifact. QF03 real-provider/benchmark promotion and overall product-quality readiness remain open.
+
+
+## Pi 100-request ceiling and local final recovery — 2026-11-17
+
+The owner changed the previously unbounded selective-review policy to at most 100 cumulative provider attempts per persisted plan. Inspection and a failing regression found a separate `JobSchema.stepIndex` ceiling of eight: the ninth receipt could be stored but the tenth failed validation. `src/domain/model.ts` now gives agent receipts their own bounded range while retaining the extraction-stage limit. `src/domain/memo-agent-requests.ts` owns cumulative accounting from durable `jobIds`; request 101 is rejected before another receipt or network request. Legacy six/null limits remain readable and upgrade only when continuation is explicitly authorized. Reload, restore and current settings do not reset the count.
+
+A real Pi-core loop with synthetic responses reaches a valid final result on request 100. The agent receives its remaining allowance on each turn. Existing no-progress, per-tool/request/response byte bounds, revision protection and unknown-outcome no-retry behavior remain. These are meeting-scoped transcript tools, not browser shell, arbitrary-code or filesystem access.
+
+Independent review found two additional recovery defects and both received red/green coverage. A saved final response can now be validated locally without provider keys, cost consent or spare network-history slots; invalid evidence fails without falling through to another paid request. The progress-card action opens the exact persisted plan's provider/model/output language, including an OpenRouter backup in a new browser whose default settings select OpenAI. Opting out of Pi restores the ordinary flow and its fresh cost acknowledgment. Current source/version, locks, note/storage limits, original receipts and human edits remain protected.
+
+Verification uses pinned Node 22.23.3, the existing dependency lockfile, isolated profiles and synthetic meetings/providers. No actual API keys, paid calls, private recordings or speaker-model downloads were used. The isolated integration retains the independently landed `53157dd` playback-avatar fix. Command results and publication identity follow after the final checks complete.
+
+Known verification incidents: the normal preview port was occupied by another workspace and was left untouched. A private-port concurrent run passed Chromium but WebKit stalled before application navigation (zero trace network events); a single-worker rerun after other browser work stopped passed all 26 then-current cases without application changes. The exact cause of that navigation stall was not established. The final suite adds eight pure-local OpenAI/OpenRouter recovery cases. Real provider/account/CORS integration, physical devices and reference-annotated quality remain NOT_RUN; QF02–QF10 stay open.
+
+
+Final Pi source checks (private-port Playwright configuration retains the repository test suites and browser settings, changing only preview port/output directory):
+
+| Command | Result |
+| --- | --- |
+| `npm run test:unit` | PASS — 519 tests / 67 files |
+| `npm run lint` | PASS |
+| `npm run check:ssot` | PASS — unchanged 104 debt count |
+| `npm run build` | PASS — TypeScript, static build and 22-asset PWA; existing bundle-size advisory remains |
+| `npm run check:artifact` | PASS |
+| `npx playwright test --config private-fixtures/pi100-playwright.config.ts tests/browser/memo-agent.spec.ts tests/browser/agent-local-final.spec.ts --workers=1` | PASS — 34/34, Chromium and WebKit, 2.1 minutes |
+| `git diff --check` | PASS |
+
+The final independent source review found no release-blocking issue in saved-route restoration, ordinary-flow consent reset, revision checks, locking or the local-only transport boundary. Whole-application browser regression is scheduled with the following UI batches; the 34 cases here are focused Pi acceptance, not a claim to cover every application feature. Rolling back to a reader that rejects the new `requestLimit: 100` or route fields is unsafe for newer records. Preserve backups and use a compatible forward fix; do not clear local data or rewrite main history.
+
+`npm run test:pwa`: **PASS** on Chromium and WebKit. Actual local workers verified N→N+1, active-request/editor protection, saved drafts, old assets, unrelated caches, visible activation failure and forward recovery on the final build. Hosted artifact verification remains separate.

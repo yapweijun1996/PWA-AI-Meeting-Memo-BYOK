@@ -33,7 +33,7 @@ This bounded batch follows the owner screenshots and latest 100-request directio
 - [ ] UI-LANGUAGE — Replace the invisible topbar select with a shared accessible menu; retain explicit locale persistence, failure feedback and unsaved-settings guards.
 - [ ] UI-SPEAKER — Align the speaker toolbar and improve queue/inspector hierarchy, keeping source IDs discoverable and all review/merge/undo behavior intact.
 - [ ] UI-FAVICON — Bind the browser-tab icon to the same brand tokens as the sidebar, including reload and cross-tab changes; preserve the static fallback and state installed-icon limitations separately.
-- [ ] PI100 — Enforce 100 cumulative provider attempts per persisted Pi plan, validate steps beyond nine, retain legacy checkpoints, block request 101 and preserve no-progress/no-retry safeguards. Verify with synthetic provider responses; do not infer live-provider quality.
+- [x] PI100 — Enforce 100 cumulative provider attempts per persisted Pi plan, validate steps beyond nine, retain legacy checkpoints, block request 101 and preserve no-progress/no-retry safeguards. Verified with 519 unit tests and 34 Chromium/WebKit synthetic-provider cases, including no-key local recovery of full-history OpenAI/OpenRouter backups. Publication and PWA evidence are recorded in docs/VALIDATION.md; this does not establish live-provider quality.
 
 ## Remaining work order — 2026-11-17
 
