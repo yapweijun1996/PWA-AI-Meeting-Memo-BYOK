@@ -191,6 +191,36 @@ PLAYBACK_UX_SCREENSHOTS=1 npm run test:e2e -- \
 
 ## Verification scope and recovery
 
+The third release was pushed to main as
+`dce356db85f04159a29c3c97ea9bf3f64d9d45c0`, including layout commit `b7eaa46`
+and the test correction/integration commits `a693917` and `dce356d`.
+The final rebase also preserved the intervening documentation-only `f37642a`;
+it changed no tested runtime files. [Pages run 44081563125](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/44081563125)
+completed verification and publication successfully. The push workflow runs
+unit/build/static checks; browser, catalogue and PWA checks above ran locally.
+
+Hosted acceptance passed **12/12 Chromium cases** (46.9 seconds) against
+`https://yapweijun1996.github.io/PWA-AI-Meeting-Memo-BYOK/`. Coverage includes
+avatar retention, sentence review/undo, exact edits/splits/citations, long CJK
+inspection, six responsive light/dark layouts, long-caption fit and the native
+synthetic WAV clock. The served `index-Drj0GN9Z.js` contained the exact release
+SHA both before and after these cases. Hosted desktop and phone captures were
+also inspected. This used isolated synthetic meetings, not the owner's private
+recording. The native probe passed with 52 observations and no mismatches.
+
+The hosted command used an ignored Playwright configuration with the production
+base URL, one Chromium worker and no local server:
+
+```sh
+PLAYBACK_UX_SCREENSHOTS=1 npm run test:e2e -- \
+  --config .local/playback-ux/live.config.ts tests/browser/speaker-review.spec.ts \
+  --grep 'same-speaker avatar survives|transcript groups preserve|sentence source inspector|long CJK source|playback hierarchy|table caption card|real media clock without timeupdate'
+```
+
+Readiness: **READY for this scoped UI release**. All three requested corrections
+were pushed and deployed individually. This documentation closeout does not
+change the deployed runtime; Markdown-only commits do not trigger publication.
+
 The applicable PWA profile is STATIC_OFFLINE: local recordings, transcripts,
 review and correction remain browser-local; provider requests require the
 existing online BYOK/consent flow. This change does not alter the worker,

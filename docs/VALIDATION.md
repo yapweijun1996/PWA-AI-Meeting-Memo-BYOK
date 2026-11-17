@@ -953,3 +953,27 @@ The six scoped task entries are complete as implementation/automatic-verificatio
 **Appearance publication/readback:** pushed `4e8a413cbcc4ab6602a8528964692e7ad1f7c23f` to main; [Actions 44078416649](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/44078416649) completed both verify and publish successfully. `EXPECTED_BUILD_ID=4e8a413cbcc4ab6602a8528964692e7ad1f7c23f npx playwright test --config private-fixtures/design-hosted/playwright.config.ts` passed **38/38** fresh hosted Chromium/WebKit cases in 2.1 minutes, asserting the exact build before and after every case. Coverage includes decoded favicon colors across all palettes, reload and cross-tab updates, keyboard/phone language menus, normal-motion sidebar containment, appearance persistence, storage failure, provider/language draft preservation, and OpenAI/OpenRouter saved-final local recovery with no network generation. Only the published application base path was permitted; provider/model traffic was blocked. Hosted workers were blocked for deterministic UI checks, so real-worker lifecycle claims remain tied to the separate local PWA run. This does not establish real-provider quality, physical-device performance, screen-reader acceptance or dynamic installed/Apple icon support.
 
 The authorized sequence is complete: Pi `4d15128` (34 hosted checks), speaker review `64d1801` (16 hosted checks), and appearance/design system `4e8a413` (38 hosted checks). This final documentation closeout does not change runtime assets; the workflow ignores Markdown-only changes, so a newer documentation commit on main is expected to coexist with served application build `4e8a413`. The full-suite native-clock failure and three passing isolated reruns remain recorded above. The bounded six-item implementation follow-up is delivered; the broader quality roadmap and human acceptance gates remain open.
+
+## Playback and sentence-reading UI follow-up — 2026-11-17
+
+The subsequent scoped playback release is `dce356db85f04159a29c3c97ea9bf3f64d9d45c0`.
+It preserves the preceding Pi, speaker-review and appearance work. The three
+sequential fixes cover short-gap avatar retention, sentence-shaped source
+inspection and playback layout hierarchy. Detailed causes, negative controls,
+commands and retained limitations are recorded in [Playback UX QA](PLAYBACK_UX_QA_20261117.md).
+
+The native-clock investigation established a test observation-order defect:
+correct DOM updates followed stale probe reads in the same rendering turn. A
+single next-task observation with a later-frame guard fixes that measurement;
+all original numeric assertions remain, frozen/lagging controls fail, and the
+dedicated timing project runs after functional browser workloads. Production
+clock logic is unchanged. This does not establish a wall-clock latency SLA.
+
+Final integrated evidence: **520 unit tests, 621 browser cases (three existing
+skips), 39 catalogue cases, both real-worker PWA lifecycle checks, build, lint,
+SSOT and artifact checks PASS**. [Pages run 44081563125](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/44081563125)
+verified and published successfully. **12 hosted Chromium cases PASS**, with
+the exact served build confirmed before and after. The earlier native-probe
+failures remain historical evidence; the final integrated run has no failures.
+Physical-device, recognition-quality and broader roadmap claims remain outside
+this scoped UI acceptance.
