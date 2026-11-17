@@ -65,6 +65,10 @@
   padding: 16px;
 }
 .speaker-review-panel .speaker-review-filters { gap: 6px; }
+.speaker-review-panel .speaker-review-workspace select {
+  block-size: 44px;
+  min-block-size: 44px;
+}
 .speaker-review-panel .speaker-review-filters .button {
   min-height: 44px;
   padding-inline: 10px;

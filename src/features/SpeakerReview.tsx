@@ -7,7 +7,7 @@ import { SpeakerReviewQueue } from "./speaker-review/SpeakerReviewQueue";
 import { showToast } from "../components/ToastLayer";
 import { SpeakerAvatar, useSpeakerAvatars } from "../components/SpeakerAvatar";
 import { prepareAvatar, setSpeakerAvatar, trackAvatarWrite } from "../storage/speaker-avatars";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Check, Play } from "lucide-react";
 import type { Meeting } from "../domain/model";
 import { editMeeting, formatTime } from "../domain/operations";
@@ -771,28 +771,32 @@ function PlaybackMode({
     setFollowPlayback(false);
   }
 
-  useEffect(() => {
-    if (!followPlayback || activeCaptionId === null) return;
+  useLayoutEffect(() => {
+    if (!followPlayback) return;
     const container = list.current;
     if (!container) return;
-    const target = container.querySelector<HTMLElement>(
+    // Replacing the window can move the browser's scroll anchor even in a gap.
+    // Guard that commit before scroll events are delivered, including when no row is active.
+    programmaticScroll.current = true;
+    const target = activeCaptionId === null ? null : container.querySelector<HTMLElement>(
       `[data-caption-id="${CSS.escape(activeCaptionId)}"]`,
     );
-    if (!target) return;
-    programmaticScroll.current = true;
     const listBox = container.getBoundingClientRect();
-    const targetBox = target.getBoundingClientRect();
     // Scroll only when the active row leaves the middle band, and then put it in the middle, so a normal
     // caption change does not move the list at all.
-    const bandTop = listBox.top + listBox.height * 0.2;
-    const bandBottom = listBox.bottom - listBox.height * 0.2;
-    if (targetBox.top < bandTop || targetBox.bottom > bandBottom) {
-      const delta = targetBox.top + targetBox.height / 2 - (listBox.top + listBox.height / 2);
-      container.scrollTop += delta;
+    if (target) {
+      const targetBox = target.getBoundingClientRect();
+      const bandTop = listBox.top + listBox.height * 0.2;
+      const bandBottom = listBox.bottom - listBox.height * 0.2;
+      if (targetBox.top < bandTop || targetBox.bottom > bandBottom) {
+        const delta = targetBox.top + targetBox.height / 2 - (listBox.top + listBox.height / 2);
+        container.scrollTop += delta;
+      }
     }
     lastProgrammaticTop.current = container.scrollTop;
     let frame = requestAnimationFrame(() => {
       frame = requestAnimationFrame(() => {
+        lastProgrammaticTop.current = container.scrollTop;
         programmaticScroll.current = false;
       });
     });

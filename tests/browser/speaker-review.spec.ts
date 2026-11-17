@@ -1775,7 +1775,20 @@ test("long playback lists keep manual paging and nearest gap/end anchors", async
   });
   await expect(page.getByRole("button", { name: "Follow playback", exact: true })).toBeVisible();
   await expect(list.locator("button").first()).toHaveText(pagedFirst!);
+  // WebKit may adjust the scroll anchor after the caption window changes.
+  // This layout-driven scroll is not a new user gesture and must not cancel follow.
+  await list.evaluate(element => {
+    const chip = document.querySelector(".playback-follow-chip")!;
+    const observer = new MutationObserver(() => {
+      if (!chip.classList.contains("is-following")) return;
+      observer.disconnect();
+      element.scrollTop = 200;
+      element.dispatchEvent(new Event("scroll", {bubbles: true}));
+    });
+    observer.observe(chip, {attributes: true, attributeFilter: ["class"]});
+  });
   await page.getByRole("button", { name: "Follow playback", exact: true }).click();
+  await expect(playback.locator(".playback-follow-chip")).toHaveText("Following playback");
   await expect(list.locator("button").first()).toContainText("The first speaker");
   const audio = page.locator("audio");
   await audio.evaluate((element) => {
@@ -1793,6 +1806,10 @@ test("long playback lists keep manual paging and nearest gap/end anchors", async
   });
   await expect(list.locator(".is-active")).toHaveCount(0);
   await expect(list.locator("button").last()).toContainText("Long caption 120");
+  await list.hover();
+  await expect(playback.locator(".playback-follow-chip")).toHaveText("Following playback");
+  await page.mouse.wheel(0, 160);
+  await expect(playback.locator(".playback-follow-chip")).toHaveText("Follow paused");
 });
 
 test("workspace actions and count labels explain their units", async ({ page }) => {
@@ -2802,6 +2819,10 @@ test("speaker toolbar aligns controls and keeps technical IDs discoverable", asy
   expect(Math.abs(sampleBox!.y + sampleBox!.height / 2 - addBox!.y - addBox!.height / 2)).toBeLessThanOrEqual(1);
   expect(sampleBox!.height).toBeGreaterThanOrEqual(44);
   expect(addBox!.height).toBeGreaterThanOrEqual(44);
+  for (const label of ["Sort speakers", "Compare with speaker"]) {
+    const box = await page.getByRole("combobox", {name: label, exact: true}).boundingBox();
+    expect(box!.height, `${label} must keep a 44px target in both engines`).toBeGreaterThanOrEqual(44);
+  }
   const queue = page.getByRole("region", { name: "Speaker review queue" });
   await expect(queue).not.toContainText(speakerIds[0]);
   const identity = page.getByRole("region", {name: "Speaker identity"});
