@@ -8,6 +8,9 @@ This is a developer and agent navigation aid for the browser-first Meeting Memo 
 
 Follow-up audit baseline: `d53ab1cfa4acb48f6a2b9aa81075bf3f8f097b13`. QF01/UI-TOKEN runtime follow-up shipped in `122e9359dc033c22132e91ce7a4ebe75c065648d`, with hosted checks in `docs/VALIDATION.md`. The earlier source snapshot below remains historical. The owner now requires [the quality-first plan](docs/QUALITY-FIRST-PLAN.md) and [goal](goal.md): Pi orchestration, multiple measured model capabilities, full evidence coverage, independent review and final human acceptance. This direction does not establish implementation or quality parity with NotebookLM.
 
+Recovery follow-up: `9f15879` adds content-backed reattachment, transactional replacement and missing-paid-result refusal; `49f47d6` corrects About limits. Final hosted acceptance is 26 synthetic Chromium/WebKit cases, recorded in `docs/VALIDATION.md`. Separate checkpoint export and real provider/device quality remain open.
+
+
 | Capability | Current source-backed state | Planned change / task |
 | --- | --- | --- |
 | Pi browser runtime | `src/jobs/memo-agent.ts` dynamically loads pinned `pi-agent-core` and explicit OpenAI Responses transport; two meeting-scoped read tools; no CLI/shell runtime. | Application-owned persisted orchestration and restricted adapters, QF03–04 |
