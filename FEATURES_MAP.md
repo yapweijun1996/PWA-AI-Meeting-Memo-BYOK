@@ -6,7 +6,7 @@ This is a developer and agent navigation aid for the browser-first Meeting Memo 
 
 ## Quality-first direction and current integration — 2026-11-17
 
-Follow-up audit baseline: `d53ab1cfa4acb48f6a2b9aa81075bf3f8f097b13`. The earlier source snapshot below remains historical. The owner now requires [the quality-first plan](docs/QUALITY-FIRST-PLAN.md) and [goal](goal.md): Pi orchestration, multiple measured model capabilities, full evidence coverage, independent review and final human acceptance. This direction does not establish implementation or quality parity with NotebookLM.
+Follow-up audit baseline: `d53ab1cfa4acb48f6a2b9aa81075bf3f8f097b13`. QF01/UI-TOKEN runtime follow-up shipped in `122e9359dc033c22132e91ce7a4ebe75c065648d`, with hosted checks in `docs/VALIDATION.md`. The earlier source snapshot below remains historical. The owner now requires [the quality-first plan](docs/QUALITY-FIRST-PLAN.md) and [goal](goal.md): Pi orchestration, multiple measured model capabilities, full evidence coverage, independent review and final human acceptance. This direction does not establish implementation or quality parity with NotebookLM.
 
 | Capability | Current source-backed state | Planned change / task |
 | --- | --- | --- |
