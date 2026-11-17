@@ -24,6 +24,12 @@ UI follow-up: a single speaker queue and manual comparison workspace, responsive
 
 Speaker review redesign: implemented a single searchable, filterable queue, selected-speaker inspector, bounded sample listening and manual second-speaker comparison. Saving and confirming remain separate, with confirmation advancing to another unconfirmed speaker. An audio-derived waveform and physical-device responsive acceptance remain open; do not represent synthetic graphics as audio evidence.
 
+## Remaining work order — 2026-11-17
+
+Use the [routing and delivery priority table](docs/MODEL-ROUTING.md#remaining-work-and-order): QF02 references in parallel with QF03 real-route evidence, then QF04 durable artifacts/full backup, QF05 complete coverage, QF06–07 role orchestration/review, QF08–09 benchmark promotion and review UI, and QF10 acceptance. The QF03 manual-route implementation is delivered; its real-provider and measured-model gates remain open.
+
+Other unfinished entries below are not erased or counted twice: VID01b/03–14 include acoustic measurement, constrained clustering, scoring alignment, low-confidence handling, segmentation/model comparison and per-part processing. These require the speaker evaluation path and are not satisfied by routing a language model. DS06/REL02–03 and older V/R/immersive entries retain physical-device, screen-reader, model-license/delivery, live-provider and storage-memory acceptance. B01/B02 are later microphone/waveform/template/engine work, not additional completion credit for the ten-deliverable quality track. Historical owner acceptance for storage/recording results also remains open.
+
 # Implementation tasks
 
 ## Long-recording recovery follow-up — 2026-11-17
