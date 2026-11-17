@@ -9,11 +9,12 @@
   --color-accent-text: var(--palette-18);
   --color-focus: var(--palette-18);
   --status-sand-bg: var(--palette-34);
-  --status-sand-text: var(--palette-32);
+  --status-sand-text: var(--text-body);
   --status-light-bg: var(--palette-36);
   --status-light-text: var(--palette-32);
   --status-danger-bg: var(--palette-87);
   --status-danger-text: var(--status-danger);
+  --status-danger-hover-bg: #f1d7d1;
   --text-body: #27313c;
   --color-accent: #385e45;
   --text-heading: #18212c;
@@ -283,6 +284,7 @@
   --status-light-text: #d2e2d4;
   --status-danger-bg: #51322e;
   --status-danger-text: #ffd2ca;
+  --status-danger-hover-bg: #68423d;
   --status-danger: #f3b1a5;
   --palette-8: #a8c7af;
   --palette-9: #b9dfc2;
