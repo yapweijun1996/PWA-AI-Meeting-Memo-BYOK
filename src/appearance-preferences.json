@@ -2,11 +2,47 @@
   "theme": {
     "key": "meeting-memo:theme",
     "default": "light",
-    "values": ["light", "dark"]
+    "values": [
+      "light",
+      "dark"
+    ]
   },
   "palette": {
     "key": "meeting-memo:palette",
     "default": "forest",
-    "values": ["forest", "ocean", "violet", "amber"]
+    "options": {
+      "forest": {
+        "en": "Forest",
+        "zh": "森林"
+      },
+      "ocean": {
+        "en": "Ocean",
+        "zh": "海洋"
+      },
+      "violet": {
+        "en": "Violet",
+        "zh": "紫罗兰"
+      },
+      "amber": {
+        "en": "Amber",
+        "zh": "琥珀"
+      },
+      "teal": {
+        "en": "Teal",
+        "zh": "青绿"
+      },
+      "rose": {
+        "en": "Rose",
+        "zh": "玫瑰"
+      },
+      "indigo": {
+        "en": "Indigo",
+        "zh": "靛蓝"
+      },
+      "slate": {
+        "en": "Slate",
+        "zh": "石板灰"
+      }
+    }
   }
 }

@@ -1,3 +1,5 @@
+import {paletteChoices} from "./helpers/appearance";
+import {changeTopbarLanguage} from "./helpers/language";
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
@@ -298,7 +300,7 @@ for (const viewport of [
   await createFixture(page,"large-roster.wav",fixture);
   const before=sourceSnapshot(await storedMeeting(page));
   await page.setViewportSize(viewport);
-  if(viewport.language==="zh-CN") await page.getByRole("combobox",{name:"Display language",exact:true}).selectOption("zh-CN");
+  if(viewport.language==="zh-CN") await changeTopbarLanguage(page, "zh-CN");
   const zh=viewport.language==="zh-CN";
   const setPosition=async(position:number)=>page.locator("audio").evaluate((element,position)=>{(element as HTMLMediaElement).currentTime=position;element.dispatchEvent(new Event("seeked"));},position);
   await setPosition(3);
@@ -767,7 +769,7 @@ test("real playback colors follow every palette with readable semantic states", 
     let fixed: { avatar: string; review: string } | undefined;
     const accents = new Set<string>();
     const highlights = new Set<string>();
-    for (const palette of ["forest", "ocean", "violet", "amber"]) {
+    for (const palette of paletteChoices) {
       await settings.getByLabel("Color palette", { exact: true }).selectOption(palette);
       await expect(page.locator("html")).toHaveAttribute("data-palette", palette);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
@@ -843,8 +845,8 @@ test("real playback colors follow every palette with readable semantic states", 
         await page.setViewportSize({ width: 1280, height: 1000 });
       }
     }
-    expect(accents.size).toBe(4);
-    expect(highlights.size).toBe(4);
+    expect(accents.size).toBe(paletteChoices.length);
+    expect(highlights.size).toBe(paletteChoices.length);
   }
   await settings.close();
   await page.reload();
@@ -2498,7 +2500,7 @@ test("persistent player skips without changing the playback state", async ({ pag
 
 test("Chinese transcript filter keeps its checkbox and label on one line", async ({ page }) => {
   await createFixture(page);
-  await page.getByLabel("Display language", { exact: true }).selectOption("zh-CN");
+  await changeTopbarLanguage(page, "zh-CN");
   await page.getByRole("tab", { name: /转录/ }).click();
   const filter = page.getByRole("checkbox", { name: "需要审阅" });
   await expect(filter).toBeVisible();
@@ -2534,7 +2536,7 @@ for (const width of [390, 768, 1440])
     await expect(dialog.locator(".immersive-current-speakers")).toContainText("Name confirmed");
     await expect(dialog.locator(".immersive-current-speakers")).toContainText("Unconfirmed");
     for (const theme of ["light", "dark"])
-      for (const palette of ["forest", "ocean", "violet", "amber"])
+      for (const palette of paletteChoices)
         for (const size of ["normal", "xxlarge"]) {
           await page.evaluate(({theme, palette, size}) => {
             for (const [key, value] of [["meeting-memo:theme", theme], ["meeting-memo:palette", palette], ["meeting-memo:font-size", size]]) {
@@ -2843,7 +2845,7 @@ test("speaker toolbar aligns controls and keeps technical IDs discoverable", asy
     await page.screenshot({path: `private-fixtures/speaker-review-${info.project.name}-${width}.png`});
     if (width === 390) expect((await new AxeBuilder({page}).withTags(["wcag2a", "wcag2aa"]).analyze()).violations).toEqual([]);
   }
-  await page.getByLabel("Display language", {exact: true}).selectOption("zh-CN");
+  await changeTopbarLanguage(page, "zh-CN");
   await page.evaluate(() => { document.documentElement.dataset.fontSize = "xxlarge"; });
   await expect(page.getByRole("combobox", {name: "样本长度", exact: true})).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

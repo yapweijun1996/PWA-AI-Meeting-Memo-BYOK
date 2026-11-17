@@ -1,3 +1,4 @@
+import {changeTopbarLanguage} from "./helpers/language";
 import { expect, test } from "@playwright/test";
 
 test.use({serviceWorkers: "block"});
@@ -49,7 +50,7 @@ for (const [preference, instruction] of [
     await create.getByLabel("Transcript", {exact: true}).fill("Jamie: Review the evidence before approving the budget.");
     await create.getByRole("button", {name: "Create meeting", exact: true}).click();
     await expect(page.getByRole("heading", {name: "Memo language fixture", exact: true})).toBeVisible();
-    if (preference === "interface") await page.getByRole("combobox", {name: "Display language", exact: true}).selectOption("zh-CN");
+    if (preference === "interface") await changeTopbarLanguage(page, "zh-CN");
     await page.getByRole("tab", {name: /Meeting notes|会议笔记/}).click();
     await page.getByRole("button", {name: /^(Generate meeting notes|生成会议笔记)$/}).click();
     const confirmation = page.getByRole("dialog");

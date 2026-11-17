@@ -45,3 +45,24 @@ test("shared tabs wrap, skip disabled choices and preserve selected focus when t
   await expect(first).toHaveAttribute("aria-selected","true");
   await expect(page.getByRole("tabpanel",{name:"first control tab",exact:true})).toBeVisible();
 });
+
+test('choice menu selects with keys, preserves focus and blocks duplicate changes while pending', async ({page}) => {
+  const trigger = page.getByRole('button',{name:/Synthetic shared choice/});
+  await trigger.focus();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.getByRole('menuitemradio',{name:/Third choice/})).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(page.getByRole('menuitemradio',{name:'First choice',exact:true})).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(trigger).toContainText('Second choice');
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toHaveAttribute('aria-busy','true');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(trigger).not.toHaveAttribute('aria-busy','true');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Escape');
+  await expect(trigger).toBeFocused();
+  await expect(page.getByRole('menu')).toHaveCount(0);
+});

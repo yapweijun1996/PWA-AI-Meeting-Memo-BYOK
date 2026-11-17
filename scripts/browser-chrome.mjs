@@ -46,7 +46,7 @@ export function readBrowserChromeColors(css) {
 
 /** Parser-blocking, same-origin script: no inline-script CSP exception or key/database access. */
 export function createAppearanceBootstrap(colors, preferences) {
-  return `(()=>{const p=${JSON.stringify(preferences)},colors=${JSON.stringify(colors)},root=document.documentElement;let theme=p.theme.default,palette=p.palette.default;try{const t=localStorage.getItem(p.theme.key),c=localStorage.getItem(p.palette.key);if(p.theme.values.includes(t))theme=t;if(p.palette.values.includes(c))palette=c}catch{}root.dataset.theme=theme;root.dataset.palette=palette;document.querySelector('meta[name="theme-color"]')?.setAttribute('content',colors[theme])})();`;
+  return `(()=>{const p=${JSON.stringify(preferences)},colors=${JSON.stringify(colors)},root=document.documentElement;let theme=p.theme.default,palette=p.palette.default;try{const t=localStorage.getItem(p.theme.key),c=localStorage.getItem(p.palette.key);if(p.theme.values.includes(t))theme=t;if(Object.hasOwn(p.palette.options,c))palette=c}catch{}root.dataset.theme=theme;root.dataset.palette=palette;document.querySelector('meta[name="theme-color"]')?.setAttribute('content',colors[theme])})();`;
 }
 
 export function browserChromePlugin() {

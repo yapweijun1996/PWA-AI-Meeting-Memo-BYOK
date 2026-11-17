@@ -1,3 +1,4 @@
+import {paletteChoices} from "./helpers/appearance";
 import AxeBuilder from "@axe-core/playwright";
 import {expect, test, type Page} from "@playwright/test";
 import {createHash} from "node:crypto";
@@ -107,7 +108,7 @@ for (const width of [390,768,1440])
         expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),label+" overflow").toBe(true);
       };
       for (const theme of ["light","dark"])
-        for (const palette of ["forest","ocean","violet","amber"]) {
+        for (const palette of paletteChoices) {
           await appearance(page,theme,palette);
           const contracts: [string, string, string][] = view === "settings" ? [
             ["#settings-panel-api .notice", "background-color", "--action-selected-bg"],

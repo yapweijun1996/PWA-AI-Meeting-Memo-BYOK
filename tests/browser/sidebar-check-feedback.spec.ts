@@ -1,3 +1,4 @@
+import {changeTopbarLanguage} from "./helpers/language";
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
@@ -33,7 +34,7 @@ for (const scenario of [
   test("collapsed update feedback is readable and remains available (" + scenario.language + " " + scenario.font + ")", async ({ page }, info) => {
     await page.setViewportSize({ width: scenario.width, height: scenario.height });
     await page.goto("./");
-    await page.locator(".topbar-language select").selectOption(scenario.language);
+    await changeTopbarLanguage(page, scenario.language);
     await page.evaluate(font => {
       localStorage.setItem("meeting-memo:font-size", font);
       window.dispatchEvent(new StorageEvent("storage", { key: "meeting-memo:font-size" }));

@@ -1,4 +1,5 @@
 import preferences from "./appearance-preferences.json";
+import { syncBrowserChrome } from "./browser-chrome";
 import { useSyncExternalStore } from "react";
 
 const key = "meeting-memo:font-family";
@@ -6,15 +7,13 @@ const sizeKey = "meeting-memo:font-size";
 const themeKey = preferences.theme.key;
 const paletteKey = preferences.palette.key;
 export type ThemeChoice = "light" | "dark";
-export type PaletteChoice = "forest" | "ocean" | "violet" | "amber";
+export type PaletteChoice = keyof typeof preferences.palette.options;
+export const paletteOptions = preferences.palette.options;
+export const paletteChoices = Object.keys(paletteOptions) as PaletteChoice[];
 let currentTheme: ThemeChoice = "light";
-let currentPalette: PaletteChoice = "forest";
+let currentPalette = preferences.palette.default as PaletteChoice;
 const parseTheme = (value: string | null): ThemeChoice => (preferences.theme.values.includes(value ?? "") ? value : preferences.theme.default) as ThemeChoice;
-const parsePalette = (value: string | null): PaletteChoice => (preferences.palette.values.includes(value ?? "") ? value : preferences.palette.default) as PaletteChoice;
-function syncBrowserChrome() {
-  const background = getComputedStyle(document.documentElement).getPropertyValue("--bg-app").trim();
-  if (background) document.querySelector('meta[name="theme-color"]')?.setAttribute("content", background);
-}
+const parsePalette = (value: string | null): PaletteChoice => (Object.hasOwn(preferences.palette.options, value ?? "") ? value : preferences.palette.default) as PaletteChoice;
 function applyTheme(value: ThemeChoice) { currentTheme = value; document.documentElement.dataset.theme = value; syncBrowserChrome(); listeners.forEach((listener) => listener()); }
 function applyPalette(value: PaletteChoice) { currentPalette = value; document.documentElement.dataset.palette = value; syncBrowserChrome(); listeners.forEach((listener) => listener()); }
 export type FontSize = "small" | "normal" | "large" | "xlarge" | "xxlarge";
@@ -35,15 +34,15 @@ function apply(value: FontChoice) {
   listeners.forEach((listener) => listener());
 }
 export function initializeAppearance() {
-  try { apply(parse(localStorage.getItem(key))); applySize(parseSize(localStorage.getItem(sizeKey))); applyTheme(parseTheme(localStorage.getItem(themeKey))); applyPalette(parsePalette(localStorage.getItem(paletteKey))); } catch { apply("default"); applySize("normal"); applyTheme("light"); applyPalette("forest"); }
+  try { apply(parse(localStorage.getItem(key))); applySize(parseSize(localStorage.getItem(sizeKey))); applyTheme(parseTheme(localStorage.getItem(themeKey))); applyPalette(parsePalette(localStorage.getItem(paletteKey))); } catch { apply("default"); applySize("normal"); applyTheme("light"); applyPalette(parsePalette(null)); }
   window.addEventListener("storage", (event) => {
     if (event.key === themeKey || event.key === null) { try { applyTheme(parseTheme(localStorage.getItem(themeKey))); } catch { applyTheme("light"); } }
-    if (event.key === paletteKey || event.key === null) { try { applyPalette(parsePalette(localStorage.getItem(paletteKey))); } catch { applyPalette("forest"); } }
+    if (event.key === paletteKey || event.key === null) { try { applyPalette(parsePalette(localStorage.getItem(paletteKey))); } catch { applyPalette(parsePalette(null)); } }
     if (event.key === sizeKey || event.key === null) {
       try { applySize(parseSize(localStorage.getItem(sizeKey))); } catch { applySize("normal"); }
     }
     if (event.key === key || event.key === null) {
-      try { apply(parse(localStorage.getItem(key))); applySize(parseSize(localStorage.getItem(sizeKey))); applyTheme(parseTheme(localStorage.getItem(themeKey))); applyPalette(parsePalette(localStorage.getItem(paletteKey))); } catch { apply("default"); applySize("normal"); applyTheme("light"); applyPalette("forest"); }
+      try { apply(parse(localStorage.getItem(key))); applySize(parseSize(localStorage.getItem(sizeKey))); applyTheme(parseTheme(localStorage.getItem(themeKey))); applyPalette(parsePalette(localStorage.getItem(paletteKey))); } catch { apply("default"); applySize("normal"); applyTheme("light"); applyPalette(parsePalette(null)); }
     }
   });
 }
@@ -65,4 +64,4 @@ export function useFontSize() { return useSyncExternalStore((listener) => { list
 export function saveTheme(value: ThemeChoice) { localStorage.setItem(themeKey, value); applyTheme(value); }
 export function savePalette(value: PaletteChoice) { localStorage.setItem(paletteKey, value); applyPalette(value); }
 export function useThemeChoice() { return useSyncExternalStore((listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => currentTheme, () => "light" as ThemeChoice); }
-export function usePaletteChoice() { return useSyncExternalStore((listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => currentPalette, () => "forest" as PaletteChoice); }
+export function usePaletteChoice() { return useSyncExternalStore((listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => currentPalette, () => parsePalette(null)); }

@@ -1,3 +1,4 @@
+import {changeTopbarLanguage} from "./helpers/language";
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { sampleMeeting } from "../../src/domain/model";
@@ -20,7 +21,7 @@ async function prepare(page: Page, language: "en" | "zh-CN", withKey = true) {
     name: "synthetic-confirmation.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(meeting)),
   });
   await expect(page.getByRole("heading", { name: meeting.title + " (restored)", exact: true })).toBeVisible();
-  if (language === "zh-CN") await page.locator(".topbar-language select").selectOption("zh-CN");
+  if (language === "zh-CN") await changeTopbarLanguage(page, "zh-CN");
   await page.getByRole("tab", { name: language === "zh-CN" ? /会议笔记/ : /Meeting notes/ }).click();
   const connectKey = page.locator(".memo-review-panel").getByRole("link", { name: language === "zh-CN" ? "连接 API 密钥" : "Connect your API key", exact: true });
   if (withKey) await expect(connectKey).toHaveCount(0);

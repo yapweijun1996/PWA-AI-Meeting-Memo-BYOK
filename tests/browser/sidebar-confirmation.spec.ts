@@ -1,3 +1,4 @@
+import {changeTopbarLanguage} from "./helpers/language";
 import { expect, test, type Page } from "@playwright/test";
 
 test.use({ serviceWorkers: "block", reducedMotion: "reduce" });
@@ -141,7 +142,7 @@ test("confirmation preserves bottom anchoring across language, rail, drawer and 
   ]) {
     await page.setViewportSize(view);
     await page.goto("./#/settings");
-    await page.locator(".topbar-language select").selectOption(view.language);
+    await changeTopbarLanguage(page, view.language);
     const chinese = view.language === "zh-CN";
     if (view.width <= 760) {
       if (!await page.locator("aside.sidebar").evaluate(element => element.classList.contains("open"))) {

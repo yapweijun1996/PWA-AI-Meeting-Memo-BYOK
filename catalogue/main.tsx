@@ -1,3 +1,4 @@
+import {ChoiceMenu} from "../src/components/ChoiceMenu";
 import { Button, IconButton, Field, Tabs, Tab } from "../src/components/controls";
 import { Check, X } from "lucide-react";
 import { Icon, ICON_SIZES, type IconSize } from "../src/components/Icon";
@@ -22,6 +23,8 @@ function Catalogue() {
   const [controlPending, setControlPending] = useState(false);
   const [controlCount, setControlCount] = useState(0);
   const [controlDraft, setControlDraft] = useState("Local draft");
+  const [menuChoice, setMenuChoice] = useState("first");
+  const [menuBusy, setMenuBusy] = useState(false);
   const [controlTab, setControlTab] = useState("first");
   const [blockTabs, setBlockTabs] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -127,6 +130,9 @@ function Catalogue() {
 
           <section className="catalogue-card catalogue-card--wide" aria-labelledby="controls-title">
             <div className="catalogue-section-heading"><div><p className="catalogue-kicker">src/components/controls.tsx</p><h2 id="controls-title">Shared controls</h2></div></div>
+            <ChoiceMenu label="Synthetic shared choice" value={menuChoice} busy={menuBusy} options={[
+              {value:"first",label:"First choice"}, {value:"second",label:"Second choice"}, {value:"third",label:"Third choice",description:"A descriptive option"},
+            ]} onChange={value => { setMenuChoice(value); setMenuBusy(true); setTimeout(() => setMenuBusy(false), 300); }} />
             <Field label="Synthetic shared field" hint="This draft stays in this tab" error={controlDraft ? undefined : "Enter a synthetic value"}>
               <input value={controlDraft} onChange={event => setControlDraft(event.target.value)} />
             </Field>

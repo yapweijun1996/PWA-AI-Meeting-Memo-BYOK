@@ -1,3 +1,4 @@
+import {changeTopbarLanguage} from "./helpers/language";
 import { test, expect, type Page } from "@playwright/test";
 import { sampleMeeting } from "../../src/domain/model";
 
@@ -87,7 +88,7 @@ test("collapsed sidebar aligns its storage and update icons and explains both", 
   await expect(page.getByRole("tooltip")).toHaveText("Saved on this device · Local storage");
   await update.focus();
   await expect(page.getByRole("tooltip")).toHaveText("Check for updates");
-  await page.locator(".topbar-language select").selectOption("zh-CN");
+  await changeTopbarLanguage(page, "zh-CN");
   await storage.focus();
   await expect(page.getByRole("tooltip")).toHaveText("已保存在此设备 · 本地存储");
   await sidebar.getByRole("button", { name: "检查更新", exact: true }).hover();

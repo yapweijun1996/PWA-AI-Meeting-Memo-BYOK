@@ -1,3 +1,4 @@
+import {changeTopbarLanguage} from "./helpers/language";
 import { expect, test } from "@playwright/test";
 import { sampleMeeting } from "../../src/domain/model";
 
@@ -27,7 +28,7 @@ for (const language of ["en", "zh-CN"] as const) {
     }), [alpha, zeta]);
     await page.reload();
     await expect(page.locator(".meeting-card")).toHaveCount(2);
-    await page.locator(".topbar-language select").selectOption(language);
+    await changeTopbarLanguage(page, language);
     const chinese = language === "zh-CN";
     await page.getByRole("button", { name: chinese ? "收起侧边栏" : "Collapse sidebar", exact: true }).click();
     await page.mouse.move(1, 1);

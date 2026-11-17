@@ -5,11 +5,13 @@ import path from "node:path";
 
 const test = base.extend<{ diagnostics: { externalRequests: string[]; consoleErrors: string[] } }>({
   // Automatic page fixtures start before beforeEach, including its first navigation.
-  diagnostics: [async ({ page }, use) => {
+  diagnostics: [async ({ page, baseURL }, use) => {
+    if (!baseURL) throw new Error("Catalogue baseURL is required");
+    const origin = `${new URL(baseURL).origin}/`;
     const externalRequests: string[] = [];
     const consoleErrors: string[] = [];
     page.on("request", (request) => {
-      if (!request.url().startsWith("http://127.0.0.1:4183/")) externalRequests.push(request.url());
+      if (!request.url().startsWith(origin)) externalRequests.push(request.url());
     });
     page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
     page.on("pageerror", (error) => consoleErrors.push(error.message));

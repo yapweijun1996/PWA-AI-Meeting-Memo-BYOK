@@ -1,3 +1,5 @@
+import {paletteChoices} from "./helpers/appearance";
+import {changeTopbarLanguage} from "./helpers/language";
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
@@ -141,7 +143,7 @@ test("theme and palette persist with readable dark surfaces", async ({ page }) =
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#15191f");
   for (const mode of ["light", "dark"]) {
     await page.getByLabel("Theme", { exact: true }).selectOption(mode);
-    for (const palette of ["forest", "ocean", "violet", "amber"]) {
+    for (const palette of paletteChoices) {
       await page.getByLabel("Color palette", { exact: true }).selectOption(palette);
       const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
       expect(axe.violations, `${mode}/${palette}`).toEqual([]);
@@ -170,7 +172,7 @@ test("sidebar update feedback stays above the anchored update button", async ({ 
 test("topbar language updates the clean settings form without making it dirty", async ({ page }) => {
   await page.goto(settings);
   await page.getByRole("tab", { name: "Appearance" }).click();
-  await page.locator(".topbar-language select").selectOption("zh-CN");
+  await changeTopbarLanguage(page, "zh-CN");
   await expect(page.getByLabel("字体", { exact: true })).toBeVisible();
   await expect(page.getByText("Unsaved settings", { exact: true })).toHaveCount(0);
 });
@@ -178,13 +180,13 @@ test("topbar language updates the clean settings form without making it dirty", 
 test("topbar language refreshes settings while preserving unsaved drafts", async ({ page }) => {
   await page.goto(settings);
   await page.getByLabel("OpenAI API key", { exact: true }).fill("test-key-not-real");
-  await page.locator(".topbar-language select").selectOption("zh-CN");
+  await changeTopbarLanguage(page, "zh-CN");
   await expect(page.getByRole("heading", { name: /^设置/ })).toBeVisible();
   await expect(page.getByLabel("OpenAI API 密钥", { exact: true })).toHaveValue("test-key-not-real");
   await expect(page.getByText("设置尚未保存")).toBeVisible();
   await page.getByRole("tab", { name: "外观" }).click();
   await page.getByLabel("Display language / 显示语言").selectOption("en");
-  await page.locator(".topbar-language select").selectOption("ms");
+  await changeTopbarLanguage(page, "ms");
   await expect(page.locator("html")).toHaveAttribute("lang", "ms");
   await expect(page.getByLabel("Display language / 显示语言")).toHaveValue("en");
   await page.getByRole("tab", { name: "API & models" }).click();

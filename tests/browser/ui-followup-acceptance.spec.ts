@@ -1,3 +1,4 @@
+import {changeTopbarLanguage} from "./helpers/language";
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { sampleMeeting, type Meeting } from "../../src/domain/model";
@@ -228,7 +229,7 @@ test("Chinese large meeting can select review without sending a provider request
   await expect(
     page.getByRole("button", { name: "Saved on this device", exact: true }),
   ).toBeVisible();
-  await page.locator(".topbar-language select").selectOption("zh-CN");
+  await changeTopbarLanguage(page, "zh-CN");
   await page.goto(`./${route}`);
   await page.getByRole("tab", { name: /会议笔记/ }).click();
   await page.getByRole("button", { name: "生成会议笔记", exact: true }).click();
@@ -264,7 +265,7 @@ test("Chinese capacity warning explains how to stop safely before a request", as
     ...meeting.segments[0], id: crypto.randomUUID(), text: "x".repeat(20000), originalText: "x".repeat(20000),
   }));
   await restore(page, meeting);
-  await page.locator(".topbar-language select").selectOption("zh-CN");
+  await changeTopbarLanguage(page, "zh-CN");
   await page.getByRole("tab", { name: /会议笔记/ }).click();
   await page.getByRole("button", { name: "生成会议笔记", exact: true }).click();
   const dialog = page.getByRole("dialog");

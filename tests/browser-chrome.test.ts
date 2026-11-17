@@ -89,3 +89,24 @@ it("early appearance survives denied storage without writes or database access",
   });
   expect(dataset).toEqual({theme: "light", palette: "forest"});
 });
+
+it('keeps selectable palettes and light/dark CSS scopes in agreement', () => {
+  const css = readFileSync('src/theme.css', 'utf8');
+  const registered = Object.keys(preferences.palette.options);
+  expect(registered.length).toBeGreaterThanOrEqual(8);
+  for (const name of ['forest', 'ocean', 'violet', 'amber']) expect(registered).toContain(name);
+  const declared = [...css.matchAll(/:root\[data-palette="([a-z]+)"\]\s*\{/g)].map(match => match[1]);
+  const dark = [...css.matchAll(/:root\[data-theme="dark"\]\[data-palette="([a-z]+)"\]\s*\{/g)].map(match => match[1]);
+  expect(declared.sort()).toEqual(registered.filter(name => name !== preferences.palette.default).sort());
+  expect(dark.sort()).toEqual(declared.sort());
+  for (const [palette, labels] of Object.entries(preferences.palette.options)) {
+    expect(labels.en.trim()).not.toBe('');
+    expect(labels.zh.trim()).not.toBe('');
+    const dataset: Record<string, string> = {};
+    runInNewContext(createAppearanceBootstrap({light:'#fff', dark:'#000'}, preferences), {
+      document:{documentElement:{dataset},querySelector:() => null},
+      localStorage:{getItem:(key:string) => key === preferences.palette.key ? palette : 'dark'},
+    });
+    expect(dataset.palette).toBe(palette);
+  }
+});

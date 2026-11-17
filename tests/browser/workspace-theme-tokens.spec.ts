@@ -1,3 +1,4 @@
+import {paletteChoices} from "./helpers/appearance";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { sampleMeeting } from "../../src/domain/model";
@@ -32,7 +33,7 @@ test("workspace icons, tabs and errors follow semantic colors in every theme", a
   await expect(page.locator(".app-error")).toBeVisible();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
 
-  for (const theme of ["light", "dark"]) for (const palette of ["forest", "ocean", "violet", "amber"]) {
+  for (const theme of ["light", "dark"]) for (const palette of paletteChoices) {
     await page.evaluate(({ theme, palette }) => {
       document.documentElement.dataset.theme = theme;
       document.documentElement.dataset.palette = palette;

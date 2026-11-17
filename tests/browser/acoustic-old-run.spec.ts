@@ -1,3 +1,4 @@
+import {changeTopbarLanguage} from "./helpers/language";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
@@ -729,7 +730,7 @@ for (const language of ["en", "zh-CN"] as const) {
     await page.evaluate((id) => { location.hash = `#/meetings/${id}`; }, meetingId);
     await page.reload();
     await expect(page.getByRole("heading", { name: "Old completed chunked run", exact: true, level: 1 })).toBeVisible();
-    await page.locator(".topbar-language select").selectOption(language);
+    await changeTopbarLanguage(page, language);
     await expect(page.locator("html")).toHaveAttribute("lang", language);
     const before = await readMeeting(page);
 

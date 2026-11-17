@@ -1,3 +1,4 @@
+import {changeTopbarLanguage} from "./helpers/language";
 import {expect, test, type Page} from "@playwright/test";
 import {sampleMeeting, type Meeting} from "../../src/domain/model";
 
@@ -33,7 +34,7 @@ for (const language of ["en", "zh-CN"])
     page.once("dialog", dialog => dialog.accept());
     await page.getByLabel("Restore backup", {exact:true}).setInputFiles({name:"cleanup.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify(m))});
     await expect(page.getByRole("heading", {name:m.title+" (restored)",exact:true})).toBeVisible();
-    if (language === "zh-CN") await page.getByRole("combobox", {name:"Display language",exact:true}).selectOption(language);
+    if (language === "zh-CN") await changeTopbarLanguage(page, language);
     const before = (await records(page))[0];
     await page.getByRole("button", {name:/^(Edit meeting details|编辑会议资料)$/}).click();
     const details = page.getByRole("dialog", {name:/^(Meeting details|会议资料)$/});

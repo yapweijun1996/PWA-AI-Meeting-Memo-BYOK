@@ -1,0 +1,94 @@
+.choice-menu {
+  position: relative;
+  min-width: 0;
+}
+.choice-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-button);
+  background: var(--bg-surface);
+  color: var(--color-accent-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.choice-menu-trigger:hover,
+.choice-menu-trigger[aria-expanded="true"] {
+  background: var(--action-selected-bg);
+  border-color: var(--action-selected-border);
+}
+.choice-menu-trigger[aria-disabled="true"] {
+  cursor: wait;
+  opacity: 0.65;
+}
+.choice-menu-trigger svg {
+  flex-shrink: 0;
+}
+.choice-menu-value {
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.choice-menu-options {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(100% + 8px);
+  z-index: var(--layer-menu);
+  width: 240px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 100px);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-export-menu);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-export-menu);
+}
+.choice-menu-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--radius-export-option);
+  background: transparent;
+  color: var(--text-body);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: start;
+  cursor: pointer;
+}
+.choice-menu-option small {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.choice-menu-option[aria-checked="true"],
+.choice-menu-option:hover {
+  background: var(--action-selected-bg);
+  color: var(--action-selected-text);
+}
+.choice-menu-trigger:focus-visible,
+.choice-menu-option:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+.topbar-language {
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+}
+@media (max-width: 600px) {
+  .topbar-language .choice-menu-value {
+    display: none;
+  }
+}

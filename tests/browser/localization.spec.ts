@@ -116,19 +116,18 @@ test("Chinese history retains request billing uncertainty after reload", async (
 
 test("topbar language choice persists and Malay fallback is explicit", async ({ page }) => {
   await page.goto("/PWA-AI-Meeting-Memo-BYOK/");
-  const language = page.getByLabel("Display language", { exact: true });
-  await expect(language).toHaveValue("en");
-  const picker = page.locator(".topbar-language");
-  await expect(picker.locator("svg")).toBeVisible();
-  expect((await picker.boundingBox())!.width).toBe(44);
-  await language.click();
-  await expect(language).toBeFocused();
-  await language.selectOption("ms");
+  const trigger = page.locator(".topbar-language > button");
+  await expect(trigger).toContainText("English");
+  await expect(trigger.locator("svg").first()).toBeVisible();
+  expect((await trigger.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await trigger.click();
+  const malay = page.getByRole("menuitemradio", {name:/Bahasa Melayu/});
+  await expect(malay).toContainText("Partial translation");
+  await malay.click();
   await expect(page.locator("html")).toHaveAttribute("lang", "ms");
   await expect(page.getByRole("link", { name: /Mesyuarat anda/ })).toBeVisible();
-  await expect(language.locator("option[value=ms]")).toContainText("partial");
   await page.reload();
-  await expect(page.getByLabel("Display language", { exact: true })).toHaveValue("ms");
+  await expect(trigger).toContainText("Bahasa Melayu");
 });
 
 test("help guide remains usable on a narrow screen", async ({ page }) => {

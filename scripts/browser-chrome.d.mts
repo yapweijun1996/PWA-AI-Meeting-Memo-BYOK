@@ -5,5 +5,5 @@ export function browserChromePlugin(): Plugin;
 
 export function createAppearanceBootstrap(
   colors: {light: string; dark: string},
-  preferences: {theme: {key: string; default: string; values: string[]}; palette: {key: string; default: string; values: string[]}},
+  preferences: {theme: {key: string; default: string; values: string[]}; palette: {key: string; default: string; options: Record<string, {en: string; zh: string}>}},
 ): string;

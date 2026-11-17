@@ -1,3 +1,4 @@
+import {changeTopbarLanguage} from "./helpers/language";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { createMeeting, segment } from "../../src/domain/model";
@@ -466,9 +467,7 @@ test("Chinese selective confirmation captures the resolved memo language and rem
 }) => {
   const fixture = await setup(page);
   let calls = 0;
-  await page
-    .getByRole("combobox", { name: "Display language", exact: true })
-    .selectOption("zh-CN");
+  await changeTopbarLanguage(page, "zh-CN");
   await page.route("https://api.openai.com/v1/responses", async (route) => {
     const body = route.request().postDataJSON();
     expect(JSON.stringify(body)).toContain(

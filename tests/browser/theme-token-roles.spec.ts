@@ -1,4 +1,5 @@
-﻿import { expect, test } from "@playwright/test";
+import {paletteChoices} from "./helpers/appearance";
+import { expect, test } from "@playwright/test";
 
 test("palette accents remain independent of success and speaker colors", async ({ page }) => {
   await page.goto("#/settings");
@@ -24,7 +25,7 @@ test("palette accents remain independent of success and speaker colors", async (
     await page.getByLabel("Theme", { exact: true }).selectOption(theme);
     let baseline: { pill: string; speaker: string } | undefined;
     const accents = new Set<string>();
-    for (const palette of ["forest", "ocean", "violet", "amber"]) {
+    for (const palette of paletteChoices) {
       await page.getByLabel("Color palette", { exact: true }).selectOption(palette);
       await page.getByTestId("color-fixture").locator(".button.primary").focus();
       await page.keyboard.press("Tab");
@@ -82,6 +83,6 @@ test("palette accents remain independent of success and speaker colors", async (
       for (const role of colors.roleChecks) expect(role.actual, `${theme}/${palette} ${role.selector}`).toEqual(role.expected);
       accents.add(colors.accent);
     }
-    expect(accents.size).toBe(4);
+    expect(accents.size).toBe(paletteChoices.length);
   }
 });

@@ -1,4 +1,5 @@
 import { Button } from "./components/controls";
+import { LanguageMenu } from "./components/LanguageMenu";
 import { Masonry } from "./components/Masonry";
 import { Icon } from "./components/Icon";
 import { translateUi } from "./i18n";
@@ -16,7 +17,6 @@ import {
   HelpCircle,
   HardDrive,
   Leaf,
-  Languages,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
@@ -427,11 +427,10 @@ export default function App() {
               </Pill>
             )}
           </div>
-          <label className="topbar-language" data-tooltip={t("Display language", "\u663e\u793a\u8bed\u8a00")}><Icon glyph={Languages} size="transport" aria-hidden="true" />
-            <select aria-label={t("Display language", "\u663e\u793a\u8bed\u8a00")} value={uiLanguage} disabled={languageSaving} onChange={(event) => { setLanguageSaving(true); void saveUiLanguagePreference(event.target.value as "en" | "zh-CN" | "ms").catch(() => setError(t("Wait for settings to finish saving, or check local storage.", "请等待设置保存完成，或检查本地存储。"))).finally(() => setLanguageSaving(false)); }}>
-              <option value="en">English</option><option value="zh-CN">{"\u7b80\u4f53\u4e2d\u6587"}</option><option value="ms">Bahasa Melayu (partial)</option>
-            </select>
-          </label>
+          <LanguageMenu language={uiLanguage} label={t("Display language", "显示语言")} saving={languageSaving} onChange={language => {
+            setLanguageSaving(true);
+            void saveUiLanguagePreference(language).catch(() => setError(t("Wait for settings to finish saving, or check local storage.", "请等待设置保存完成，或检查本地存储。"))).finally(() => setLanguageSaving(false));
+          }} />
           <span className="privacy-top" data-tooltip={t("Meetings are saved locally. AI requests use your selected provider.", "\u4f1a\u8bae\u4fdd\u5b58\u5728\u672c\u5730\u3002AI \u8bf7\u6c42\u4f7f\u7528\u60a8\u9009\u62e9\u7684\u670d\u52a1\u5546\u3002")}>
             <Icon glyph={ShieldCheck} size="compact" />
             {online

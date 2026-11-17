@@ -1,8 +1,9 @@
+import {paletteChoices} from "./helpers/appearance";
 import {expect, test} from "@playwright/test";
 
 test.use({serviceWorkers: "block"});
 
-for (const palette of ["forest", "ocean", "violet", "amber"])
+for (const palette of paletteChoices)
   test(`restores saved dark ${palette} before the application module executes`, async ({page}) => {
     await page.addInitScript(({palette}) => {
       localStorage.setItem("meeting-memo:theme", "dark");
