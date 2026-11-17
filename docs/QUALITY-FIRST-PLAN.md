@@ -14,10 +14,10 @@ Status: approved product direction; phased engineering plan. This document does 
 | Multi-model | Route stages through OpenAI and OpenRouter according to verified capability and measured task performance. Different providers routing to the same underlying model do not establish independent review. |
 | Quality-first | Optimize accuracy, important-fact completeness, evidence fidelity, calibrated uncertainty and useful output. A valid JSON response or a polished memo is insufficient. |
 | Multi-pass | Plan, read, analyze, verify, critique, repair and verify again when unresolved quality issues justify it. Preserve every useful checkpoint. |
-| No cost optimization | Do not select weaker reasoning, omit context, skip necessary review, or stop at an arbitrary cumulative request count to save money. Usage remains observable, not an optimization objective. |
+| No cost optimization | Do not select weaker reasoning, omit context, skip necessary review, or stop needed analysis to save money. The later owner direction caps each persisted Pi plan at 100 attempts as an execution boundary. Usage remains observable, not an optimization objective. |
 | Human at the end | After initial data/provider consent, automate the normal analysis and revision workflow. The final human reviews evidence and residual uncertainties; they should not have to manage routine chunks or agent handoffs. |
 
-No cost optimization does not authorize meaningless repeats, automatic resubmission of unknown outcomes, or unlimited resource consumption. Keep BYOK disclosure and initial confirmation. Pause only for a concrete unresolved dependency, safety/correctness failure, resource boundary or lack of progress, not because a fixed number of useful LLM turns has occurred. No new paid experiment or private-data upload was performed to write this plan.
+No cost optimization does not authorize meaningless repeats, automatic resubmission of unknown outcomes, or unlimited resource consumption. Keep BYOK disclosure and initial confirmation. Pause for a concrete unresolved dependency, safety/correctness failure, resource boundary, lack of progress, or the later owner-selected maximum of 100 cumulative Pi attempts. Reaching that ceiling is not successful quality completion. No new paid experiment or private-data upload was performed to write this plan.
 
 ## 2. Current code audit and production verdict
 
@@ -158,7 +158,7 @@ The current 64 MiB aggregate, 400-job schema and whole-archive backup remain tec
 
 ## 8. Quality-driven continuation and recovery
 
-Remove fixed cumulative request and lookup budgets. A run stops for one of these explicit reasons:
+The original six-request and 32-cumulative-lookup ceilings are removed. The later owner direction permits at most 100 cumulative provider attempts per persisted Pi plan, including failures/unknown outcomes, without resetting on continuation. A run stops for one of these explicit reasons:
 
 - Required coverage, semantic checks, citation checks and output contracts pass: ready for final human review.
 - A specific non-repairable source ambiguity remains: limited result with issue list, not an invented fact.
@@ -172,7 +172,7 @@ State model: `planned → ready → running → response_saved → validated →
 
 Initial consent covers the defined multi-stage workflow, allowed models/providers, data types and possibility of additional necessary analysis. Successful stages proceed without repeated human approval. Uncertain billing/data outcomes remain a deliberate recovery exception. Local-save retry is local only. Rate-limit/server/network failures use explicit recovery unless a documented operation is proven not submitted; SDK retries remain disabled at the paid POST boundary. Do not fabricate an idempotency guarantee that a provider does not offer.
 
-Immediate QF01 design: new selective plans use no fixed cumulative cap; legacy six-request plans remain importable and upgrade only when explicitly continued; more than six useful responses and more than 32 total tools must complete. Keep bounded tool *bursts*, byte/storage checks, duplicate call-ID validation and a no-progress pause. Existing records and human edits survive. This unblocks the present defect; it does not by itself implement this document's full quality workflow.
+Historical QF01 design removed the six-request cap. The later PI100 follow-up uses a 100-attempt maximum; legacy six-request and null-limit plans remain importable and upgrade only when explicitly continued; more than six useful responses and more than 32 total tools must complete. Keep bounded tool *bursts*, byte/storage checks, duplicate call-ID validation and a no-progress pause. Existing records and human edits survive. This unblocks the present defect; it does not by itself implement this document's full quality workflow.
 
 ## 9. Final user experience and export
 

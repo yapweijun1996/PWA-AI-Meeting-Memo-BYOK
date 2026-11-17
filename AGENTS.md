@@ -25,7 +25,7 @@
 
 - Follow [goal.md](goal.md) and [docs/QUALITY-FIRST-PLAN.md](docs/QUALITY-FIRST-PLAN.md). The target is a Pi-Orchestrated, Multi-Model, Evidence-Grounded Meeting Intelligence Platform.
 - Prioritize LLM-first understanding, Pi-first orchestration, browser-first operation, measured multi-model routing, meaningful multi-pass analysis and final human review. Do not skip necessary analysis/context or select weaker models to reduce cost.
-- Do not impose arbitrary cumulative request limits as a completion criterion. Preserve initial BYOK/data consent, no-progress/duplicate guards, physical resource boundaries and the ban on automatic resubmission of unknown outcomes.
+- Owner follow-up, 2026-11-17: Pi review may use up to 100 cumulative provider attempts per persisted plan. This is an execution ceiling, never a quality target or instruction to consume all attempts. Preserve initial BYOK/data consent, no-progress/duplicate guards, physical resource boundaries and the ban on automatic resubmission of unknown outcomes. Continuation, reload and backup must not reset the count.
 - Verify browser Pi core/adapters in source and runtime; do not assume a CLI, shell, filesystem or arbitrary-code agent is browser compatible or authorized. LLM tool calls remain meeting-scoped and validated.
 - Preserve complete originals, speaker provenance and protected human facts. Require full-source coverage accounting, claim-level evidence, independent review and recoverable checkpoints; model self-scores never substitute for human reference evaluation.
 - Treat model roles as logical stages, not a mandate to spawn eight agents. Route OpenAI/OpenRouter by actual capability and benchmark evidence; no silent provider/model fallback outside consent.

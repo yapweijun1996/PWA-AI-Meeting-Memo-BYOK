@@ -1,6 +1,6 @@
 # Browser architecture
 
-> Owner direction, 2026-11-17: [../goal.md](../goal.md) and the [quality-first implementation plan](QUALITY-FIRST-PLAN.md) define the Pi-orchestrated, multi-model target. Existing behavior below remains the current/dated implementation record. QF01 removes fixed cumulative review budgets while retaining progress/recovery guards; the full router, coverage and independent-review workflow are not yet implemented. See the validation record for verified delivery stages.
+> Owner direction, 2026-11-17: [../goal.md](../goal.md) and the [quality-first implementation plan](QUALITY-FIRST-PLAN.md) define the Pi-orchestrated, multi-model target. Existing behavior below remains the current/dated implementation record. QF01 removed the six-request ceiling; the later owner instruction sets 100 cumulative Pi attempts per persisted plan while retaining progress/recovery guards; the full router, coverage and independent-review workflow are not yet implemented. See the validation record for verified delivery stages.
 
 Status: browser implementation exists, 2026-11-04. The contracts below include original design intent; this implementation uses a versioned meeting aggregate plus a separate audio store. Read [feasibility](FEASIBILITY.md) for evidence and unresolved provider support.
 

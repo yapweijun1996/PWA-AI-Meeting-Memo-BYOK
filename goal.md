@@ -1,5 +1,7 @@
 # Product goal
 
+Owner follow-up, 2026-11-17: Pi review has a maximum of 100 cumulative provider attempts per persisted plan. Complete earlier when evidence is sufficient. This supersedes earlier unbounded-request wording; no-progress, storage and unknown-outcome protections remain. Browser Pi is a tool-scoped agent runtime, not a terminal or arbitrary-code agent.
+
 Updated 2026-11-17 from the owner's explicit direction.
 
 **Build a Pi-Orchestrated, Multi-Model, Evidence-Grounded Meeting Intelligence Platform.**
@@ -14,7 +16,7 @@ The browser remains the main workspace and local data owner. Pi coordinates deep
 4. Multi-model: route by measured capability and task performance, not model name or price.
 5. Quality-first: prioritize accuracy, completeness, evidence and meaningful results.
 6. Multi-pass: support analysis, independent review, correction and regeneration when findings warrant them.
-7. No cost optimization: no arbitrary cumulative request budgets or skipped necessary analysis to save money.
+7. No cost optimization: do not skip necessary analysis to save money. The owner-selected 100-attempt ceiling bounds execution, not quality or spending.
 8. Human at the end: automate normal intermediate work; preserve initial BYOK/data consent and final human review.
 
 Avoid loops, duplicate charges, meaningless retries and data loss. Unknown request outcomes require reconciliation; additional useful analysis is distinct from resubmitting an uncertain request. Actual browser, provider and storage limits remain explicit.

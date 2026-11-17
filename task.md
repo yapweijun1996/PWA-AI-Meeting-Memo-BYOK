@@ -1,6 +1,6 @@
 # Quality-first delivery — 2026-11-17
 
-Owner direction: **Pi-Orchestrated, Multi-Model, Evidence-Grounded Meeting Intelligence Platform**. [Goal](goal.md), [full implementation plan](docs/QUALITY-FIRST-PLAN.md), [quality evaluation contract](docs/QUALITY-EVALUATION.md). Quality determines necessary analysis; no cost-minimizing model routing or arbitrary cumulative request budget. Retain no-progress detection, explicit initial BYOK consent, no automatic resubmission of unknown outcomes and data preservation. Logical roles do not require eight independent runtime agents.
+Owner direction: **Pi-Orchestrated, Multi-Model, Evidence-Grounded Meeting Intelligence Platform**. [Goal](goal.md), [full implementation plan](docs/QUALITY-FIRST-PLAN.md), [quality evaluation contract](docs/QUALITY-EVALUATION.md). Quality determines necessary analysis; no cost-minimizing model routing. The later owner instruction sets a maximum of 100 cumulative Pi attempts per persisted plan; it supersedes the earlier unbounded request policy without making request count a quality score. Retain no-progress detection, explicit initial BYOK consent, no automatic resubmission of unknown outcomes and data preservation. Logical roles do not require eight independent runtime agents.
 
 This is a new ten-deliverable workstream. No delivery is checked merely because its specification exists. Historical, optional and overlapping tasks below are separate; REC/VID/REL dependencies must not be double-counted. Documentation has been written; runtime status and verification are recorded separately. QF01–QF10 checklist: **1/10 complete (10%)**; the separate UI-TOKEN repair is also complete. This is workstream checklist progress, not a measured product-quality score.
 
@@ -23,6 +23,17 @@ Speaker avatar follow-up: deterministic local default illustrations and user-sel
 UI follow-up: a single speaker queue and manual comparison workspace, responsive playback alignment, reusable cursor/focus tooltip, sidebar build/update status, font-size preferences, and a topbar language selector are implemented. Malay coverage is partial with English fallback. Immersive captions auto-fit ordinary groups with a 16px minimum; unusually long groups can still require internal scrolling. Verify N-to-N+1 recovery, responsiveness, and real installed-device behavior before release.
 
 Speaker review redesign: implemented a single searchable, filterable queue, selected-speaker inspector, bounded sample listening and manual second-speaker comparison. Saving and confirming remain separate, with confirmation advancing to another unconfirmed speaker. An audio-derived waveform and physical-device responsive acceptance remain open; do not represent synthetic graphics as audio evidence.
+
+## Current modular UI and Pi follow-up — 2026-11-17
+
+This bounded batch follows the owner screenshots and latest 100-request direction. It does not close QF02–QF10 or physical-device acceptance.
+
+- [ ] MOD-UI — Extract cohesive appearance, language-menu and speaker-review presentation modules while preserving feature-owned drafts, identity confirmation, playback and provider behavior.
+- [ ] DS10 — Centralize palette choices across types, validation, controls and startup; add Teal, Rose, Indigo and Slate alongside the four existing choices. Verify semantic state colors, keyboard access, light/dark and responsive layouts.
+- [ ] UI-LANGUAGE — Replace the invisible topbar select with a shared accessible menu; retain explicit locale persistence, failure feedback and unsaved-settings guards.
+- [ ] UI-SPEAKER — Align the speaker toolbar and improve queue/inspector hierarchy, keeping source IDs discoverable and all review/merge/undo behavior intact.
+- [ ] UI-FAVICON — Bind the browser-tab icon to the same brand tokens as the sidebar, including reload and cross-tab changes; preserve the static fallback and state installed-icon limitations separately.
+- [ ] PI100 — Enforce 100 cumulative provider attempts per persisted Pi plan, validate steps beyond nine, retain legacy checkpoints, block request 101 and preserve no-progress/no-retry safeguards. Verify with synthetic provider responses; do not infer live-provider quality.
 
 ## Remaining work order — 2026-11-17
 
