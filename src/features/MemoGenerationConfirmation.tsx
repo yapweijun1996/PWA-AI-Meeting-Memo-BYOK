@@ -1,0 +1,131 @@
+import { Button } from "../components/controls";
+import { Icon } from "../components/Icon";
+import { CheckCircle2, CircleAlert, Settings2, ShieldCheck, Sparkles, Wallet } from "lucide-react";
+import type { Meeting, MemoAgentPlan } from "../domain/model";
+import type { MemoOutputLanguage } from "../domain/memo-language";
+import { memoLanguageLabel, translateUi, type UiLanguage } from "../i18n";
+import { getKey, type Selection } from "../providers/credentials";
+import type { MemoPipeline } from "../providers/memo-plan";
+import { supportsAgentMemo } from "../providers/memo-agent-plan";
+import { translateMessage } from "../ui-messages";
+import "./memo-confirmation.css";
+
+export type MemoConfirmation = {
+  selection: Selection;
+  outputLanguage?: MemoOutputLanguage;
+  plan?: MemoPipeline | null;
+  planError?: string;
+  agentPlan?: MemoAgentPlan;
+};
+
+export function MemoGenerationConfirmation({
+  meeting,
+  confirmation,
+  language,
+  costAcknowledged,
+  reviewedRetry,
+  onCostAcknowledged,
+  onReviewedRetry,
+  onToggleReview,
+  onReview,
+  onClose,
+  onGenerate,
+}: {
+  meeting: Meeting;
+  confirmation: MemoConfirmation;
+  language: UiLanguage;
+  costAcknowledged: boolean;
+  reviewedRetry: boolean;
+  onCostAcknowledged: (value: boolean) => void;
+  onReviewedRetry: (value: boolean) => void;
+  onToggleReview: (value: boolean) => void;
+  onReview: (target: "speakers" | "transcript" | "fields") => void;
+  onClose: () => void;
+  onGenerate: () => void;
+}) {
+  const t = (en: string, zh: string) => translateUi(language, en, zh);
+  const { selection, plan, agentPlan } = confirmation;
+  const speakers = meeting.speakers.filter(speaker => !speaker.confirmed).length;
+  const passages = meeting.segments.filter(segment => !segment.reviewed).length;
+  const missingFields = meeting.segments.filter(segment => !segment.speakerIds.length || segment.start === null || segment.end === null).length;
+  const previousAttempts = meeting.jobs.some(job => job.stage === "memo");
+  const needsRetryReview = agentPlan
+    ? meeting.jobs.some(job => job.agentId === agentPlan.id && job.state !== "completed")
+    : Boolean(plan && meeting.jobs.some(job => job.pipelineId === plan.id && job.state !== "completed"));
+  const missingKey = !getKey(selection.provider);
+  const planBlocked = Boolean(confirmation.planError && !agentPlan);
+  const canGenerate = !missingKey && !planBlocked && costAcknowledged && (!needsRetryReview || reviewedRetry);
+  const checks = [
+    { count: speakers, description: t(`${speakers} unconfirmed speakers`, `${speakers} 位说话人未确认`), action: t("Review speakers", "查看说话人"), target: "speakers" as const },
+    { count: passages, description: t(`${passages} unreviewed passages`, `${passages} 段转录未审阅`), action: t("Review transcript", "查看转录"), target: "transcript" as const },
+    { count: missingFields, description: t(`${missingFields} passages missing speaker or time`, `${missingFields} 段缺少说话人或时间`), action: t("Review fields", "查看字段"), target: "fields" as const },
+  ];
+
+  return <>
+    <div className="memo-confirm-scroll">
+      <p className="memo-confirm-intro">{t("Uses the existing transcript to generate notes; it does not make a new recording. Nothing is sent until you confirm.", "使用现有转录生成笔记，不会重新录音。确认之前不会发送任何内容。")}</p>
+
+      <section className="memo-confirm-section" aria-labelledby="memo-settings-title">
+        <h3 id="memo-settings-title"><Icon glyph={Settings2} size="control" />{t("Generation settings", "生成设置")}</h3>
+        <dl className="memo-confirm-settings">
+          <div><dt>{t("Provider", "接收方")}</dt><dd>{selection.provider === "openai" ? "OpenAI · api.openai.com" : "OpenRouter · openrouter.ai"}</dd></div>
+          <div><dt>{t("AI model", "AI 模型")}</dt><dd>{selection.model}</dd></div>
+          <div><dt>{t("Output language", "输出语言")}</dt><dd>{memoLanguageLabel(confirmation.outputLanguage ?? "meeting", language)}</dd></div>
+          <div><dt>{t("Data source", "数据来源")}</dt><dd>{agentPlan ? t("Selected excerpts, speakers and context", "选取的片段、说话人和背景") : t("Transcript, speakers and context", "转录、说话人和背景")}</dd></div>
+          <div><dt>{t("Transcript size", "转录规模")}</dt><dd>{t(`${meeting.segments.length.toLocaleString()} passages`, `${meeting.segments.length.toLocaleString()} 段`)}</dd></div>
+          <div><dt>{t("Estimated cost", "预计费用")}</dt><dd>{t("Unknown; provider may charge", "未知；服务商可能收费")}</dd></div>
+        </dl>
+        <details className="memo-confirm-details">
+          <summary>{t("Technical details", "技术详情")}</summary>
+          <p>{agentPlan
+            ? t("Selected transcript excerpts, speaker names and meeting context (title, date, timezone, languages, type and glossary) are sent. This is not a complete transcript review.", "会发送选取的转录片段、说话人姓名和会议背景（标题、日期、时区、语言、类型和术语）。这不代表完整审阅转录。")
+            : t("Transcript, speaker names and meeting context (title, date, timezone, languages, type and glossary) are sent.", "会发送转录、说话人姓名和会议背景（标题、日期、时区、语言、类型和术语）。")}</p>
+          {selection.provider === "openrouter" && <p>{t("OpenRouter routes the request to a model provider.", "OpenRouter 会将请求转发给模型服务商。")}</p>}
+          <p>{t("Review your provider's data retention policy for your account.", "请查看服务商对您账户的数据保留政策。")}</p>
+        </details>
+      </section>
+
+      <section className="memo-confirm-section" aria-labelledby="memo-checks-title">
+        <h3 id="memo-checks-title"><Icon glyph={ShieldCheck} size="control" />{t("Pre-generation checks", "生成前检查")}</h3>
+        <p className="memo-confirm-hint">{t("Review is recommended but does not block generation.", "建议先核对；这些事项不会阻止生成。")}</p>
+        <ul className="memo-confirm-checks">{checks.map(check => <li key={check.target} className={check.count ? "needs-review" : undefined}>
+          <Icon glyph={check.count ? CircleAlert : CheckCircle2} size="inline" aria-hidden="true" />
+          <span>{check.description}</span>
+          {check.count > 0 && <Button type="button" className="text-button" onClick={() => onReview(check.target)}>{check.action}</Button>}
+        </li>)}</ul>
+      </section>
+
+      <section className="memo-confirm-section" aria-labelledby="memo-review-title">
+        <h3 id="memo-review-title"><Icon glyph={Sparkles} size="control" />{t("Optional review", "可选复核")}</h3>
+        {supportsAgentMemo(selection) ? <>
+          <label className="checkbox-label confirmation-consent memo-confirm-checkbox"><input type="checkbox" checked={!!agentPlan} onChange={event => onToggleReview(event.target.checked)} /><span>{t("Use selective transcript review (Pi, optional)", "使用选择性转录复核（Pi，可选）")}</span></label>
+          {agentPlan ? <>
+            <p className="memo-confirm-hint">{t(`Selected excerpts are sent to OpenAI; this is not complete coverage. Up to ${agentPlan.requestLimit - agentPlan.jobIds.length} further paid requests and 32 local lookups are allowed. Each request may be charged; total cost is unknown.`, `会向 OpenAI 发送选取的片段，不代表完整覆盖。本次最多再发送 ${agentPlan.requestLimit - agentPlan.jobIds.length} 次付费请求，累计最多 32 次本地查询。每次请求可能收费，总费用未知。`)}</p>
+            <details className="memo-confirm-details"><summary>{t("Review limits", "复核限制")}</summary><p>{t("Request or save failure stops the run. Reload never resumes it automatically. Limits: 256 KiB per request, 4 MiB per response, 8 KiB per lookup.", "请求或保存失败即停止；重新加载不会自动恢复。限制：每次请求 256 KiB、每次回应 4 MiB、每次查询 8 KiB。")}</p></details>
+          </> : <p className="memo-confirm-hint">{t("Pi reads selected excerpts; it does not guarantee a complete review.", "Pi 读取选取的片段，不保证完整审阅。")}</p>}
+        </> : <p className="memo-confirm-hint">{t("Pi review is available with OpenAI GPT-6 Luna.", "Pi 复核适用于 OpenAI GPT-6 Luna。")}</p>}
+      </section>
+
+      <section className="memo-confirm-section memo-confirm-cost" aria-labelledby="memo-cost-title">
+        <h3 id="memo-cost-title"><Icon glyph={Wallet} size="control" />{t("Cost & processing", "费用与处理")}</h3>
+        <p>{t("API requests may incur charges. Keep this page open; cancellation does not guarantee remote processing or billing stops. The app does not automatically retry.", "API 请求可能产生费用。请保持页面打开；取消不保证远端处理或计费停止。应用不会自动重试。")}</p>
+        {plan && !agentPlan && <p role="status">{t(`Long memo: ${plan.chunks.length} extraction requests and one synthesis request. ${plan.results.filter(Boolean).length} extraction steps are already saved. Total cost is unknown; each request may be charged. This confirmation authorizes the remaining steps in order. Any error stops the plan; reloading never resumes requests automatically.`, `长纪要：${plan.chunks.length} 次提取和 1 次合成。已保存 ${plan.results.filter(Boolean).length} 步提取。总费用未知，每次请求均可能收费。本次确认允许按顺序执行剩余步骤；出现错误即停止，重新加载不会自动恢复请求。`)}</p>}
+        {previousAttempts && <p>{t("Previous memo attempts may already be charged. Check provider billing; this confirmation submits a new paid request, not a free retry.", "之前的纪要请求可能已经收费。请核对服务商账单；本次确认将提交新的付费请求，不是免费重试。")}</p>}
+        {needsRetryReview && <label className="checkbox-label confirmation-consent memo-confirm-checkbox"><input type="checkbox" checked={reviewedRetry} onChange={event => onReviewedRetry(event.target.checked)} /><span>{t("I reviewed the previous request outcome and billing. I authorize a new paid attempt for the unfinished step.", "我已核对之前请求的结果和账单，并允许为未完成步骤提交新的付费请求。")}</span></label>}
+      </section>
+    </div>
+    <footer className="memo-confirm-footer">
+      <p className="memo-confirm-safety">{t("API requests may incur charges; cancellation may not stop remote processing or billing.", "API 请求可能收费；取消可能无法停止远端处理或计费。")}{previousAttempts && ` ${t("Previous attempts may already be charged.", "之前的请求可能已经收费。")}`}</p>
+      {agentPlan && <p className="memo-confirm-safety">{t(`Up to ${agentPlan.requestLimit - agentPlan.jobIds.length} further requests; total cost is unknown.`, `最多再发送 ${agentPlan.requestLimit - agentPlan.jobIds.length} 次请求；总费用未知。`)}</p>}
+      {plan && !agentPlan && <p className="memo-confirm-safety">{t(`${plan.chunks.length - plan.results.filter(Boolean).length} extraction steps and one synthesis request remain; total cost is unknown.`, `还剩 ${plan.chunks.length - plan.results.filter(Boolean).length} 次提取和 1 次合成；总费用未知。`)}</p>}
+      {needsRetryReview && !reviewedRetry && <p className="memo-confirm-blocker">{t("Review the previous request and billing in Cost & processing before continuing.", "继续前请在“费用与处理”中核对之前的请求和账单。")}</p>}
+      {planBlocked && <p className="memo-confirm-blocker" role="alert">{translateMessage(confirmation.planError!, language)}</p>}
+      {missingKey && <p className="memo-confirm-blocker"><a href="#/settings" className="text-button" onClick={onClose}>{t("Add your key in Settings first", "请先在设置中添加密钥")}</a></p>}
+      <label className="checkbox-label confirmation-consent memo-confirm-checkbox"><input type="checkbox" checked={costAcknowledged} onChange={event => onCostAcknowledged(event.target.checked)} /><span>{t("I understand the selected data will be sent and may incur API charges.", "我了解所选数据将被发送，并可能产生 API 费用。")}</span></label>
+      <div className="modal-actions">
+        <Button type="button" className="button secondary" onClick={onClose}>{t("Cancel", "取消")}</Button>
+        <Button type="button" className="button primary" disabled={!canGenerate} onClick={onGenerate}>{t("Generate new notes", "生成新版笔记")}</Button>
+      </div>
+    </footer>
+  </>;
+}

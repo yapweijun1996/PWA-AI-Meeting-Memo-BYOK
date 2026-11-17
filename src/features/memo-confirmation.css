@@ -1,0 +1,196 @@
+dialog.memo-confirm-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 24px);
+  overflow: hidden;
+}
+
+.memo-confirm-dialog .modal-head {
+  flex: none;
+  padding: 14px 20px;
+}
+
+.memo-confirm-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 20px;
+}
+
+.memo-confirm-intro,
+.memo-confirm-hint,
+.memo-confirm-details p,
+.memo-confirm-cost p {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.memo-confirm-intro {
+  color: var(--palette-12);
+  margin-bottom: 12px;
+}
+
+.memo-confirm-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-notice);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.memo-confirm-section:last-child {
+  margin-bottom: 0;
+}
+
+.memo-confirm-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 9px;
+  font-size: var(--text-base);
+}
+
+.memo-confirm-section h3 svg {
+  flex: none;
+  color: var(--color-accent-text);
+}
+
+.memo-confirm-settings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.memo-confirm-settings dt {
+  color: var(--palette-12);
+  margin-bottom: 2px;
+}
+
+.memo-confirm-settings dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.memo-confirm-details {
+  margin-top: 9px;
+  font-size: var(--text-sm);
+}
+
+.memo-confirm-details summary {
+  color: var(--color-accent-text);
+  cursor: pointer;
+}
+
+.memo-confirm-details[open] > summary {
+  margin-bottom: 6px;
+}
+
+.memo-confirm-details p + p,
+.memo-confirm-cost p + p {
+  margin-top: 7px;
+}
+
+.memo-confirm-hint {
+  color: var(--palette-12);
+}
+
+.memo-confirm-checks {
+  display: grid;
+  gap: 5px;
+  padding: 0;
+  margin: 9px 0 0;
+  list-style: none;
+}
+
+.memo-confirm-checks li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 3px 8px;
+  border-radius: var(--radius-notice);
+  background: var(--palette-85);
+  font-size: var(--text-sm);
+}
+
+.memo-confirm-checks li > svg {
+  flex: none;
+  color: var(--palette-12);
+}
+
+.memo-confirm-checks li.needs-review {
+  background: var(--palette-89);
+}
+
+.memo-confirm-checks li.needs-review > svg {
+  color: var(--palette-20);
+}
+
+.memo-confirm-checks li > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.memo-confirm-checks .text-button {
+  flex: none;
+  padding: 3px;
+  text-align: right;
+}
+
+.memo-confirm-checkbox {
+  margin: 0 0 6px;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.memo-confirm-cost {
+  background: var(--palette-85);
+}
+
+.memo-confirm-cost .memo-confirm-checkbox {
+  margin-top: 10px;
+}
+
+.memo-confirm-footer {
+  flex: none;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  padding: 12px 20px 14px;
+}
+
+.memo-confirm-safety,
+.memo-confirm-blocker {
+  margin: 0 0 6px;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+.memo-confirm-safety {
+  color: var(--palette-12);
+}
+
+.memo-confirm-footer .modal-actions {
+  margin: 10px 0 0;
+  flex-wrap: wrap;
+}
+
+.memo-confirm-footer .button {
+  min-height: 44px;
+}
+
+@media (max-width: 520px) {
+  .memo-confirm-dialog .modal-head {
+    padding: 10px 14px;
+  }
+  .memo-confirm-scroll {
+    padding: 12px 14px;
+  }
+  .memo-confirm-settings {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .memo-confirm-footer {
+    padding: 10px 14px 12px;
+  }
+}

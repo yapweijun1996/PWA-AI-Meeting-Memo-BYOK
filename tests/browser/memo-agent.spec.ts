@@ -124,6 +124,7 @@ async function confirm(page: Page) {
     })
     .check();
   await expect(dialog).toContainText("total cost is unknown");
+  await dialog.getByRole("checkbox", { name: "I understand the selected data will be sent and may incur API charges.", exact: true }).check();
   return dialog;
 }
 async function backup(page: Page) {
@@ -187,7 +188,7 @@ test("opt-in review uses real Pi tools under CSP, preserves receipts and does no
     ),
   ).toBe(true);
   await dialog
-    .getByRole("button", { name: "Confirm and send", exact: true })
+    .getByRole("button", { name: "Generate new notes", exact: true })
     .click();
   await expect(page.locator(".memo-reading-text")).toHaveText(
     "Synthetic selective review result",
@@ -232,7 +233,7 @@ test("unknown paid outcome stops, survives reload and requires reviewed authoriz
   });
   let dialog = await confirm(page);
   await dialog
-    .getByRole("button", { name: "Confirm and send", exact: true })
+    .getByRole("button", { name: "Generate new notes", exact: true })
     .click();
   await expect
     .poll(async () => (await backup(page)).jobs[0]?.state)
@@ -243,7 +244,7 @@ test("unknown paid outcome stops, survives reload and requires reviewed authoriz
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
   dialog = await confirm(page);
   const send = dialog.getByRole("button", {
-    name: "Confirm and send",
+    name: "Generate new notes",
     exact: true,
   });
   await expect(send).toBeDisabled();
@@ -299,7 +300,7 @@ test("quota failure retains an exportable response and local retry never repeats
   });
   const dialog = await confirm(page);
   await dialog
-    .getByRole("button", { name: "Confirm and send", exact: true })
+    .getByRole("button", { name: "Generate new notes", exact: true })
     .click();
   const recovery = page.getByRole("alert", { name: "Unsaved review response" });
   await expect(recovery).toBeVisible();
@@ -333,7 +334,7 @@ test("quota failure retains an exportable response and local retry never repeats
   const next = await confirm(page);
   await expect(next).toContainText("5 further paid requests");
   await next
-    .getByRole("button", { name: "Confirm and send", exact: true })
+    .getByRole("button", { name: "Generate new notes", exact: true })
     .click();
   await expect(page.locator(".memo-reading-text")).toHaveText(
     "Synthetic selective review result",
@@ -366,7 +367,7 @@ test("request byte budget stops locally before another receipt or provider submi
   });
   const dialog = await confirm(page);
   await dialog
-    .getByRole("button", { name: "Confirm and send", exact: true })
+    .getByRole("button", { name: "Generate new notes", exact: true })
     .click();
   await expect
     .poll(async () => (await backup(page)).memoAgents?.[0]?.state)
@@ -418,7 +419,8 @@ test("Chinese selective confirmation captures the resolved memo language and rem
     (await new AxeBuilder({ page }).include("dialog[open]").analyze())
       .violations,
   ).toEqual([]);
-  await dialog.getByRole("button", { name: "确认并发送", exact: true }).click();
+  await dialog.getByRole("checkbox", { name: "我了解所选数据将被发送，并可能产生 API 费用。", exact: true }).check();
+  await dialog.getByRole("button", { name: "生成新版笔记", exact: true }).click();
   await expect(page.locator(".memo-reading-text")).toHaveText(
     "Synthetic selective review result",
   );
@@ -440,7 +442,7 @@ test("Stop waiting aborts the active Pi request and reload never resubmits it", 
   });
   const dialog = await confirm(page);
   await dialog
-    .getByRole("button", { name: "Confirm and send", exact: true })
+    .getByRole("button", { name: "Generate new notes", exact: true })
     .click();
   await expect.poll(() => calls).toBe(1);
   await page.getByRole("button", { name: "Stop waiting", exact: true }).click();
@@ -468,7 +470,7 @@ test("local response recovery waits for a real cross-tab processing lock without
   });
   const dialog = await confirm(page);
   await dialog
-    .getByRole("button", { name: "Confirm and send", exact: true })
+    .getByRole("button", { name: "Generate new notes", exact: true })
     .click();
   const recovery = page.getByRole("alert", { name: "Unsaved review response" });
   await expect(recovery).toBeVisible();

@@ -129,7 +129,10 @@ try {
         .getByRole("button", { name: "Generate meeting notes", exact: true })
         .click();
       await page
-        .getByRole("button", { name: "Confirm and send", exact: true })
+        .getByRole("checkbox", { name: "I understand the selected data will be sent and may incur API charges.", exact: true })
+        .check();
+      await page
+        .getByRole("button", { name: "Generate new notes", exact: true })
         .click();
       await expect(
         page.getByRole("button", { name: "Stop waiting", exact: true }),

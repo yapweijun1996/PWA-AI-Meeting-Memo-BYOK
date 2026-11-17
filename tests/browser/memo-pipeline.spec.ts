@@ -48,7 +48,7 @@ test("Chinese long memo confirmation is readable and sends nothing before confir
   await expect(dialog).toContainText("重新加载不会自动恢复请求");
   await expect(dialog).not.toContainText("???");
   await expect(
-    dialog.getByRole("button", { name: "确认并发送", exact: true }),
+    dialog.getByRole("button", { name: "生成新版笔记", exact: true }),
   ).toBeDisabled();
   expect(await dialog.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(
     true,
@@ -168,8 +168,9 @@ for (const {failOnce, wordLevel} of [{failOnce: false, wordLevel: true}, {failOn
       "extraction requests and one synthesis request",
     );
     expect(count).toBe(0);
+    await dialog.getByRole("checkbox", { name: "I understand the selected data will be sent and may incur API charges.", exact: true }).check();
     await dialog
-      .getByRole("button", { name: "Confirm and send", exact: true })
+      .getByRole("button", { name: "Generate new notes", exact: true })
       .click();
     if (failOnce) {
       await expect(page.getByLabel("Long memo progress")).toContainText(
@@ -191,9 +192,11 @@ for (const {failOnce, wordLevel} of [{failOnce: false, wordLevel: true}, {failOn
         .click();
       dialog = page.getByRole("dialog");
       const send = dialog.getByRole("button", {
-        name: "Confirm and send",
+        name: "Generate new notes",
         exact: true,
       });
+      await expect(send).toBeDisabled();
+      await dialog.getByRole("checkbox", { name: "I understand the selected data will be sent and may incur API charges.", exact: true }).check();
       await expect(send).toBeDisabled();
       await dialog.getByRole("checkbox",{name:/I reviewed the previous request outcome and billing/}).check();
       await send.click();

@@ -14,6 +14,14 @@ test.beforeEach(async ({ context }) => {
   await context.route("https://**/*", (route) => route.abort());
 });
 const base = "/PWA-AI-Meeting-Memo-BYOK/";
+async function confirmMemo(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "Generate new meeting notes", exact: true });
+  const send = dialog.getByRole("button", { name: "Generate new notes", exact: true });
+  await expect(send).toBeDisabled();
+  await dialog.getByRole("checkbox", { name: "I understand the selected data will be sent and may incur API charges.", exact: true }).check();
+  await send.click();
+}
+
 async function create(page: Page, title = "ERP review") {
   await page
     .getByRole("button", { name: "New meeting", exact: true })
@@ -186,9 +194,7 @@ test("memo submissions require confirmation, preserve evidence and mark source c
     .getByRole("button", { name: "Generate meeting notes", exact: true })
     .click();
   expect(requests).toBe(0);
-  await page
-    .getByRole("button", { name: "Confirm and send", exact: true })
-    .click();
+  await confirmMemo(page);
   if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("action note")).toHaveValue(
     "Review inventory with finance.",
@@ -300,9 +306,7 @@ test("memo submissions require confirmation, preserve evidence and mark source c
   await page
     .getByRole("button", { name: "Generate new version", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Confirm and send", exact: true })
-    .click();
+  await confirmMemo(page);
   if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("action note")).toHaveValue(
     "Review inventory with finance.",
@@ -545,9 +549,7 @@ test("long speaker-aware memos compact transport input and restore original evid
     .getByRole("button", { name: "Generate meeting notes", exact: true })
     .click();
   expect(requests).toBe(0);
-  await page
-    .getByRole("button", { name: "Confirm and send", exact: true })
-    .click();
+  await confirmMemo(page);
   if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("summary note")).toHaveValue(
     "Long transcript summary with first and last evidence.",
@@ -668,9 +670,7 @@ test("uncertain requests are recorded and never automatically resubmitted", asyn
   await page
     .getByRole("button", { name: "Generate meeting notes", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Confirm and send", exact: true })
-    .click();
+  await confirmMemo(page);
   await expect(page.getByRole("alert")).toContainText("may have been charged");
   await page.getByText("Processing history", { exact: false }).click();
   await expect(
@@ -798,9 +798,7 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
   await page
     .getByRole("button", { name: "Generate meeting notes", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Confirm and send", exact: true })
-    .click();
+  await confirmMemo(page);
   if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("summary note")).toHaveValue(
     "A greeting was exchanged.",
@@ -985,9 +983,7 @@ test("a foreground timeout remains uncertain and never resubmits on reload", asy
   await page
     .getByRole("button", { name: "Generate meeting notes", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Confirm and send", exact: true })
-    .click();
+  await confirmMemo(page);
   await expect.poll(() => calls).toBe(1);
   await page.clock.fastForward(9 * 60 * 1000 + 1);
   await expect(page.getByRole("alert")).toContainText("may have been charged");
@@ -1021,9 +1017,7 @@ test("cancelling a submitted request records billing uncertainty", async ({
   await page
     .getByRole("button", { name: "Generate meeting notes", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Confirm and send", exact: true })
-    .click();
+  await confirmMemo(page);
   await page.getByRole("button", { name: "Stop waiting", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("may have been charged");
   await page.getByText("Processing history", { exact: false }).click();
@@ -1062,9 +1056,7 @@ test("a rejected HTTP request is failed with unconfirmed billing, not marked uns
   await page
     .getByRole("button", { name: "Generate meeting notes", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Confirm and send", exact: true })
-    .click();
+  await confirmMemo(page);
   await expect(page.getByRole("alert")).toContainText("HTTP 401");
   await page.getByText("Processing history", { exact: false }).click();
   await expect(page.getByText("Memo · failed", { exact: true })).toBeVisible();
@@ -1129,9 +1121,7 @@ test("a completed background request cannot replace a different meeting view", a
   await page
     .getByRole("button", { name: "Generate meeting notes", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Confirm and send", exact: true })
-    .click();
+  await confirmMemo(page);
   await expect(
     page.getByRole("button", { name: "Stop waiting", exact: true }),
   ).toBeVisible();
@@ -1284,7 +1274,7 @@ test("default OpenAI speech and selected OpenRouter memo use their own model and
   await expect(page.getByRole("dialog")).toContainText("OpenRouter");
   await expect(page.getByRole("dialog")).toContainText("openai/gpt-6-luna");
   expect(memoCalls).toBe(0);
-  await page.getByRole("button", { name: "Confirm and send" }).click();
+  await confirmMemo(page);
   if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("summary note")).toHaveValue("A summary.");
   expect(speechCalls).toBe(1);

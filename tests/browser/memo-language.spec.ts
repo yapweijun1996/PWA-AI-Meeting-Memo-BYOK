@@ -55,7 +55,8 @@ for (const [preference, instruction] of [
     const confirmation = page.getByRole("dialog");
     await expect(confirmation).toContainText(preference === "interface" ? "简体中文" : ({meeting: "Meeting language", en: "English", "zh-CN": "Simplified Chinese", ms: "Malay"} as const)[preference]);
     expect(calls).toBe(0);
-    await confirmation.getByRole("button", {name: /^(Confirm and send|确认并发送)$/}).click();
+    await confirmation.getByRole("checkbox", {name: /^(I understand the selected data will be sent and may incur API charges\.|我了解所选数据将被发送，并可能产生 API 费用。)$/}).check();
+    await confirmation.getByRole("button", {name: /^(Generate new notes|生成新版笔记)$/}).click();
     await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic language result");
     expect(instructions).toContain(instruction);
     expect(calls).toBe(1);
