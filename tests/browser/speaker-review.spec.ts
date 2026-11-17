@@ -851,7 +851,7 @@ test("real playback colors follow every palette with readable semantic states", 
   await settings.close();
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await expect(page.locator("html")).toHaveAttribute("data-palette", "amber");
+  await expect(page.locator("html")).toHaveAttribute("data-palette", paletteChoices.at(-1)!);
   await page.getByRole("tab", { name: /Speakers/ }).click();
   await page.getByRole("button", { name: "Playback mode", exact: true }).click();
   await seek(0.2);

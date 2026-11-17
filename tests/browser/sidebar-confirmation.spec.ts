@@ -142,6 +142,13 @@ test("confirmation preserves bottom anchoring across language, rail, drawer and 
   ]) {
     await page.setViewportSize(view);
     await page.goto("./#/settings");
+    // Same-hash navigation retains the previous mobile drawer between matrix cases.
+    const closeNavigation = page.getByRole("button", { name: /^(Close navigation|关闭导航)$/ });
+    if (await closeNavigation.isVisible()) {
+      const bounds = (await closeNavigation.boundingBox())!;
+      await closeNavigation.click({ position: { x: bounds.width - 12, y: 12 } });
+      await expect(page.locator("aside.sidebar")).not.toHaveClass(/\bopen\b/);
+    }
     await changeTopbarLanguage(page, view.language);
     const chinese = view.language === "zh-CN";
     if (view.width <= 760) {
