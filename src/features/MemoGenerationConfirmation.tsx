@@ -6,9 +6,11 @@ import type { MemoOutputLanguage } from "../domain/memo-language";
 import { memoLanguageLabel, translateUi, type UiLanguage } from "../i18n";
 import { getKey, type Selection } from "../providers/credentials";
 import type { MemoPipeline } from "../providers/memo-plan";
-import { supportsAgentMemo } from "../providers/memo-agent-plan";
+import { hasSavedAgentFinal, supportsAgentMemo } from "../providers/memo-agent-plan";
 import { translateMessage } from "../ui-messages";
 import { resolveAgentRoute, type AgentRoute } from "../domain/memo-agent-route";
+import { MEMO_AGENT_MAX_REQUESTS } from "../domain/memo-agent-contract";
+import { remainingAgentRequests, AGENT_REQUEST_LIMIT_MESSAGE } from "../domain/memo-agent-requests";
 import "./memo-confirmation.css";
 
 export type MemoConfirmation = {
@@ -59,7 +61,10 @@ export function MemoGenerationConfirmation({
     : Boolean(plan && meeting.jobs.some(job => job.pipelineId === plan.id && job.state !== "completed"));
   const missingKey = !getKey(selection.provider);
   const planBlocked = Boolean(confirmation.planError && !agentPlan);
-  const canGenerate = !missingKey && !planBlocked && costAcknowledged && (!needsRetryReview || reviewedRetry);
+  const requestLimitReached = Boolean(agentPlan && remainingAgentRequests(agentPlan) === 0);
+  const localRecovery = Boolean(requestLimitReached && agentPlan && hasSavedAgentFinal(meeting, agentPlan));
+  const requestBlocked = requestLimitReached && !localRecovery;
+  const canGenerate = !missingKey && !planBlocked && !requestBlocked && costAcknowledged && (!needsRetryReview || reviewedRetry);
   const checks = [
     { count: speakers, description: t(`${speakers} unconfirmed speakers`, `${speakers} 位说话人未确认`), action: t("Review speakers", "查看说话人"), target: "speakers" as const },
     { count: passages, description: t(`${passages} unreviewed passages`, `${passages} 段转录未审阅`), action: t("Review transcript", "查看转录"), target: "transcript" as const },
@@ -118,7 +123,8 @@ export function MemoGenerationConfirmation({
               <p className="memo-confirm-hint">{t("Manual route; live account compatibility and memo quality are not benchmark-verified. Higher limits do not guarantee better results.", "手动路线；真实账户兼容性及纪要质量尚未经基准验证。更高上限不保证更好的结果。")}</p>
               {selection.provider === "openrouter" && <p className="memo-confirm-hint">{t("OpenRouter → OpenAI only. Automatic provider fallback is disabled; unavailable routes stop the review.", "仅使用 OpenRouter → OpenAI。已禁用服务商自动回退；路线不可用时会停止复核。")}</p>}
             </>}
-            <p className="memo-confirm-hint">{t("Pi continues gathering evidence without a fixed request count. Repeated lookups without progress pause the review. This is selective coverage; total cost is unknown.", "Pi 会持续收集证据，不设固定请求次数；重复查询没有进展时会暂停。这仍是选择性覆盖，总费用未知。")}</p>
+            <p className="memo-confirm-hint">{t("Pi gathers evidence through multiple tool calls, up to 100 requests per review. Repeated lookups without progress pause the review. This is selective coverage; total cost is unknown.", "Pi 通过多轮工具调用收集证据，每轮复核最多 100 次请求；重复查询没有进展时会暂停。这仍是选择性覆盖，总费用未知。")}</p>
+            <p className="memo-confirm-hint">{t(`${agentPlan.jobIds.length} of ${MEMO_AGENT_MAX_REQUESTS} requests recorded; ${remainingAgentRequests(agentPlan)} remaining. Continuing or restoring a backup does not reset this count.`, `已记录 ${agentPlan.jobIds.length} / ${MEMO_AGENT_MAX_REQUESTS} 次请求；剩余 ${remainingAgentRequests(agentPlan)} 次。继续复核或恢复备份不会重置次数。`)}</p>
             <p className="memo-confirm-hint">{t("Space is checked before each request. If the meeting record fills, review pauses and saved responses remain.", "每次请求前都会检查空间；会议记录空间不足时复核会暂停，已保存的回应仍保留。")}</p>
             <details className="memo-confirm-details"><summary>{t("Review limits", "复核限制")}</summary><p>{t("Request or save failure stops the run. Reload never resumes it automatically. Limits: 256 KiB per request, 4 MiB per response, 8 KiB per lookup.", "请求或保存失败即停止；重新加载不会自动恢复。限制：每次请求 256 KiB、每次回应 4 MiB、每次查询 8 KiB。")}</p></details>
           </> : <p className="memo-confirm-hint">{t("Pi reads selected excerpts; it does not guarantee a complete review.", "Pi 读取选取的片段，不保证完整审阅。")}</p>}
@@ -135,15 +141,17 @@ export function MemoGenerationConfirmation({
     </div>
     <footer className="memo-confirm-footer">
       <p className="memo-confirm-safety">{t("API requests may incur charges; cancellation may not stop remote processing or billing.", "API 请求可能收费；取消可能无法停止远端处理或计费。")}{previousAttempts && ` ${t("Previous attempts may already be charged.", "之前的请求可能已经收费。")}`}</p>
-      {agentPlan && <p className="memo-confirm-safety">{t("No fixed request count; total cost is unknown.", "不设固定请求次数；总费用未知。")}</p>}
+      {agentPlan && <p className="memo-confirm-safety">{t("Up to 100 requests per review; total cost is unknown.", "每轮复核最多 100 次请求；总费用未知。")}</p>}
       {plan && !agentPlan && <p className="memo-confirm-safety">{t(`${plan.chunks.length - plan.results.filter(Boolean).length} extraction steps and one synthesis request remain; total cost is unknown.`, `还剩 ${plan.chunks.length - plan.results.filter(Boolean).length} 次提取和 1 次合成；总费用未知。`)}</p>}
       {needsRetryReview && !reviewedRetry && <p className="memo-confirm-blocker">{t("Review the previous request and billing in Cost & processing before continuing.", "继续前请在“费用与处理”中核对之前的请求和账单。")}</p>}
+      {requestBlocked && <p className="memo-confirm-blocker" role="alert">{translateMessage(AGENT_REQUEST_LIMIT_MESSAGE, language)}</p>}
+      {localRecovery && <p className="memo-confirm-hint">{t("A final response is saved. Recovering validates it locally; no additional provider request is allowed.", "最终回应已保存。恢复时仅在本地校验，不会再发送服务商请求。")}</p>}
       {planBlocked && <p className="memo-confirm-blocker" role="alert">{translateMessage(confirmation.planError!, language)}</p>}
       {missingKey && <p className="memo-confirm-blocker"><a href="#/settings" className="text-button" onClick={onClose}>{t("Add your key in Settings first", "请先在设置中添加密钥")}</a></p>}
       <label className="checkbox-label confirmation-consent memo-confirm-checkbox"><input type="checkbox" checked={costAcknowledged} onChange={event => onCostAcknowledged(event.target.checked)} /><span>{t("I understand the selected data will be sent and may incur API charges.", "我了解所选数据将被发送，并可能产生 API 费用。")}</span></label>
       <div className="modal-actions">
         <Button type="button" className="button secondary" onClick={onClose}>{t("Cancel", "取消")}</Button>
-        <Button type="button" className="button primary" disabled={!canGenerate} onClick={onGenerate}>{t("Generate new notes", "生成新版笔记")}</Button>
+        <Button type="button" className="button primary" disabled={!canGenerate} onClick={onGenerate}>{localRecovery ? t("Recover saved notes", "恢复已保存的笔记") : t("Generate new notes", "生成新版笔记")}</Button>
       </div>
     </footer>
   </>;

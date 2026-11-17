@@ -1,10 +1,11 @@
 import { MEMO_OUTPUT_LANGUAGES } from "./memo-language";
 import { z } from "zod";
-import {AgentContextItemSchema, MEMO_AGENT_LEGACY_REQUEST_LIMIT, MEMO_AGENT_MAX_TOOLS_PER_RESPONSE, MEMO_AGENT_RECORD_BYTES} from "./memo-agent-contract";
+import {AgentContextItemSchema, MEMO_AGENT_LEGACY_REQUEST_LIMIT, MEMO_AGENT_MAX_REQUESTS, MEMO_AGENT_MAX_TOOLS_PER_RESPONSE, MEMO_AGENT_RECORD_BYTES} from "./memo-agent-contract";
 import { AgentRouteSchema, resolveAgentRoute } from "./memo-agent-route";
 import { ReferenceVideoSchema, type ReferenceVideo } from "./reference-video";
 // A synthesis can cite up to five extraction facts, each with up to 100 sources.
 export const MAX_MEMO_ITEM_SOURCES = 500;
+export const MAX_JOBS = 400;
 export const id = () => crypto.randomUUID();
 export const localDate = (now = new Date()) =>
   `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -154,7 +155,7 @@ export const JobSchema = z
     pipelineId: key.optional(),
     agentId: key.optional(),
     assistantRecord: z.string().max(MEMO_AGENT_RECORD_BYTES).optional(),
-    stepIndex: z.number().int().min(0).max(8).optional(),
+    stepIndex: z.number().int().min(0).max(MAX_JOBS - 1).optional(),
     contextual: z.object({
       action: z.enum(["simplify", "rewrite", "shorten"]),
       memoId: key,
@@ -168,7 +169,8 @@ export const JobSchema = z
       suggestion: z.string().max(8000).nullable(),
     }).strict().refine(value => value.end > value.start && value.end <= value.originalText.length && value.selectedText.trim().length > 0 && value.originalText.slice(value.start, value.end) === value.selectedText, "Invalid contextual selection." ).optional(),
   })
-  .strict();
+  .strict()
+  .refine(job => job.agentId !== undefined || job.stepIndex === undefined || job.stepIndex <= 8, "Only agent jobs may exceed pipeline step 8.");
 const PipelineSnapshotSchema = SnapshotSchema.extend({
   revision: z.number().int().positive(),
   languages: z.string().max(100),
@@ -178,13 +180,12 @@ const PipelineSnapshotSchema = SnapshotSchema.extend({
 const ReferencedPipelineSnapshotSchema = PipelineSnapshotSchema.omit({segments: true}).extend({
   sourceRefs: z.array(z.object({id: transcriptId, revision: z.number().int().positive()}).strict()).min(1).max(20000),
 }).strict();
-export const MAX_JOBS = 400;
 export const MemoAgentPlanSchema = z.object({
   id: key, provider: z.enum(["openai", "openrouter"]), model: z.string().min(1).max(100),
   route: AgentRouteSchema.optional(),
   createdAt: z.iso.datetime(), sourceRevision: z.number().int().positive(),
   outputLanguage: z.enum(MEMO_OUTPUT_LANGUAGES), snapshot: ReferencedPipelineSnapshotSchema,
-  requestLimit: z.literal(MEMO_AGENT_LEGACY_REQUEST_LIMIT).nullable(), jobIds: z.array(key).max(MAX_JOBS),
+  requestLimit: z.union([z.literal(MEMO_AGENT_LEGACY_REQUEST_LIMIT), z.literal(MEMO_AGENT_MAX_REQUESTS)]).nullable(), jobIds: z.array(key).max(MAX_JOBS),
   context: z.array(AgentContextItemSchema).max(MAX_JOBS * (2 + MEMO_AGENT_MAX_TOOLS_PER_RESPONSE)),
   consulted: z.array(z.object({id: transcriptId, revision: z.number().int().positive()}).strict()).max(20000),
   state: z.enum(["ready", "running", "paused", "blocked", "completed"]),

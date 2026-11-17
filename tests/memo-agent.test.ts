@@ -6,7 +6,7 @@ import {
   type Meeting,
 } from "../src/domain/model";
 import { saveMeeting, getMeeting } from "../src/storage/repository";
-import { planAgentMemo } from "../src/providers/memo-agent-plan";
+import { hasSavedAgentFinal, planAgentMemo } from "../src/providers/memo-agent-plan";
 import { runAgentMemo } from "../src/jobs/memo-agent";
 import { readAgentAssistant } from "../src/providers/agent-record";
 import { previewHistoryCleanup } from "../src/domain/history-cleanup";
@@ -756,12 +756,12 @@ test("legacy six-request checkpoints continue explicitly without losing receipts
   const completed = await runAgentMemo(latest, latest.memoAgents![0], key, signal);
   expect(calls).toBe(7);
   expect(completed.jobs.slice(0, 6)).toEqual(oldReceipts);
-  expect(completed.memoAgents![0].requestLimit).toBeNull();
+  expect(completed.memoAgents![0].requestLimit).toBe(100);
   expect(completed.memoAgents![0].state).toBe("completed");
   expect(completed.memos[0].items[0].sources).toEqual([{ id: expanded.segments[5].id, revision: 1 }]);
   const exported = await readBackup(new File([await backupMeeting(completed)], "continued.zip"));
   expect(exported.meeting.jobs).toHaveLength(7);
-  expect(exported.meeting.memoAgents![0].requestLimit).toBeNull();
+  expect(exported.meeting.memoAgents![0].requestLimit).toBe(100);
 });
 
 const routerSelection = { provider: "openrouter" as const, model: "openai/gpt-6-luna" };
@@ -854,4 +854,130 @@ test.each([{ provider: "Azure" }, { model: "other/model" }, { provider: key }])(
   expect(saved.jobs[0].assistantRecord).toContain("different Pi model route");
   expect(JSON.stringify(saved)).not.toContain(key);
   expect(saved.memos).toEqual(meeting.memos);
+});
+
+async function longReviewSetup() {
+  const setupValue = await setup();
+  const meeting = await saveMeeting({ ...setupValue.meeting, segments: Array.from({ length: 120 }, (_, index) => ({
+    ...setupValue.meeting.segments[0], id: crypto.randomUUID(), text: `Evidence ${index}.`, originalText: `Evidence ${index}.`,
+  })) });
+  return { ...setupValue, meeting, plan: planAgentMemo(meeting, selection, "zh-CN") };
+}
+
+test("Pi completes useful analysis on request 100 with every attempt durably recorded before sending", async () => {
+  const { meeting, plan, signal } = await longReviewSetup();
+  let calls = 0;
+  const prompts: string[] = [];
+  const request = vi.fn(async (_url, init) => {
+    const attempt = ++calls;
+    prompts.push(init.body);
+    const saved = (await getMeeting(meeting.id))!;
+    expect(saved.memoAgents![0].jobIds).toHaveLength(attempt);
+    expect(saved.jobs.at(-1)).toMatchObject({ state: "in_flight", stepIndex: attempt - 1 });
+    return agentSse(attempt < 100
+      ? [call({ startIndex: attempt - 1, count: 1 }, `hundred-${attempt}`)]
+      : [final(meeting.segments[98].id)]);
+  });
+  vi.stubGlobal("fetch", request);
+  const completed = await runAgentMemo(meeting, plan, key, signal);
+  expect(request).toHaveBeenCalledTimes(100);
+  for (const [index, prompt] of prompts.entries()) expect(prompt).toContain(`Request ${index + 1} of 100; ${100 - index} requests available including this request.`);
+  expect(completed.memoAgents![0]).toMatchObject({ requestLimit: 100, state: "completed" });
+  expect(completed.memoAgents![0].consulted).toHaveLength(99);
+  expect(completed.memos.at(-1)!.items[0].sources).toEqual([{ id: meeting.segments[98].id, revision: 1 }]);
+  expect(completed.jobs).toHaveLength(100);
+  const interrupted = await saveMeeting({ ...completed, memos: [], memoAgents: [{ ...completed.memoAgents![0], state: "paused", memoId: null }] });
+  expect(hasSavedAgentFinal(interrupted, interrupted.memoAgents![0])).toBe(true);
+  const recovered = await runAgentMemo(interrupted, interrupted.memoAgents![0], key, signal);
+  expect(request).toHaveBeenCalledTimes(100);
+  expect(recovered.memoAgents![0].state).toBe("completed");
+  expect(recovered.memos).toHaveLength(1);
+  const originalPlan = completed.memoAgents![0];
+  for (const jobIds of [originalPlan.jobIds.slice(0, 99), [...originalPlan.jobIds.slice(0, 99), originalPlan.jobIds[0]]]) {
+    expect(() => validateMeeting({ ...completed, memoAgents: [{ ...originalPlan, jobIds }] })).toThrow();
+  }
+  expect(() => validateMeeting({ ...completed, jobs: completed.jobs.map((job, index) => index === 99 ? { ...job, stepIndex: 98 } : job) })).toThrow("Invalid agent job checkpoint");
+});
+
+test("request 101 stays blocked after explicit continuation and backup restore, including legacy over-limit records", async () => {
+  const { meeting, plan, signal } = await longReviewSetup();
+  let calls = 0;
+  const request = vi.fn(async () => {
+    const attempt = ++calls;
+    return agentSse([call({ startIndex: attempt - 1, count: 1 }, `ceiling-${attempt}`)]);
+  });
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow("100-request limit");
+  expect(request).toHaveBeenCalledTimes(100);
+  let latest = (await getMeeting(meeting.id))!;
+  const savedJobs = structuredClone(latest.jobs);
+  expect(latest.memoAgents![0]).toMatchObject({ requestLimit: 100, state: "blocked", failure: { kind: "limit" } });
+  const restored = await readBackup(new File([await backupMeeting(latest)], "capped-review.zip"));
+  const restoredMeeting = await saveMeeting({ ...restored.meeting, id: crypto.randomUUID(), version: 0 });
+  await expect(runAgentMemo(restoredMeeting, restoredMeeting.memoAgents![0], key, signal, true)).rejects.toThrow("100-request limit");
+  expect(request).toHaveBeenCalledTimes(100);
+  expect((await getMeeting(restoredMeeting.id))!.jobs).toEqual(savedJobs);
+  await expect(runAgentMemo(latest, latest.memoAgents![0], key, signal, true)).rejects.toThrow("100-request limit");
+  latest = (await getMeeting(meeting.id))!;
+  expect(latest.jobs).toEqual(savedJobs);
+  const previous = latest.memoAgents![0];
+  const extra = { ...latest.jobs.at(-1)!, id: crypto.randomUUID(), stepIndex: 100 };
+  latest = await saveMeeting({ ...latest, jobs: [...latest.jobs, extra], memoAgents: [{ ...previous, requestLimit: null, jobIds: [...previous.jobIds, extra.id] }] });
+  const overLimit = await readBackup(new File([await backupMeeting(latest)], "legacy-over-limit.zip"));
+  expect(overLimit.meeting.memoAgents![0].jobIds).toHaveLength(101);
+  expect(overLimit.meeting.memoAgents![0].requestLimit).toBeNull();
+  await expect(runAgentMemo(latest, latest.memoAgents![0], key, signal, true)).rejects.toThrow("100-request limit");
+  expect(request).toHaveBeenCalledTimes(100);
+  expect((await getMeeting(meeting.id))!.jobs).toHaveLength(101);
+});
+
+test("a failed 100th request consumes its durable allowance while another plan has its own allowance", async () => {
+  const { meeting, plan } = await longReviewSetup();
+  const controller = new AbortController();
+  let calls = 0;
+  const request = vi.fn(async () => {
+    const attempt = ++calls;
+    return agentSse([call({ startIndex: attempt - 1, count: 1 }, `interrupted-${attempt}`)]);
+  });
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, controller.signal, false, saved => {
+    if (saved.jobs.length === 99 && saved.jobs[98].state === "completed") controller.abort();
+  })).rejects.toThrow();
+  let latest = (await getMeeting(meeting.id))!;
+  expect(latest.memoAgents![0].jobIds).toHaveLength(99);
+  const failed = vi.fn(async () => { throw new Error("Synthetic disconnect"); });
+  vi.stubGlobal("fetch", failed);
+  await expect(runAgentMemo(latest, latest.memoAgents![0], key, new AbortController().signal, true)).rejects.toThrow();
+  latest = (await getMeeting(meeting.id))!;
+  expect(failed).toHaveBeenCalledTimes(1);
+  expect(latest.memoAgents![0].jobIds).toHaveLength(100);
+  expect(latest.jobs.at(-1)?.state).toBe("outcome_unknown");
+  await expect(runAgentMemo(latest, latest.memoAgents![0], key, new AbortController().signal, true)).rejects.toThrow("100-request limit");
+  expect(failed).toHaveBeenCalledTimes(1);
+  latest = (await getMeeting(meeting.id))!;
+  const nextPlan = planAgentMemo(latest, selection, "zh-CN");
+  let nextCalls = 0;
+  vi.stubGlobal("fetch", vi.fn(async () => ++nextCalls === 1 ? agentSse([call()]) : agentSse([final(meeting.segments[0].id)])));
+  const completed = await runAgentMemo(latest, nextPlan, key, new AbortController().signal);
+  expect(nextCalls).toBe(2);
+  expect(completed.memoAgents!.map(value => value.jobIds.length)).toEqual([100, 2]);
+});
+
+
+test("canceling after receipt persistence consumes an attempt without sending and non-agent jobs keep their step bound", async () => {
+  const { meeting, plan } = await setup();
+  const controller = new AbortController();
+  const request = vi.fn();
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, controller.signal, false, saved => {
+    if (saved.jobs.at(-1)?.state === "in_flight") controller.abort();
+  })).rejects.toThrow();
+  const latest = (await getMeeting(meeting.id))!;
+  expect(request).not.toHaveBeenCalled();
+  expect(latest.memoAgents![0].jobIds).toHaveLength(1);
+  expect(latest.jobs[0]).toMatchObject({ state: "failed_before_send", billing: "not_submitted", stepIndex: 0 });
+  const { agentId: _agentId, assistantRecord: _record, ...ordinary } = latest.jobs[0];
+  expect(_agentId).toBe(plan.id);
+  expect(_record).toBeDefined();
+  expect(() => validateMeeting({ ...meeting, jobs: [{ ...ordinary, stepIndex: 9 }] })).toThrow();
 });

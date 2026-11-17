@@ -60,7 +60,7 @@ test("agent plans freeze source references and language without copying transcri
   );
   expect(JSON.stringify(plan)).not.toContain(meeting.segments[0].text);
   expect(plan.outputLanguage).toBe("zh-CN");
-  expect(plan.requestLimit).toBeNull();
+  expect(plan.requestLimit).toBe(100);
   expect(validateMeeting(agentMeeting(meeting, plan)).segments).toEqual(
     meeting.segments,
   );
@@ -120,7 +120,7 @@ test("agent record validation rejects substituted sources, invented consultation
   expect(() =>
     validateMeeting({
       ...meeting,
-      memoAgents: [{ ...meeting.memoAgents![0], requestLimit: 100 }],
+      memoAgents: [{ ...meeting.memoAgents![0], requestLimit: 101 }],
     }),
   ).toThrow("invalid");
   expect(() => validateMeeting({ ...meeting, schemaVersion: 1 })).toThrow(
@@ -229,4 +229,15 @@ test("saved response API and model must match the frozen route", () => {
   const plan = planAgentMemo(sampleMeeting(), selection, "en");
   expect(() => readAgentAssistant(JSON.stringify(message), plan.route)).toThrow("does not match");
   expect(() => readAgentAssistant(JSON.stringify({ ...message, api: "openai-responses" }))).toThrow("does not match");
+});
+
+
+test("request policy accepts only the current ceiling and explicit legacy values", () => {
+  const { meeting } = planned();
+  for (const requestLimit of [100, 6, null]) {
+    expect(validateMeeting({ ...meeting, memoAgents: [{ ...meeting.memoAgents![0], requestLimit }] }).memoAgents![0].requestLimit).toBe(requestLimit);
+  }
+  for (const requestLimit of [0, -1, 99, 101, 100.5, "100", NaN]) {
+    expect(() => validateMeeting({ ...meeting, memoAgents: [{ ...meeting.memoAgents![0], requestLimit }] })).toThrow();
+  }
 });

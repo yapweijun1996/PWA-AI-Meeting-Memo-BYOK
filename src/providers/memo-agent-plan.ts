@@ -7,6 +7,7 @@ import {
   type MemoAgentPlan,
 } from "../domain/model";
 import {
+  MEMO_AGENT_MAX_REQUESTS,
   MEMO_AGENT_MAX_TOOLS_PER_RESPONSE,
   MEMO_AGENT_MAX_RANGE_SEGMENTS,
   MEMO_AGENT_MAX_CALL_ID_LENGTH,
@@ -16,7 +17,9 @@ import {
 } from "../domain/memo-agent-contract";
 import type { MemoOutputLanguage } from "../domain/memo-language";
 import type { Selection } from "./credentials";
-import { agentRouteProfile, newAgentRoute } from "../domain/memo-agent-route";
+import { agentRouteProfile, newAgentRoute, resolveAgentRoute } from "../domain/memo-agent-route";
+
+import { readAgentAssistant } from "./agent-record";
 
 const encoder = new TextEncoder();
 export const supportsAgentMemo = (selection: Selection) =>
@@ -89,7 +92,7 @@ export function planAgentMemo(
         revision,
       })),
     },
-    requestLimit: null,
+    requestLimit: MEMO_AGENT_MAX_REQUESTS,
     jobIds: [],
     context: [],
     consulted: [],
@@ -142,4 +145,18 @@ export function resumableAgentMemo(
         plan.provider === selection.provider &&
         plan.model === selection.model,
     );
+}
+
+
+/** A saved final response can be validated locally even when no paid turns remain. */
+export function hasSavedAgentFinal(meeting: Meeting, plan: MemoAgentPlan): boolean {
+  const lastAssistant = [...plan.context].reverse().find(item => item.kind === "assistant");
+  if (!lastAssistant) return false;
+  const job = meeting.jobs.find(job => job.id === lastAssistant.jobId);
+  if (job?.state !== "completed" || !job.assistantRecord) return false;
+  try {
+    return readAgentAssistant(job.assistantRecord, resolveAgentRoute(plan)).stopReason === "stop";
+  } catch {
+    return false;
+  }
 }

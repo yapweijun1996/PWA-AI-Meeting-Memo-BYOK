@@ -107,28 +107,29 @@ async function setup(page: Page, passageCount = 2, provider: "openai" | "openrou
   return fixture;
 }
 
-test("review continues beyond six requests and 32 lookups while preserving every response", async ({ page }) => {
-  const fixture = await setup(page, 40);
+test("review completes request 100 and preserves every response beyond the old step-index boundary", async ({ page }) => {
+  test.setTimeout(120000);
+  const fixture = await setup(page, 100);
   let calls = 0;
   await page.route("https://api.openai.com/v1/responses", async route => {
     const turn = calls++;
-    await stream(route, turn < 8 ? Array.from({ length: 5 }, (_, offset) => ({
+    await stream(route, turn < 99 ? Array.from({ length: 1 }, (_, offset) => ({
       ...tool(`read-${turn}-${offset}`),
-      arguments: JSON.stringify({ startIndex: turn * 5 + offset, count: 1 }),
-    })) : [memo(fixture.segments[39].id)]);
+      arguments: JSON.stringify({ startIndex: turn + offset, count: 1 }),
+    })) : [memo(fixture.segments[98].id)]);
   });
   const dialog = await confirm(page);
   await dialog.getByRole("button", { name: "Generate new notes", exact: true }).click();
-  await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic selective review result");
+  await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic selective review result", { timeout: 90000 });
   const saved = await backup(page);
-  expect(calls).toBe(9);
-  expect(saved.jobs).toHaveLength(9);
+  expect(calls).toBe(100);
+  expect(saved.jobs).toHaveLength(100);
   expect(saved.jobs.every(job => job.assistantRecord && job.state === "completed")).toBe(true);
-  expect(saved.memoAgents[0].consulted).toHaveLength(40);
+  expect(saved.memoAgents[0].consulted).toHaveLength(99);
   await page.reload();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
   await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic selective review result");
-  expect(calls).toBe(9);
+  expect(calls).toBe(100);
 });
 async function confirm(page: Page) {
   await page
@@ -260,7 +261,7 @@ test("opt-in review uses real Pi tools under CSP, preserves receipts and does no
     (await new AxeBuilder({ page }).include("dialog[open]").analyze())
       .violations,
   ).toEqual([]);
-  await expect(dialog).toContainText("without a fixed request count");
+  await expect(dialog).toContainText("up to 100 requests per review");
   expect(
     await dialog.evaluate(
       (element) => element.scrollWidth <= element.clientWidth + 1,
@@ -411,7 +412,7 @@ test("quota failure retains an exportable response and local retry never repeats
   await page.reload();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
   const next = await confirm(page);
-  await expect(next).toContainText("without a fixed request count");
+  await expect(next).toContainText("up to 100 requests per review");
   await next
     .getByRole("button", { name: "Generate new notes", exact: true })
     .click();
@@ -675,4 +676,32 @@ test("failed OpenRouter route stops once and reload preserves the locked paramet
   await expect(dialog.getByRole("button", { name: "Generate new notes", exact: true })).toBeDisabled();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   expect(calls).toBe(1);
+});
+
+
+test("an exhausted Pi review blocks generating request 101 after reload while ordinary generation stays selectable", async ({ page }) => {
+  test.setTimeout(120000);
+  await setup(page, 101);
+  let calls = 0;
+  await page.route("https://api.openai.com/v1/responses", async route => {
+    const turn = calls++;
+    await stream(route, [{ ...tool(`cap-${turn}`), arguments: JSON.stringify({ startIndex: turn, count: 1 }) }]);
+  });
+  let dialog = await confirm(page);
+  await dialog.getByRole("button", { name: "Generate new notes", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Selective review progress" })).toContainText("100 requests recorded", { timeout: 90000 });
+  await expect(page.getByRole("region", { name: "Selective review progress" })).toContainText("100-request limit");
+  expect(calls).toBe(100);
+  await page.reload();
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  dialog = await confirm(page);
+  await expect(dialog).toContainText("100 of 100 requests recorded; 0 remaining");
+  await expect(dialog.getByRole("alert")).toContainText("100-request limit");
+  await expect(dialog.getByRole("button", { name: "Generate new notes", exact: true })).toBeDisabled();
+  expect(calls).toBe(100);
+  await dialog.getByRole("checkbox", { name: "Use selective transcript review (Pi, optional)", exact: true }).uncheck();
+  await dialog.getByRole("checkbox", { name: "I understand the selected data will be sent and may incur API charges.", exact: true }).check();
+  await expect(dialog.getByRole("button", { name: "Generate new notes", exact: true })).toBeEnabled();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(calls).toBe(100);
 });

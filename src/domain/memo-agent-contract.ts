@@ -3,6 +3,8 @@ import { z } from "zod";
 export const MEMO_AGENT_MODEL = "gpt-6-luna";
 // Legacy plans retain their old value until the user explicitly continues them.
 export const MEMO_AGENT_LEGACY_REQUEST_LIMIT = 6;
+// Owner-selected ceiling per persisted plan, including interrupted attempts.
+export const MEMO_AGENT_MAX_REQUESTS = 100;
 // A per-response burst guard, never a cumulative analysis budget.
 export const MEMO_AGENT_MAX_TOOLS_PER_RESPONSE = 32;
 export const MEMO_AGENT_NO_PROGRESS_ROUNDS = 3;

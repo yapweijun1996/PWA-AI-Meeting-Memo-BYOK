@@ -10,6 +10,7 @@ const messages: Record<string, string> = {
   "Another import changed this recording. Existing data was retained.": "另一项导入已更改此录音。现有数据已保留。",
   "Another tab changed this meeting. Reload before attaching the recording.": "另一标签页已更改此会议。请重新加载后再附加录音。",
   "Staged recording is incomplete. Existing data was retained; import the recording again.": "暂存录音不完整。现有数据已保留，请重新导入录音。",
+  "The 100-request limit for this review was reached. Saved responses remain available; no new request was sent.": "本轮复核已达到 100 次请求上限。已保存的回应仍可查看；尚未发送新的请求。",
   "Review paused because repeated lookups produced no new evidence. Saved responses remain available; inspect them before continuing.": "重复查询未产生新证据，复核已暂停。已保存的回应仍保留，请查看后再决定是否继续。",
   "The meeting job ledger is full. Saved responses remain available; no new request was sent.": "会议处理记录已满；已保存的回应仍保留，未发送新的请求。",
   "A saved response exceeds the per-response tool burst limit. Export its record for inspection.": "已保存回应中的工具调用超过单次处理容量，请导出记录检查。",
