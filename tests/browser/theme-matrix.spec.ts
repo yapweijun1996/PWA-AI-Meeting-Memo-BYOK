@@ -92,6 +92,7 @@ for (const width of [390,768,1440])
           if (view === "immersive") await page.getByRole("button",{name:"Immersive playback",exact:true}).click();
           else await page.getByRole("button",{name:"Playback mode",exact:true}).click();
           const controls = page.locator(view === "immersive" ? ".immersive" : ".audio-player");
+          if (view === "immersive") await controls.getByRole("button", {name: "Reading", exact: true}).click();
           await controls.getByRole("button",{name:"Play audio",exact:true}).click();
           await expect(controls.getByRole("button",{name:"Pause audio",exact:true})).toBeVisible();
         }
@@ -108,8 +109,41 @@ for (const width of [390,768,1440])
       for (const theme of ["light","dark"])
         for (const palette of ["forest","ocean","violet","amber"]) {
           await appearance(page,theme,palette);
+          const contracts: [string, string, string][] = view === "settings" ? [
+            ["#settings-panel-api .notice", "background-color", "--action-selected-bg"],
+            ["#settings-panel-api .notice", "color", "--action-selected-text"],
+          ] : view === "library" ? [
+            [".filter-row", "background-color", "--surface-subtle"],
+            [".filter-row button.selected", "color", "--action-selected-text"],
+            [".filter-row button:not(.selected)", "color", "--text-muted"],
+          ] : view === "transcript" ? [
+            [".time-link", "background-color", "--action-selected-bg"],
+            [".time-link", "color", "--action-selected-text"],
+          ] : view === "immersive" ? [
+            [".immersive-stage", "background-color", "--bg-surface"],
+            [".immersive", "color", "--text-heading"],
+            [".immersive-exit-button", "background-color", "--surface-subtle"],
+            [".immersive-transcript", "background-color", "--bg-surface"],
+            [".immersive-search input", "background-color", "--bg-surface"],
+            [".immersive-search input", "color", "--text-body"],
+            [".immersive-panel-width input", "accent-color", "--color-accent-text"],
+            [".immersive-controls input", "accent-color", "--color-accent-text"],
+            [".immersive-view-mode button[aria-pressed=true]", "background-color", "--action-selected-bg"],
+            [".immersive-transcript-list > button.is-current", "background-color", "--action-selected-bg"],
+          ] : [];
+          for (const [selector, property, token] of contracts) {
+            const actual = await page.locator(selector).first().evaluate((element, { property, token }) => {
+              const reference = document.createElement("span");
+              reference.style.setProperty(property, `var(${token})`);
+              element.parentElement!.append(reference);
+              const values = [getComputedStyle(element).getPropertyValue(property), getComputedStyle(reference).getPropertyValue(property)];
+              reference.remove();
+              return values;
+            }, { property, token });
+            expect(actual[0], `${theme}/${palette}: ${selector} ${property}`).toBe(actual[1]);
+          }
           await scan(`${view}/${width}/${theme}/${palette}`);
-          if (palette === "forest") await page.screenshot({path:info.outputPath(`${view}-${width}-${theme}-forest.png`)});
+          if (palette === "forest" || palette === "ocean") await page.screenshot({path:info.outputPath(`${view}-${width}-${theme}-${palette}.png`)});
           if (view === "library") {
             await page.locator("main").getByRole("button",{name:"New meeting",exact:true}).click();
             await scan(`new meeting/${width}/${theme}/${palette}`);

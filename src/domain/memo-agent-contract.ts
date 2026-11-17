@@ -1,8 +1,11 @@
 import { z } from "zod";
 
 export const MEMO_AGENT_MODEL = "gpt-6-luna";
-export const MEMO_AGENT_MAX_REQUESTS = 6;
-export const MEMO_AGENT_MAX_TOOLS = 32;
+// Legacy plans retain their old value until the user explicitly continues them.
+export const MEMO_AGENT_LEGACY_REQUEST_LIMIT = 6;
+// A per-response burst guard, never a cumulative analysis budget.
+export const MEMO_AGENT_MAX_TOOLS_PER_RESPONSE = 32;
+export const MEMO_AGENT_NO_PROGRESS_ROUNDS = 3;
 export const MEMO_AGENT_MAX_RANGE_SEGMENTS = 40;
 export const MEMO_AGENT_MAX_CALL_ID_LENGTH = 1000;
 export const MEMO_AGENT_MAX_TOOL_NAME_LENGTH = 100;

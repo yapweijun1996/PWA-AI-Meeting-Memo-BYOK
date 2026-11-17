@@ -2,7 +2,7 @@
 
 Date: 2026-11-17. Owner direction: **Pi-Orchestrated, Multi-Model, Evidence-Grounded Meeting Intelligence Platform**.
 
-Status: approved product direction; phased engineering plan. This document does not claim that the proposed orchestration, model router, independent review, or quality thresholds are implemented or measured. Baseline source audit: `d53ab1cfa4acb48f6a2b9aa81075bf3f8f097b13`. The six-request defect was reproduced locally against that build with synthetic provider responses. Later implementation evidence belongs in [VALIDATION.md](VALIDATION.md).
+Status: approved product direction; phased engineering plan. This document does not claim that the proposed orchestration, model router, independent review, or quality thresholds are implemented or measured. Baseline source audit: `d53ab1cfa4acb48f6a2b9aa81075bf3f8f097b13`. The six-request defect was reproduced locally against that build with synthetic provider responses. QF01 and UI-TOKEN follow-up implementation evidence belongs in [VALIDATION.md](VALIDATION.md); the audit table below deliberately preserves the pre-change baseline.
 
 ## 1. Operating principles
 

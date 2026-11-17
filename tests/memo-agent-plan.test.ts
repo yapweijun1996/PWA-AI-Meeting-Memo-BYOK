@@ -60,7 +60,7 @@ test("agent plans freeze source references and language without copying transcri
   );
   expect(JSON.stringify(plan)).not.toContain(meeting.segments[0].text);
   expect(plan.outputLanguage).toBe("zh-CN");
-  expect(plan.requestLimit).toBe(6);
+  expect(plan.requestLimit).toBeNull();
   expect(validateMeeting(agentMeeting(meeting, plan)).segments).toEqual(
     meeting.segments,
   );

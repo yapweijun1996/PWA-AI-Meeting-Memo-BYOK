@@ -129,6 +129,7 @@ test("font size persists and changes rendered typography", async ({ page }) => {
 test("theme and palette persist with readable dark surfaces", async ({ page }) => {
   test.setTimeout(120_000);
   await page.goto(settings);
+  await expect(page.locator(".breadcrumb-root")).toHaveCSS("transition-property", "none");
   await page.locator("#app-sidebar").evaluate(async sidebar => {
     await Promise.all(sidebar.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => undefined)));
   });

@@ -102,7 +102,7 @@ async function saveAgentReceipt(meetingId: string): Promise<Meeting> {
       value.id === plan.id ? updated : value,
     ),
   };
-  assertAgentStorageBudget(value, updated, false);
+  assertAgentStorageBudget(value, false);
   const saved = await saveMeeting(value);
   if (!recovery.wireResponse) pending.delete(meetingId);
   changed();

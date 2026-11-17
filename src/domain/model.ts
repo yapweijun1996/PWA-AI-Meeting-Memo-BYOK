@@ -1,6 +1,6 @@
 import { MEMO_OUTPUT_LANGUAGES } from "./memo-language";
 import { z } from "zod";
-import {AgentContextItemSchema, MEMO_AGENT_MAX_REQUESTS, MEMO_AGENT_MAX_TOOLS, MEMO_AGENT_MODEL, MEMO_AGENT_RECORD_BYTES} from "./memo-agent-contract";
+import {AgentContextItemSchema, MEMO_AGENT_LEGACY_REQUEST_LIMIT, MEMO_AGENT_MAX_TOOLS_PER_RESPONSE, MEMO_AGENT_MODEL, MEMO_AGENT_RECORD_BYTES} from "./memo-agent-contract";
 import { ReferenceVideoSchema, type ReferenceVideo } from "./reference-video";
 // A synthesis can cite up to five extraction facts, each with up to 100 sources.
 export const MAX_MEMO_ITEM_SOURCES = 500;
@@ -176,12 +176,13 @@ const PipelineSnapshotSchema = SnapshotSchema.extend({
 const ReferencedPipelineSnapshotSchema = PipelineSnapshotSchema.omit({segments: true}).extend({
   sourceRefs: z.array(z.object({id: transcriptId, revision: z.number().int().positive()}).strict()).min(1).max(20000),
 }).strict();
+export const MAX_JOBS = 400;
 export const MemoAgentPlanSchema = z.object({
   id: key, provider: z.literal("openai"), model: z.literal(MEMO_AGENT_MODEL),
   createdAt: z.iso.datetime(), sourceRevision: z.number().int().positive(),
   outputLanguage: z.enum(MEMO_OUTPUT_LANGUAGES), snapshot: ReferencedPipelineSnapshotSchema,
-  requestLimit: z.literal(MEMO_AGENT_MAX_REQUESTS), jobIds: z.array(key).max(MEMO_AGENT_MAX_REQUESTS),
-  context: z.array(AgentContextItemSchema).max(MEMO_AGENT_MAX_REQUESTS * 2 + MEMO_AGENT_MAX_TOOLS),
+  requestLimit: z.literal(MEMO_AGENT_LEGACY_REQUEST_LIMIT).nullable(), jobIds: z.array(key).max(MAX_JOBS),
+  context: z.array(AgentContextItemSchema).max(MAX_JOBS * (2 + MEMO_AGENT_MAX_TOOLS_PER_RESPONSE)),
   consulted: z.array(z.object({id: transcriptId, revision: z.number().int().positive()}).strict()).max(20000),
   state: z.enum(["ready", "running", "paused", "blocked", "completed"]),
   failure: z.object({kind: z.enum(["request", "limit", "result", "storage"]), message: z.string().max(500)}).strict().nullable(),
@@ -222,7 +223,6 @@ export const MemoPipelineSchema = z
     memoId: key.nullable(),
   })
   .strict();
-export const MAX_JOBS = 400;
 /**
  * Largest meeting record, as JSON, that the app will create or restore. One source of
  * truth for the memo plan, contextual suggestions, memo review writes and backup import.
@@ -415,7 +415,6 @@ export function validateMeeting(value: unknown): Meeting {
     const assistantIds = plan.context.filter(item => item.kind === "assistant").map(item => item.jobId);
     if (new Set(assistantIds).size !== assistantIds.length || assistantIds.some(jobId => !plan.jobIds.includes(jobId) || !m.jobs.some(job => job.id === jobId && job.state === "completed" && job.assistantRecord !== undefined)))
       throw new Error("Unresolved agent context.");
-    if (plan.context.filter(item => item.kind === "tool").length > MEMO_AGENT_MAX_TOOLS) throw new Error("Agent tool limit exceeded.");
     if (plan.state === "completed" && (!plan.memoId || !m.memos.some(memo => memo.id === plan.memoId && memo.sourceRevision === plan.sourceRevision)))
       throw new Error("Invalid completed agent memo.");
   }

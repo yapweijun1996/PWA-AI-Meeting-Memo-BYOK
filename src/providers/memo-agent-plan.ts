@@ -7,8 +7,7 @@ import {
   type MemoAgentPlan,
 } from "../domain/model";
 import {
-  MEMO_AGENT_MAX_REQUESTS,
-  MEMO_AGENT_MAX_TOOLS,
+  MEMO_AGENT_MAX_TOOLS_PER_RESPONSE,
   MEMO_AGENT_MAX_RANGE_SEGMENTS,
   MEMO_AGENT_MAX_CALL_ID_LENGTH,
   MEMO_AGENT_MAX_TOOL_NAME_LENGTH,
@@ -23,9 +22,8 @@ const encoder = new TextEncoder();
 export const supportsAgentMemo = (selection: Selection) =>
   selection.provider === "openai" && selection.model === MEMO_AGENT_MODEL;
 
-/** Reserve the next embedded response, both final note copies, and remaining tool artifacts. */
-export function agentStorageReserve(plan: MemoAgentPlan) {
-  const remainingTools = Math.max(0, MEMO_AGENT_MAX_TOOLS - plan.context.filter(item => item.kind === "tool").length);
+/** Reserve the next response, both final note copies and one bounded tool burst. */
+export function agentStorageReserve() {
   // A JSON record can double when embedded as a string. Two final note copies
   // can each use the response size, plus citation/revision and item metadata.
   const nextRecord = MEMO_AGENT_RECORD_BYTES * 2;
@@ -34,17 +32,16 @@ export function agentStorageReserve(plan: MemoAgentPlan) {
   // bounded ASCII, and each range can consult at most 40 source revisions.
   const toolCheckpoint = 6 * (MEMO_AGENT_TOOL_BYTES + MEMO_AGENT_MAX_CALL_ID_LENGTH + MEMO_AGENT_MAX_TOOL_NAME_LENGTH) + 512;
   const consultedSources = MEMO_AGENT_MAX_RANGE_SEGMENTS * 160;
-  return nextRecord + finalNotes + remainingTools * (toolCheckpoint + consultedSources) + 64 * 1024;
+  return nextRecord + finalNotes + MEMO_AGENT_MAX_TOOLS_PER_RESPONSE * (toolCheckpoint + consultedSources) + 64 * 1024;
 }
 
 export function assertAgentStorageBudget(
   meeting: Meeting,
-  plan: MemoAgentPlan,
   reserveFuture = true,
 ) {
   const bytes = encoder.encode(JSON.stringify(meeting)).byteLength;
   if (
-    bytes + (reserveFuture ? agentStorageReserve(plan) : 0) >
+    bytes + (reserveFuture ? agentStorageReserve() : 0) >
     MAX_MEETING_JSON_BYTES
   )
     throw new Error(
@@ -66,7 +63,7 @@ export function planAgentMemo(
   if (
     (meeting.memoAgents?.length ?? 0) >= 30 ||
     meeting.memos.length >= 30 ||
-    meeting.jobs.length + MEMO_AGENT_MAX_REQUESTS > MAX_JOBS
+    meeting.jobs.length >= MAX_JOBS
   )
     throw new Error(
       "Meeting history cannot retain another bounded review. Back it up before further processing.",
@@ -92,7 +89,7 @@ export function planAgentMemo(
         revision,
       })),
     },
-    requestLimit: MEMO_AGENT_MAX_REQUESTS,
+    requestLimit: null,
     jobIds: [],
     context: [],
     consulted: [],
@@ -106,7 +103,6 @@ export function planAgentMemo(
       schemaVersion: 2,
       memoAgents: [...(meeting.memoAgents ?? []), plan],
     },
-    plan,
   );
   return plan;
 }
@@ -144,8 +140,6 @@ export function resumableAgentMemo(
         plan.state !== "completed" &&
         plan.sourceRevision === meeting.revision &&
         plan.provider === selection.provider &&
-        plan.model === selection.model &&
-        plan.jobIds.length < plan.requestLimit &&
-        plan.failure?.kind !== "limit",
+        plan.model === selection.model,
     );
 }

@@ -336,7 +336,7 @@ test("tool budget is enforced before execution and the next paid request", async
   expect(latest.jobs[0].assistantRecord).toBeDefined();
 });
 
-test("six paid turns are a hard limit even when the assistant asks to keep reading", async () => {
+test("repeated lookups stop without another paid turn when they produce no new evidence", async () => {
   const { meeting, plan, signal } = await setup();
   let turns = 0;
   const request = vi.fn(async () =>
@@ -344,11 +344,11 @@ test("six paid turns are a hard limit even when the assistant asks to keep readi
   );
   vi.stubGlobal("fetch", request);
   await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow(
-    "six-request",
+    "no new evidence",
   );
   const latest = (await getMeeting(meeting.id))!;
-  expect(request).toHaveBeenCalledTimes(6);
-  expect(latest.jobs).toHaveLength(6);
+  expect(request).toHaveBeenCalledTimes(4);
+  expect(latest.jobs).toHaveLength(4);
   expect(latest.memoAgents![0].failure?.kind).toBe("limit");
 });
 
@@ -711,4 +711,54 @@ test("local receipt recovery respects another tab's processing lock and retains 
   );
   expect(await getMeeting(current.id)).toEqual(current);
   expect(pendingAgentReceipt(current.id)).toBeDefined();
+});
+
+
+test("new evidence resets the consecutive no-progress guard", async () => {
+  const { meeting, signal } = await setup();
+  const plan = planAgentMemo(meeting, selection, "zh-CN");
+  const ranges = [0, 0, 0, 1, 1, 1];
+  let calls = 0;
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    const turn = calls++;
+    return agentSse(turn < ranges.length
+      ? [call({ startIndex: ranges[turn], count: 1 }, `progress-${turn}`)]
+      : [final(meeting.segments[1].id)]);
+  }));
+  const completed = await runAgentMemo(meeting, plan, key, signal);
+  expect(calls).toBe(7);
+  expect(completed.memoAgents![0].state).toBe("completed");
+  expect(completed.memoAgents![0].consulted).toHaveLength(2);
+  expect(completed.jobs.every(job => job.state === "completed")).toBe(true);
+});
+
+test("legacy six-request checkpoints continue explicitly without losing receipts or source revisions", async () => {
+  const { meeting, signal } = await setup();
+  const expanded = await saveMeeting({ ...meeting, segments: Array.from({ length: 40 }, (_, index) => ({
+    ...meeting.segments[0], id: crypto.randomUUID(), text: `Evidence ${index}.`, originalText: `Evidence ${index}.`,
+  })) });
+  const plan = planAgentMemo(expanded, selection, "zh-CN");
+  const controller = new AbortController();
+  let calls = 0;
+  vi.stubGlobal("fetch", vi.fn(async () => agentSse([call({ startIndex: calls, count: 1 }, `legacy-${calls++}`)])));
+  await expect(runAgentMemo(expanded, plan, key, controller.signal, false, saved => {
+    if (saved.jobs.length === 6 && saved.jobs[5].state === "completed") controller.abort();
+  })).rejects.toThrow();
+  let latest = (await getMeeting(meeting.id))!;
+  const oldReceipts = structuredClone(latest.jobs);
+  latest.memoAgents![0].requestLimit = 6;
+  latest.memoAgents![0].failure = { kind: "limit", message: "The six-request limit was reached. Saved responses remain available." };
+  latest = await saveMeeting(latest);
+  const restored = await readBackup(new File([await backupMeeting(latest)], "legacy.zip"));
+  expect(restored.meeting.memoAgents![0].requestLimit).toBe(6);
+  vi.stubGlobal("fetch", vi.fn(async () => { calls++; return agentSse([final(expanded.segments[5].id)]); }));
+  const completed = await runAgentMemo(latest, latest.memoAgents![0], key, signal);
+  expect(calls).toBe(7);
+  expect(completed.jobs.slice(0, 6)).toEqual(oldReceipts);
+  expect(completed.memoAgents![0].requestLimit).toBeNull();
+  expect(completed.memoAgents![0].state).toBe("completed");
+  expect(completed.memos[0].items[0].sources).toEqual([{ id: expanded.segments[5].id, revision: 1 }]);
+  const exported = await readBackup(new File([await backupMeeting(completed)], "continued.zip"));
+  expect(exported.meeting.jobs).toHaveLength(7);
+  expect(exported.meeting.memoAgents![0].requestLimit).toBeNull();
 });

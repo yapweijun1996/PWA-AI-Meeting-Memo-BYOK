@@ -517,7 +517,8 @@ small {
   padding: 3px 6px;
   margin: -3px -6px;
   border-radius: var(--radius-breadcrumb);
-  transition: background 0.15s, color 0.15s;
+  /* Theme foreground/background roles must change together to preserve contrast. */
+  transition: none;
 }
 .breadcrumb-root:hover {
   background: var(--palette-16);
@@ -1035,19 +1036,19 @@ main {
   gap: 4px;
   padding: 3px;
   border-radius: var(--radius-filter-group);
-  background: var(--palette-64);
-  border: 1px solid var(--palette-65);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-default);
 }
 .filter-row button {
   font-size: var(--text-xs);
-  color: var(--palette-56);
+  color: var(--text-muted);
   border-radius: var(--radius-filter-option);
   padding: 6px 13px;
   font-weight: 500;
 }
 .filter-row button.selected {
-  background: var(--bg-surface);
-  color: var(--text-heading);
+  background: var(--action-selected-bg);
+  color: var(--action-selected-text);
   font-weight: 600;
   box-shadow: var(--shadow-filter-selected);
 }
@@ -1441,14 +1442,14 @@ details[open] > summary {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--palette-85);
-  border: 1px solid var(--palette-86);
+  background: var(--notice-info-bg);
+  border: 1px solid var(--notice-info-border);
   border-radius: var(--radius-notice);
   padding: 12px 15px;
   margin: 0 0 18px;
   font-size: var(--text-xs);
   line-height: 1.7;
-  color: var(--palette-12);
+  color: var(--notice-info-text);
 }
 .notice > span {
   flex: 1;
@@ -1489,10 +1490,10 @@ details[open] > summary {
 .notice.sand {
   background: var(--palette-89);
   border-color: var(--palette-90);
-  color: var(--palette-12);
+  color: var(--status-sand-text);
 }
 .notice.update {
-  background: var(--palette-91);
+  background: var(--notice-info-bg);
 }
 .notice.install {
   font-size: var(--text-xs);
@@ -1942,16 +1943,16 @@ details[open] > summary {
 }
 .time-link {
   font-size: var(--text-xs);
-  color: var(--palette-30);
+  color: var(--action-selected-text);
   padding: 2px 7px;
   border-radius: var(--radius-time-link);
-  background: var(--palette-103);
+  background: var(--action-selected-bg);
   margin-left: auto;
   font-variant-numeric: tabular-nums;
 }
 .time-link:disabled {
   background: transparent;
-  color: var(--palette-12);
+  color: var(--text-muted);
 }
 .passage-actions {
   display: flex;
@@ -2446,11 +2447,11 @@ details[open] > summary {
    Vertical centring is deliberately avoided: with a tall roster it pushes the top out of reach and re-centres everything
    whenever a caption changes length. The captions take the remaining height and scroll inside their own area. */
 .immersive-stage { position: relative; isolation: isolate; flex: 1; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 14px; border-radius: var(--radius-immersive-stage); background: var(--immersive-stage-bg); text-align: center; gap: 12px; }
-.immersive-stage::before { content: ""; position: absolute; z-index: -1; inset: 0; border-radius: inherit; pointer-events: none; background: radial-gradient(ellipse at 25% 24%, #73bd7930, transparent 35%), radial-gradient(ellipse at 76% 72%, #4f92a020, transparent 36%), radial-gradient(ellipse at 70% 15%, #b3a96a16, transparent 32%); background-size: 140% 140%; animation: immersive-ambient-drift 36s ease-in-out infinite alternate; }
+.immersive-stage::before { content: ""; position: absolute; z-index: -1; inset: 0; border-radius: inherit; pointer-events: none; background: var(--immersive-ambient-bg); background-size: 140% 140%; animation: immersive-ambient-drift 36s ease-in-out infinite alternate; }
 @keyframes immersive-ambient-drift { from { background-position: 0% 0%; } to { background-position: 100% 100%; } }
 .immersive-roster-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; flex: none; align-self: flex-start; max-width: 100%; padding: 0; text-align: left; }
 .immersive-speaker-layout { display: inline-flex; gap: 4px; }
-.immersive-speaker-layout button[aria-pressed="true"] { border-color: var(--immersive-accent); background: var(--immersive-control-selected-bg); }
+.immersive-speaker-layout button[aria-pressed="true"] { border-color: var(--immersive-accent); background: var(--immersive-control-selected-bg); color: var(--action-selected-text); }
 .immersive-roster { display: flex; flex-wrap: wrap; gap: 8px; flex: 0 0 auto; min-height: 0; max-height: 22%; width: 100%; overflow-y: auto; overscroll-behavior: contain; }
 .immersive-roster[hidden] { display: none; }
 .immersive-stage[data-roster-open="true"] { overflow-y: auto; overscroll-behavior: contain; }
@@ -2525,7 +2526,7 @@ details[open] > summary {
 .immersive-caption-meta time { margin-left: auto; font-variant-numeric: tabular-nums; }
 .immersive-table-captions .immersive-caption-content { max-height: calc(100% - 24px); margin-top: 4px; }
 .immersive-caption-speaker { font-size: var(--font-size-immersive-caption-speaker); }
-.immersive-transcript { display: flex; flex: 0 0 var(--transcript-width, 32%); flex-direction: column; width: var(--transcript-width, 32%); min-width: 0; min-height: 0; border: 1px solid var(--immersive-transcript-border); border-radius: var(--radius-immersive-transcript); padding: 14px; background: var(--immersive-transcript-bg); color: var(--immersive-transcript-text); color-scheme: light; }
+.immersive-transcript { display: flex; flex: 0 0 var(--transcript-width, 32%); flex-direction: column; width: var(--transcript-width, 32%); min-width: 0; min-height: 0; border: 1px solid var(--immersive-transcript-border); border-radius: var(--radius-immersive-transcript); padding: 14px; background: var(--immersive-transcript-bg); color: var(--immersive-transcript-text); color-scheme: inherit; }
 .immersive .immersive-transcript button { color: var(--immersive-transcript-button-text); background: var(--immersive-transcript-button-bg); border-color: var(--immersive-transcript-control-border); }
 .immersive .immersive-transcript button:hover:not(:disabled) { background: var(--immersive-transcript-button-hover-bg); }
 .immersive .immersive-transcript button:focus-visible, .immersive .immersive-transcript input:focus-visible, .immersive .immersive-transcript summary:focus-visible, .immersive-transcript-list:focus-visible { outline-color: var(--immersive-transcript-focus); }
@@ -2547,7 +2548,7 @@ details[open] > summary {
 .immersive-row-meta strong { color: var(--immersive-transcript-text); }
 .immersive-empty { color: var(--immersive-transcript-muted); }
 /* No font-weight change: bold is wider, so every highlight step would move the words after it. */
-.immersive-transcript-list .is-current-fragment { background: var(--immersive-transcript-fragment-bg); color: var(--immersive-transcript-text); box-shadow: var(--shadow-immersive-transcript-fragment); border-radius: var(--radius-immersive-transcript-fragment); text-decoration: underline; text-decoration-color: var(--immersive-transcript-fragment-decoration); }
+.immersive-transcript-list .is-current-fragment { background: var(--immersive-transcript-fragment-bg); color: var(--caption-highlight-text); box-shadow: var(--shadow-immersive-transcript-fragment); border-radius: var(--radius-immersive-transcript-fragment); text-decoration: underline; text-decoration-color: var(--immersive-transcript-fragment-decoration); }
 .immersive-untimed { flex: 0 1 auto; max-height: 30%; overflow: auto; padding: 8px; overflow-wrap: anywhere; }
 .immersive-untimed summary { color: var(--immersive-transcript-text); cursor: pointer; }
 .immersive-follow-status { flex: none; margin: 8px 0 12px; color: var(--immersive-transcript-label); }
@@ -2556,7 +2557,7 @@ details[open] > summary {
 .immersive-timeline, .immersive-control-row { display: flex; align-items: center; gap: 9px; width: 100%; }
 .immersive-control-row { flex-wrap: wrap; justify-content: center; }
 .immersive-view-mode { display: flex; gap: 4px; }
-.immersive-view-mode button[aria-pressed="true"] { border-color: var(--immersive-accent); background: var(--immersive-control-selected-bg); }
+.immersive-view-mode button[aria-pressed="true"] { border-color: var(--immersive-accent); background: var(--immersive-control-selected-bg); color: var(--action-selected-text); }
 .immersive-keyboard-help { margin: 0; color: var(--immersive-text-muted); font-size: var(--font-size-immersive-keyboard-help); text-align: center; }
 .immersive-controls button { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; }
 .immersive-controls input { flex: 1; min-width: 120px; accent-color: var(--immersive-accent); }

@@ -8,9 +8,9 @@ The following literals remain counted by the static SSOT ratchet. No whole file 
 
 ## Decorative illustration
 
-Illustrated onboarding marks, ambient/table/puck surfaces and decorative avatars retain their authored shapes and paint. SpeakerAvatar is aria-hidden presentation, not an identity signal. Active-speaker status-ring shadows are functional roles and are excluded from this category.
+Illustrated onboarding marks, table/puck surfaces and decorative avatars retain their authored shapes and paint. SpeakerAvatar is aria-hidden presentation, not an identity signal. Active-speaker status-ring shadows are functional roles and are excluded from this category.
 
-Reviewed candidate scope: 57 declarations / 92 counted units.
+Reviewed candidate scope: 56 declarations / 89 counted units after the 2026-11-17 ambient-gradient token migration.
 
 | Source | Selector or source unit | At-rule context | Property |
 | --- | --- | --- | --- |
@@ -30,7 +30,6 @@ Reviewed candidate scope: 57 declarations / 92 counted units.
 | `src/style.css` | `.floating-note` | `Base` | `box-shadow` |
 | `src/style.css` | `.floating-note` | `Base` | `border-radius` |
 | `src/style.css` | `.immersive-stage::before` | `Base` | `z-index` |
-| `src/style.css` | `.immersive-stage::before` | `Base` | `background` |
 | `src/style.css` | `.immersive-avatar` | `Base` | `border-radius` |
 | `src/style.css` | `.immersive-avatar` | `Base` | `background` |
 | `src/style.css` | `.immersive-avatar` | `Base` | `color` |

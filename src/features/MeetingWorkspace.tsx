@@ -1793,11 +1793,11 @@ export function MeetingWorkspace({
         </section>
       )}
       {(m.memoAgents ?? []).map(plan=><section className={`notice memo-plan-progress${plan.state === "blocked" ? " sand" : ""}`} key={plan.id} aria-label={t("Selective review progress","选择性复核进度")}>
-        <strong role="status">{t("Selective review","选择性复核")} · {plan.jobIds.length}/{plan.requestLimit} {t("requests recorded","次请求已记录")}</strong>
+        <strong role="status">{t("Selective review","选择性复核")} · {plan.jobIds.length} {t("requests recorded","次请求已记录")}</strong>
         <span>{t(`${plan.consulted.length}/${plan.snapshot.sourceRefs.length} passages read in local lookups; this is not full coverage or a quality score.`, `本地读取已涉及 ${plan.consulted.length}/${plan.snapshot.sourceRefs.length} 段；这不代表完整覆盖或质量评分。`)}</span>
         <span>{t("State","状态")}: {uiLanguage === "zh-CN" ? ({ready:"待执行",running:"执行中",paused:"已暂停",blocked:"已停止，需核对",completed:"已完成"})[plan.state] : plan.state}</span>
         {plan.failure && <p>{translateMessage(plan.failure.message,uiLanguage)}</p>}
-        {!processing && plan.state!=="completed" && plan.sourceRevision===m.revision && plan.jobIds.length<plan.requestLimit && plan.failure?.kind!=="limit" && <Button className="button secondary" onClick={()=>void prepareConfirmation("memo")}>{t("Review generation plan","查看生成计划")}</Button>}
+        {!processing && plan.state!=="completed" && plan.sourceRevision===m.revision && <Button className="button secondary" onClick={()=>void prepareConfirmation("memo")}>{t("Review generation plan","查看生成计划")}</Button>}
         {!!plan.jobIds.length && <Button className="button secondary" onClick={()=>download(new Blob([JSON.stringify({format:"meeting-memo-agent-records",version:1,plan,jobs:m.jobs.filter(job=>job.agentId===plan.id)})],{type:"application/json"}),`${safeFilename(m.title)}-review-records.json`)}>{t("Export recorded responses","导出已记录回应")}</Button>}
       </section>)}
       {(m.memoPipelines ?? []).map(p => (

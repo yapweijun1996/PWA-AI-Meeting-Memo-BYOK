@@ -1,6 +1,6 @@
 # Product requirements
 
-> Owner direction, 2026-11-17: [../goal.md](../goal.md) and the [quality-first implementation plan](QUALITY-FIRST-PLAN.md) define the Pi-orchestrated, multi-model target. Existing behavior below remains the current/dated implementation record. Fixed cumulative review limits are being removed under QF01; the full router, coverage and independent-review workflow are not yet implemented.
+> Owner direction, 2026-11-17: [../goal.md](../goal.md) and the [quality-first implementation plan](QUALITY-FIRST-PLAN.md) define the Pi-orchestrated, multi-model target. Existing behavior below remains the current/dated implementation record. QF01 removes fixed cumulative review budgets while retaining progress/recovery guards; the full router, coverage and independent-review workflow are not yet implemented. See the validation record for verified delivery stages.
 
 Version: 1.1 browser-first design, 2026-11-04. Status: requirements and proposed implementation; not a shipped feature list.
 
@@ -42,7 +42,7 @@ The user chose to persist provider keys, provider/model selections, and speech r
 
 Before sending, show a clear confirmation of the selected data and recipient. Estimates include known stages and identify missing rates; an estimate is neither an invoice nor an account-level spending cap.
 
-OpenAI GPT-6 Luna confirmations offer an optional Pi **selective transcript review** mode, unchecked by default. It sends meeting context and tool-selected excerpts, supports at most six paid attempts / 32 local tool calls per plan, and shows the remaining request count and unknown total charge before consent. It is not a full-transcript coverage guarantee. Plans freeze source revision and output language; search snippets cannot authorize citations. Failed requests or local saves stop processing, and reload never resumes it automatically. A retry of an uncertain attempt requires billing review and fresh confirmation. Saved results remain pending human review. An unsaved response offers local-only save retry and explicit export recovery; keep its page open until resolved. See [tested limits](PI-MEMO-READINESS.md).
+OpenAI GPT-6 Luna confirmations offer an optional Pi **selective transcript review** mode, unchecked by default. It sends meeting context and tool-selected excerpts, continues useful analysis without a fixed cumulative request or lookup budget, and shows the unknown total charge and no-progress guard before consent. It is not a full-transcript coverage guarantee. Plans freeze source revision and output language; search snippets cannot authorize citations. Failed requests or local saves stop processing, and reload never resumes it automatically. A retry of an uncertain attempt requires billing review and fresh confirmation. Saved results remain pending human review. An unsaved response offers local-only save retry and explicit export recovery; keep its page open until resolved. See [tested limits](PI-MEMO-READINESS.md).
 
 #### Requested preset and cost visibility (planned 2026-11-05)
 

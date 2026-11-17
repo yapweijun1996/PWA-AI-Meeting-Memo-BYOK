@@ -1,10 +1,10 @@
 # Meeting Memo — BYOK PWA
 
-> Owner direction, 2026-11-17: [goal.md](goal.md) and the [quality-first implementation plan](docs/QUALITY-FIRST-PLAN.md) define the Pi-orchestrated, multi-model target. Existing behavior below remains the current/dated implementation record. Fixed cumulative review limits are being removed under QF01; the full router, coverage and independent-review workflow are not yet implemented.
+> Owner direction, 2026-11-17: [goal.md](goal.md) and the [quality-first implementation plan](docs/QUALITY-FIRST-PLAN.md) define the Pi-orchestrated, multi-model target. Existing behavior below remains the current/dated implementation record. QF01 removes fixed cumulative review budgets while retaining progress/recovery guards; the full router, coverage and independent-review workflow are not yet implemented. See the validation record for verified delivery stages.
 
 A browser-first workspace for recordings, speaker corrections, evidence-linked meeting notes, and local backups. Bring your own OpenAI or OpenRouter keys; no companion or application server is required.
 
-OpenAI GPT-6 Luna also offers an optional Pi selective-review mode: bounded local transcript search/range tools, at most six paid attempts per confirmed plan, and saved response receipts. It does not promise complete transcript coverage. The standard memo flow remains the default. See [limits and recovery](docs/PI-MEMO-READINESS.md); live provider/account quality remains unverified.
+OpenAI GPT-6 Luna also offers an optional Pi selective-review mode: bounded local transcript search/range tools, useful continuation without a fixed cumulative request count, and saved response receipts. It does not promise complete transcript coverage. The standard memo flow remains the default. See [limits and recovery](docs/PI-MEMO-READINESS.md); live provider/account quality remains unverified.
 
 **Status:** implemented browser beta. Local automated checks cover the review, recovery, speaker-listening and source-video workflows. Real recording accuracy, paid account access, and physical-phone acceptance remain user-run gates; this is not a claim of validated diarization quality.
 

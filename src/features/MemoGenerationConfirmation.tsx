@@ -100,7 +100,7 @@ export function MemoGenerationConfirmation({
         {supportsAgentMemo(selection) ? <>
           <label className="checkbox-label confirmation-consent memo-confirm-checkbox"><input type="checkbox" checked={!!agentPlan} onChange={event => onToggleReview(event.target.checked)} /><span>{t("Use selective transcript review (Pi, optional)", "使用选择性转录复核（Pi，可选）")}</span></label>
           {agentPlan ? <>
-            <p className="memo-confirm-hint">{t(`Selected excerpts are sent to OpenAI; this is not complete coverage. Up to ${agentPlan.requestLimit - agentPlan.jobIds.length} further paid requests and 32 local lookups are allowed. Each request may be charged; total cost is unknown.`, `会向 OpenAI 发送选取的片段，不代表完整覆盖。本次最多再发送 ${agentPlan.requestLimit - agentPlan.jobIds.length} 次付费请求，累计最多 32 次本地查询。每次请求可能收费，总费用未知。`)}</p>
+            <p className="memo-confirm-hint">{t("Pi continues gathering evidence without a fixed request count. Repeated lookups without progress pause the review. This is selective coverage; total cost is unknown.", "Pi 会持续收集证据，不设固定请求次数；重复查询没有进展时会暂停。这仍是选择性覆盖，总费用未知。")}</p>
             <p className="memo-confirm-hint">{t("Space is checked before each request. If the meeting record fills, review pauses and saved responses remain.", "每次请求前都会检查空间；会议记录空间不足时复核会暂停，已保存的回应仍保留。")}</p>
             <details className="memo-confirm-details"><summary>{t("Review limits", "复核限制")}</summary><p>{t("Request or save failure stops the run. Reload never resumes it automatically. Limits: 256 KiB per request, 4 MiB per response, 8 KiB per lookup.", "请求或保存失败即停止；重新加载不会自动恢复。限制：每次请求 256 KiB、每次回应 4 MiB、每次查询 8 KiB。")}</p></details>
           </> : <p className="memo-confirm-hint">{t("Pi reads selected excerpts; it does not guarantee a complete review.", "Pi 读取选取的片段，不保证完整审阅。")}</p>}
@@ -117,7 +117,7 @@ export function MemoGenerationConfirmation({
     </div>
     <footer className="memo-confirm-footer">
       <p className="memo-confirm-safety">{t("API requests may incur charges; cancellation may not stop remote processing or billing.", "API 请求可能收费；取消可能无法停止远端处理或计费。")}{previousAttempts && ` ${t("Previous attempts may already be charged.", "之前的请求可能已经收费。")}`}</p>
-      {agentPlan && <p className="memo-confirm-safety">{t(`Up to ${agentPlan.requestLimit - agentPlan.jobIds.length} further requests; total cost is unknown.`, `最多再发送 ${agentPlan.requestLimit - agentPlan.jobIds.length} 次请求；总费用未知。`)}</p>}
+      {agentPlan && <p className="memo-confirm-safety">{t("No fixed request count; total cost is unknown.", "不设固定请求次数；总费用未知。")}</p>}
       {plan && !agentPlan && <p className="memo-confirm-safety">{t(`${plan.chunks.length - plan.results.filter(Boolean).length} extraction steps and one synthesis request remain; total cost is unknown.`, `还剩 ${plan.chunks.length - plan.results.filter(Boolean).length} 次提取和 1 次合成；总费用未知。`)}</p>}
       {needsRetryReview && !reviewedRetry && <p className="memo-confirm-blocker">{t("Review the previous request and billing in Cost & processing before continuing.", "继续前请在“费用与处理”中核对之前的请求和账单。")}</p>}
       {planBlocked && <p className="memo-confirm-blocker" role="alert">{translateMessage(confirmation.planError!, language)}</p>}

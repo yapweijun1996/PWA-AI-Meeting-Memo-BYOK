@@ -69,7 +69,7 @@ async function stream(route: Route, items: Record<string, unknown>[]) {
     body: sse(items),
   });
 }
-async function setup(page: Page) {
+async function setup(page: Page, passageCount = 2) {
   await page.context().route("https://**/*", (route) => route.abort());
   await page.goto("./#/settings");
   await page.getByLabel("OpenAI API key", { exact: true }).fill(key);
@@ -82,10 +82,10 @@ async function setup(page: Page) {
   await page.goto("./#/");
   const fixture = {
     ...createMeeting({ title: "Selective review fixture" }),
-    segments: [
+    segments: passageCount === 2 ? [
       segment("Review the evidence before approving the budget."),
       segment("Keep unresolved conditions visible."),
-    ],
+    ] : Array.from({ length: passageCount }, (_, index) => segment(`Source ${index}: retain this independently reviewed condition.`)),
   };
   await page
     .getByRole("button", { name: "Create your first meeting", exact: true })
@@ -105,6 +105,30 @@ async function setup(page: Page) {
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
   return fixture;
 }
+
+test("review continues beyond six requests and 32 lookups while preserving every response", async ({ page }) => {
+  const fixture = await setup(page, 40);
+  let calls = 0;
+  await page.route("https://api.openai.com/v1/responses", async route => {
+    const turn = calls++;
+    await stream(route, turn < 8 ? Array.from({ length: 5 }, (_, offset) => ({
+      ...tool(`read-${turn}-${offset}`),
+      arguments: JSON.stringify({ startIndex: turn * 5 + offset, count: 1 }),
+    })) : [memo(fixture.segments[39].id)]);
+  });
+  const dialog = await confirm(page);
+  await dialog.getByRole("button", { name: "Generate new notes", exact: true }).click();
+  await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic selective review result");
+  const saved = await backup(page);
+  expect(calls).toBe(9);
+  expect(saved.jobs).toHaveLength(9);
+  expect(saved.jobs.every(job => job.assistantRecord && job.state === "completed")).toBe(true);
+  expect(saved.memoAgents[0].consulted).toHaveLength(40);
+  await page.reload();
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic selective review result");
+  expect(calls).toBe(9);
+});
 async function confirm(page: Page) {
   await page
     .getByRole("button", { name: /^(Generate meeting notes|Regenerate)$/ })
@@ -235,7 +259,7 @@ test("opt-in review uses real Pi tools under CSP, preserves receipts and does no
     (await new AxeBuilder({ page }).include("dialog[open]").analyze())
       .violations,
   ).toEqual([]);
-  await expect(dialog).toContainText("6 further paid requests");
+  await expect(dialog).toContainText("without a fixed request count");
   expect(
     await dialog.evaluate(
       (element) => element.scrollWidth <= element.clientWidth + 1,
@@ -249,7 +273,7 @@ test("opt-in review uses real Pi tools under CSP, preserves receipts and does no
   );
   await expect(
     page.getByRole("region", { name: "Selective review progress" }),
-  ).toContainText("2/6 requests recorded");
+  ).toContainText("2 requests recorded");
   const saved = await backup(page);
   expect(saved.jobs).toHaveLength(2);
   expect(
@@ -386,7 +410,7 @@ test("quota failure retains an exportable response and local retry never repeats
   await page.reload();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
   const next = await confirm(page);
-  await expect(next).toContainText("5 further paid requests");
+  await expect(next).toContainText("without a fixed request count");
   await next
     .getByRole("button", { name: "Generate new notes", exact: true })
     .click();

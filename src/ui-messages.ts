@@ -1,5 +1,9 @@
 // Translate only application-owned fixed messages; never rewrite user content.
 const messages: Record<string, string> = {
+  "Review paused because repeated lookups produced no new evidence. Saved responses remain available; inspect them before continuing.": "重复查询未产生新证据，复核已暂停。已保存的回应仍保留，请查看后再决定是否继续。",
+  "The meeting job ledger is full. Saved responses remain available; no new request was sent.": "会议处理记录已满；已保存的回应仍保留，未发送新的请求。",
+  "A saved response exceeds the per-response tool burst limit. Export its record for inspection.": "已保存回应中的工具调用超过单次处理容量，请导出记录检查。",
+  "The assistant exceeded its per-response tool budget or reused a tool call ID. Its response is saved.": "助手超过单次回应的工具处理容量或重复使用调用编号，原始回应已保存。",
   "This meeting record cannot safely save the next review response and notes. The next request was not sent; saved responses remain. Back up first, then preview Reduce local history in Meeting details, or use the existing memo workflow.": "此会议记录剩余空间不足，无法安全保存下一次复核回应和笔记。未发送下一次请求，已保存的回应仍保留。可先备份，再在“会议详情”中预览“精简本地历史”能释放的空间，或使用原有纪要流程。",
   "This meeting cannot retain the bounded review responses within the local record limit. Back it up or use the existing memo workflow. No new request was sent.": "此会议的本地记录容量不足以保存限定数量的复核回应。请先备份会议，或使用原有纪要流程。尚未发送新的请求。",
   "This meeting cannot retain the bounded review responses within the local record limit. Back up or use the existing memo workflow. No new request was sent.": "此会议的本地记录容量不足以保存限定数量的复核回应。请先备份会议，或使用原有纪要流程。尚未发送新的请求。",
@@ -13,7 +17,7 @@ const messages: Record<string, string> = {
   "Selective review paused. Saved responses were retained.": "选择性复核已暂停，已保存的回应仍保留。",
   "Selective review paused. Saved steps were retained.": "选择性复核已暂停，已保存的步骤仍保留。",
   "The review cited a passage it did not read. Its original response is saved for inspection.": "复核引用了未读取的段落，原始回应已保留供检查。",
-  "The six-request limit was reached. Saved responses remain available.": "已达到六次请求限制，已保存的回应仍可查看。",
+  "The six-request limit was reached. Saved responses remain available.": "此记录曾因旧版六次请求限制而暂停。已保存的回应仍在；确认生成计划后可继续。",
   "Save or export the unsaved review response before another provider request.": "再次发送服务商请求前，请先保存或导出未保存的复核回应。",
   "The confirmed review changed. Open its confirmation again.": "已确认的复核计划发生改变，请重新打开确认窗口。",
   "No provider request was submitted. Its durable local receipt could not be recorded.": "本地请求记录无法保存，尚未向服务商提交请求。",
