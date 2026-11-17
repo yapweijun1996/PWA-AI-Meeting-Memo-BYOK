@@ -2,7 +2,7 @@ import { Button } from "../components/controls";
 import { Icon } from "../components/Icon";
 import { SpeakerAvatar, useSpeakerAvatars } from "../components/SpeakerAvatar";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
-import { Maximize2, Minimize2, Pause, Play, RotateCcw, RotateCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, Pause, Play, RotateCcw, RotateCw, X } from "lucide-react";
 import type { Meeting } from "../domain/model";
 import { formatTime, speakerName } from "../domain/operations";
 import { buildPlaybackCaptions, captionsAtTime, captionContextAtTime, fragmentsAtTime, playbackBoundaries, playbackCaptionWindowStart, snapToPlaybackInterval } from "../domain/playback";
@@ -390,7 +390,7 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
     <Button ref={opener} type="button" className="button secondary compact" onClick={enter}><Icon glyph={Maximize2} size="compact" /> {t("Immersive playback", "沉浸式播放")}</Button>
     <div ref={host} hidden={!open} className="immersive" role="dialog" aria-modal="true" aria-label={t("Immersive playback", "沉浸式播放")}>
       {open && <>
-        <header ref={header} hidden={!controlsVisible} className="immersive-header"><strong>MeetingMemo</strong><span role="group" aria-label={t("Meeting title", "会议标题")}>{meeting.title}</span><Button className="immersive-fullscreen-toggle" type="button" onClick={toggleFullscreen} aria-label={fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Enter full screen", "\u8fdb\u5165\u5168\u5c4f")}>{fullscreenActive ? <Icon glyph={Minimize2} size="status" /> : <Icon glyph={Maximize2} size="status" />}<span className="immersive-fullscreen-label">{fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Full screen", "\u5168\u5c4f")}</span></Button><Button className="immersive-exit-button" ref={exitButton} type="button" onClick={close} aria-label={t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}><Icon glyph={Minimize2} size="status" /><span className="immersive-exit-label">{t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}</span></Button></header>
+        <header ref={header} hidden={!controlsVisible} className="immersive-header"><strong>MeetingMemo</strong><span role="group" aria-label={t("Meeting title", "会议标题")}>{meeting.title}</span><Button className="immersive-fullscreen-toggle" type="button" onClick={toggleFullscreen} aria-label={fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Enter full screen", "\u8fdb\u5165\u5168\u5c4f")}>{fullscreenActive ? <Icon glyph={Minimize2} size="status" /> : <Icon glyph={Maximize2} size="status" />}<span className="immersive-fullscreen-label">{fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Full screen", "\u5168\u5c4f")}</span></Button><Button className="immersive-exit-button" ref={exitButton} type="button" onClick={close} aria-label={t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}><Icon glyph={X} size="status" /><span className="immersive-exit-label">{t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}</span></Button></header>
         {fallback && <p className="immersive-fallback" role="status">{t("Full screen is unavailable; using the in-page view.", "无法使用全屏，正在使用页面内视图。")}</p>}
         {controlError && <p className="immersive-fallback" role="alert">{t("Playback could not start.", "无法开始播放。")}</p>}
         {fullscreenError && <p className="immersive-fallback" role="alert">{t("Full screen could not change. Try again or use your browser controls.", "无法切换全屏。请重试或使用浏览器控制。")}</p>}
@@ -433,7 +433,6 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
                   <span className="immersive-table-activity">{speaking ? t("Speaking", "正在发言") : atPosition ? t("At this position", "此位置的归属") : "\u00a0"}</span>
                 </div>;
               })}
-              {meeting.speakers.length === 4 && <span className="immersive-table-puck" aria-hidden="true"><span /></span>}
             </div> : <div className="immersive-current-speakers" role="group" aria-label={t("Speaker attribution and context", "说话人归属及上下文")}>
               {currentSpeakers.map((speaker) => <div className="immersive-current-speaker" key={speaker.id} data-active={playing && status === "playing" && activeIds.has(speaker.id)} data-context={!current.length && contextIds.has(speaker.id)}>
                 <SpeakerAvatar id={speaker.id} image={avatars[speaker.id]} className="immersive-avatar" />
@@ -457,7 +456,7 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
             </p>)}</div></div>}
           </section>
           {panel && <aside className="immersive-transcript" aria-label={t("Transcript", "转录")} style={{ "--transcript-width": `${panelWidth}%` } as CSSProperties}>
-            <div className="immersive-panel-head"><h2>{t("Transcript", "转录")}</h2><Button type="button" onClick={() => { setPanel(false); transcriptToggle.current?.focus(); }} aria-label={t("Close transcript", "关闭转录")}>×</Button></div>
+            <div className="immersive-panel-head"><h2>{t("Transcript", "转录")}</h2><Button type="button" onClick={() => { setPanel(false); transcriptToggle.current?.focus(); }} aria-label={t("Close transcript", "关闭转录")}><Icon glyph={X} size="small" /></Button></div>
             <label className="immersive-panel-width">{t("Panel width", "面板宽度")} <input type="range" aria-label={t("Transcript panel width", "转录面板宽度")} aria-valuetext={`${panelWidth}%`} min="25" max="45" step="1" value={panelWidth} onChange={(event) => setPanelWidth(Number(event.target.value))} /><span>{panelWidth}%</span></label>
             <label className="immersive-search"><span>{t("Search transcript", "搜索转录")}</span><input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); setUntimedPage(0); setFollow(false); }} placeholder={t("Search text or speaker", "搜索文字或说话人")} /></label>
             <div className="immersive-follow-row"><p className="immersive-follow-status">{follow && !searchTerm ? t("Following playback", "正在跟随播放") : searchTerm ? t("Search results · follow paused", "搜索结果 · 跟随已暂停") : t("Follow paused", "跟随已暂停")}</p><Button type="button" onClick={jumpToCurrent}>{t("Jump to current", "跳至当前位置")}</Button></div>
@@ -471,7 +470,7 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
               {matchingUntimed.length > 0 && <details className="immersive-untimed" open={searchTerm ? true : undefined}><summary><span>{t("Timing unavailable", "时间不可用")}</span> ({matchingUntimed.length})</summary>{matchingUntimed.slice(untimedPage, untimedPage + 40).map((segment) => <p key={segment.id}>{segment.speakerIds.length ? speakerName(meeting, segment.speakerIds) : t("Unknown speaker", "未知说话人")}: {segment.text}</p>)}
                 {matchingUntimed.length > 40 && <div><Button type="button" disabled={untimedPage === 0} onClick={() => setUntimedPage(Math.max(0, untimedPage - 40))}>{t("Earlier untimed", "较早的无时间片段")}</Button><Button type="button" disabled={untimedPage + 40 >= matchingUntimed.length} onClick={() => setUntimedPage(untimedPage + 40)}>{t("Later untimed", "较晚的无时间片段")}</Button></div>}
               </details>}
-            <div className="immersive-paging"><Button type="button" disabled={start === 0} onClick={() => { setFollow(false); setPage(Math.max(0, start - 40)); }}>{t("Earlier", "更早")}</Button><span>{t("Caption groups", "字幕组")} {matchingCaptions.length ? start + 1 : 0}–{Math.min(start + 40, matchingCaptions.length)} {t("of", "/")} {matchingCaptions.length}</span><Button type="button" disabled={start + 40 >= matchingCaptions.length} onClick={() => { setFollow(false); setPage(start + 40); }}>{t("Later", "更晚")}</Button></div>
+            <div className="immersive-paging"><Button type="button" disabled={start === 0} onClick={() => { setFollow(false); setPage(Math.max(0, start - 40)); }}><Icon glyph={ChevronLeft} size="small" />{t("Earlier", "更早")}</Button><span>{t("Caption groups", "字幕组")} {matchingCaptions.length ? start + 1 : 0}–{Math.min(start + 40, matchingCaptions.length)} {t("of", "/")} {matchingCaptions.length}</span><Button type="button" disabled={start + 40 >= matchingCaptions.length} onClick={() => { setFollow(false); setPage(start + 40); }}>{t("Later", "更晚")}<Icon glyph={ChevronRight} size="small" /></Button></div>
           </aside>}
         </div>
         <footer ref={controls} hidden={!controlsVisible} className="immersive-controls">

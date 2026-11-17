@@ -11,10 +11,10 @@
       "font-size": 1
     },
     "src/style.css": {
-      "color": 45,
+      "color": 2,
       "font-size": 6,
-      "radius": 24,
-      "shadow": 8,
+      "radius": 22,
+      "shadow": 3,
       "z-index": 7
     }
   },

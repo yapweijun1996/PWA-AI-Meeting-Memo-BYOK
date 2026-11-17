@@ -81,14 +81,42 @@ contracts. Single-fragment groups retain their existing editor.
   those changes. The integrated build, lint, SSOT and artifact checks passed,
   along with 519 unit tests and 215 relevant Chromium/WebKit cases (three
   browser-specific skips) across speaker review, workspace, sidebar confirmation,
-  Pi agent review and saved-final recovery. Live release evidence follows below.
+  Pi agent review and saved-final recovery.
+- Released as `3f59da120d0ffc9299176d18876a7a9ce925e201`. Pages run
+  `44070506270` initially failed during ONNX dependency download with ETIMEDOUT;
+  one rerun completed verification and publication without code/dependency/gate
+  changes. Live bundle identity matched, and four real-site browser cases passed
+  for the avatar, sentence review/undo, exact edits/citations and mobile CJK edits.
 
 ## 3. Playback layout hierarchy
 
-Pending implementation. Scope: standard speaker header size, immersive
-participant table, subtitle-card proportions, controls and typography, including
-narrow layouts. Use existing components and semantic tokens; retain truthful
-current/retained/unknown attribution and keyboard controls.
+Standard playback avatars grow from 26 to 44 px with a clearer name/status
+hierarchy. Immersive table surfaces use existing semantic theme roles, omit the
+decorative puck, and retain four-seat geometry and truthful source-driven active
+rings. Spacious desktop reading cards have a stable 180–240 px budget rather
+than filling all remaining height. Tablet/mobile and low-height scrolling rules
+remain intact. Fullscreen and immersive-exit icons are distinct; layout choices
+are grouped, and transcript paging gets clear directional controls.
+
+The pre-change layout regression failed at the 26 px avatar. Added responsive
+Chinese UI cases cover light/dark themes at 1440, 768 and 390 px, source-data
+preservation, accessible controls, phone reading-panel reachability and WCAG AA
+checks. Verification and independent screenshot results follow execution.
+
+- The initial 12 responsive cases passed. Screenshot review found an orphaned
+  Chinese attribution character on phones and a width slider with no effect in
+  the stacked tablet layout. New assertions reproduced both defects; a smaller
+  badge inset and the correctly scoped tablet selector fixed them.
+- The wider regression run found the existing 1280 x 720 long-caption case
+  failing in both engines: taller controls left 39 px for 43 px of text at the
+  16 px minimum. A short-desktop-only 8 px stage gap restores space without
+  shrinking text or moving seats. All 30 focused browser cases then passed,
+  including that original assertion, fixed seats and caption-layout stability.
+- The manager and independent advisor inspected final light/dark screenshots at
+  1440, 768 and 390 px: PASS. No blocking visual issue remains in those captures.
+- Build, lint, SSOT, artifact checks and 519 unit tests passed before integrating
+  concurrent speaker-review and playback-follow fixes from main. The lowered
+  SSOT baseline records removed decorative literals; no allowance was raised.
 
 ## Verification scope and recovery
 

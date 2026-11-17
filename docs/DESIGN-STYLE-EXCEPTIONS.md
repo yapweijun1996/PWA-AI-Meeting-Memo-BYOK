@@ -8,9 +8,9 @@ The following literals remain counted by the static SSOT ratchet. No whole file 
 
 ## Decorative illustration
 
-Illustrated onboarding marks, table/puck surfaces and decorative avatars retain their authored shapes and paint. SpeakerAvatar is aria-hidden presentation, not an identity signal. Active-speaker status-ring shadows are functional roles and are excluded from this category.
+Illustrated onboarding marks and decorative avatars retain their authored shapes and paint. Meeting-table surfaces now consume semantic theme roles; only their retained geometry/layers appear below. SpeakerAvatar is aria-hidden presentation, not an identity signal. Active-speaker status-ring shadows are functional roles and are excluded from this category.
 
-Reviewed candidate scope: 56 declarations / 89 counted units after the 2026-11-17 ambient-gradient token migration.
+Reviewed candidate scope: 39 declarations / 39 counted units after the 2026-11-17 meeting-table simplification.
 
 | Source | Selector or source unit | At-rule context | Property |
 | --- | --- | --- | --- |
@@ -35,27 +35,10 @@ Reviewed candidate scope: 56 declarations / 89 counted units after the 2026-11-1
 | `src/style.css` | `.immersive-avatar` | `Base` | `color` |
 | `src/style.css` | `.immersive-avatar` | `Base` | `font-size` |
 | `src/style.css` | `.immersive-table-speakers::before` | `Base` | `z-index` |
-| `src/style.css` | `.immersive-table-speakers::before` | `Base` | `border` |
 | `src/style.css` | `.immersive-table-speakers::before` | `Base` | `border-radius` |
-| `src/style.css` | `.immersive-table-speakers::before` | `Base` | `background` |
-| `src/style.css` | `.immersive-table-speakers::before` | `Base` | `box-shadow` |
 | `src/style.css` | `.immersive-table-speakers[data-count="4"]::before` | `Base` | `z-index` |
-| `src/style.css` | `.immersive-table-speakers[data-count="4"]::before` | `Base` | `background` |
-| `src/style.css` | `.immersive-table-speakers[data-count="4"]::before` | `Base` | `box-shadow` |
 | `src/style.css` | `.immersive-table-speakers[data-count="4"]::after` | `Base` | `z-index` |
-| `src/style.css` | `.immersive-table-speakers[data-count="4"]::after` | `Base` | `border` |
 | `src/style.css` | `.immersive-table-speakers[data-count="4"]::after` | `Base` | `border-radius` |
-| `src/style.css` | `.immersive-table-speakers[data-count="4"]::after` | `Base` | `background` |
-| `src/style.css` | `.immersive-table-speakers[data-count="4"]::after` | `Base` | `box-shadow` |
-| `src/style.css` | `.immersive-table-speakers[data-count="4"][data-glow-seat]::after` | `Base` | `background` |
-| `src/style.css` | `.immersive-table-puck` | `Base` | `border` |
-| `src/style.css` | `.immersive-table-puck` | `Base` | `border-radius` |
-| `src/style.css` | `.immersive-table-puck` | `Base` | `background` |
-| `src/style.css` | `.immersive-table-puck` | `Base` | `box-shadow` |
-| `src/style.css` | `.immersive-table-puck span` | `Base` | `border-radius` |
-| `src/style.css` | `.immersive-table-puck span` | `Base` | `background` |
-| `src/style.css` | `.immersive-table-speakers[data-count="4"][data-glow-seat] .immersive-table-puck` | `Base` | `border-color` |
-| `src/style.css` | `.immersive-table-speakers[data-count="4"][data-glow-seat] .immersive-table-puck` | `Base` | `box-shadow` |
 | `src/style.css` | `.immersive-table-speaker .immersive-avatar` | `Base` | `font-size` |
 | `src/style.css` | `.immersive-avatar` | `@media (max-width: 1000px)` | `font-size` |
 | `src/components/SpeakerAvatar.tsx` | `decorative colors/hair arrays` | `Base` | `color: #dcebd5` |
@@ -104,4 +87,4 @@ Reviewed candidate scope: 5 declarations / 5 counted units.
 | `src/style.css` | `.immersive-control-row select` | `@media (max-width: 600px)` | `font-size` |
 | `src/style.css` | `.playback-stage .live-caption-head select` | `@media (max-width: 600px)` | `font-size` |
 
-The candidate total is 107 counted units across 72 declarations. Multiple colors and a shadow can contribute more than one unit. Keep this rationale separate from the mechanically reviewed per-rule counts in scripts/ssot-baseline.json.
+The candidate total is 54 counted units across 54 declarations. Multiple colors and a shadow can contribute more than one unit. Keep this rationale separate from the mechanically reviewed per-rule counts in scripts/ssot-baseline.json.

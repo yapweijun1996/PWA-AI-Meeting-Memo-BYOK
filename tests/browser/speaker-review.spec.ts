@@ -1187,6 +1187,59 @@ test("immersive table keeps speaker positions stable and follows source attribut
   expect(sourceSnapshot(await storedMeeting(page))).toBe(before);
 });
 
+for (const width of [1440, 768, 390]) for (const theme of ["light", "dark"]) {
+  test(`playback hierarchy stays readable at ${width}px in ${theme} mode`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
+    await page.goto(`${base}#/settings`);
+    await page.getByRole("tab", { name: "Appearance", exact: true }).click();
+    await page.getByLabel("Theme", { exact: true }).selectOption(theme);
+    const fixture = fixtureMeeting();
+    for (let index = 3; index <= 4; index++) fixture.speakers.push({ ...fixture.speakers[0], id: `20000000-0000-4000-8000-00000000000${index}`, name: `Speaker ${index}` });
+    fixture.speakers.forEach(speaker => { speaker.name += " (part 1)"; });
+    await createFixture(page, "speaker-review.wav", fixture);
+    const before = sourceSnapshot(await storedMeeting(page));
+    await page.getByLabel("Display language", { exact: true }).selectOption("zh-CN");
+    await page.getByRole("button", { name: "播放模式", exact: true }).click();
+    await page.locator("audio").evaluate(element => {
+      (element as HTMLMediaElement).currentTime = 0.2;
+      element.dispatchEvent(new Event("seeked"));
+    });
+    const hero = page.locator('[data-speaker-hero="true"]');
+    await expect(hero).toBeVisible();
+    expect((await hero.locator(".speaker-avatar").boundingBox())!.width).toBeGreaterThanOrEqual(44);
+    expect(await hero.locator("strong").evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(14);
+    if (process.env.PLAYBACK_UX_SCREENSHOTS === "1") {
+      await page.locator(".playback-stage").evaluate(el => el.scrollIntoView({ block: "center" }));
+      await page.screenshot({ path: test.info().outputPath(`playback-header-${theme}-${width}.png`), animations: "disabled" });
+    }
+    await page.getByRole("button", { name: "沉浸式播放", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "沉浸式播放", exact: true });
+    await dialog.getByRole("button", { name: "会议桌", exact: true }).click();
+    await expect(dialog.locator(".immersive-table-speaker")).toHaveCount(4);
+    const activity = dialog.locator(".immersive-table-activity").first();
+    const badge = await activity.evaluate(el => ({ height: el.getBoundingClientRect().height, line: parseFloat(getComputedStyle(el).lineHeight), fits: el.scrollWidth <= el.clientWidth + 1 }));
+    expect(badge.fits).toBe(true);
+    expect(badge.height).toBeLessThanOrEqual(badge.line + 6);
+    if (width <= 1000) await expect(dialog.locator(".immersive-panel-width")).toBeHidden();
+    expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    if (width > 1000) expect((await dialog.locator(".immersive-table-captions").boundingBox())!.height).toBeLessThanOrEqual(240);
+    for (const button of [dialog.locator(".immersive-exit-button"), dialog.getByRole("button", { name: "会议桌", exact: true })]) {
+      expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
+    if (process.env.PLAYBACK_UX_SCREENSHOTS === "1") await page.screenshot({ path: test.info().outputPath(`meeting-table-${theme}-${width}.png`), animations: "disabled" });
+    expect((await new AxeBuilder({ page }).include(".immersive").withTags(["wcag2a", "wcag2aa"]).analyze()).violations).toEqual([]);
+    if (width < 600) {
+      await dialog.getByRole("button", { name: "阅读", exact: true }).click();
+      await expect(dialog.locator(".immersive-paging")).toBeInViewport();
+      if (process.env.PLAYBACK_UX_SCREENSHOTS === "1") await page.screenshot({ path: test.info().outputPath(`reading-panel-${theme}-${width}.png`), animations: "disabled" });
+      await dialog.getByRole("button", { name: "关闭转录", exact: true }).click();
+    }
+    await dialog.getByRole("button", { name: "退出沉浸模式", exact: true }).click();
+    expect(sourceSnapshot(await storedMeeting(page))).toBe(before);
+  });
+}
+
 test("immersive table keeps four labels in fixed positions around the table", async ({ page }) => {
   await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
   const fixture = fixtureMeeting();
