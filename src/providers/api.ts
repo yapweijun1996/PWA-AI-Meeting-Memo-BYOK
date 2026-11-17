@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   id,
   segment,
+  MAX_MEMO_ITEM_SOURCES,
   type Meeting,
   type Job,
   type MemoItem,
@@ -396,7 +397,6 @@ function resolveMemoSources(
   const sources: MemoSourceRef[] = [];
   const seen = new Set<string>();
   const compact = hasAliasMappings(aliases);
-  let expanded = 0;
   for (const key of keys) {
     const captured = getAliasRefs(aliases, key);
     const refs =
@@ -408,10 +408,9 @@ function resolveMemoSources(
           })()
         : captured;
     if (!Array.isArray(refs) || !refs.length) throw memoSourceError();
-    expanded += refs.length;
-    if (expanded > 100)
+    if (refs.length > MAX_MEMO_ITEM_SOURCES)
       throw new ProviderError(
-        "The memo referenced more than 100 source passages. Existing notes were preserved.",
+        "The memo referenced more than 500 source passages. Existing notes were preserved.",
         false,
         true,
       );
@@ -426,17 +425,17 @@ function resolveMemoSources(
       if (!source || source.revision !== ref.revision) throw memoSourceError();
       const identity = `${ref.id}:${ref.revision}`;
       if (!seen.has(identity)) {
+        if (sources.length >= MAX_MEMO_ITEM_SOURCES)
+          throw new ProviderError(
+            "The memo referenced more than 500 source passages. Existing notes were preserved.",
+            false,
+            true,
+          );
         seen.add(identity);
         sources.push({ id: ref.id, revision: ref.revision });
       }
     }
   }
-  if (sources.length > 100)
-    throw new ProviderError(
-      "The memo referenced more than 100 source passages. Existing notes were preserved.",
-      false,
-      true,
-    );
   return sources;
 }
 

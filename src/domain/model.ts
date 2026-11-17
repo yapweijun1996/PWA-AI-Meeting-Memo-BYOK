@@ -2,6 +2,8 @@ import { MEMO_OUTPUT_LANGUAGES } from "./memo-language";
 import { z } from "zod";
 import {AgentContextItemSchema, MEMO_AGENT_MAX_REQUESTS, MEMO_AGENT_MAX_TOOLS, MEMO_AGENT_MODEL, MEMO_AGENT_RECORD_BYTES} from "./memo-agent-contract";
 import { ReferenceVideoSchema, type ReferenceVideo } from "./reference-video";
+// A synthesis can cite up to five extraction facts, each with up to 100 sources.
+export const MAX_MEMO_ITEM_SOURCES = 500;
 export const id = () => crypto.randomUUID();
 export const localDate = (now = new Date()) =>
   `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -56,7 +58,7 @@ export const MemoItemSchema = z
         z.object({ id: transcriptId, revision: z.number().int().positive() }).strict(),
       )
       .min(1)
-      .max(100),
+      .max(MAX_MEMO_ITEM_SOURCES),
     review: z.enum(["pending", "accepted", "rejected", "edited"]),
     reviewedRevision: z.number().int().positive().nullable().optional(),
   })
@@ -160,7 +162,7 @@ export const JobSchema = z
       originalText: text,
       selectedText: z.string().min(1).max(4000),
       sourceRevision: z.number().int().positive(),
-      sources: z.array(z.object({ id: transcriptId, revision: z.number().int().positive() }).strict()).min(1).max(100),
+      sources: z.array(z.object({ id: transcriptId, revision: z.number().int().positive() }).strict()).min(1).max(MAX_MEMO_ITEM_SOURCES),
       suggestion: z.string().max(8000).nullable(),
     }).strict().refine(value => value.end > value.start && value.end <= value.originalText.length && value.selectedText.trim().length > 0 && value.originalText.slice(value.start, value.end) === value.selectedText, "Invalid contextual selection." ).optional(),
   })

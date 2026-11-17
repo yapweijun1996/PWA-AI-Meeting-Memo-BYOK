@@ -153,6 +153,8 @@ The review screen can expand the cited revisions together in citation order and 
 
 Long transcripts may require a bounded plan of up to eight evidence-extraction requests plus one synthesis request. Before sending, show the full stage count, destination and known/unknown charge; one confirmation covers the remaining sequential steps. Save successful steps before proceeding, stop on every error and never automatically resume after reload. Explicit retry of a failed/unknown step requires a billing-review acknowledgement. Keep all source fragments and revision references; do not silently truncate or promise arbitrary-length support. Extraction and synthesis remain unverified model claims requiring human review. See the owner acceptance pack for real-data quality gates.
 
+A synthesized note can retain up to 500 distinct source revisions, matching five cited extraction facts of up to 100 source revisions each. Duplicate references are deduplicated without dropping distinct evidence. If saved extractions could exceed this bound, synthesis stops before sending a new request and the saved steps remain available in a backup. A prior response that an older build rejected may not have been saved and is not recovered by this change. Update all open tabs before using meetings with more than 100 citations per note: older builds cannot read those records or backups.
+
 ### 7. Export, back up, and delete
 
 Support human-readable Markdown/TXT and versioned JSON. A full meeting backup also carries audio or explicitly records its absence. Exported review state and unknowns remain visible. Print/PDF is a separate tested capability.

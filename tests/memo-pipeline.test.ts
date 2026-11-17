@@ -253,7 +253,11 @@ test("word-level incident saves oversized extractions and completes exactly thre
       expect(saved.memoPipelines![0].results.every(r => JSON.stringify(r).length > 8000)).toBe(true);
     }
     const reply = await response(options.body).json();
-    if (!input.facts) {
+    if (input.facts) {
+      const item = JSON.parse(reply.output[0].content[0].text).items[0];
+      item.source_segment_ids = [input.facts[0].items[0].id, input.facts[1].items[0].id];
+      reply.output[0].content[0].text = JSON.stringify({items: [item]});
+    } else {
       const item = JSON.parse(reply.output[0].content[0].text).items[0];
       item.source_segment_ids = input.segments.slice(0, 5).map((s: { id: string }) => s.id);
       reply.output[0].content[0].text = JSON.stringify({items: Array.from({length: 6}, () => ({...item}))});
@@ -271,12 +275,40 @@ test("word-level incident saves oversized extractions and completes exactly thre
   }
   expect(result.memoPipelines![0].state).toBe("completed");
   expect(result.jobs.every(j => j.state === "completed")).toBe(true);
-  expect(result.memos[0].items[0].sources).toEqual(m.segments.slice(0, 100).map(({id, revision}) => ({id, revision})));
+  const expectedSources = result.memoPipelines![0].results.slice(0, 2).flatMap(extraction => extraction!.items[0].sources);
+  expect(expectedSources).toHaveLength(200);
+  expect(result.memos[0].items[0].sources).toEqual(expectedSources);
+  expect(result.memos[0].originalItems![0].sources).toEqual(expectedSources);
   expect(result.segments).toEqual(m.segments);
   expect(validateMeeting(JSON.parse(JSON.stringify(result))).memoPipelines).toEqual(result.memoPipelines);
   const restored = await readBackup(new File([JSON.stringify(result)], "incident.json"));
   expect(restored.meeting.memoPipelines).toEqual(result.memoPipelines);
+  expect(restored.meeting.memos).toEqual(result.memos);
 }, 30_000);
+
+test("oversized possible citation expansion stops before synthesis and preserves extractions", async () => {
+  vi.stubGlobal("window", new EventTarget());
+  vi.stubGlobal("navigator", {});
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  const original = await saveMeeting(longMeeting());
+  const plan = planMemo(original, selection.provider, selection.model)!;
+  expect(plan.chunks.length).toBeGreaterThanOrEqual(2);
+  plan.results = plan.chunks.map((_, index) => {
+    const chosen = original.segments.slice(index === 0 ? 0 : 300, index === 0 ? 300 : 600);
+    const sources = chosen.map(({id, revision}) => ({id, revision}));
+    const item = {id: crypto.randomUUID(), type: "summary" as const, text: "Saved evidence", ownerId: null, dueDate: null, dueOriginal: null, sources, review: "pending" as const};
+    return {items: [item], quotes: chosen.map(({id, revision, text}) => ({id, revision, text}))};
+  });
+  const saved = await saveMeeting({...original, memoPipelines: [plan]});
+  await expect(runMemoPipeline(saved, selection, plan)).rejects.toThrow("No synthesis request was sent");
+  const after = (await getMeeting(saved.id))!;
+  expect(fetch).not.toHaveBeenCalled();
+  expect(after.memoPipelines![0].state).toBe("blocked");
+  expect(after.memoPipelines![0].results).toEqual(plan.results);
+  expect(after.memos).toEqual(original.memos);
+  expect(after.jobs).toEqual(original.jobs);
+});
 
 test("oversized synthesis keeps paid successes, blocks locally and never submits or retries synthesis", async () => {
   vi.stubGlobal("window", new EventTarget());

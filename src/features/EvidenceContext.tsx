@@ -22,7 +22,7 @@ export function EvidenceContext({ meeting, evidence, citedRefs = [] }: { meeting
   const canJoin = (left: Segment, right: Segment) => left.start !== null && left.end !== null && right.start !== null && right.end !== null && right.start >= left.end && right.start - left.end <= 1 && left.speakerIds.length === right.speakerIds.length && left.speakerIds.every((speaker, i) => speaker === right.speakerIds[i]);
   let first = index, last = index;
   while (first > 0 && index - first < 12 && canJoin(meeting.segments[first - 1], meeting.segments[first])) first--;
-  // Group previews contain at most 100 exact cited revisions in chronological source order.
+  // Group previews retain exact cited revisions in chronological source order.
   while (last + 1 < meeting.segments.length && exactCitations.has(`${meeting.segments[last + 1].id}:${meeting.segments[last + 1].revision}`) && canJoin(meeting.segments[last], meeting.segments[last + 1])) last++;
   const lastCited = last;
   while (last + 1 < meeting.segments.length && last - lastCited < 12 && canJoin(meeting.segments[last], meeting.segments[last + 1])) last++;

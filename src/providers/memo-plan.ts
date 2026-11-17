@@ -1,5 +1,5 @@
 import { getMemoOutputLanguage } from "./credentials";
-import { id, pipelineSourceSegments, MAX_JOBS, MAX_MEETING_JSON_BYTES, type Meeting, type MemoItem } from "../domain/model";
+import { id, pipelineSourceSegments, MAX_JOBS, MAX_MEETING_JSON_BYTES, MAX_MEMO_ITEM_SOURCES, type Meeting, type MemoItem } from "../domain/model";
 import { buildMemoInput, MEMO_INPUT_MAX_CHARS, MemoInputError, type MemoInput } from "./memo-input";
 
 export type MemoPipeline = NonNullable<Meeting["memoPipelines"]>[number];
@@ -146,6 +146,18 @@ export function synthesisInput(p: MemoPipeline): MemoInput {
   const facts = p.results.flatMap((r) => r!.items);
   if (new Set(facts.map((f) => f.id)).size !== facts.length)
     throw new Error("Duplicate extraction identity.");
+  // Avoid a paid synthesis that could exceed the supported expanded-citation limit.
+  const largestFive = facts.map(fact => fact.sources.length).sort((a, b) => b - a).slice(0, 5);
+  if (largestFive.reduce((total, count) => total + count, 0) > MAX_MEMO_ITEM_SOURCES) {
+    const distinct = new Set<string>();
+    for (const fact of facts) {
+      for (const source of fact.sources) {
+        distinct.add(`${source.id}:${source.revision}`);
+        if (distinct.size > MAX_MEMO_ITEM_SOURCES)
+          throw new Error("Saved extraction citations could exceed 500 source passages in one note. No synthesis request was sent. Back up the meeting; saved extraction steps remain in the backup.");
+      }
+    }
+  }
   const input = JSON.stringify({
     meeting: {
       title: p.snapshot.title,

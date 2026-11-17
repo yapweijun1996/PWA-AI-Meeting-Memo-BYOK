@@ -69,6 +69,8 @@ const messages: Record<string, string> = {
   "The memo did not match the expected structure. Existing notes were preserved.": "笔记不符合预期结构；现有笔记已保留。",
   "The memo referenced an unknown passage. Existing notes were preserved.": "笔记引用了未知段落；现有笔记已保留。",
   "The memo referenced more than 100 source passages. Existing notes were preserved.": "笔记引用的来源段落超过 100 个；现有笔记已保留。",
+  "The memo referenced more than 500 source passages. Existing notes were preserved.": "笔记引用的来源段落超过 500 个；现有笔记已保留。",
+  "Saved extraction citations could exceed 500 source passages in one note. No synthesis request was sent. Back up the meeting; saved extraction steps remain in the backup.": "已保存的提取结果可能让单条笔记引用超过 500 个来源段落。尚未发送合成请求。请备份会议；已保存的提取步骤会保留在备份中。",
   "Memo input needs text and must fit the 80,000-character limit. Use a shorter meeting or selected transcript.": "笔记输入需要文本且不得超过 80,000 个字符。请使用较短会议或选定的转录。",
   "The provider reports that the account quota or credits are exhausted.": "服务商报告账户额度或余额已用尽。",
   "The provider rejected the model or account access. Check the selected model ID and access.": "服务商拒绝了模型或账户访问。请检查所选模型 ID 和访问权限。",

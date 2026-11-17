@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { createMeeting, sampleMeeting, segment } from "../src/domain/model";
+import { createMeeting, sampleMeeting, segment, validateMeeting } from "../src/domain/model";
 import {
   buildMemoInput,
   MEMO_INPUT_MAX_CHARS,
@@ -57,6 +57,31 @@ function generatedItem(sourceIds: string[], owner = null) {
     source_segment_ids: sourceIds,
   };
 }
+
+it("preserves five synthesized facts and all 500 exact source revisions", () => {
+  const meeting = longMeeting();
+  const aliases = Object.fromEntries(Array.from({ length: 5 }, (_, index) => [
+    "fact-" + index,
+    meeting.segments.slice(index * 100, (index + 1) * 100).map(({ id, revision }) => ({ id, revision })),
+  ]));
+  const [item] = normalizeMemo({ items: [generatedItem(Object.keys(aliases))] }, meeting, aliases);
+  expect(item.sources).toEqual(meeting.segments.slice(0, 500).map(({ id, revision }) => ({ id, revision })));
+  const memo = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), sourceRevision: meeting.revision, model: "synthetic", items: [item], originalItems: [structuredClone(item)] };
+  expect(validateMeeting({ ...meeting, memos: [memo] }).memos[0].items[0].sources).toEqual(item.sources);
+  const stale = structuredClone(aliases);
+  stale["fact-4"][99].revision += 1;
+  expect(() => normalizeMemo({ items: [generatedItem(Object.keys(stale))] }, meeting, stale)).toThrow("unknown passage");
+});
+
+it("deduplicates repeated synthesized evidence without losing its revisions", () => {
+  const meeting = longMeeting();
+  const refs = meeting.segments.slice(0, 100).map(({ id, revision }) => ({ id, revision }));
+  const [item] = normalizeMemo({ items: [generatedItem(["first", "second"])] }, meeting, { first: refs, second: refs });
+  expect(item.sources).toEqual(refs);
+  const largeRefs = meeting.segments.slice(0, 500).map(({ id, revision }) => ({ id, revision }));
+  const [large] = normalizeMemo({ items: [generatedItem(["first", "second"])] }, meeting, { first: largeRefs, second: largeRefs });
+  expect(large.sources).toEqual(largeRefs);
+});
 
 it("compacts 7,217 word segments without losing ordered speakers, text, or revisions", () => {
   const meeting = longMeeting();
@@ -293,7 +318,7 @@ it("expands compact aliases, deduplicates refs, and rejects invalid captured ref
   ).toThrow("unknown passage");
 });
 
-it("allows at most 100 expanded refs and rejects overflow instead of clipping", () => {
+it("allows expanded refs within the supported limit and rejects overflow instead of clipping", () => {
   const meeting = longMeeting();
   const input = buildMemoInput(meeting);
   const groupIds = Object.keys(input.aliases).slice(0, 5);
@@ -305,14 +330,14 @@ it("allows at most 100 expanded refs and rejects overflow instead of clipping", 
   expect(item.sources).toHaveLength(100);
 
   const overflow = {
-    overflow: meeting.segments.slice(0, 101).map((source) => ({
+    overflow: meeting.segments.slice(0, 501).map((source) => ({
       id: source.id,
       revision: source.revision,
     })),
   };
   expect(() =>
     normalizeMemo({ items: [generatedItem(["overflow"])] }, meeting, overflow),
-  ).toThrow("more than 100");
+  ).toThrow("more than 500");
 });
 
 it("rejects over-limit memo input before any network request", async () => {

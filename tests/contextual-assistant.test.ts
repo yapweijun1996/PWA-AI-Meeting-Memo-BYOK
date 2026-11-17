@@ -30,6 +30,23 @@ const answer = () => new Response(JSON.stringify({ id: "synthetic-response", sta
 beforeEach(() => { vi.restoreAllMocks(); });
 
 describe("contextual suggestion", () => {
+  it("retains all 500 citations when a contextual suggestion is saved and applied", async () => {
+    const original = await meetingFixture();
+    const source = original.segments[0];
+    const segments = Array.from({length: 500}, () => ({...source, id: crypto.randomUUID()}));
+    const sources = segments.map(({id, revision}) => ({id, revision}));
+    const note = {...original.memos[0].items[0], sources};
+    const meeting = await saveMeeting({...original, segments, memos: [{...original.memos[0], items: [note], originalItems: [structuredClone(note)]}]});
+    const fetchMock = vi.fn(async () => answer());
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await runContextualAssistant(meeting, selected(meeting), "simplify", selection, false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.meeting.jobs.find(job => job.id === result.jobId)?.contextual?.sources).toEqual(sources);
+    const changed = await applyContextualSuggestion(result.meeting, result.jobId);
+    expect(changed.memos[0].items[0].sources).toEqual(sources);
+    expect(changed.memos[0].originalItems![0].sources).toEqual(sources);
+  });
+
   it("sends only a confirmed selection once, saves suggestion and applies an undoable unreviewed edit", async () => {
     const meeting = await meetingFixture();
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => answer());
