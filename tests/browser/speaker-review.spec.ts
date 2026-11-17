@@ -2832,3 +2832,47 @@ test("speaker toolbar aligns controls and keeps technical IDs discoverable", asy
   const [nameBox, playerBox] = await Promise.all([name.boundingBox(), page.locator(".audio-player").boundingBox()]);
   expect(nameBox!.y + nameBox!.height).toBeLessThanOrEqual(playerBox!.y);
 });
+
+test("same-name speakers with identical ID prefixes remain distinct in review and merge choices", async ({page}) => {
+  const firstId = "11111111-1111-4111-8111-111111111111";
+  const secondId = "11111111-1111-4111-8111-111111111112";
+  const meeting = fixtureMeeting();
+  meeting.speakers = [
+    {...meeting.speakers[0], id: firstId, name: "Alex Lee"},
+    {...meeting.speakers[1], id: secondId, name: "Alex  Lee "},
+  ];
+  meeting.segments = [
+    {...meeting.segments[0], start: 1, end: 2, speakerIds: [firstId]},
+    {...meeting.segments[1], start: 1, end: 2, speakerIds: [secondId]},
+  ];
+  await createFixture(page, "duplicate-labels.wav", meeting);
+  const before = sourceSnapshot(await storedMeeting(page));
+  const queue = page.getByRole("region", {name: "Speaker review queue"});
+  const first = queue.getByRole("button", {name: `Review Alex Lee · ID: ${firstId}`, exact: true});
+  const second = queue.getByRole("button", {name: `Review Alex Lee · ID: ${secondId}`, exact: true});
+  await expect(first).toBeVisible();
+  await expect(second).toBeVisible();
+  await expect(first).toContainText(firstId);
+  await expect(second).toContainText(secondId);
+  await second.focus();
+  await page.keyboard.press("Space");
+  await expect(second).toHaveAttribute("aria-pressed", "true");
+  const identity = page.getByRole("region", {name: "Speaker identity"});
+  await identity.locator("summary").click();
+  await expect(identity.locator("details")).toContainText(secondId);
+  await page.getByLabel("Search speakers").fill(secondId);
+  await expect(queue.locator(".speaker-queue-item")).toHaveCount(1);
+  await expect(second).toBeVisible();
+  await page.getByLabel("Search speakers").fill("");
+  await queue.getByRole("checkbox", {name: `Select Alex Lee · ID: ${firstId}`, exact: true}).check();
+  await queue.getByRole("checkbox", {name: `Select Alex Lee · ID: ${secondId}`, exact: true}).check();
+  await queue.getByRole("button", {name: "Merge selected (2)", exact: true}).click();
+  const dialog = page.getByRole("dialog", {name: "Merge selected speakers"});
+  const target = dialog.getByRole("combobox", {name: "Keep this speaker's name"});
+  await expect(target.locator(`option[value="${firstId}"]`)).toContainText(firstId);
+  await expect(target.locator(`option[value="${secondId}"]`)).toContainText(secondId);
+  await target.selectOption(secondId);
+  await expect(target).toHaveValue(secondId);
+  await dialog.getByRole("button", {name: "Close dialog"}).click();
+  expect(sourceSnapshot(await storedMeeting(page))).toEqual(before);
+});

@@ -80,6 +80,7 @@ import { SimpleMemoEvidence } from "./SimpleMemoEvidence";
 import { ContextualMemoAssistant } from "./ContextualMemoAssistant";
 import { completeMemoReview, compareMemoVersions, editMemoItem, getMemoReviewCompletion, restoreMemoVersion, summarizeMemoReview, undoMemoEdit, type MemoItemEdit } from "../domain/memo-review";
 import { SpeakerReview } from "./SpeakerReview";
+import { speakerChoice } from "./speaker-review/speaker-labels";
 import { ReferenceVideo } from "./ReferenceVideo";
 import { usePlaybackClock } from "./usePlaybackClock";
 import { useUiLanguage } from "../ui-language";
@@ -2591,7 +2592,7 @@ export function MeetingWorkspace({
               {t("Keep this speaker's name", "保留此说话人的姓名")}
               <select name="target">
                 {m.speakers.filter((speaker) => merge ? speaker.id !== merge : mergeSelection.includes(speaker.id)).map((speaker) => (
-                  <option value={speaker.id} key={speaker.id}>{speaker.name}</option>
+                  <option value={speaker.id} key={speaker.id}>{speakerChoice(speaker, m.speakers).label}</option>
                 ))}
               </select>
             </label>

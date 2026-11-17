@@ -487,7 +487,7 @@ export function SpeakerReview({
         <span className="speaker-review-completion">{t(`${meeting.speakers.filter(speaker => speaker.confirmed).length} of ${meeting.speakers.length} names confirmed`, `已确认 ${meeting.speakers.filter(speaker => speaker.confirmed).length} / ${meeting.speakers.length} 位姓名`)}<progress max={Math.max(1, meeting.speakers.length)} value={meeting.speakers.filter((speaker) => speaker.confirmed).length} aria-label={t("Confirmed speaker names", "已确认的说话人姓名")} /></span>
       </div>
       <div className="speaker-review-workspace">
-        <SpeakerReviewQueue speakers={filteredSpeakers} unconfirmedCount={meeting.speakers.filter(speaker => !speaker.confirmed).length}
+        <SpeakerReviewQueue speakers={filteredSpeakers} allSpeakers={meeting.speakers} unconfirmedCount={meeting.speakers.filter(speaker => !speaker.confirmed).length}
           selectedId={selectedSpeaker?.id} selectedIds={visibleSelected} stats={speakerStats} avatars={avatars}
           search={speakerSearch} filter={filter} sort={sort} locked={locked} listRef={queueRef}
           onSearch={setSpeakerSearch} onSelect={setSelectedId} onSort={setSort} t={t}

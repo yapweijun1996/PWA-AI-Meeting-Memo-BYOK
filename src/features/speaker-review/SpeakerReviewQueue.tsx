@@ -3,11 +3,13 @@ import { Button, Field } from "../../components/controls";
 import { SpeakerAvatar } from "../../components/SpeakerAvatar";
 import type { Speaker } from "../../domain/model";
 import { formatTime } from "../../domain/operations";
+import { speakerChoice } from "./speaker-labels";
 
 type Filter = "unconfirmed" | "confirmed" | "all";
 type Sort = "duration" | "fragments";
 type Props = {
   speakers: readonly Speaker[];
+  allSpeakers: readonly Speaker[];
   unconfirmedCount: number;
   selectedId?: string;
   selectedIds: readonly string[];
@@ -28,7 +30,7 @@ type Props = {
 };
 
 /** The queue presents existing attribution; selection never confirms identity. */
-export function SpeakerReviewQueue({ speakers, unconfirmedCount, selectedId, selectedIds, stats, avatars, search, filter, sort, locked, listRef, onSearch, onFilter, onSort, onSelect, onToggle, onMergeSelected, t }: Props) {
+export function SpeakerReviewQueue({ speakers, allSpeakers, unconfirmedCount, selectedId, selectedIds, stats, avatars, search, filter, sort, locked, listRef, onSearch, onFilter, onSort, onSelect, onToggle, onMergeSelected, t }: Props) {
   return <section className="speaker-review-queue" aria-label={t("Speaker review queue", "说话人审核队列")}>
     <h3>{t("Speaker review queue", "说话人审核队列")}</h3>
     <p className="small muted">{t(`${unconfirmedCount} unconfirmed`, `${unconfirmedCount} 位未确认`)}</p>
@@ -40,15 +42,18 @@ export function SpeakerReviewQueue({ speakers, unconfirmedCount, selectedId, sel
       <select aria-label={t("Sort speakers", "说话人排序")} value={sort} onChange={event => onSort(event.target.value as Sort)}><option value="duration">{t("Timed duration", "有时间记录的时长")}</option><option value="fragments">{t("Fragment count", "片段数量")}</option></select>
     </Field>
     <div className="speaker-queue-list" ref={listRef}>
-      {speakers.map(speaker => <div className={`speaker-queue-item${selectedId === speaker.id ? " is-selected" : ""}`} key={speaker.id}>
-        <label className="speaker-queue-check"><input type="checkbox" aria-label={t(`Select ${speaker.name}`, `选择${speaker.name}`)} checked={selectedIds.includes(speaker.id)} disabled={locked} onChange={event => onToggle(speaker.id, event.target.checked)} /></label>
+      {speakers.map(speaker => {
+        const { label, duplicateName } = speakerChoice(speaker, allSpeakers);
+        return <div className={`speaker-queue-item${selectedId === speaker.id ? " is-selected" : ""}`} key={speaker.id}>
+        <label className="speaker-queue-check"><input type="checkbox" aria-label={t(`Select ${label}`, `选择${label}`)} checked={selectedIds.includes(speaker.id)} disabled={locked} onChange={event => onToggle(speaker.id, event.target.checked)} /></label>
         <SpeakerAvatar id={speaker.id} image={avatars[speaker.id]} />
-        <Button className="speaker-queue-select" aria-pressed={selectedId === speaker.id} onClick={() => onSelect(speaker.id)}>
+        <Button className="speaker-queue-select" aria-label={duplicateName ? t(`Review ${label}`, `审阅${label}`) : undefined} aria-pressed={selectedId === speaker.id} onClick={() => onSelect(speaker.id)}>
           <strong>{speaker.name}</strong>
+          {duplicateName && <span className="small muted">ID: {speaker.id}</span>}
           <span className="small muted">{speaker.confirmed ? t("Confirmed", "已确认") : t("Unconfirmed", "未确认")}</span>
           <span className="small muted">{formatTime(stats.get(speaker.id)?.timed ?? 0)} · {stats.get(speaker.id)?.count ?? 0} {t("fragments", "片段")}</span>
         </Button>
-      </div>)}
+      </div>; })}
       {!speakers.length && <p className="small muted">{t("No speakers match this filter.", "没有符合筛选条件的说话人。")}</p>}
     </div>
     {selectedIds.length >= 2 && <Button className="button primary compact" disabled={locked} onClick={onMergeSelected}>{t(`Merge selected (${selectedIds.length})`, `合并所选 (${selectedIds.length})`)}</Button>}
