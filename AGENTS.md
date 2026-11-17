@@ -3,6 +3,8 @@
 - Always reply to the user in Mandarin Chinese. Write code, code comments, and identifiers in English.
 - End every user-facing reply with exactly four next-step options labeled A, B, C, and D.
 - Use `src/components/Masonry.tsx` and its stylesheet as the single source of truth for collections of independent cards. Preserve source and keyboard order, respond to content and viewport changes, and use one column on narrow screens. Structured form panels and fixed summary tiles are not independent card collections.
+- Keep palette keys, labels and defaults in `src/appearance-preferences.json`, color values in `src/theme.css`, and language choices in `src/ui-language-options.ts`. The runtime favicon and sidebar brand share brand-mark roles; do not add a second color map. Installed/Apple icons remain separate static assets.
+- Reuse `ChoiceMenu` for single-choice action menus and preserve native form controls where appropriate. Extract presentation modules without moving feature-owned provider drafts, speaker confirmation, playback or revision state into shared UI components.
 
 - This project is a browser-first, speaker-aware meeting memo PWA with runtime BYOK and GitHub Pages hosting. Keep the normal user workflow usable without installing a companion or running a backend.
 - Owner direction, 2026-11-10: long recordings must support automatic, meeting-scoped speaker identity continuity across processing chunks; manual listening, enrollment, or merging must not be the required normal workflow. A single-upload size increase does not satisfy this goal. Design for bounded per-chunk resources and resumable processing, and disclose tested storage, duration, provider, and device limits rather than promising literally unlimited input.

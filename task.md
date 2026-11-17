@@ -28,12 +28,14 @@ Speaker review redesign: implemented a single searchable, filterable queue, sele
 
 This bounded batch follows the owner screenshots and latest 100-request direction. It does not close QF02–QF10 or physical-device acceptance.
 
-- [ ] MOD-UI — Extract cohesive appearance, language-menu and speaker-review presentation modules while preserving feature-owned drafts, identity confirmation, playback and provider behavior.
-- [ ] DS10 — Centralize palette choices across types, validation, controls and startup; add Teal, Rose, Indigo and Slate alongside the four existing choices. Verify semantic state colors, keyboard access, light/dark and responsive layouts.
-- [ ] UI-LANGUAGE — Replace the invisible topbar select with a shared accessible menu; retain explicit locale persistence, failure feedback and unsaved-settings guards.
+- [x] MOD-UI — Extract cohesive appearance, language-menu and speaker-review presentation modules while preserving feature-owned drafts, identity confirmation, playback and provider behavior.
+- [x] DS10 — Centralize palette choices across types, validation, controls and startup; add Teal, Rose, Indigo and Slate alongside the four existing choices. Verify semantic state colors, keyboard access, light/dark and responsive layouts.
+- [x] UI-LANGUAGE — Replace the invisible topbar select with a shared accessible menu; retain explicit locale persistence, failure feedback and unsaved-settings guards.
 - [x] UI-SPEAKER — Align the speaker toolbar and improve queue/inspector hierarchy, keeping source IDs discoverable and all review/merge/undo behavior intact. Includes duplicate-name disambiguation and a WebKit layout-scroll follow fix; root speaker/playback/UI regression passed 169 cases with three existing capability skips. See docs/VALIDATION.md for the initial failure and final release evidence.
-- [ ] UI-FAVICON — Bind the browser-tab icon to the same brand tokens as the sidebar, including reload and cross-tab changes; preserve the static fallback and state installed-icon limitations separately.
+- [x] UI-FAVICON — Bind the browser-tab icon to the same brand tokens as the sidebar, including reload and cross-tab changes; preserve the static fallback and state installed-icon limitations separately.
 - [x] PI100 — Enforce 100 cumulative provider attempts per persisted Pi plan, validate steps beyond nine, retain legacy checkpoints, block request 101 and preserve no-progress/no-retry safeguards. Verified with 519 unit tests and 34 Chromium/WebKit synthetic-provider cases, including no-key local recovery of full-history OpenAI/OpenRouter backups. Publication and PWA evidence are recorded in docs/VALIDATION.md; this does not establish live-provider quality.
+
+This bounded follow-up has **6/6 implemented and automatically verified (100% of these six entries only)**. The exact sequential pushes, hosted readbacks, failed intermediate checks and native-clock timing limitation are recorded in [validation](docs/VALIDATION.md). This is not overall production readiness: QF01–QF10 remain **1/10 complete**, and real-provider, human-reference and physical-device acceptance remain open.
 
 ## Remaining work order — 2026-11-17
 
