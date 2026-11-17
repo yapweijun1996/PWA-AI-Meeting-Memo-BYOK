@@ -1,11 +1,14 @@
 import { Button } from "../components/controls";
 import { Icon } from "../components/Icon";
 import "./SpeakerPlayback.css";
+import "./SpeakerReview.css";
+import { SpeakerReviewToolbar } from "./speaker-review/SpeakerReviewToolbar";
+import { SpeakerReviewQueue } from "./speaker-review/SpeakerReviewQueue";
 import { showToast } from "../components/ToastLayer";
 import { SpeakerAvatar, useSpeakerAvatars } from "../components/SpeakerAvatar";
 import { prepareAvatar, setSpeakerAvatar, trackAvatarWrite } from "../storage/speaker-avatars";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { Check, Pause, Play, Plus } from "lucide-react";
+import { Check, Play } from "lucide-react";
 import type { Meeting } from "../domain/model";
 import { editMeeting, formatTime } from "../domain/operations";
 import { transcriptTextSeparator } from "../domain/transcript-groups";
@@ -374,7 +377,11 @@ export function SpeakerReview({
         data-unsaved-edit={hasUnsavedDraft || avatarBusy ? "true" : undefined}
         aria-hidden="true"
       />
-      <div className="speaker-review-toolbar">
+      <SpeakerReviewToolbar mode={mode} canPlayback={canPlayback} locked={locked} playing={playing}
+        windowSeconds={windowSeconds} onWindowSecondsChange={setWindowSeconds} onModeChange={requestMode}
+        onPause={onPause} onAdd={onAdd} t={t} immersive={audioAvailable ? <ImmersivePlayback meeting={meeting} clock={clock} position={position} duration={duration}
+          rate={playbackRate} playing={playing} status={playbackStatus} onSeek={onSeek}
+          onTogglePlayback={onTogglePlayback} onChangeRate={onChangeRate} onEditSpeakers={() => { requestMode("naming"); }} t={translate} /> : undefined}>
         <div>
           {mode === "playback" ? (
             <p className="small muted">
@@ -427,58 +434,7 @@ export function SpeakerReview({
             </>
           )}
         </div>
-        <div className="speaker-review-controls">
-          <div className="speaker-mode-switch" role="group" aria-label={t("Speaker review mode", "说话人审阅模式")}>
-            <Button
-              className={`button compact ${mode === "playback" ? "primary" : "secondary"}`}
-              aria-pressed={mode === "playback"}
-              disabled={!canPlayback}
-              onClick={() => requestMode("playback")}
-            >
-              {t("Playback mode", "播放模式")}
-            </Button>
-            <Button
-              className={`button compact ${mode === "naming" ? "primary" : "secondary"}`}
-              aria-pressed={mode === "naming"}
-              onClick={() => requestMode("naming")}
-            >
-              {t("Edit speakers", "编辑说话人")}
-            </Button>
-          </div>
-          {audioAvailable && <ImmersivePlayback meeting={meeting} clock={clock} position={position} duration={duration}
-            rate={playbackRate} playing={playing} status={playbackStatus} onSeek={onSeek}
-            onTogglePlayback={onTogglePlayback} onChangeRate={onChangeRate} onEditSpeakers={() => { requestMode("naming"); }} t={translate} />}
-          {mode === "naming" && (
-            <>
-              <label className="small muted">
-                {t("Sample length", "样本长度")}
-                <select
-                  aria-label={t("Sample length", "样本长度")}
-                  value={windowSeconds}
-                  onChange={(event) => setWindowSeconds(Number(event.target.value))}
-                  disabled={locked}
-                >
-                  <option value="10">10s</option>
-                  <option value="20">20s</option>
-                  <option value="30">30s</option>
-                </select>
-              </label>
-              {playing ? (
-                <Button className="button secondary compact" onClick={onPause}>
-                  <Icon glyph={Pause} size="small" /> {t("Pause", "暂停")}
-                </Button>
-              ) : null}
-              <Button
-                className="button secondary compact"
-                disabled={locked}
-                onClick={onAdd}
-              >
-                <Icon glyph={Plus} size="small" /> {t("Add speaker", "添加说话人")}
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
+      </SpeakerReviewToolbar>
       {avatarsUnavailable && <p className="notice sand" role="status">{t("Profile images are unavailable on this device.", "\u6b64\u8bbe\u5907\u65e0\u6cd5\u8bfb\u53d6\u5934\u50cf\u3002")}</p>}
       {modeNotice && <p className="notice sand" role="alert">{modeNotice}</p>}
       {linkGroups.length > 0 && (
@@ -527,32 +483,17 @@ export function SpeakerReview({
         />
       ) : <>
       <div className="speaker-review-progress">
-        <strong>{t("Speaker review", "说话人审核")}</strong>
-        <progress max={Math.max(1, meeting.speakers.length)} value={meeting.speakers.filter((speaker) => speaker.confirmed).length} aria-label={t("Confirmed speaker names", "已确认的说话人姓名")} />
+        <div><strong>{t("Speaker review", "说话人审核")}</strong><span className="small muted">{t("Choose a speaker, listen, then confirm their name.", "选择说话人、试听，再确认姓名。")}</span></div>
+        <span className="speaker-review-completion">{t(`${meeting.speakers.filter(speaker => speaker.confirmed).length} of ${meeting.speakers.length} names confirmed`, `已确认 ${meeting.speakers.filter(speaker => speaker.confirmed).length} / ${meeting.speakers.length} 位姓名`)}<progress max={Math.max(1, meeting.speakers.length)} value={meeting.speakers.filter((speaker) => speaker.confirmed).length} aria-label={t("Confirmed speaker names", "已确认的说话人姓名")} /></span>
       </div>
       <div className="speaker-review-workspace">
-        <section className="speaker-review-queue" aria-label={t("Speaker review queue", "说话人审核队列")}>
-          <h3>{t("Speaker review queue", "说话人审核队列")}</h3>
-          <p className="small muted">{t(`${meeting.speakers.filter((speaker) => !speaker.confirmed).length} unconfirmed`, `${meeting.speakers.filter((speaker) => !speaker.confirmed).length} 位未确认`)}</p>
-          <input aria-label={t("Search speakers", "搜索说话人")} placeholder={t("Search name or ID", "搜索姓名或 ID")} value={speakerSearch} onChange={(event) => setSpeakerSearch(event.target.value)} />
-          <div className="speaker-review-filters" role="group" aria-label={t("Filter speakers", "筛选说话人")}>
-            {(["unconfirmed", "confirmed", "all"] as const).map((item) => <Button key={item} className={`button compact ${filter === item ? "primary" : "secondary"}`} aria-pressed={filter === item} onClick={() => { setFilter(item); const next = meeting.speakers.find((speaker) => item === "all" || (item === "confirmed" ? speaker.confirmed : !speaker.confirmed)); if (next) setSelectedId(next.id); }}>{item === "unconfirmed" ? t("Unconfirmed", "未确认") : item === "confirmed" ? t("Confirmed", "已确认") : t("All", "全部")}</Button>)}
-          </div>
-          <label className="small">{t("Sort by", "排序")}
-            <select aria-label={t("Sort speakers", "说话人排序")} value={sort} onChange={(event) => setSort(event.target.value as "duration" | "fragments")}><option value="duration">{t("Timed duration", "有时间记录的时长")}</option><option value="fragments">{t("Fragment count", "片段数量")}</option></select>
-          </label>
-          <div className="speaker-queue-list" ref={queueRef}>
-            {filteredSpeakers.map((speaker) => <div className={`speaker-queue-item${selectedSpeaker?.id === speaker.id ? " is-selected" : ""}`} key={speaker.id}>
-              <label className="speaker-queue-check"><input type="checkbox" aria-label={t(`Select ${speaker.name}`, `\u9009\u62e9${speaker.name}`)} checked={visibleSelected.includes(speaker.id)} disabled={locked} onChange={(event) => setSelectedSpeakers((current) => event.target.checked ? [...current, speaker.id] : current.filter((id) => id !== speaker.id))} /></label>
-              <SpeakerAvatar id={speaker.id} image={avatars[speaker.id]} />
-              <Button className="speaker-queue-select" aria-pressed={selectedSpeaker?.id === speaker.id} onClick={() => setSelectedId(speaker.id)}>
-                <strong>{speaker.name}</strong><span className="small muted">ID: {speaker.id}</span><span className="small muted">{formatTime(speakerStats.get(speaker.id)?.timed ?? 0)} · {speakerStats.get(speaker.id)?.count ?? 0} {t("fragments", "片段")}</span>
-              </Button>
-            </div>)}
-            {!filteredSpeakers.length && <p className="small muted">{t("No speakers match this filter.", "没有符合筛选条件的说话人。")}</p>}
-          </div>
-          {visibleSelected.length >= 2 && <Button className="button primary compact" disabled={locked} onClick={() => onSelectMerge(visibleSelected)}>{t(`Merge selected (${visibleSelected.length})`, `\u5408\u5e76\u6240\u9009 (${visibleSelected.length})`)}</Button>}
-        </section>
+        <SpeakerReviewQueue speakers={filteredSpeakers} unconfirmedCount={meeting.speakers.filter(speaker => !speaker.confirmed).length}
+          selectedId={selectedSpeaker?.id} selectedIds={visibleSelected} stats={speakerStats} avatars={avatars}
+          search={speakerSearch} filter={filter} sort={sort} locked={locked} listRef={queueRef}
+          onSearch={setSpeakerSearch} onSelect={setSelectedId} onSort={setSort} t={t}
+          onFilter={item => { setFilter(item); const next = meeting.speakers.find(speaker => item === "all" || (item === "confirmed" ? speaker.confirmed : !speaker.confirmed)); if (next) setSelectedId(next.id); }}
+          onToggle={ (id, selected) => setSelectedSpeakers(current => selected ? [...current, id] : current.filter(item => item !== id)) }
+          onMergeSelected={() => onSelectMerge(visibleSelected)} />
         {selectedSpeaker && (() => {
           const speaker = selectedSpeaker;
           const index = meeting.speakers.findIndex((item) => item.id === speaker.id);
@@ -630,7 +571,8 @@ export function SpeakerReview({
               </section>}
             </section>
             <section className="speaker-identity speaker-review-card" aria-label={t("Speaker identity", "说话人身份")}>
-              <h3>{t("Speaker identity", "说话人身份")}</h3><strong>{speaker.name}</strong><p className="small muted">ID: {speaker.id} · {speaker.confirmed ? t("Confirmed", "已确认") : t("Unconfirmed", "未确认")}</p>
+              <div className="speaker-identity-heading"><h3>{t("Speaker identity", "说话人身份")}</h3><span className={`pill ${speaker.confirmed ? "green" : "sand"}`}>{speaker.confirmed ? t("Confirmed", "已确认") : t("Unconfirmed", "未确认")}</span></div>
+              <strong>{speaker.name}</strong>
               <div className="speaker-profile-image"><SpeakerAvatar id={speaker.id} image={avatars[speaker.id]} className="speaker-avatar large" />
                 <label className="button secondary compact">{t("Change avatar", "\u66f4\u6362\u5934\u50cf")}<input className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" aria-label={t("Upload speaker avatar", "\u4e0a\u4f20\u8bf4\u8bdd\u4eba\u5934\u50cf")} disabled={locked || avatarBusy} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) { setAvatarBusy(true); void trackAvatarWrite(prepareAvatar(file).then((image) => setSpeakerAvatar(meeting.id, speaker.id, image))).then(() => { setAvatarError(""); showToast(t("Speaker avatar saved locally.", "\u8bf4\u8bdd\u4eba\u5934\u50cf\u5df2\u4fdd\u5b58\u5230\u672c\u5730\u3002")); }).catch(() => setAvatarError(t("Could not save the avatar. Choose a JPEG, PNG, or WebP image under 5 MB.", "\u65e0\u6cd5\u4fdd\u5b58\u5934\u50cf\uff0c\u8bf7\u9009\u62e9 5 MB \u4ee5\u4e0b\u7684 JPEG\u3001PNG \u6216 WebP \u56fe\u7247\u3002"))).finally(() => setAvatarBusy(false)); } }} /></label>
                 {avatars[speaker.id] && <Button type="button" className="text-button" disabled={locked || avatarBusy} onClick={() => { setAvatarBusy(true); void trackAvatarWrite(setSpeakerAvatar(meeting.id, speaker.id, null)).then(() => setAvatarError("")).catch(() => setAvatarError(t("Could not remove the avatar.", "\u65e0\u6cd5\u5220\u9664\u5934\u50cf\u3002"))).finally(() => setAvatarBusy(false)); }}>{t("Use default", "\u4f7f\u7528\u9ed8\u8ba4\u5934\u50cf")}</Button>}
@@ -638,11 +580,16 @@ export function SpeakerReview({
 
               <label>{t("Display name", "显示名称")}<input aria-label={t(`Name for speaker ${index + 1}`, `\u7b2c ${index + 1} \u4f4d\u8bf4\u8bdd\u4eba\u7684\u59d3\u540d`)} data-speaker-input-id={speaker.id} value={draft} maxLength={80} disabled={locked} data-unsaved-edit={draft !== speaker.name ? "true" : "false"} onChange={(event) => setDrafts((current) => ({ ...current, [speaker.id]: event.target.value }))} /></label>
               {saveErrors[speaker.id] && <p className="notice danger" role="alert">{saveErrors[speaker.id]}</p>}
-              <p className="small muted">{stats?.count ?? 0} {t("transcript fragments", "段转录片段")} · {formatTime(stats?.timed ?? 0)} {t("timed intervals", "有时间记录的片段时长")}</p>
-              <p className="small muted">{t("Overlapping intervals may be counted more than once.", "重叠片段可能重复计入时长。")}</p>
+              <p className="small muted">{t("Saving a name does not confirm it. Confirm only after reviewing the evidence.", "保存姓名不会确认身份。请审阅依据后再确认。")}</p>
               <div className="speaker-card-actions"><Button className="button secondary compact" disabled={locked || !draft.trim() || draft === speaker.name} data-unsaved-edit={draft !== speaker.name ? "true" : "false"} onClick={() => void saveSpeaker(speaker.id, "save")}>{t("Save name", "保存姓名")}</Button>
                 <Button className="button primary compact" disabled={locked || !draft.trim()} onClick={() => void saveSpeaker(speaker.id, speaker.confirmed ? "toggle" : "confirm")}><Icon glyph={Check} size="compact" />{speaker.confirmed ? t("Leave unconfirmed", "取消姓名确认") : t("Confirm name", "确认姓名")}</Button>
                 <Button className="text-button" onClick={() => onMerge(speaker.id)} disabled={locked || meeting.speakers.length < 2}>{t("Merge\u2026", "\u5408\u5e76\u2026")}</Button></div>
+              <details className="speaker-source-details" key={speaker.id}>
+                <summary>{t("Source details", "来源详情")}</summary>
+                <dl><dt>ID</dt><dd>{speaker.id}</dd><dt>{t("Original speaker labels", "原始说话人标签")}</dt><dd>{speaker.sourceLabels.join(" · ") || t("Unavailable", "不可用")}</dd></dl>
+                <p className="small muted">{stats?.count ?? 0} {t("transcript fragments", "段转录片段")} · {formatTime(stats?.timed ?? 0)} {t("timed intervals", "有时间记录的片段时长")}</p>
+                <p className="small muted">{t("Overlapping intervals may be counted more than once.", "重叠片段可能重复计入时长。")}</p>
+              </details>
             </section>
           </>;
         })()}

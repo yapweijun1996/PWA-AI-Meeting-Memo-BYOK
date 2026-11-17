@@ -2788,3 +2788,47 @@ test("a delayed fullscreen exit preserves a newly focused speaker draft", async 
   await expect(input).toHaveValue("A retained local draft");
   expect(await page.evaluate(() => ({x: scrollX, y: scrollY}))).toEqual(scroll);
 });
+
+
+test("speaker toolbar aligns controls and keeps technical IDs discoverable", async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await createFixture(page);
+  const toolbar = page.locator(".speaker-review-toolbar");
+  await toolbar.scrollIntoViewIfNeeded();
+  const sample = page.getByRole("combobox", {name: "Sample length", exact: true});
+  const add = toolbar.getByRole("button", {name: "Add speaker", exact: true});
+  const [sampleBox, addBox] = await Promise.all([sample.boundingBox(), add.boundingBox()]);
+  expect(sampleBox && addBox).toBeTruthy();
+  expect(Math.abs(sampleBox!.y + sampleBox!.height / 2 - addBox!.y - addBox!.height / 2)).toBeLessThanOrEqual(1);
+  expect(sampleBox!.height).toBeGreaterThanOrEqual(44);
+  expect(addBox!.height).toBeGreaterThanOrEqual(44);
+  const queue = page.getByRole("region", { name: "Speaker review queue" });
+  await expect(queue).not.toContainText(speakerIds[0]);
+  const identity = page.getByRole("region", {name: "Speaker identity"});
+  const details = identity.locator("details");
+  await details.locator("summary").click();
+  await expect(details).toContainText(speakerIds[0]);
+  await expect(details).toContainText("fixture");
+  await page.getByRole("textbox", {name: "Search speakers"}).fill(speakerIds[1]);
+  await expect(queue.locator(".speaker-queue-item")).toHaveCount(1);
+  await queue.locator(".speaker-queue-select").click();
+  await expect(page.getByRole("textbox", {name: "Name for speaker 2", exact: true})).toBeVisible();
+  await page.getByRole("textbox", {name: "Search speakers"}).fill("");
+  for (const width of [1440, 768, 390]) {
+    await page.setViewportSize({width, height: 1000});
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await toolbar.scrollIntoViewIfNeeded();
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await page.screenshot({path: `private-fixtures/speaker-review-${info.project.name}-${width}.png`});
+    if (width === 390) expect((await new AxeBuilder({page}).withTags(["wcag2a", "wcag2aa"]).analyze()).violations).toEqual([]);
+  }
+  await page.getByLabel("Display language", {exact: true}).selectOption("zh-CN");
+  await page.evaluate(() => { document.documentElement.dataset.fontSize = "xxlarge"; });
+  await expect(page.getByRole("combobox", {name: "样本长度", exact: true})).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const name = page.getByRole("textbox", {name: "第 2 位说话人的姓名", exact: true});
+  await name.focus();
+  await expect(name).toBeFocused();
+  const [nameBox, playerBox] = await Promise.all([name.boundingBox(), page.locator(".audio-player").boundingBox()]);
+  expect(nameBox!.y + nameBox!.height).toBeLessThanOrEqual(playerBox!.y);
+});

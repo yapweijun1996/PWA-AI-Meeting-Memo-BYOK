@@ -1,0 +1,136 @@
+/* Scoped presentation owner; existing playback and domain behavior stay separate. */
+.workspace-panel.speaker-review-panel { container-type: inline-size; }
+.speaker-review-panel .speaker-review-toolbar {
+  display: grid;
+  gap: 12px;
+  padding: 16px 23px;
+}
+.speaker-review-panel .speaker-review-context {
+  min-width: 0;
+  line-height: 1.5;
+}
+.speaker-review-panel .speaker-review-controls {
+  justify-content: flex-start;
+  gap: 12px;
+}
+.speaker-review-panel .speaker-review-edit-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.speaker-review-panel .speaker-review-controls .button,
+.speaker-review-panel .speaker-review-controls select {
+  min-block-size: 44px;
+}
+.speaker-review-panel .speaker-review-controls select {
+  block-size: 44px;
+  font-size: var(--text-sm);
+  border-color: var(--border-control);
+  background: var(--surface-panel);
+  color: var(--text-body);
+}
+.speaker-review-panel .speaker-sample-length {
+  margin: 0;
+  white-space: nowrap;
+}
+.speaker-review-panel .speaker-mode-switch { flex: 0 1 auto; }
+.speaker-review-panel .speaker-review-progress {
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 18px 12px;
+}
+.speaker-review-panel .speaker-review-progress > div,
+.speaker-review-panel .speaker-review-completion {
+  display: grid;
+  gap: 6px;
+}
+.speaker-review-panel .speaker-review-completion {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  min-width: min(14rem, 100%);
+}
+.speaker-review-panel .speaker-review-progress progress {
+  width: 100%;
+  accent-color: var(--color-accent);
+}
+.speaker-review-panel .speaker-review-workspace {
+  grid-template-columns: minmax(210px, 1fr) minmax(0, 1.7fr) minmax(250px, 1.1fr);
+  gap: 16px;
+}
+.speaker-review-panel .speaker-review-queue,
+.speaker-review-panel .speaker-voice-review,
+.speaker-review-panel .speaker-identity {
+  padding: 16px;
+}
+.speaker-review-panel .speaker-review-filters { gap: 6px; }
+.speaker-review-panel .speaker-review-filters .button {
+  min-height: 44px;
+  padding-inline: 10px;
+}
+.speaker-review-panel .speaker-queue-list { gap: 8px; }
+.speaker-review-panel .speaker-queue-item { gap: 6px; }
+.speaker-review-panel .speaker-queue-item.is-selected {
+  background: var(--action-selected-bg);
+  border-color: var(--action-selected-border);
+}
+.speaker-review-panel .speaker-queue-item.is-selected strong { color: var(--action-selected-text); }
+.speaker-review-panel .speaker-queue-check {
+  display: grid;
+  align-self: stretch;
+  align-items: center;
+  padding: 8px;
+  margin: 0;
+}
+.speaker-review-panel .speaker-queue-check input { margin: 0; }
+.speaker-review-panel .speaker-queue-select { padding: 12px 8px; gap: 4px; }
+.speaker-review-panel .speaker-identity-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.speaker-review-panel .speaker-identity-heading h3 { margin: 0; }
+.speaker-review-panel .speaker-profile-image { margin-block: 16px; }
+.speaker-review-panel .speaker-card-actions .button,
+.speaker-review-panel .speaker-sample .button { min-height: 44px; }
+.speaker-review-panel .speaker-source-details {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-default);
+}
+.speaker-review-panel .speaker-source-details summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: var(--color-accent-text);
+}
+.speaker-review-panel .speaker-source-details dl { font-size: var(--text-xs); }
+.speaker-review-panel .speaker-source-details dt { color: var(--text-muted); margin-top: 12px; }
+.speaker-review-panel .speaker-source-details dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+
+@media (max-width: 1200px) {
+  .speaker-review-panel .speaker-review-workspace {
+    grid-template-columns: minmax(190px, 1fr) minmax(0, 2fr);
+  }
+  .speaker-review-panel .speaker-identity { grid-column: 2; }
+}
+@media (max-width: 760px) {
+  .speaker-review-panel .speaker-review-workspace { grid-template-columns: minmax(0, 1fr); }
+  .speaker-review-panel .speaker-identity { grid-column: auto; }
+  .speaker-review-panel .speaker-queue-list { max-height: 18rem; }
+  .speaker-review-panel .speaker-review-toolbar { padding-inline: 14px; }
+  .speaker-review-panel .speaker-review-controls { align-items: stretch; }
+  .speaker-review-panel .speaker-mode-switch { flex: 1 1 100%; }
+  .speaker-review-panel .speaker-review-controls select { font-size: var(--text-lg); }
+  .speaker-review-panel .speaker-review-edit-actions { flex: 1 1 100%; }
+}
+/* The sidebar changes usable width independently of the viewport. */
+@container (max-width: 700px) {
+  .speaker-review-panel .speaker-review-workspace { grid-template-columns: minmax(0, 1fr); }
+  .speaker-review-panel .speaker-identity { grid-column: auto; }
+  .speaker-review-panel .speaker-queue-list { max-height: 18rem; }
+}
