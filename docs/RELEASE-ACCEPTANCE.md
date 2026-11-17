@@ -1,6 +1,6 @@
 # Owner acceptance pack
 
-Updated 2026-11-06. This is the procedure for the remaining external gates in task.md, not a record that those gates passed. Use the exact deployed build shown in Settings. Keep real recordings, annotations, account exports and screenshots containing keys outside Git and KB.
+Updated 2026-11-17. This is the procedure for the remaining external gates in task.md, not a record that those gates passed. Use the exact deployed build shown in Settings. Keep real recordings, annotations, account exports and screenshots containing keys outside Git and KB.
 
 ## Result record
 
@@ -32,6 +32,7 @@ Transfer `synthetic-playback.zip` to the device and use Restore backup. It conta
 | D10 | Go offline after the shell and meeting are saved | Local review/play/edit/export works; cloud requests remain unavailable; reference video requires a connection |
 | D11 | Open a new release with a dirty editor or active request | No automatic reload; draft/request protection; explicit update progress and recoverable failure |
 | D12 | Restore full backup as a new copy; open missing-audio JSON | Sources and human edits survive; absent audio is explicit; keys are absent |
+| D13 | With a synthetic supported long recording, back up, restore as a new copy and reattach the identical original; also try a different file | Identical source is accepted without losing existing data; a different source is refused without replacing/deleting data. The identical-source path currently fails in synthetic local Chromium/WebKit checks; physical-device acceptance is NOT RUN pending REC01/REC02. |
 
 ## Production provider and billing cases
 
@@ -85,9 +86,9 @@ Record number/date/amount/ERP-term errors, timing error samples, unknown coverag
 
 ## Resource limits and audio splitting
 
-Current production policy remains one original recording, local import up to 50 MiB and one transcription upload up to 25,000,000 bytes. These are rejection limits, not measured universal phone capacities. Measure import/checksum/save/play/backup time near each boundary, invalid containers, unknown MIME, quota denial, suspension and missing audio. Record memory only when the platform exposes a suitable measurement; otherwise mark unavailable.
+The repository routes recordings over 24,000,000 bytes to its long-import path, which accepts MP3/MPEG and supported M4A/MP4 up to a configured 4 GiB ceiling; each transcription upload is limited to 25,000,000 bytes. Unsupported long formats and unsupported MP4 variants are rejected. These are code limits, not measured universal phone capacities or proof of the currently deployed build. Measure import/checksum/save/play/backup time near each boundary, invalid containers, unknown MIME, quota denial, suspension and missing audio. Record memory only when the platform exposes a suitable measurement; otherwise mark unavailable.
 
-Automatic audio splitting stays deferred. A future spike must demonstrate independently decodable containers, original timeline offsets/encoder delay, channel preservation, boundary repeats and independently scoped chunk labels. Never use arbitrary Blob byte slices, text-similarity deletion of repeated speech or automatic merging of same-named chunk speakers. Cross-chunk mapping is N/A for the shipped single-file path, while physical device/resource limits remain open V06 evidence. No full-file long PCM decoding is introduced.
+Container-aware local splitting and sequential chunk processing exist, but valid independent chunks, original timeline offsets/encoder delay, channel preservation, boundary repeats and meeting-scoped acoustic continuity still require applicable acceptance evidence. Never use arbitrary Blob byte slices, text-similarity deletion of repeated speech or automatic merging of same-named chunk speakers as voice evidence. Chunked audio and separate per-chunk speech/acoustic records are excluded from backup; synthetic local Chromium/WebKit restore checks reproduced an identity mismatch when reattaching the original. Keep the original meeting and file while REC01–03 remain open; do not send paid retries merely to test recovery. Physical device/resource limits remain open V06 evidence.
 
 ## Completion ownership
 

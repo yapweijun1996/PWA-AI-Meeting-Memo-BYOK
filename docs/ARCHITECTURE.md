@@ -22,22 +22,22 @@ flowchart LR
 
 Keep source recordings and meeting data out of Pages artifacts, Git, telemetry, and service-worker response caches. Storing user-approved meeting data in IndexedDB is a deliberate product function; it is different from indiscriminately caching network responses.
 
-The proposed [acoustic speaker continuity contract](ACOUSTIC-SPEAKER-CONTINUITY.md) covers automatic identity association across long-recording parts. It defines browser-model validation, bounded processing and the required storage evolution; it is not a claim that automatic acoustic matching is implemented.
+The [acoustic speaker continuity contract](ACOUSTIC-SPEAKER-CONTINUITY.md) covers automatic identity association across long-recording parts. Local acoustic matching and checkpoints are implemented behind explicit consent, but labelled accuracy, deployed model recovery and physical-device acceptance remain open. See [handoff](HANDOFF.md); do not treat matching labels or overlapping words as voice evidence.
 
 ## Stack and modules
 
-The implementation uses React/TypeScript/Vite, npm with a locked dependency tree, Zod validation, idb repositories, and a custom prompt-based app-shell worker. No application server is required. The original feature folders below map to the current `src/features/*.tsx` screens; domain, storage, providers, jobs, audio and PWA responsibilities are separate modules.
+The implementation uses React/TypeScript/Vite, npm with a locked dependency tree, Zod validation, idb repositories, and a custom prompt-based app-shell worker. No application server is required. Feature screens are in `src/features/*.tsx`; domain, storage, providers, jobs, audio and PWA responsibilities are separate modules.
 
-| Proposed module | Responsibility |
+| Module | Responsibility |
 | --- | --- |
-| `src/features/meetings/` | Library, metadata, import, deletion |
-| `src/features/review/` | Speaker/transcript corrections and undo |
-| `src/features/memo/` | Versioned memo generation and review |
+| `src/App.tsx`, `src/features/NewMeeting.tsx` | Library, navigation, creation and import |
+| `src/features/MeetingWorkspace.tsx`, `src/features/SpeakerReview.tsx` | Meeting, transcript and speaker review, corrections and undo |
+| `src/features/MeetingWorkspace.tsx`, `src/features/CitedEvidence.tsx` | Versioned notes and evidence review |
 | `src/domain/` | IDs, schema validation, provenance, revisions, stale rules |
 | `src/storage/` | IndexedDB transactions, migrations, backup/restore |
 | `src/providers/` | Explicit provider contracts, normalization, cost and errors |
 | `src/jobs/` | Foreground scheduler, checkpoints, billing uncertainty |
-| `src/audio/` | Original-file limits/metadata and bounded checksum worker; no decode/encode pipeline shipped |
+| `src/audio/` | File inspection, container-aware splitting, bounded playback/voice decoding, model worker and checksum support |
 | `src/pwa/` | Install, connectivity, worker update UX |
 | `src/components/ui.tsx` & `src/style.css` | Single Source of Truth (SSOT) Design System tokens, primitives (`Modal`, `Pill`, `Empty`, `Brand`), speaker palette, and responsive layout rules |
 
@@ -93,7 +93,7 @@ IndexedDB is the P0 source of truth. Structured records are stored as one versio
 - Perform network, hashing, and audio work outside live IndexedDB transactions. Use short database-only transactions and test them in actual Chromium/WebKit.
 - Check estimated usage and request persistent storage where supported. Handle denial and quota failure without silently deleting existing meetings. Settings has a read-only storage monitor (`src/storage/storage-report.ts`, `src/features/StorageMonitor.tsx`) that shows the browser's usage estimate and persistence state, and per meeting the size of its document (by section), recording, voice data and images against the meeting size limit. It reads only this app's meeting database, never settings or keys, and changes nothing. Sizes are JSON-text estimates; the browser total also counts other apps on the shared origin, the speaker model and caches.
 - Imported files have resource bounds, schema validation, collision handling, and a preview before replacing data. Imported credentials are rejected.
-- Backup/restore includes schema version, manifest, audio references/hashes, revisions, and jobs. Mark absent audio explicitly.
+- Backup/restore includes the meeting aggregate, audio references/hashes, revisions, and jobs; ordinary audio and supported avatars can be included. Chunked audio and separate per-chunk speech/acoustic stores are not included. Mark absent audio explicitly and do not assume interrupted chunk progress is recoverable from the archive alone; see REC01–03 in [tasks](../task.md).
 - Namespace storage and remove only this application's named records/caches. A repository path is not a security boundary; see [deployment](DEPLOYMENT.md).
 
 Future asynchronous file storage would need explicit pending/ready states and orphan cleanup because IndexedDB and file storage cannot share one atomic transaction.
@@ -119,7 +119,7 @@ Billing state is separate: `not_submitted`, `possibly_charged`, `provider_report
 
 Disable SDK automatic retries for paid submissions, then implement explicit error policy. Safe status polling can retry with bounded backoff. A documented refusal before execution can be offered for retry; ambiguous timeouts/disconnects need user review. Do not treat a client-generated idempotency key as provider-supported exactly-once execution.
 
-Saved keys and settings are restored from the separate local settings database before the app renders. Re-entry is needed after the first upgrade from a memory-only build or after forgetting/clearing site data. File re-selection remains a recovery state, not a lost-work error. Partial streamed text stays provisional until final completion and validation; never mark it complete after a broken stream.
+Saved keys and settings are restored from the separate local settings database before the app renders. Re-entry is needed after the first upgrade from a memory-only build or after forgetting/clearing site data. File re-selection is intended as a recovery path, but the current long-recording identity check rejected an identical file after restore in synthetic local Chromium/WebKit checks; a repair and physical-device verification remain open. Partial streamed text stays provisional until final completion and validation; never mark it complete after a broken stream.
 
 ## Audio handling
 
@@ -145,7 +145,7 @@ When no source interval is active, the immersive stage retains short within-capt
 
 Immersive transcript width, search, follow and Focus/Reading mode are transient view state. Search filters all locally available caption groups and untimed segments; only timed results can seek. Returning to playback clears the filter, restores follow and retains keyboard focus. The responsive sheet and stage shortcuts issue existing player commands; neither mode nor viewport changes alter evidence, speaker identities or playback state.
 
-#### Group-chat playback and audio-reactive avatar architecture (planned 2026-11-06)
+#### Group-chat playback and audio-reactive avatar architecture
 
 The group-chat playback stage derives all visual synchronization from `HTMLAudioElement.currentTime` as the single source of truth:
 
@@ -164,10 +164,10 @@ Find active transcript segment
 Module responsibilities for this pipeline:
 
 - **`src/domain/playback.ts` (`PlaybackCaption.fragments` preservation)**: Consecutive short segments from the same speaker (`gap <= 350 ms`, up to `220` characters) merge into a single `PlaybackCaption` bubble for readability while preserving an ordered `fragments` array (`id`, `start`, `end`, `speakerIds`, `text`, `untimed`). Active state at `currentTime` resolves both the active bubble (`activeCaptions`) and the active sub-segments (`activeSegmentIds`) so `SpeakerReview` can render word/phrase-level highlighting when provider responses include sub-sentence timestamps (`fragments.length > 1`) and sentence-level highlighting when only sentence timestamps exist (`fragments.length === 1`), without character-count time interpolation.
-- **`src/features/usePlaybackClock.ts` (Web Audio `AnalyserNode` energy boundary)**: Attach a lazy singleton `AudioContext` + `MediaElementAudioSourceNode` + `AnalyserNode` (`fftSize = 256`) to the persistent `<audio>` element on user gesture (`play`). During active playback, sample `getByteFrequencyData` inside the existing 50 ms foreground animation-frame loop and compute an exponentially smoothed normalized energy value (`energy = prev * 0.75 + current * 0.25`, clamped to `[0, 1]`). Expose `--audio-pulse-scale: calc(1 + energy * 0.12)` (`1.00` to `1.12`) only on speaker avatars whose `speakerId` is in `activeSpeakerIds` while `playing === true` and `prefers-reduced-motion` is not `reduce`. If `AudioContext` is suspended or unavailable, degrade gracefully to static active borders and the `·|·|·` waveform indicator without breaking audio playback.
-- **`src/features/SpeakerReview.tsx` (Sequential group-chat stream)**: Render a persistent top speaker avatar row (`S1`–`S5` with `--speaker-1` through `--speaker-5` identity colors and `Idle` vs. live `·|·|·` status) above a chronological, left-aligned group-chat stream. Clicking any chat bubble or its bottom-right timestamp seeks `HTMLAudioElement.currentTime` to `caption.start`. Manual scrolling pauses `followPlayback` immediately and displays a floating `Jump to live` / `Follow playback` control.
+- **`src/audio/playback-energy.ts` (Web Audio energy boundary)**: A lazy shared `AudioContext` connects the current media element to a separate `AnalyserNode` (`fftSize = 512`) and samples time-domain audio into a reused array. Smoothed aggregate recording energy drives a bounded decorative halo only for source-attributed active speakers; it does not isolate a person's volume. `src/features/usePlaybackClock.ts` owns the separate media-clock sampling. Unavailable Web Audio and reduced motion fall back without claiming speaker energy. See [playback energy](PLAYBACK-ENERGY.md).
+- **`src/features/SpeakerReview.tsx` (Sequential group-chat stream)**: Render the meeting's speaker roster and a chronological, left-aligned group-chat stream. Clicking a timed bubble seeks the shared player. Manual scrolling pauses following and exposes **Follow playback**; untimed text has no fabricated seek position.
 
-The beta stores one original recording up to 50 MiB, uploads up to 25 MB per transcription request, and computes its checksum in a worker; conversion and multi-chunk transcription are deferred. Valid future chunking requires container-aware processing or bounded decode/re-encode. `Blob.slice()` over arbitrary MP3/M4A/WebM bytes is not an independent playable file. Preserve source offsets, encoder delay where relevant, and boundary provenance. Handle overlapping transcription windows with a documented boundary reconciliation algorithm; text similarity alone must not delete genuinely repeated speech.
+The current import path routes files over 24,000,000 bytes through container-aware MP3/MPEG or supported M4A/MP4 splitting, with a 4 GiB configured ceiling and a 25,000,000-byte per-request speech limit. Other large formats require external conversion; fragmented MP4 has additional restrictions documented in the README. These are code limits, not measured phone capacities. Chunks, offsets and overlapping lead-ins are stored locally and submitted sequentially after confirmation. Arbitrary MP3/M4A/WebM byte slices are not independently playable files; preserve offsets and boundary provenance, and never use text similarity alone to establish voice identity. Chunked backup/reattachment currently has the open REC01–03 limitations in [tasks](../task.md).
 
 Prefer one provider request for the whole recording when its verified limits permit it, preserving global speaker clustering. Otherwise scope labels by run/chunk and require evidence-based mapping. Preserve isolated channels before any downmix; multiple people can still share one channel.
 
