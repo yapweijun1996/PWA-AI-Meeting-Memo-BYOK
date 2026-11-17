@@ -47,3 +47,12 @@ The catalogue imports the actual components, uses synthetic local callbacks and 
 `src/components/Icon.tsx` owns the physical SVG size scale: micro 12, tiny 13, small 14, compact 15, inline 16, status 17, control 18, navigation 19, transport 20, section 21, heading 22, large 24, upload 25 and empty 32 CSS pixels. The initial migration preserves existing geometry; it is not a visual rescaling or a claim that a 12px glyph provides a sufficient touch target. Choose an existing named size in feature JSX instead of a numeric Lucide size. The source contract rejects direct application Lucide JSX; Lucide imports supply glyphs to the shared API without a duplicate SVG map. These numeric SVG prop primitives have one TypeScript owner rather than duplicate CSS declarations.
 
 `SpeakerAvatar` owns its custom anonymous illustration and local image renderer. Its palettes, circular geometry and shapes remain explicitly scoped in `DESIGN-STYLE-EXCEPTIONS.md`; this is presentation only and cannot establish speaker identity. The icon API does not replace those illustrations or their evidence/confirmation text.
+
+
+## Speaker-review presentation boundary
+
+`src/features/speaker-review/SpeakerReviewToolbar.tsx` owns the responsive control groups and sample-length field; `SpeakerReviewQueue.tsx` owns search/filter/sort presentation, selection controls and the queue. Their styles are scoped in `SpeakerReview.css`. `SpeakerReview.tsx` retains drafts, confirmation, selected speaker, sample playback and acoustic comparison state. `MeetingWorkspace.tsx` still owns merge/revision operations. Saving a name and confirming it remain separate actions.
+
+`speaker-labels.ts` derives a display-only choice label. Duplicate rendered names include the full source ID, including after filtering and in merge options; matching short UUID prefixes cannot make two choices indistinguishable. This helper does not mutate source names or infer identity. Unique names keep the compact presentation; original labels, IDs and duration caveats remain available under Source details.
+
+The queue, evidence comparison and identity inspector are one linked workflow, not an independent card collection. Their responsive ordered grid is an explicit use-case boundary for the shared Masonry layout. Controls retain at least 44px targets and the persistent player must not cover focused name fields.
