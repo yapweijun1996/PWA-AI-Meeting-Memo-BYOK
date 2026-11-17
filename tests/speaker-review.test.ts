@@ -56,6 +56,30 @@ describe("speaker listening workspace", () => {
     expect(JSON.stringify(source)).toBe(before);
   });
 
+  it("retains inactive same-speaker context across a caption length boundary", () => {
+    const source = [segment("a".repeat(219), ["a"], 0, 0.7), segment("Next phrase", ["a"], 0.8, 1.2)];
+    const before = JSON.stringify(source);
+    const captions = buildPlaybackCaptions(source);
+    expect(captions).toHaveLength(2);
+    for (const position of [0.7, 0.75, 0.799]) {
+      expect(captionContextAtTime(captions, position)).toEqual([captions[0]]);
+      expect(captionsAtTime(captions, position)).toEqual([]);
+      expect(speakerActivity(source, position).activeSpeakerIds).toEqual([]);
+      expect(fragmentsAtTime(captions[0].fragments, position)).toEqual([]);
+    }
+    expect(captionContextAtTime(captions, 0.8)).toEqual([]);
+    expect(JSON.stringify(source)).toBe(before);
+  });
+
+  it("does not carry caption identity across changed, unknown, overlapping or distant sources", () => {
+    for (const source of [
+      [segment("first", ["a"], 0, 0.7), segment("reply", ["b"], 0.8, 1.2)],
+      [segment("first", [], 0, 0.7), segment("unknown", [], 0.8, 1.2)],
+      [segment("first", ["a"], 0, 0.7), segment("later", ["a"], 1.1, 1.2)],
+      [segment("first", ["a"], 0, 0.7), segment("overlap", ["b"], 0.5, 0.72), segment("later", ["a"], 0.8, 1.2)],
+    ]) expect(captionContextAtTime(buildPlaybackCaptions(source, 5), 0.75)).toEqual([]);
+  });
+
   it("keeps buffering through a timeupdate until a real resume transition", () => {
     const waitingState = { error: false, ended: false, playing: true, position: 1 };
     expect(resolvePlaybackStatus("buffering", undefined, waitingState)).toBe("buffering");

@@ -790,7 +790,7 @@ function PlaybackMode({
     (playing ? activity.activeSpeakerIds : []).filter(Boolean),
   );
   // Identity follows the visible caption, not instantaneous word activity.
-  // The context contains only bounded gaps inside the same caption; it never
+  // Context covers bounded same-speaker pauses, including caption splits; it never
   // carries the last speaker into an unrelated silence or unknown passage.
   const displayedCaptions = current.length ? current : context;
   const currentIds = new Set(displayedCaptions.flatMap((caption) => caption.speakerIds));

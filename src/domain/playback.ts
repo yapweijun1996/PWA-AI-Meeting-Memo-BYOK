@@ -104,13 +104,21 @@ export function captionsAtTime(captions: PlaybackCaption[], position: number) {
 /** Readable context only: never marks a source gap as active speech. */
 export function captionContextAtTime(captions: PlaybackCaption[], position: number) {
   if (captionsAtTime(captions, position).length) return [];
-  return captions.filter((caption) =>
-    caption.sourceIntervals.some((interval, index, intervals) => {
+  return captions.filter((caption, captionIndex) => {
+    const internalGap = caption.sourceIntervals.some((interval, index, intervals) => {
       const next = intervals[index + 1];
       return next && next.start - interval.end <= 0.35 &&
         position >= interval.end && position < next.start;
-    }),
-  );
+    });
+    if (internalGap) return true;
+    // A readability limit can split one speaker's turn into two captions.
+    // Keep identity through the same bounded pause without extending speech.
+    const next = captions[captionIndex + 1];
+    return next && caption.speakerIds.length > 0 &&
+      sameSpeakers(caption.speakerIds, next.speakerIds) &&
+      next.start >= caption.end && next.start - caption.end <= 0.35 &&
+      position >= caption.end && position < next.start;
+  });
 }
 
 export function playbackCaptionWindow(

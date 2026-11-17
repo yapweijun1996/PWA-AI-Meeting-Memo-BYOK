@@ -645,6 +645,42 @@ test("speaker changes refresh without timeupdate and short word gaps retain inac
   await expect(stage.locator('[data-speaker-hero="true"] strong')).toHaveText("Speaker 2");
 });
 
+test("same-speaker avatar survives a short pause across a caption length boundary", async ({ page }) => {
+  const meeting = fixtureMeeting();
+  meeting.segments[0].text = "A complete thought can continue into the next caption without changing who is speaking. ".repeat(3).slice(0, 219);
+  meeting.segments[0].originalText = meeting.segments[0].text;
+  meeting.segments[1].start = 0.8;
+  await createFixture(page, "speaker-review.wav", meeting);
+  const before = sourceSnapshot(await storedMeeting(page));
+  await page.getByRole("button", { name: "Playback mode", exact: true }).click();
+  const stage = page.locator(".playback-stage");
+  const hero = stage.locator('[data-speaker-hero="true"]');
+  const seek = async (time: number) => page.locator("audio").evaluate((element, value) => {
+    (element as HTMLMediaElement).currentTime = value;
+    element.dispatchEvent(new Event("seeked"));
+  }, time);
+  await seek(0.6);
+  await expect(hero.locator("strong")).toHaveText("Speaker 1");
+  await hero.evaluate((element) => element.setAttribute("data-retained-node", "yes"));
+  await seek(0.75);
+  await expect(hero).toHaveAttribute("data-retained-node", "yes");
+  await expect(hero.locator("strong")).toHaveText("Speaker 1");
+  await expect(stage.locator('[data-fragment-active="true"]')).toHaveCount(0);
+  await expect(stage.locator('[data-speaker-active="true"]')).toHaveCount(0);
+  if (process.env.PLAYBACK_UX_SCREENSHOTS === "1") {
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await stage.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: test.info().outputPath(`avatar-gap-${width}.png`) });
+    }
+  }
+  await seek(0.9);
+  await expect(hero).toHaveAttribute("data-retained-node", "yes");
+  await seek(3);
+  await expect(hero).toHaveCount(0);
+  expect(sourceSnapshot(await storedMeeting(page))).toEqual(before);
+});
+
 test("caption identities stay distinct and readable with chunk labels and long confirmed names", async ({ page }) => {
   const meeting = fixtureMeeting();
   meeting.speakers[0].name = "Speaker 1 (part 1)";
