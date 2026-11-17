@@ -1,5 +1,10 @@
 // Translate only application-owned fixed messages; never rewrite user content.
 const messages: Record<string, string> = {
+  "Completed transcription results are missing from this browser or backup. Continue in the original browser that retains them. To deliberately transcribe again, create a separate meeting; no new request was sent.": "此浏览器或备份缺少已完成的分段转录结果。请回到仍保留这些结果的原浏览器继续。若决定重新付费转录，请另建会议；尚未发送新的请求。",
+  "Recording identity could not be verified. Use the original recording; for an older restored backup, export a new backup from the original meeting first. Existing data was retained.": "无法核实录音是否匹配，请使用原始录音。若恢复的是旧版备份，请先从原会议重新导出备份。现有数据已保留。",
+  "Another import changed this recording. Existing data was retained.": "另一项导入已更改此录音。现有数据已保留。",
+  "Another tab changed this meeting. Reload before attaching the recording.": "另一标签页已更改此会议。请重新加载后再附加录音。",
+  "Staged recording is incomplete. Existing data was retained; import the recording again.": "暂存录音不完整。现有数据已保留，请重新导入录音。",
   "Review paused because repeated lookups produced no new evidence. Saved responses remain available; inspect them before continuing.": "重复查询未产生新证据，复核已暂停。已保存的回应仍保留，请查看后再决定是否继续。",
   "The meeting job ledger is full. Saved responses remain available; no new request was sent.": "会议处理记录已满；已保存的回应仍保留，未发送新的请求。",
   "A saved response exceeds the per-response tool burst limit. Export its record for inspection.": "已保存回应中的工具调用超过单次处理容量，请导出记录检查。",

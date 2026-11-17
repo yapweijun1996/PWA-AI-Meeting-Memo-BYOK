@@ -26,6 +26,8 @@ type LongImportOptions = {
   targetSeconds?: number;
   minLeadInSeconds?: number;
   replace?: boolean;
+  expectedHash?: string;
+  expectedMeetingVersion?: number;
   estimate?: () => Promise<{ usage?: number; quota?: number }>;
 };
 
@@ -68,7 +70,7 @@ export async function importLongRecording(
   if (opts.signal?.aborted) throw opts.signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
 
   opts.onProgress?.({ phase: "checking-space", done: 0, total: file.size });
-  const capacity = await checkCapacity(file.size, opts.estimate);
+  const capacity = await checkCapacity(file.size * 2, opts.estimate);
   if (capacity.ok === false) throw new Error(capacity.message);
   const warnings = [...plan.warnings];
   if (capacity.ok === "unknown") warnings.push(capacity.message);
@@ -98,6 +100,8 @@ export async function importLongRecording(
     chunks,
     signal: opts.signal,
     replace: opts.replace,
+    expectedHash: opts.expectedHash,
+    expectedMeetingVersion: opts.expectedMeetingVersion,
     onProgress: (done, total) => opts.onProgress?.({ phase: "storing", done, total }),
   });
   return {

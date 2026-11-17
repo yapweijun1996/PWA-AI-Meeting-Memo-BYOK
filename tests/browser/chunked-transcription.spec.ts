@@ -144,7 +144,8 @@ test("chunked transcription stops after a failed part and resumes only unsaved p
   expect(routes.maxInFlight).toBe(1);
 });
 
-test("unknown chunk outcomes require account review before an explicit resend", async ({ page }) => {
+for (const restore of [false, true]) {
+test(`unknown chunk outcomes require account review before an explicit resend (restore: ${restore})`, async ({ page }, info) => {
   const routes = installSpeechRoute(page, { abortOn: 1 });
   await routes.finished;
   await prepare(page, "Chunked transcription unknown outcome");
@@ -154,6 +155,19 @@ test("unknown chunk outcomes require account review before an explicit resend", 
   const total = Number(totalText?.match(/\d+/)?.[0]);
   await dialog.getByRole("button", { name: `Confirm and send ${total} requests` }).click();
   await expect.poll(() => routes.count).toBe(1);
+  if (restore) {
+    await expect(page.getByRole("button", { name: "Transcribe", exact: true })).toBeEnabled();
+    await page.getByText("Export", { exact: true }).click();
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Full backup with audio", exact: true }).click();
+    const path = info.outputPath("unknown.zip"); await (await download).saveAs(path);
+    page.on("dialog", dialog => dialog.accept());
+    await page.getByLabel("Restore backup", { exact: true }).setInputFiles(path);
+    await expect(page.getByRole("heading", { name: "Chunked transcription unknown outcome (restored)", exact: true })).toBeVisible();
+    await page.getByLabel("Attach audio", { exact: true }).setInputFiles({ name: "long-meeting.mp3", mimeType: "audio/mpeg", buffer: syntheticMp3() });
+    // Metadata is already visible before the async reattachment is published.
+    await expect(page.getByRole("button", { name: "Transcribe", exact: true })).toBeEnabled();
+  }
   await page.reload();
   expect(routes.count).toBe(1);
   await page.getByRole("button", { name: "Transcribe", exact: true }).click();
@@ -167,4 +181,57 @@ test("unknown chunk outcomes require account review before an explicit resend", 
   await expect(page.getByText("CHUNK_RESULT_2", { exact: true })).toBeVisible();
   expect(routes.count).toBe(total + 1);
   expect(routes.maxInFlight).toBe(1);
+});
+
+}
+
+async function evidenceSnapshot(page: Page) {
+  return page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("meeting-memo-byok-v1");
+      request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+    });
+    try {
+      const request = database.transaction("meetings").objectStore("meetings").get(location.hash.split("/").at(-1)!);
+      return await new Promise<unknown>((resolve, reject) => {
+        request.onsuccess = () => {
+          const { segments, history, undo, runs, memos, jobs, speakers, revision } = request.result;
+          resolve({ segments, history, undo, runs, memos, jobs, speakers, revision });
+        };
+        request.onerror = () => reject(request.error);
+      });
+    } finally { database.close(); }
+  });
+}
+
+test("restored completed transcription blocks missing checkpoints before consent or another request", async ({ page }, info) => {
+  const routes = installSpeechRoute(page); await routes.finished;
+  await prepare(page, "Checkpoint backup");
+  await page.getByRole("button", { name: "Transcribe", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /^Confirm and send \d+ requests$/ }).click();
+  await expect(page.getByText("CHUNK_RESULT_2", { exact: true })).toBeVisible();
+  const submitted = routes.count;
+  await page.getByRole("button", { name: "Edit passage", exact: true }).first().click();
+  await page.getByLabel("Transcript text").fill("Human corrected first passage.");
+  await page.getByRole("button", { name: "Save correction" }).click();
+  await expect(page.getByText("Human corrected first passage.", { exact: true })).toBeVisible();
+  const evidence = await evidenceSnapshot(page);
+  await page.getByText("Export", { exact: true }).click();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Full backup with audio", exact: true }).click();
+  const path = info.outputPath("checkpoints.zip"); await (await download).saveAs(path);
+  page.on("dialog", dialog => dialog.accept());
+  await page.getByLabel("Restore backup", { exact: true }).setInputFiles(path);
+  await expect(page.getByRole("heading", { name: "Checkpoint backup (restored)", exact: true })).toBeVisible();
+  await page.getByLabel("Attach audio", { exact: true }).setInputFiles({ name: "long-meeting.mp3", mimeType: "audio/mpeg", buffer: syntheticMp3() });
+  await expect(page.getByText(/plays from \d+ local parts/)).toBeVisible();
+  await page.getByRole("button", { name: "Transcribe", exact: true }).click();
+  await expect(page.locator(".app-error")).toContainText("Completed transcription results are missing");
+  expect(routes.count).toBe(submitted);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText("CHUNK_RESULT_2", { exact: true })).toBeVisible();
+  await expect(page.getByText("Human corrected first passage.", { exact: true })).toBeVisible();
+  expect(await evidenceSnapshot(page)).toEqual(evidence);
+  expect(routes.count).toBe(submitted);
 });

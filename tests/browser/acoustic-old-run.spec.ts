@@ -721,7 +721,11 @@ for (const language of ["en", "zh-CN"] as const) {
     });
     await installDeterministicLocalEmbedding(page);
     await page.goto(base);
-    await seedOldRun(page, oldRunFixture());
+    // Disclosure is reachable for a fresh request, not a missing paid checkpoint.
+    // Dedicated recovery tests assert that completed results cannot be repurchased.
+    const disclosureFixture = oldRunFixture();
+    disclosureFixture.meeting.jobs = [];
+    await seedOldRun(page, disclosureFixture);
     await page.evaluate((id) => { location.hash = `#/meetings/${id}`; }, meetingId);
     await page.reload();
     await expect(page.getByRole("heading", { name: "Old completed chunked run", exact: true, level: 1 })).toBeVisible();

@@ -1,16 +1,33 @@
 import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
 import { validateMeeting, MAX_MEETING_JSON_BYTES, type Meeting, id } from "../domain/model";
 import { getAudio } from "./repository";
+import { contentIdentity, getLongAudioManifest, verifyManifestIdentity } from "./long-audio-store";
 import { getSpeakerAvatars, validAvatar, flushAvatarWrites } from "./speaker-avatars";
 const MAX_BACKUP = 120 * 1024 * 1024;
+export async function meetingBackupDocument(m: Meeting, audioPresent = false): Promise<Meeting> {
+  const document = {
+    ...m,
+    audio: m.audio ? { ...m.audio, present: audioPresent } : null,
+  };
+  // Upgrade only the exported recording identity; live checkpoints keep their legacy hash.
+  if (document.audio?.chunked) {
+    const manifest = await getLongAudioManifest(m.id).catch(() => undefined);
+    if (manifest && manifest.manifestSha256 === document.audio.hash) {
+      try {
+        await verifyManifestIdentity(manifest);
+        const hash = await contentIdentity(manifest);
+        document.audio = { ...document.audio, hash, chunked: { ...document.audio.chunked, manifestSha256: hash } };
+      } catch { /* Preserve a recovery backup even when the local manifest is damaged. */ }
+    }
+  }
+  return document;
+}
+
 export async function backupMeeting(m: Meeting): Promise<Blob> {
   await flushAvatarWrites();
   const chunked = !!m.audio?.chunked;
   const audio = chunked ? undefined : await getAudio(m.id);
-  const document = {
-    ...m,
-    audio: m.audio ? { ...m.audio, present: !!audio } : null,
-  };
+  const document = await meetingBackupDocument(m, !!audio);
   const files: Record<string, Uint8Array> = {
     "meeting.json": strToU8(JSON.stringify(document)),
   };

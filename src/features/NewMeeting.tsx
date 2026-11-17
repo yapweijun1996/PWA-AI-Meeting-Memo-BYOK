@@ -93,6 +93,7 @@ export function NewMeeting({
       if (file) {
         if (isLongRecordingCandidate(file)) {
           const result = await importLongRecording(file, m.id, {
+            expectedHash: m.audio?.hash,
             onProgress: (p) => setProgress(`${p.phase}: ${p.done}/${p.total}`),
           });
           importedMeetingId = m.id;

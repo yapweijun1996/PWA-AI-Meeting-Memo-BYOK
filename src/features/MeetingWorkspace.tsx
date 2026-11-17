@@ -54,10 +54,10 @@ import {
   undoEdit,
 } from "../domain/operations";
 import { getAudio, getMeeting, saveMeeting } from "../storage/repository";
-import { backupMeeting, download, safeFilename } from "../storage/backup";
+import { backupMeeting, meetingBackupDocument, download, safeFilename } from "../storage/backup";
 import { inspectAudio } from "../audio/files";
 import { importLongRecording, isLongRecordingCandidate } from "../audio/long-import";
-import { deleteLongAudio, getLongAudioChunk, getLongAudioManifest, type LongAudioManifest } from "../storage/long-audio-store";
+import { getLongAudioManifest, type LongAudioManifest } from "../storage/long-audio-store";
 import { ChunkedAudio, type PlayerLike } from "../audio/chunked-audio";
 import { getKey, getSelection, getSpeechEstimate, getUiLanguage, getMemoOutputLanguage } from "../providers/credentials";
 import { beginRequest, cancelProcessing, finishRequest, runJob, isProcessingMeeting } from "../jobs/runner";
@@ -65,7 +65,7 @@ import { requireVoiceAnalysisLocks, withVoiceAnalysisLock } from "../jobs/voice-
 import { analyzeExistingMeetingAcoustics, describeAcousticState, exportVoiceEvaluation, listCurrentAcousticEmbeddings } from "../jobs/acoustic-continuity";
 import type { AcousticEmbeddingRecord } from "../domain/acoustic-speaker";
 import { analyzeSingleRecordingVoices, singleRecordingFormat } from "../jobs/single-recording-voices";
-import { getChunkedProgress, runChunkedSpeech } from "../jobs/chunked-runner";
+import { assertRetainedChunkResults, getChunkedProgress, runChunkedSpeech } from "../jobs/chunked-runner";
 import { WavLmSpeakerEmbeddingProvider } from "../audio/speaker-embedding";
 import { Empty, Modal, Pill } from "../components/ui";
 import { CitedEvidence } from "./CitedEvidence";
@@ -529,6 +529,7 @@ export function MeetingWorkspace({
       if (stage === "speech" && m.audio?.chunked) {
         const manifest = await getLongAudioManifest(m.id);
         if (!manifest) throw new Error("The chunk manifest is missing. Reattach or restore the long recording before transcription.");
+        await assertRetainedChunkResults(m);
         const progress = await getChunkedProgress(m);
         setChunkManifest(manifest);
         setChunkProgress(progress);
@@ -789,26 +790,15 @@ export function MeetingWorkspace({
     setSaving(true);
     try {
       if (isLongRecordingCandidate(file)) {
-        const manifest = m.audio?.chunked ? await getLongAudioManifest(m.id) : undefined;
-        let replace = !!m.audio?.chunked && !manifest;
-        if (manifest) {
-          for (const chunk of manifest.chunks) {
-            try { await getLongAudioChunk(m.id, chunk.index); }
-            catch { replace = true; break; }
-          }
-        }
+        if (m.audio && !m.audio.chunked)
+          throw new Error("This meeting belongs to a different recording. Create a new meeting to preserve its source evidence.");
+        if (!m.audio && m.segments.some((segment) => segment.start !== null) && !confirm(t("Confirm this is the original recording for the imported timestamps. Verify playback before relying on the evidence.", "请确认这是导入时间戳对应的原始录音。依赖此证据前请验证播放。"))) return;
         const result = await importLongRecording(file, m.id, {
-          replace,
+          replace: true,
+          expectedHash: m.audio?.hash,
+          expectedMeetingVersion: m.version,
           onProgress: (progress) => setImportProgress(`${progress.phase}: ${progress.done}/${progress.total}`),
         });
-        if (m.audio && (!m.audio.chunked || m.audio.hash !== result.audio.hash)) {
-          await deleteLongAudio(m.id);
-          throw new Error("This meeting belongs to a different recording. Create a new meeting to preserve its source evidence.");
-        }
-        if (!m.audio && m.segments.some((segment) => segment.start !== null) && !confirm(t("Confirm this is the original recording for the imported timestamps. Verify playback before relying on the evidence.", "请确认这是导入时间戳对应的原始录音。依赖此证据前请验证播放。"))) {
-          await deleteLongAudio(m.id);
-          return;
-        }
         const saved = await saveMeeting({ ...m, audio: result.audio });
         onUpdate(saved);
         if (result.warnings.length) setNotice(result.warnings.join(" "));
@@ -836,10 +826,7 @@ export function MeetingWorkspace({
               [
                 format === "json"
                   ? JSON.stringify(
-                      {
-                        ...m,
-                        audio: m.audio ? { ...m.audio, present: false } : null,
-                      },
+                      await meetingBackupDocument(m),
                       null,
                       2,
                     )

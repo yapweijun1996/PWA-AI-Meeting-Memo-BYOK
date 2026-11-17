@@ -20,6 +20,14 @@ import { runAcousticContinuity, type AcousticContinuityProgress } from "./acoust
 import { requireVoiceAnalysisLocks } from "./voice-analysis-lock";
 import type { BrowserSpeakerEmbeddingProvider } from "../audio/speaker-embedding";
 
+/** A restored aggregate must not silently re-purchase missing completed results. */
+export async function assertRetainedChunkResults(m: Meeting): Promise<Set<number>> {
+  const stored = new Set(await listChunkSpeechIndexes(m.id));
+  if (m.jobs.some(job => job.chunk && job.state === "completed" && !stored.has(job.chunk.index)))
+    throw new Error("Completed transcription results are missing from this browser or backup. Continue in the original browser that retains them. To deliberately transcribe again, create a separate meeting; no new request was sent.");
+  return stored;
+}
+
 export async function getChunkedProgress(m: Meeting): Promise<{ total: number; done: number; nextIndex: number; blockedIndex: number | null }> {
   const total = m.audio?.chunked?.chunkCount ?? 0;
   const indexes = await listChunkSpeechIndexes(m.id);
@@ -79,7 +87,7 @@ export async function runChunkedSpeech(m: Meeting, confirmed: Confirmed): Promis
     const requestController = confirmed.requestController ?? beginRequest(m.id);
     const ownsRequestController = confirmed.requestController === undefined;
     try {
-    const storedIndexes = new Set(await listChunkSpeechIndexes(m.id));
+    const storedIndexes = await assertRetainedChunkResults(working);
     for (const meta of manifest.chunks) {
       if (storedIndexes.has(meta.index)) {
         const savedSpeech = await getChunkSpeech(m.id, meta.index);

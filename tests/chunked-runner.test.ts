@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProviderError } from "../src/providers/api";
 import type * as ProviderApi from "../src/providers/api";
 import { createMeeting, MeetingSchema, segment } from "../src/domain/model";
-import { getChunkSpeech } from "../src/storage/chunk-speech-store";
+import { deleteChunkSpeech, getChunkSpeech } from "../src/storage/chunk-speech-store";
 import { storeLongAudio } from "../src/storage/long-audio-store";
 import { getMeeting, saveMeeting } from "../src/storage/repository";
 import { runChunkedSpeech } from "../src/jobs/chunked-runner";
@@ -122,6 +122,17 @@ describe("chunked speech runner", () => {
     await runChunkedSpeech(interrupted!, { selection, reviewedChunks: [0] });
     expect(mocks.transcribe).toHaveBeenCalledTimes(4);
   });
+  it("never resubmits completed chunks when their separate saved results are missing", async () => {
+    mocks.transcribe.mockResolvedValue(response("saved original", 1));
+    const meeting = await prepare();
+    const completed = await runChunkedSpeech(meeting, { selection });
+    await deleteChunkSpeech(meeting.id);
+    mocks.transcribe.mockClear();
+    await expect(runChunkedSpeech(completed, { selection, reviewedChunks: [0, 1, 2] })).rejects.toThrow("Completed transcription results are missing");
+    expect(mocks.transcribe).not.toHaveBeenCalled();
+    expect(await getMeeting(meeting.id)).toEqual(completed);
+  });
+
   it("accepts legacy meetings and enforces the 400-job history boundary", () => {
     const legacy = createMeeting();
     expect(MeetingSchema.safeParse(legacy).success).toBe(true);

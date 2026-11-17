@@ -163,6 +163,10 @@ A synthesized note can retain up to 500 distinct source revisions, matching five
 
 Support human-readable Markdown/TXT and versioned JSON. A full meeting backup also carries audio or explicitly records its absence. Exported review state and unknowns remain visible. Print/PDF is a separate tested capability.
 
+Long-recording attachment uses a versioned content identity independent of meeting ID and import time. A replacement is staged, validated against the expected recording and meeting version, then published in one IndexedDB transaction; failure preserves prior audio and voice evidence. Matching legacy manifests retain their existing identity in the live meeting, while new JSON/ZIP exports use a portable identity. Re-export an old backup from the original browser where its valid manifest remains available; do not infer recording identity from filename, length or duration alone. Update all tabs before using version-2 manifests; older builds reject that shape.
+
+Chunk audio, per-chunk speech, transcript pages, attempts and acoustic stores remain excluded from backups. Completed results missing in a restored browser block further transcription before consent or a provider request. Continue in the original browser retaining the results, or deliberately create a separate meeting for a new confirmed transcription. Unknown outcomes retain explicit account-review requirements after restore. This safe refusal does not complete the checkpoint-complete backup planned in QF04. Additional staging space, physical storage limits and device behavior require measured acceptance.
+
 Deleting a meeting removes its local audio, chunks, revisions, and jobs according to the documented storage transaction. It cannot retract downloaded exports or promise deletion of provider-side copies. No automatic email, ERP write, KB write, or other external publication is part of P0.
 
 ## Screens and interaction
