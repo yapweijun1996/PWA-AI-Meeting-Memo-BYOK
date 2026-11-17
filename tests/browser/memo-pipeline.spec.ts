@@ -175,6 +175,11 @@ for (const {failOnce, wordLevel} of [{failOnce: false, wordLevel: true}, {failOn
       await expect(page.getByLabel("Long memo progress")).toContainText(
         "blocked",
       );
+      const panel = page.locator(".memo-review-panel");
+      const progress = page.getByLabel("Long memo progress");
+      const panelBox = (await panel.boundingBox())!, progressBox = (await progress.boundingBox())!;
+      expect(progressBox.y - panelBox.y - panelBox.height).toBeGreaterThanOrEqual(12);
+      await expect(panel.getByRole("link", { name: "Connect your API key", exact: true })).toHaveCount(0);
       expect(count).toBe(2);
       await page.setViewportSize({ width: 390, height: 844 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);

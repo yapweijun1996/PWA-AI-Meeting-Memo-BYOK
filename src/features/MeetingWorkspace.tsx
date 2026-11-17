@@ -1774,15 +1774,17 @@ export function MeetingWorkspace({
               <p>
                 {t("Review the transcript, then generate a draft with your selected key. Decisions and actions link back to what was actually said.", "审阅转录后，使用所选密钥生成草稿。决定和行动会链接到实际发言。")}
               </p>
-              <a href="#/settings" className="text-button">
-                {t("Connect your API key", "连接 API 密钥")}
-                <Icon glyph={ArrowLeft} size="compact" />
-              </a>
+              {!getKey(getSelection("memo").provider) && (
+                <a href="#/settings" className="text-button">
+                  {t("Connect your API key", "连接 API 密钥")}
+                  <Icon glyph={ArrowLeft} size="compact" />
+                </a>
+              )}
             </Empty>
           )}
         </section>
       )}
-      {(m.memoAgents ?? []).map(plan=><section className="notice memo-plan-progress" key={plan.id} aria-label={t("Selective review progress","选择性复核进度")}>
+      {(m.memoAgents ?? []).map(plan=><section className={`notice memo-plan-progress${plan.state === "blocked" ? " sand" : ""}`} key={plan.id} aria-label={t("Selective review progress","选择性复核进度")}>
         <strong role="status">{t("Selective review","选择性复核")} · {plan.jobIds.length}/{plan.requestLimit} {t("requests recorded","次请求已记录")}</strong>
         <span>{t(`${plan.consulted.length}/${plan.snapshot.sourceRefs.length} passages read in local lookups; this is not full coverage or a quality score.`, `本地读取已涉及 ${plan.consulted.length}/${plan.snapshot.sourceRefs.length} 段；这不代表完整覆盖或质量评分。`)}</span>
         <span>{t("State","状态")}: {uiLanguage === "zh-CN" ? ({ready:"待执行",running:"执行中",paused:"已暂停",blocked:"已停止，需核对",completed:"已完成"})[plan.state] : plan.state}</span>
@@ -1791,7 +1793,7 @@ export function MeetingWorkspace({
         {!!plan.jobIds.length && <Button className="button secondary" onClick={()=>download(new Blob([JSON.stringify({format:"meeting-memo-agent-records",version:1,plan,jobs:m.jobs.filter(job=>job.agentId===plan.id)})],{type:"application/json"}),`${safeFilename(m.title)}-review-records.json`)}>{t("Export recorded responses","导出已记录回应")}</Button>}
       </section>)}
       {(m.memoPipelines ?? []).map(p => (
-        <section className="notice memo-plan-progress" key={p.id} aria-label={t("Long memo progress", "长纪要进度")}>
+        <section className={`notice memo-plan-progress${p.state === "blocked" ? " sand" : ""}`} key={p.id} aria-label={t("Long memo progress", "长纪要进度")}>
           <strong role="status">{t("Long memo", "长纪要")} · {p.results.filter(Boolean).length}/{p.chunks.length} {t("extractions saved", "步提取已保存")}</strong>
           <span>{t("State", "状态")}: {uiLanguage === "zh-CN" ? ({ready:"待执行",running:"执行中",paused:"已暂停",blocked:"已停止，需核对",completed:"已完成"})[p.state] : p.state}</span>
           {!processing && p.state !== "completed" && <Button className="button secondary" onClick={() => prepareConfirmation("memo")}>{t("Review generation plan", "查看生成计划")}</Button>}

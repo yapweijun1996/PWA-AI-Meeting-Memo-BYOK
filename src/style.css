@@ -1475,6 +1475,9 @@ details[open] > summary {
 .memo-plan-progress {
   flex-wrap: wrap;
 }
+.workspace-panel + .memo-plan-progress {
+  margin-top: 16px;
+}
 .memo-plan-progress strong {
   overflow-wrap: anywhere;
 }
@@ -1838,6 +1841,9 @@ details[open] > summary {
   border: 0;
   margin: 0;
   padding: 55px 30px;
+}
+.memo-review-panel .empty {
+  padding: 32px 24px;
 }
 .bulk-bar {
   position: sticky;
