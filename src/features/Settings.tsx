@@ -1,4 +1,5 @@
 import { Button, Field, Tabs, Tab } from "../components/controls";
+import { Masonry } from "../components/Masonry";
 import { Icon } from "../components/Icon";
 import type { MemoLanguagePreference } from "../domain/memo-language";
 import { translateUi } from "../i18n";
@@ -565,7 +566,7 @@ export function Settings() {
         </div>
       )}
       <div id="settings-panel-storage" role="tabpanel" aria-labelledby="settings-tab-storage" hidden={activeTab !== "storage"}>
-      <div className="settings-grid">
+      <Masonry className="settings-grid">
         <section className="settings-panel">
           <div className="panel-title">
             <Icon glyph={HardDrive} size="transport" />
@@ -581,7 +582,7 @@ export function Settings() {
         </section>
         <StorageMonitor t={t} />
         <SpeakerModelSettings t={t} />
-      </div>
+      </Masonry>
       </div>
       <div id="settings-panel-about" role="tabpanel" aria-labelledby="settings-tab-about" hidden={activeTab !== "about"}>
         <section className="settings-panel">

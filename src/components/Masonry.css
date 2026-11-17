@@ -1,0 +1,11 @@
+/* Shared layout for independent, variable-height cards. */
+.masonry {
+  --masonry-row: 4px;
+  display: grid;
+  grid-template-columns: repeat(var(--masonry-columns), minmax(0, 1fr));
+  gap: var(--masonry-gap);
+  align-items: start;
+}
+.masonry > * { min-width: 0; align-self: start; }
+.masonry[data-masonry-ready="true"] { grid-auto-rows: var(--masonry-row); row-gap: 0; }
+.masonry[data-masonry-ready="true"] > * { grid-row-end: span var(--masonry-span, 1); }

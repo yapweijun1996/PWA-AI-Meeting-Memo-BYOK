@@ -1,4 +1,5 @@
 import { Button } from "./components/controls";
+import { Masonry } from "./components/Masonry";
 import { Icon } from "./components/Icon";
 import { translateUi } from "./i18n";
 import { isMeetingCompleted, doesMeetingNeedReview, getMeetingWorkflow } from "./domain/workflow";
@@ -594,7 +595,7 @@ export default function App() {
                 {loading ? (
                   <LoadingPlaceholder kind="library" label={t("Opening local library...", "\u6b63\u5728\u6253\u5f00\u672c\u5730\u4f1a\u8bae\u5e93...")} />
                 ) : visible.length ? (
-                  <div className="meeting-grid">
+                  <Masonry className="meeting-grid">
                     {visible.map((m) => {
                       const status = workflow(m);
                       return (
@@ -629,7 +630,7 @@ export default function App() {
                         </a>
                       );
                     })}
-                  </div>
+                  </Masonry>
                 ) : (
                   <Empty
                     title={
