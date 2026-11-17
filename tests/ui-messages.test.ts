@@ -22,6 +22,10 @@ it("translates current and legacy review storage refusals without changing the o
     expect(translateMessage(message, "zh-CN")).toContain("本地记录容量不足");
     expect(translateMessage(message, "en")).toBe(message);
   }
+  const next = "This meeting record cannot safely save the next review response and notes. The next request was not sent; saved responses remain. Back up first, then preview Reduce local history in Meeting details, or use the existing memo workflow.";
+  expect(translateMessage(next, "zh-CN")).toContain("未发送下一次请求");
+  expect(translateMessage(next, "zh-CN")).toContain("精简本地历史");
+  expect(translateMessage(next, "en")).toBe(next);
   expect(translateMessage("The received response exceeds the local meeting record budget. Export the unsaved response before leaving this page.", "zh-CN")).toContain("先导出尚未保存的回应");
 });
 

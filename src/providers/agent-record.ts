@@ -3,6 +3,8 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   MEMO_AGENT_MODEL,
   MEMO_AGENT_RECORD_BYTES,
+  MEMO_AGENT_MAX_CALL_ID_LENGTH,
+  MEMO_AGENT_MAX_TOOL_NAME_LENGTH,
   redactAgentSecret,
 } from "../domain/memo-agent-contract";
 import type { Job } from "../domain/model";
@@ -66,8 +68,8 @@ const RecordSchema = z
           z
             .object({
               type: z.literal("toolCall"),
-              id: z.string().min(1).max(1000),
-              name: z.string().min(1).max(100),
+              id: z.string().min(1).max(MEMO_AGENT_MAX_CALL_ID_LENGTH),
+              name: z.string().min(1).max(MEMO_AGENT_MAX_TOOL_NAME_LENGTH),
               arguments: z.custom<JsonObject>(jsonObject),
               thoughtSignature: boundedText.optional(),
               namespace: z.string().max(100).optional(),

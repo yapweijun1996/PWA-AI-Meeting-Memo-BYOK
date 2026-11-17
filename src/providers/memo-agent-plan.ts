@@ -9,6 +9,9 @@ import {
 import {
   MEMO_AGENT_MAX_REQUESTS,
   MEMO_AGENT_MAX_TOOLS,
+  MEMO_AGENT_MAX_RANGE_SEGMENTS,
+  MEMO_AGENT_MAX_CALL_ID_LENGTH,
+  MEMO_AGENT_MAX_TOOL_NAME_LENGTH,
   MEMO_AGENT_MODEL,
   MEMO_AGENT_RECORD_BYTES,
   MEMO_AGENT_TOOL_BYTES,
@@ -20,13 +23,18 @@ const encoder = new TextEncoder();
 export const supportsAgentMemo = (selection: Selection) =>
   selection.provider === "openai" && selection.model === MEMO_AGENT_MODEL;
 
-/** Reserve worst-case embedded response records, not an estimated provider charge. */
+/** Reserve the next embedded response, both final note copies, and remaining tool artifacts. */
 export function agentStorageReserve(plan: MemoAgentPlan) {
-  return (
-    (plan.requestLimit - plan.jobIds.length) *
-      (MEMO_AGENT_RECORD_BYTES * 2 + 2048) +
-    MEMO_AGENT_MAX_TOOLS * MEMO_AGENT_TOOL_BYTES * 2
-  );
+  const remainingTools = Math.max(0, MEMO_AGENT_MAX_TOOLS - plan.context.filter(item => item.kind === "tool").length);
+  // A JSON record can double when embedded as a string. Two final note copies
+  // can each use the response size, plus citation/revision and item metadata.
+  const nextRecord = MEMO_AGENT_RECORD_BYTES * 2;
+  const finalNotes = MEMO_AGENT_RECORD_BYTES * 2 + 1024 * 1024;
+  // Arbitrary control characters can expand sixfold in JSON; source IDs are
+  // bounded ASCII, and each range can consult at most 40 source revisions.
+  const toolCheckpoint = 6 * (MEMO_AGENT_TOOL_BYTES + MEMO_AGENT_MAX_CALL_ID_LENGTH + MEMO_AGENT_MAX_TOOL_NAME_LENGTH) + 512;
+  const consultedSources = MEMO_AGENT_MAX_RANGE_SEGMENTS * 160;
+  return nextRecord + finalNotes + remainingTools * (toolCheckpoint + consultedSources) + 64 * 1024;
 }
 
 export function assertAgentStorageBudget(
@@ -41,7 +49,7 @@ export function assertAgentStorageBudget(
   )
     throw new Error(
       reserveFuture
-        ? "This meeting cannot retain the bounded review responses within the local record limit. Back it up or use the existing memo workflow. No new request was sent."
+        ? "This meeting record cannot safely save the next review response and notes. The next request was not sent; saved responses remain. Back up first, then preview Reduce local history in Meeting details, or use the existing memo workflow."
         : "The received response exceeds the local meeting record budget. Export the unsaved response before leaving this page.",
     );
 }

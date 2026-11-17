@@ -155,6 +155,60 @@ async function backup(page: Page) {
   });
 }
 
+test("a large meeting can complete selective review without losing source evidence", async ({ page }) => {
+  test.setTimeout(120000);
+  await page.context().route("https://**/*", route => route.abort());
+  await page.addInitScript(() => { window.confirm = () => true; });
+  await page.goto("./#/settings");
+  await page.getByLabel("OpenAI API key", { exact: true }).fill(key);
+  await page.getByRole("button", { name: "Save settings", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Saved on this device", exact: true })).toBeVisible();
+  await page.goto("./");
+  const fixture = {
+    ...createMeeting({ title: "Large selective review" }),
+    synthetic: true,
+    segments: [segment("Review the evidence before approving the budget."), segment("Keep unresolved conditions visible.")],
+  };
+  fixture.history = Array.from({ length: 500 }, () => ({
+    ...fixture.segments[0], id: crypto.randomUUID(), text: "x".repeat(20000), originalText: "x".repeat(20000),
+  }));
+  expect(Buffer.byteLength(JSON.stringify(fixture))).toBeGreaterThan(16 * 1024 * 1024);
+  await page.getByLabel("Restore backup", { exact: true }).setInputFiles({
+    name: "large-synthetic.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(fixture)),
+  });
+  await expect(page.getByRole("heading", { name: "Large selective review (restored)", exact: true })).toBeVisible({ timeout: 30000 });
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  let calls = 0;
+  await page.route("https://api.openai.com/v1/responses", async route => {
+    calls++;
+    await stream(route, calls === 1 ? [tool()] : [memo(fixture.segments[0].id)]);
+  });
+  const dialog = await confirm(page);
+  expect(calls).toBe(0);
+  await dialog.getByRole("button", { name: "Generate new notes", exact: true }).click();
+  await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic selective review result", { timeout: 30000 });
+  expect(calls).toBe(2);
+  const saved = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("meeting-memo-byok-v1");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const meeting = await new Promise<{ history: unknown[]; jobs: { assistantRecord?: string }[]; memos: { items: { sources: unknown[] }[] }[] }>((resolve, reject) => {
+      const request = db.transaction("meetings").objectStore("meetings").getAll();
+      request.onsuccess = () => resolve(request.result[0]);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return { history: meeting.history.length, receipts: meeting.jobs.filter(job => job.assistantRecord).length, sources: meeting.memos[0].items[0].sources };
+  });
+  expect(saved).toEqual({ history: 500, receipts: 2, sources: [{ id: fixture.segments[0].id, revision: fixture.segments[0].revision }] });
+  await page.reload();
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic selective review result");
+  expect(calls).toBe(2);
+});
+
 test("opt-in review uses real Pi tools under CSP, preserves receipts and does not resume after reload", async ({
   page,
 }) => {

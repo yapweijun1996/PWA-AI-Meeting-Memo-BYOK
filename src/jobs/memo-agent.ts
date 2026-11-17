@@ -10,6 +10,7 @@ import {
 import { memoLanguageInstruction } from "../domain/memo-language";
 import {
   MEMO_AGENT_MAX_TOOLS,
+  MEMO_AGENT_MAX_RANGE_SEGMENTS,
   MEMO_AGENT_REQUEST_BYTES,
   MEMO_AGENT_RESPONSE_BYTES,
   MEMO_AGENT_TOOL_BYTES,
@@ -400,7 +401,7 @@ export async function runAgentMemo(
           type: "object",
           properties: {
             startIndex: { type: "integer", minimum: 0, maximum: 20000 },
-            count: { type: "integer", minimum: 1, maximum: 40 },
+            count: { type: "integer", minimum: 1, maximum: MEMO_AGENT_MAX_RANGE_SEGMENTS },
             textOffset: { type: "integer", minimum: 0, maximum: 20000 },
           },
           required: ["startIndex"],

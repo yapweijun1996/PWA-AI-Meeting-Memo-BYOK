@@ -1,5 +1,6 @@
 // Translate only application-owned fixed messages; never rewrite user content.
 const messages: Record<string, string> = {
+  "This meeting record cannot safely save the next review response and notes. The next request was not sent; saved responses remain. Back up first, then preview Reduce local history in Meeting details, or use the existing memo workflow.": "此会议记录剩余空间不足，无法安全保存下一次复核回应和笔记。未发送下一次请求，已保存的回应仍保留。可先备份，再在“会议详情”中预览“精简本地历史”能释放的空间，或使用原有纪要流程。",
   "This meeting cannot retain the bounded review responses within the local record limit. Back it up or use the existing memo workflow. No new request was sent.": "此会议的本地记录容量不足以保存限定数量的复核回应。请先备份会议，或使用原有纪要流程。尚未发送新的请求。",
   "This meeting cannot retain the bounded review responses within the local record limit. Back up or use the existing memo workflow. No new request was sent.": "此会议的本地记录容量不足以保存限定数量的复核回应。请先备份会议，或使用原有纪要流程。尚未发送新的请求。",
   "The received response exceeds the local meeting record budget. Export the unsaved response before leaving this page.": "收到的回应超过会议本地记录容量。离开此页面前，请先导出尚未保存的回应。",

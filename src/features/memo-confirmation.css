@@ -96,6 +96,10 @@ dialog.memo-confirm-dialog[open] {
   color: var(--palette-12);
 }
 
+.memo-confirm-hint + .memo-confirm-hint {
+  margin-top: 6px;
+}
+
 .memo-confirm-checks {
   display: grid;
   gap: 5px;

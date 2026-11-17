@@ -3,6 +3,9 @@ import { z } from "zod";
 export const MEMO_AGENT_MODEL = "gpt-6-luna";
 export const MEMO_AGENT_MAX_REQUESTS = 6;
 export const MEMO_AGENT_MAX_TOOLS = 32;
+export const MEMO_AGENT_MAX_RANGE_SEGMENTS = 40;
+export const MEMO_AGENT_MAX_CALL_ID_LENGTH = 1000;
+export const MEMO_AGENT_MAX_TOOL_NAME_LENGTH = 100;
 export const MEMO_AGENT_TOOL_BYTES = 8 * 1024;
 export const MEMO_AGENT_REQUEST_BYTES = 256 * 1024;
 export const MEMO_AGENT_RESPONSE_BYTES = 4 * 1024 * 1024;
@@ -17,8 +20,8 @@ export const AgentContextItemSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("tool"),
-      callId: z.string().min(1).max(1000),
-      name: z.string().min(1).max(100),
+      callId: z.string().min(1).max(MEMO_AGENT_MAX_CALL_ID_LENGTH),
+      name: z.string().min(1).max(MEMO_AGENT_MAX_TOOL_NAME_LENGTH),
       text: z
         .string()
         .max(MEMO_AGENT_TOOL_BYTES)
@@ -50,7 +53,7 @@ export const AgentSearchArguments = z
 export const AgentRangeArguments = z
   .object({
     startIndex: z.number().int().min(0).max(20000),
-    count: z.number().int().min(1).max(40).default(20),
+    count: z.number().int().min(1).max(MEMO_AGENT_MAX_RANGE_SEGMENTS).default(20),
     textOffset: z.number().int().min(0).max(20000).default(0),
   })
   .strict();

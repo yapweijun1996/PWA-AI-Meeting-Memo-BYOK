@@ -9,6 +9,7 @@ import { saveMeeting, getMeeting } from "../src/storage/repository";
 import { planAgentMemo } from "../src/providers/memo-agent-plan";
 import { runAgentMemo } from "../src/jobs/memo-agent";
 import { readAgentAssistant } from "../src/providers/agent-record";
+import { previewHistoryCleanup } from "../src/domain/history-cleanup";
 import {
   acknowledgeAgentExport,
   pendingAgentReceipt,
@@ -16,7 +17,7 @@ import {
   retainAgentReceipt,
 } from "../src/jobs/agent-recovery";
 import * as repository from "../src/storage/repository";
-import { readBackup } from "../src/storage/backup";
+import { backupMeeting, readBackup } from "../src/storage/backup";
 
 const selection = { provider: "openai" as const, model: "gpt-6-luna" };
 const key = "sk-synthetic-agent-unit-key";
@@ -104,6 +105,94 @@ const final = (source: string) => ({
     },
   ],
 });
+
+async function largeMeeting(historyEntries: number, useUndo = false) {
+  vi.stubGlobal("window", new EventTarget());
+  vi.stubGlobal("navigator", {});
+  const meeting = sampleMeeting();
+  const entries = Array.from({ length: historyEntries }, () => ({
+    ...meeting.segments[0],
+    id: crypto.randomUUID(),
+    originalText: "x".repeat(20000),
+    text: "x".repeat(20000),
+  }));
+  if (useUndo) {
+    meeting.undo = [{ title: meeting.title, date: meeting.date, timezone: meeting.timezone, speakers: meeting.speakers, segments: entries }];
+  } else meeting.history = entries;
+  const original = {
+    id: crypto.randomUUID(), type: "summary" as const, text: "Original note.",
+    ownerId: null, dueDate: null, dueOriginal: null,
+    sources: [{ id: meeting.segments[0].id, revision: meeting.segments[0].revision }],
+    review: "pending" as const,
+  };
+  meeting.memos = [{
+    id: crypto.randomUUID(), createdAt: new Date().toISOString(), sourceRevision: meeting.revision,
+    model: "synthetic", items: [{ ...original, text: "Human edited note.", review: "edited" }],
+    originalItems: [original],
+  }];
+  const saved = await saveMeeting(meeting);
+  meetingIds.push(saved.id);
+  return saved;
+}
+
+test("a large meeting preserves edited notes and exact citations through selective review and backup", async () => {
+  const meeting = await largeMeeting(500);
+  const originalSize = new TextEncoder().encode(JSON.stringify(meeting)).byteLength;
+  expect(originalSize).toBeGreaterThan(16 * 1024 * 1024);
+  const plan = planAgentMemo(meeting, selection, "zh-CN");
+  let calls = 0;
+  const request = vi.fn(async () =>
+    ++calls === 1 ? agentSse([call()]) : agentSse([final(meeting.segments[0].id)]),
+  );
+  vi.stubGlobal("fetch", request);
+  const completed = await runAgentMemo(meeting, plan, key, new AbortController().signal);
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(completed.history).toHaveLength(500);
+  expect(completed.memos[0]).toEqual(meeting.memos[0]);
+  expect(completed.memos[1].items[0].sources).toEqual([{ id: meeting.segments[0].id, revision: meeting.segments[0].revision }]);
+  expect(completed.jobs.every(job => !!job.assistantRecord)).toBe(true);
+  const restored = await readBackup(new File([await backupMeeting(completed)], "large-synthetic.zip"));
+  expect(restored.meeting.memos).toEqual(completed.memos);
+  expect(restored.meeting.jobs).toEqual(completed.jobs);
+  expect(restored.meeting.history).toEqual(completed.history);
+  expect(JSON.stringify(restored.meeting)).not.toContain(key);
+}, 120000);
+
+test("a capacity pause retains the paid response and resumes only after explicit local cleanup", async () => {
+  const meeting = await largeMeeting(1170, true);
+  const plan = planAgentMemo(meeting, selection, "zh-CN");
+  const reasoning = { type: "reasoning", id: "synthetic-reasoning", summary: [], encrypted_content: "a".repeat(250000) };
+  let turns = 0;
+  const request = vi.fn(async () => ++turns === 1 ? agentSse([reasoning, call()]) : agentSse([final(meeting.segments[0].id)]));
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, new AbortController().signal)).rejects.toThrow(/next review response/i);
+  expect(request).toHaveBeenCalledTimes(1);
+  const saved = (await getMeeting(meeting.id))!;
+  expect(saved.jobs).toHaveLength(1);
+  expect(saved.jobs[0].state).toBe("completed");
+  expect(saved.jobs[0].assistantRecord).toContain("synthetic-reasoning");
+  expect(saved.memoAgents?.[0].state).toBe("blocked");
+  expect(saved.memos[0]).toEqual(meeting.memos[0]);
+  expect(saved.undo[0].segments).toHaveLength(1170);
+  expect(pendingAgentReceipt(meeting.id)).toBeUndefined();
+  const restored = await readBackup(new File([await backupMeeting(saved)], "paused-synthetic.zip"));
+  expect(restored.meeting.jobs).toEqual(saved.jobs);
+  expect(restored.meeting.memos).toEqual(saved.memos);
+  expect(restored.meeting.memoAgents).toEqual(saved.memoAgents);
+  expect(request).toHaveBeenCalledTimes(1);
+  await expect(runAgentMemo(saved, saved.memoAgents![0], key, new AbortController().signal)).rejects.toThrow(/next review response/i);
+  expect(request).toHaveBeenCalledTimes(1);
+  const latest = (await getMeeting(meeting.id))!;
+  const preview = previewHistoryCleanup(latest);
+  expect(preview.undoCount).toBe(1);
+  expect(preview.afterBytes).toBeLessThan(preview.beforeBytes);
+  const cleaned = await saveMeeting(preview.result);
+  const completed = await runAgentMemo(cleaned, cleaned.memoAgents![0], key, new AbortController().signal);
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(completed.jobs[0].assistantRecord).toBe(saved.jobs[0].assistantRecord);
+  expect(completed.memos[0]).toEqual(meeting.memos[0]);
+  expect(completed.memos[1].items[0].sources).toEqual([{ id: meeting.segments[0].id, revision: meeting.segments[0].revision }]);
+}, 120000);
 
 test("real Pi SSE transport saves each receipt, exact local tool evidence and final pending memo before returning", async () => {
   const { meeting, plan, signal } = await setup();

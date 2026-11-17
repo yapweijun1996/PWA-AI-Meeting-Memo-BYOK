@@ -6,7 +6,6 @@ import {
 } from "../src/domain/model";
 import {
   agentMeeting,
-  agentStorageReserve,
   planAgentMemo,
   resumableAgentMemo,
 } from "../src/providers/memo-agent-plan";
@@ -65,7 +64,22 @@ test("agent plans freeze source references and language without copying transcri
   expect(validateMeeting(agentMeeting(meeting, plan)).segments).toEqual(
     meeting.segments,
   );
-  expect(agentStorageReserve(plan)).toBeGreaterThan(48 * 1024 * 1024);
+});
+
+test("a 20 MB meeting can plan selective review without dropping its saved history", () => {
+  const meeting = sampleMeeting();
+  meeting.history = Array.from({ length: 500 }, () => ({
+    ...meeting.segments[0],
+    id: crypto.randomUUID(),
+    text: "x".repeat(20000),
+    originalText: "x".repeat(20000),
+  }));
+  const size = new TextEncoder().encode(JSON.stringify(meeting)).byteLength;
+  expect(size).toBeGreaterThan(16 * 1024 * 1024);
+  const plan = planAgentMemo(meeting, selection, "zh-CN");
+  expect(plan.snapshot.sourceRefs).toEqual(meeting.segments.map(({ id, revision }) => ({ id, revision })));
+  expect(meeting.history).toHaveLength(500);
+  expect(new TextEncoder().encode(JSON.stringify(meeting)).byteLength).toBe(size);
 });
 
 test("agent snapshots resolve exact historical revisions and never silently substitute current text", () => {

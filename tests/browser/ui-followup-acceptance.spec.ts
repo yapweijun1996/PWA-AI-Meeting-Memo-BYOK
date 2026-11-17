@@ -197,18 +197,19 @@ for (const language of ["en", "zh-CN"] as const)
     }
   });
 
-test("Chinese storage refusal and language label stay localized without a provider request", async ({
+test("Chinese large meeting can select review without sending a provider request", async ({
   page,
 }, info) => {
   test.setTimeout(90000);
   const meeting = sampleMeeting();
-  meeting.title = "Synthetic capacity refusal";
+  meeting.title = "Synthetic large meeting";
   meeting.history = Array.from({ length: 500 }, () => ({
     ...meeting.segments[0],
     id: crypto.randomUUID(),
     text: "x".repeat(20000),
     originalText: "x".repeat(20000),
   }));
+  expect(Buffer.byteLength(JSON.stringify(meeting))).toBeGreaterThan(16 * 1024 * 1024);
   await restore(page, meeting);
   const route = new URL(page.url()).hash;
   await page.goto("./#/settings");
@@ -238,16 +239,35 @@ test("Chinese storage refusal and language label stay localized without a provid
       exact: true,
     })
     .click();
-  await expect(dialog.getByRole("alert")).toContainText("本地记录容量不足");
-  await expect(dialog.getByRole("alert")).toContainText("尚未发送新的请求");
-  await expect(dialog.getByRole("alert")).not.toContainText("This meeting");
-  await expect(dialog.getByRole("checkbox", { name: "使用选择性转录复核（Pi，可选）", exact: true })).not.toBeChecked();
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await expect(dialog.getByRole("checkbox", { name: "使用选择性转录复核（Pi，可选）", exact: true })).toBeChecked();
+  await expect(dialog).toContainText("总费用未知");
   await expect(
     dialog.getByRole("button", { name: "生成新版笔记", exact: true }),
   ).toBeDisabled();
   await dialog.screenshot({
-    path: info.outputPath("chinese-capacity-refusal.png"),
+    path: info.outputPath("chinese-large-meeting-review.png"),
   });
+});
+
+test("Chinese capacity warning explains how to stop safely before a request", async ({ page }) => {
+  test.setTimeout(120000);
+  const meeting = sampleMeeting();
+  meeting.title = "Synthetic near-limit meeting";
+  meeting.history = Array.from({ length: 1200 }, () => ({
+    ...meeting.segments[0], id: crypto.randomUUID(), text: "x".repeat(20000), originalText: "x".repeat(20000),
+  }));
+  await restore(page, meeting);
+  await page.locator(".topbar-language select").selectOption("zh-CN");
+  await page.getByRole("tab", { name: /会议笔记/ }).click();
+  await page.getByRole("button", { name: "生成会议笔记", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const review = dialog.getByRole("checkbox", { name: "使用选择性转录复核（Pi，可选）", exact: true });
+  await review.click();
+  await expect(review).not.toBeChecked();
+  await expect(dialog.getByRole("alert")).toContainText("未发送下一次请求");
+  await expect(dialog.getByRole("alert")).toContainText("已保存的回应仍保留");
+  await expect(dialog.getByRole("alert")).toContainText("精简本地历史");
 });
 
 test("all 85 source revisions remain reachable in compact review cards", async ({
