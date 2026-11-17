@@ -64,6 +64,36 @@ async function seed(page: Page, withMemo = false) {
   return meeting;
 }
 
+test("collapsed sidebar aligns its storage and update icons and explains both", async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("./");
+  await page.getByRole("button", { name: "Collapse sidebar", exact: true }).click();
+  const sidebar = page.locator("aside.sidebar");
+  const storage = sidebar.getByRole("note");
+  const update = sidebar.getByRole("button", { name: "Check for updates", exact: true });
+  const storageIcon = storage.locator("svg");
+  const updateIcon = update.locator("svg");
+  const storageBox = (await storageIcon.boundingBox())!;
+  const updateBox = (await updateIcon.boundingBox())!;
+  const updateTarget = (await update.boundingBox())!;
+  console.log(JSON.stringify({ storageBox, updateBox, updateTarget }));
+  await sidebar.locator(".sidebar-bottom").screenshot({ path: info.outputPath("collapsed-footer.png") });
+  expect(Math.abs((storageBox.x + storageBox.width / 2) - (updateBox.x + updateBox.width / 2))).toBeLessThanOrEqual(1);
+  expect(updateBox.width).toBe(storageBox.width);
+  expect(updateBox.height).toBe(storageBox.height);
+  expect(updateTarget.width).toBeGreaterThanOrEqual(44);
+  expect(updateTarget.height).toBeGreaterThanOrEqual(44);
+  await storage.focus();
+  await expect(page.getByRole("tooltip")).toHaveText("Saved on this device · Local storage");
+  await update.focus();
+  await expect(page.getByRole("tooltip")).toHaveText("Check for updates");
+  await page.locator(".topbar-language select").selectOption("zh-CN");
+  await storage.focus();
+  await expect(page.getByRole("tooltip")).toHaveText("已保存在此设备 · 本地存储");
+  await sidebar.getByRole("button", { name: "检查更新", exact: true }).hover();
+  await expect(page.getByRole("tooltip")).toHaveText("检查更新");
+});
+
 test("sidebar storage status stays on one line without clipping", async ({
   page,
 }, info) => {

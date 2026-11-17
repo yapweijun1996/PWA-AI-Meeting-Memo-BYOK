@@ -42,6 +42,33 @@ async function messages(page: Page) {
   return page.evaluate(() => (window as unknown as { __sidebarWorkerProbe: WorkerProbe }).__sidebarWorkerProbe.messages);
 }
 
+test("collapsed update controls stay centered and describe their actions", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("./");
+  await page.getByRole("button", { name: "Collapse sidebar", exact: true }).click();
+  const sidebar = page.locator("aside.sidebar");
+  const storage = sidebar.locator(".local-storage-icon");
+  const opener = sidebar.getByRole("button", { name: "Open update confirmation", exact: true });
+  const center = async (selector: typeof storage) => {
+    const box = (await selector.boundingBox())!;
+    return box.x + box.width / 2;
+  };
+  expect(Math.abs(await center(storage) - await center(opener.locator("svg")))).toBeLessThanOrEqual(1);
+  await opener.focus();
+  await expect(page.getByRole("tooltip")).toHaveText("Update now");
+  await opener.click();
+  const confirm = sidebar.getByRole("button", { name: "Confirm update", exact: true });
+  const cancel = sidebar.getByRole("button", { name: "Cancel", exact: true });
+  await expect(confirm).toBeFocused();
+  expect(Math.abs(await center(storage) - await center(confirm.locator("svg")))).toBeLessThanOrEqual(1);
+  await expect(page.getByRole("tooltip")).toHaveText("Confirm update");
+  await cancel.focus();
+  await expect(page.getByRole("tooltip")).toHaveText("Cancel");
+  await cancel.click();
+  await expect(opener).toBeFocused();
+  expect(await messages(page)).toEqual([]);
+});
+
 test("maximum-text sidebar keeps confirmation and Cancel reachable after real wheel scrolling", async ({ page }, info) => {
   await page.setViewportSize({ width: 320, height: 568 });
   await page.addInitScript(() => localStorage.setItem("meeting-memo:font-size", "xxlarge"));

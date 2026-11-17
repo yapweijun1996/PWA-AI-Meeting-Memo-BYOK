@@ -4223,7 +4223,7 @@ details[open] > summary {
 .pwa-sidebar-button:hover:not(:disabled) { background: var(--palette-124); border-color: var(--palette-131); }
 .pwa-sidebar-button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .pwa-check-message { padding: 7px 9px; border-radius: var(--radius-pwa-feedback); background: var(--palette-31); line-height: 1.4; }
-@media (min-width: 761px) { .sidebar-collapsed .pwa-sidebar-button { width: 44px; min-height: 44px; padding: 8px; } }
+@media (min-width: 761px) { .sidebar-collapsed .pwa-sidebar-button { width: 44px; min-height: 44px; padding: 8px; gap: 0; } }
 .recording-info strong { font-size: var(--text-base); font-weight: 700; color: var(--text-heading); line-height: 1.35; }
 .recording-info small { margin-top: 4px; color: var(--text-body); font-weight: 500; }
 .recording-info > div > .small { margin-top: 3px; color: var(--text-muted); line-height: 1.4; }
