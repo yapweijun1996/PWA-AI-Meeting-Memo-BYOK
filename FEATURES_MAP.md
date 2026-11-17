@@ -4,6 +4,24 @@ Source snapshot: 2026-11-17, `main` at `416198a3dd5eab5c5655cd023bf655c573aad427
 
 This is a developer and agent navigation aid for the browser-first Meeting Memo BYOK PWA. It covers user capabilities, supporting modules, existing checks, and known gaps. [README.md](README.md) describes usage and current boundaries; [docs/PRODUCT.md](docs/PRODUCT.md) owns requirements; [docs/ROADMAP.md](docs/ROADMAP.md), [task.md](task.md), [gap.md](gap.md), and [docs/VALIDATION.md](docs/VALIDATION.md) own acceptance, task history, gaps, and recorded evidence respectively. A checked historical task does not by itself establish current live or device behavior.
 
+## Quality-first direction and current integration — 2026-11-17
+
+Follow-up audit baseline: `d53ab1cfa4acb48f6a2b9aa81075bf3f8f097b13`. The earlier source snapshot below remains historical. The owner now requires [the quality-first plan](docs/QUALITY-FIRST-PLAN.md) and [goal](goal.md): Pi orchestration, multiple measured model capabilities, full evidence coverage, independent review and final human acceptance. This direction does not establish implementation or quality parity with NotebookLM.
+
+| Capability | Current source-backed state | Planned change / task |
+| --- | --- | --- |
+| Pi browser runtime | `src/jobs/memo-agent.ts` dynamically loads pinned `pi-agent-core` and explicit OpenAI Responses transport; two meeting-scoped read tools; no CLI/shell runtime. | Application-owned persisted orchestration and restricted adapters, QF03–04 |
+| Request continuation | Audited baseline enforces six requests/32 total tools through contract, schema, runner, planner and UI. Synthetic Chromium reproduced the refusal after six saved responses. | Remove cumulative ceilings, preserve progress/recovery guards and legacy checkpoints, QF01; repair in progress |
+| Provider choice | `src/providers/credentials.ts` selects speech/memo providers; `api.ts` supports ordinary OpenAI/OpenRouter memo requests. Pi is currently OpenAI/GPT-6 Luna only. | Capability-based role router and verified OpenRouter Pi adapter, QF03/QF08 |
+| Complete analysis | `memo-plan.ts` provides bounded extraction/synthesis; selective Pi only gathers excerpts. | Full-source interval ledger, topic/fact graph and no silent truncation, QF05 |
+| Independent verification | Structural/source-ID checks and human evidence review exist; no independent model critic. | Eight logical roles, semantic verifier, omissions audit and targeted repair, QF06–07 |
+| Durable workflow | `jobs`, `memoPipelines`, `memoAgents`, receipt recovery and IndexedDB aggregate exist. | Paginated artifacts and task DAG; no repeated completed requests; recovery-complete backup, QF04 and REC01–03 |
+| Quality acceptance | Offline annotation arithmetic and browser synthetic fixtures exist; real corpus and independent scores absent. | Frozen human reference set and actual provider/device gates, QF02/QF10 |
+| Final review | Memo versions, original items, source revision navigation and export exist. | Stage/issue/coverage report and final evidence packet, QF09 |
+| Shared presentation | `src/components/Masonry.tsx` is the card-collection SSOT; theme tokens exist. | Residual Settings/library/transcript/immersive colors remain in current screenshots, UI-TOKEN |
+
+Proposed task graph/router/role modules are designs, not existing APIs or files. Their implementation locations will be added here when they land. See [quality metrics and evaluation procedure](docs/QUALITY-EVALUATION.md).
+
 ## Reading the map
 
 - **Implemented**: the inspected source contains the described path. It does not mean every configuration or acceptance criterion passed.

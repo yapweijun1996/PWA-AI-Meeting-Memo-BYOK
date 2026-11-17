@@ -1,3 +1,23 @@
+# Quality-first delivery — 2026-11-17
+
+Owner direction: **Pi-Orchestrated, Multi-Model, Evidence-Grounded Meeting Intelligence Platform**. [Goal](goal.md), [full implementation plan](docs/QUALITY-FIRST-PLAN.md), [quality evaluation contract](docs/QUALITY-EVALUATION.md). Quality determines necessary analysis; no cost-minimizing model routing or arbitrary cumulative request budget. Retain no-progress detection, explicit initial BYOK consent, no automatic resubmission of unknown outcomes and data preservation. Logical roles do not require eight independent runtime agents.
+
+This is a new ten-deliverable workstream. No delivery is checked merely because its specification exists. Historical, optional and overlapping tasks below are separate; REC/VID/REL dependencies must not be double-counted. Documentation has been written; runtime status and verification are recorded separately.
+
+- [ ] QF01 — Remove the six-request and 32-cumulative-tool selective-review ceilings across execution/schema/UI. Verify >6 useful requests, >32 cumulative lookups, old checkpoint continuation, backup/reload, no-progress pause, unknown-outcome no-retry and unchanged evidence/human edits. Browser baseline reproduced the six-turn refusal; repair is in progress.
+- [ ] QF02 — Establish consented, versioned, independently annotated meeting references and a frozen baseline; extend scoring for omitted important facts, decisions/actions and reviewer errors. Synthetic tests and LLM self-scores cannot close this task.
+- [ ] QF03 — Implement measured model-capability profiles and browser-compatible Pi adapters for OpenAI/OpenRouter. Validate each promoted route's tools, reasoning, output, CORS, account access and no-retry behavior; no silent model/provider changes.
+- [ ] QF04 — Implement durable task graph and paginated source/response/artifact stores, additive migration and checkpoint-complete backup. Verify crash/quota/multi-tab recovery; close applicable REC01–03 dependencies before long-recording claims.
+- [ ] QF05 — Add full-source coverage ledger, topic partitioning, fact/evidence index and hierarchical synthesis that preserves important facts across context boundaries. No silent truncation.
+- [ ] QF06 — Orchestrate Transcript, Speaker, Meeting, Decision and Action Analysts, Evidence Verifier, Critical Reviewer and Memo Editor with typed stage artifacts and deterministic permission/dependency checks.
+- [ ] QF07 — Add independent fresh-context review and issue-driven repair; detect omissions/contradictions/unsupported claims and protect confirmed facts. Reverify affected outputs before completing.
+- [ ] QF08 — Benchmark role-specific reasoning/model configurations on the frozen human reference set; promote by quality with protected precision/recall metrics and explicit uncertainty, never price.
+- [ ] QF09 — Deliver stage/coverage/issue views, final human review packet and evidence-preserving browser exports; normal workflow requires initial consent and final review, not manual intermediate coordination.
+- [ ] QF10 — Complete real-recording, actual-provider, browser E2E, physical-device, accessibility and recovery acceptance tied to exact build and benchmark evidence. Production acceptance stays open until applicable gates pass.
+- [ ] UI-TOKEN — Fix screenshot-reported residual colors in Settings API notice, library filters, transcript time labels and immersive playback. Use shared semantic tokens; verify all palettes/light-dark, contrast, responsive screenshots and playback regressions before publishing.
+
+---
+
 Speaker avatar follow-up: deterministic local default illustrations and user-selected local images are integrated with full ZIP backups and restoration; they are presentation only. Older builds cannot import ZIPs with the new avatar entry. Physical-device upload and restore remain unverified.
 
 UI follow-up: a single speaker queue and manual comparison workspace, responsive playback alignment, reusable cursor/focus tooltip, sidebar build/update status, font-size preferences, and a topbar language selector are implemented. Malay coverage is partial with English fallback. Immersive captions auto-fit ordinary groups with a 16px minimum; unusually long groups can still require internal scrolling. Verify N-to-N+1 recovery, responsiveness, and real installed-device behavior before release.

@@ -1,5 +1,7 @@
 # Browser architecture
 
+> Owner direction, 2026-11-17: [../goal.md](../goal.md) and the [quality-first implementation plan](QUALITY-FIRST-PLAN.md) define the Pi-orchestrated, multi-model target. Existing behavior below remains the current/dated implementation record. Fixed cumulative review limits are being removed under QF01; the full router, coverage and independent-review workflow are not yet implemented.
+
 Status: browser implementation exists, 2026-11-04. The contracts below include original design intent; this implementation uses a versioned meeting aggregate plus a separate audio store. Read [feasibility](FEASIBILITY.md) for evidence and unresolved provider support.
 
 ## Execution and ownership

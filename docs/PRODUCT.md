@@ -1,5 +1,7 @@
 # Product requirements
 
+> Owner direction, 2026-11-17: [../goal.md](../goal.md) and the [quality-first implementation plan](QUALITY-FIRST-PLAN.md) define the Pi-orchestrated, multi-model target. Existing behavior below remains the current/dated implementation record. Fixed cumulative review limits are being removed under QF01; the full router, coverage and independent-review workflow are not yet implemented.
+
 Version: 1.1 browser-first design, 2026-11-04. Status: requirements and proposed implementation; not a shipped feature list.
 
 ## Product decision

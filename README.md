@@ -1,5 +1,7 @@
 # Meeting Memo — BYOK PWA
 
+> Owner direction, 2026-11-17: [goal.md](goal.md) and the [quality-first implementation plan](docs/QUALITY-FIRST-PLAN.md) define the Pi-orchestrated, multi-model target. Existing behavior below remains the current/dated implementation record. Fixed cumulative review limits are being removed under QF01; the full router, coverage and independent-review workflow are not yet implemented.
+
 A browser-first workspace for recordings, speaker corrections, evidence-linked meeting notes, and local backups. Bring your own OpenAI or OpenRouter keys; no companion or application server is required.
 
 OpenAI GPT-6 Luna also offers an optional Pi selective-review mode: bounded local transcript search/range tools, at most six paid attempts per confirmed plan, and saved response receipts. It does not promise complete transcript coverage. The standard memo flow remains the default. See [limits and recovery](docs/PI-MEMO-READINESS.md); live provider/account quality remains unverified.

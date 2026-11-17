@@ -1,5 +1,7 @@
 # Pi memo adoption checkpoint
 
+> Owner direction, 2026-11-17: [../goal.md](../goal.md) and the [quality-first implementation plan](QUALITY-FIRST-PLAN.md) define the Pi-orchestrated, multi-model target. Existing behavior below remains the current/dated implementation record. Fixed cumulative review limits are being removed under QF01; the full router, coverage and independent-review workflow are not yet implemented.
+
 Date: 2026-11-16. Status: optional browser integration implemented; local automated acceptance is recorded in [validation](VALIDATION.md). Live authenticated provider acceptance, actual billing and model quality remain unverified. This record does not authorize live provider requests.
 
 ## Audited source and private browser experiment

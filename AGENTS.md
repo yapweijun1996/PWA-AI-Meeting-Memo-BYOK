@@ -21,6 +21,16 @@
 - Report checks actually run and remaining limitations. Do not commit, push, or deploy without authorization from the current task or existing session instructions.
 - For the speaker voice-matching work, read [docs/HANDOFF.md](docs/HANDOFF.md) first. Do not claim matching accuracy: none is measured. Do not publish the WavLM weights until their licence is established. In a shared working tree, run long local analyses from a static build (the dev server reloads on every save), stage explicit files, and reconcile with `origin/main` in a clean worktree.
 
+## Quality-first product contract — 2026-11-17
+
+- Follow [goal.md](goal.md) and [docs/QUALITY-FIRST-PLAN.md](docs/QUALITY-FIRST-PLAN.md). The target is a Pi-Orchestrated, Multi-Model, Evidence-Grounded Meeting Intelligence Platform.
+- Prioritize LLM-first understanding, Pi-first orchestration, browser-first operation, measured multi-model routing, meaningful multi-pass analysis and final human review. Do not skip necessary analysis/context or select weaker models to reduce cost.
+- Do not impose arbitrary cumulative request limits as a completion criterion. Preserve initial BYOK/data consent, no-progress/duplicate guards, physical resource boundaries and the ban on automatic resubmission of unknown outcomes.
+- Verify browser Pi core/adapters in source and runtime; do not assume a CLI, shell, filesystem or arbitrary-code agent is browser compatible or authorized. LLM tool calls remain meeting-scoped and validated.
+- Preserve complete originals, speaker provenance and protected human facts. Require full-source coverage accounting, claim-level evidence, independent review and recoverable checkpoints; model self-scores never substitute for human reference evaluation.
+- Treat model roles as logical stages, not a mandate to spawn eight agents. Route OpenAI/OpenRouter by actual capability and benchmark evidence; no silent provider/model fallback outside consent.
+- Keep planned capabilities distinct from shipped behavior. Use [docs/QUALITY-EVALUATION.md](docs/QUALITY-EVALUATION.md) for quality gates and record real provider/device gaps without claiming production readiness.
+
 ## KB memory and skill selection
 
 - Use the available KB-MCP Brain interface to retrieve relevant project decisions and user preferences. Verify historical claims against current files and runtime evidence. Before saving durable memory, confirm the authenticated identity and check for existing records; store no secrets or private recordings.
