@@ -97,7 +97,7 @@ export function MemoEditorField({ label, value, disabled, failureText, showTools
     requestAnimationFrame(() => { field.focus(); field.setSelectionRange(start + prefix.length, start + prefix.length); });
   }
   return <>
-    <textarea ref={input} aria-label={label} value={draft} rows={Math.max(2, Math.min(6, Math.ceil(draft.length / 90)))} disabled={disabled}
+    <textarea ref={input} aria-label={label} value={draft} rows={2} disabled={disabled}
       data-unsaved-edit={dirty ? "true" : undefined}
       onSelect={event => onSelectionChange(event.currentTarget.selectionStart, event.currentTarget.selectionEnd, event.currentTarget.value)}
       onChange={event => {

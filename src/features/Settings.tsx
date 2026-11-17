@@ -32,7 +32,7 @@ import { SpeakerModelSettings } from "./SpeakerModelSettings";
 import { StorageMonitor } from "./StorageMonitor";
 import { saveFont, useFontChoice, saveFontSize, useFontSize, saveTheme, useThemeChoice, savePalette, usePaletteChoice, type FontChoice, type FontSize, type ThemeChoice, type PaletteChoice } from "../appearance";
 export function Settings() {
-  const [activeTab, setActiveTab] = useState<"api" | "appearance">("api");
+  const [activeTab, setActiveTab] = useState<"api" | "appearance" | "storage" | "about">("api");
   const [displayLanguage, setDisplayLanguage] = useState(getUiLanguage());
   const observedLanguage = useRef(getUiLanguage());
   const font = useFontChoice();
@@ -263,16 +263,16 @@ export function Settings() {
         </div>
       </section>
       <Tabs className="settings-tabs" label={t("Settings sections", "设置分类")} onValueChange={name => {
-        if (name !== "appearance" && name !== "api") return false;
+        if (name !== "appearance" && name !== "api" && name !== "storage" && name !== "about") return false;
         setActiveTab(name);
       }}>
-        {(["appearance", "api"] as const).map(name => <Tab key={name} id={`settings-tab-${name}`} value={name}
+        {(["appearance", "api", "storage", "about"] as const).map(name => <Tab key={name} id={`settings-tab-${name}`} value={name}
           selected={activeTab === name} aria-controls={`settings-panel-${name}`}>
-          {name === "appearance" ? t("Appearance", "外观") : t("API & models", "API 与模型")}
+          {name === "appearance" ? t("Appearance", "外观") : name === "api" ? t("API & models", "API 与模型") : name === "storage" ? t("Storage", "存储") : t("About", "关于")}
         </Tab>)}
       </Tabs>
       {formDirty && <p className="settings-dirty" role="status">{t("Unsaved settings", "设置尚未保存")}</p>}
-      <section className="settings-panel">
+      <section className="settings-panel" hidden={activeTab === "storage" || activeTab === "about"}>
         <form onInvalid={(event) => {
           if (activeTab === "appearance") {
             event.preventDefault();
@@ -564,6 +564,7 @@ export function Settings() {
           {translateMessage(notice, displayLanguage)}
         </div>
       )}
+      <div id="settings-panel-storage" role="tabpanel" aria-labelledby="settings-tab-storage" hidden={activeTab !== "storage"}>
       <div className="settings-grid">
         <section className="settings-panel">
           <div className="panel-title">
@@ -580,6 +581,9 @@ export function Settings() {
         </section>
         <StorageMonitor t={t} />
         <SpeakerModelSettings t={t} />
+      </div>
+      </div>
+      <div id="settings-panel-about" role="tabpanel" aria-labelledby="settings-tab-about" hidden={activeTab !== "about"}>
         <section className="settings-panel">
           <h2>{t("About this workspace", "关于此工作空间")}</h2>
           <p className="muted">

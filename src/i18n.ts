@@ -1,6 +1,22 @@
+import type { MemoOutputLanguage } from "./domain/memo-language";
+
 export type UiLanguage = "en" | "zh-CN" | "ms";
+
+/** UI labels only; provider instructions retain their separate English contract. */
+export function memoLanguageLabel(value: MemoOutputLanguage, language: UiLanguage): string {
+  const labels = {
+    meeting: ["Meeting language", "会议语言"],
+    en: ["English", "英语"],
+    "zh-CN": ["Simplified Chinese", "简体中文"],
+    ms: ["Malay", "马来语"],
+  } as const;
+  const [english, chinese] = labels[value];
+  return translateUi(language, english, chinese);
+}
 // English is the explicit fallback for strings not translated to Malay yet.
 const malay: Record<string, string> = {
+  "Saved locally on this device": "Disimpan pada peranti ini",
+  "Storage": "Storan", "About": "Perihal",
   "Dismiss notification": "Tutup pemberitahuan",
   "Workspace": "Ruang kerja", "Your meetings": "Mesyuarat anda", "Needs review": "Perlu semakan",
   "New meeting": "Mesyuarat baharu", "Restore backup": "Pulihkan sandaran", "RECENT MEETINGS": "MESYUARAT TERKINI",

@@ -1,9 +1,9 @@
 import { Button, Tabs, Tab } from "../components/controls";
 import { previewHistoryCleanup } from "../domain/history-cleanup";
 import { Icon } from "../components/Icon";
-import { memoLanguageName, type MemoOutputLanguage } from "../domain/memo-language";
+import { type MemoOutputLanguage } from "../domain/memo-language";
 import { usePlayerClearance } from "./usePlayerClearance";
-import { translateUi } from "../i18n";
+import { memoLanguageLabel, translateUi } from "../i18n";
 import { planMemo, type MemoPipeline } from "../providers/memo-plan";
 import { resumablePipeline } from "../jobs/memo-pipeline";
 import {planAgentMemo, resumableAgentMemo, supportsAgentMemo} from "../providers/memo-agent-plan";
@@ -1619,11 +1619,10 @@ export function MeetingWorkspace({
                     <h3>{sectionNames[sectionType]}</h3>
                     {sectionItems.map((item) => (
                   <article
-                    className={`memo-item ${item.review === "rejected" ? "rejected" : ""}`}
+                    className={`memo-item ${memoMode === "review" ? "memo-review-item" : ""} ${item.review === "rejected" ? "rejected" : ""}`}
                     key={item.id}
                     data-note-type={item.type}
                   >
-                    {memoMode === "review" && (reviewSummary?.priorityReasons[item.id]?.length ?? 0) > 0 && <span className="memo-priority small">{t("Suggested review", "建议核实")} · {reviewSummary!.priorityReasons[item.id].map(reason => priorityNames[reason]).join(" · ")} · {t("rule-based", "基于规则")}</span>}
                     <div className="memo-item-heading" hidden={memoMode === "simple"}>
                       <Pill
                         tone={
@@ -1637,6 +1636,7 @@ export function MeetingWorkspace({
                         {uiLanguage === "zh-CN" ? ({ summary: "摘要", discussion: "讨论", decision: "决定", action: "行动", question: "问题", risk: "风险" } as const)[item.type] : item.type}
                       </Pill>
                       <span className="small muted">{uiLanguage === "zh-CN" ? ({ pending: "待审阅", accepted: "已接受", rejected: "已拒绝", edited: "已编辑" } as const)[item.review] : item.review}</span>
+                    {memoMode === "review" && (reviewSummary?.priorityReasons[item.id]?.length ?? 0) > 0 && <span className="memo-priority small">{t("Suggested review", "建议核实")} · {reviewSummary!.priorityReasons[item.id].map(reason => priorityNames[reason]).join(" · ")} · {t("rule-based", "基于规则")}</span>}
                     </div>
                     {memoMode === "simple" && !editingNotes.has(`${memo.id}:${item.id}`) ? <p className="memo-reading-text">{item.text}</p> : <MemoEditorField
                       key={`${memo.id}:${item.id}`}
@@ -1659,10 +1659,6 @@ export function MeetingWorkspace({
                     </div>}
                     {memoSelection?.memoId === memo.id && memoSelection.itemId === item.id && memoSelection.end > memoSelection.start && <Button type="button" className="text-button small" disabled={locked || memo.id !== m.memos.at(-1)?.id || memoSelection.originalText !== item.text || memoSelection.end - memoSelection.start > 4000} onMouseDown={event => event.preventDefault()} onClick={() => setAssistantSelection(memoSelection)}>{t("Improve selected text with AI", "用 AI 优化所选文字")}</Button>}
                     {item.review === "edited" && <p className="memo-unverified small">{t("Edited text needs evidence review; previous citations have not verified it.", "内容已修改，原引用尚未验证此内容，请重新核对。")}</p>}
-                    <div hidden={memoMode !== "review"}><OriginalNote
-                      item={memo.originalItems?.find((x) => x.id === item.id)}
-                      meeting={m}
-                    /></div>
                     {item.type === "action" && memoMode === "simple" && !editingNotes.has(`${memo.id}:${item.id}`) && <p className="memo-action-summary">{t("Owner", "负责人")}: {m.speakers.find(speaker => speaker.id === item.ownerId)?.name || t("Unspecified", "未指定")} · {t("Due date", "截止日期")}: {item.dueDate || t("Unspecified", "未指定")}</p>}
                     {item.type === "action" && (memoMode === "review" || editingNotes.has(`${memo.id}:${item.id}`)) && (
                       <div className="action-fields">
@@ -1762,7 +1758,8 @@ export function MeetingWorkspace({
                         ),
                       )}
                     </div>
-                    <div hidden={memoMode !== "review"}>
+                    <div className="memo-support" hidden={memoMode !== "review"}>
+                      <OriginalNote item={memo.originalItems?.find((x) => x.id === item.id)} meeting={m} />
                       <EvidenceSources meeting={m} item={item} indexes={segmentIndexById} sourceIndex={evidenceIndex} onSelect={(segment, refs) => { setEvidenceRefs(refs ?? []); evidenceTrigger.current = document.activeElement as HTMLElement | null; setEvidence(segment); }} />
                       <CitedEvidence meeting={m} item={item} sourceIndex={evidenceIndex} onSelect={(segment) => { setEvidenceRefs([]); evidenceTrigger.current = document.activeElement as HTMLElement | null; setEvidence(segment); }} />
                     </div>
@@ -2040,7 +2037,7 @@ export function MeetingWorkspace({
               <dd>{(confirmed?.selection ?? getSelection(confirmStage)).model}</dd>
               {confirmStage === "memo" && <>
                 <dt>{t("Memo output language", "纪要输出语言")}</dt>
-                <dd>{memoLanguageName(confirmed?.outputLanguage ?? getMemoOutputLanguage())}</dd>
+                <dd>{memoLanguageLabel(confirmed?.outputLanguage ?? getMemoOutputLanguage(), uiLanguage)}</dd>
               </>}
               <dt>{t("Estimated charge", "预计费用")}</dt>
               <dd>
@@ -2073,17 +2070,17 @@ export function MeetingWorkspace({
               </dd>
             </dl>
             {confirmStage==="memo" && confirmed && supportsAgentMemo(confirmed.selection) && <>
-              <label><input type="checkbox" checked={!!confirmed.agentPlan} onChange={event=>{
+              <label className="checkbox-label confirmation-consent"><input type="checkbox" checked={!!confirmed.agentPlan} onChange={event=>{
                 try {
                   const agentPlan=event.target.checked ? resumableAgentMemo(m,confirmed.selection) ?? planAgentMemo(m,confirmed.selection,getMemoOutputLanguage()) : undefined;
                   setConfirmed({...confirmed,agentPlan,outputLanguage:agentPlan?.outputLanguage ?? confirmed.plan?.outputLanguage ?? getMemoOutputLanguage()});
                   setReviewedRetry(false);
                 }catch(error){onError(error instanceof Error ? error.message : "Could not prepare selective review.");}
-              }} /> {t("Use selective transcript review (Pi, optional)","使用选择性转录复核（Pi，可选）")}</label>
+              }} /><span>{t("Use selective transcript review (Pi, optional)","使用选择性转录复核（Pi，可选）")}</span></label>
               {confirmed.agentPlan && <div className="notice sand">
                 {t(`This mode sends selected excerpts and meeting context to OpenAI, not a promised complete transcript review. Up to ${confirmed.agentPlan.requestLimit-confirmed.agentPlan.jobIds.length} further paid requests and 32 local lookups in total are allowed by this confirmation. Each request may be charged; total cost is unknown. Any request or save failure stops the run. Reload never resumes it automatically. Limits: 256 KiB per request, 4 MiB per response, 8 KiB per lookup.`, `此模式向 OpenAI 发送选取的原文片段和会议背景，不保证审阅全部转录。本次确认最多允许再发送 ${confirmed.agentPlan.requestLimit-confirmed.agentPlan.jobIds.length} 次付费请求，累计最多 32 次本地查询。每次请求可能收费，总费用未知；请求或保存失败即停止，重新加载不会自动恢复。限制：每次请求 256 KiB、每次回应 4 MiB、每次查询 8 KiB。`)}
               </div>}
-              {!confirmed.agentPlan && confirmed.planError && <p role="alert">{confirmed.planError}</p>}
+              {!confirmed.agentPlan && confirmed.planError && <p role="alert">{translateMessage(confirmed.planError, uiLanguage)}</p>}
             </>}
             {confirmStage === "speech" && m.audio?.chunked && chunkManifest && (
               <>
@@ -2093,7 +2090,7 @@ export function MeetingWorkspace({
                 {chunkProgress?.blockedIndex !== null && chunkProgress?.blockedIndex !== undefined && (
                   <div className="notice sand">
                     <p>{t(`Part ${chunkProgress.blockedIndex + 1} has an unknown outcome. Check your provider account before deciding whether to submit it again.`, `第 ${chunkProgress.blockedIndex + 1} 部分的结果未知。决定是否重新提交前，请检查服务商账户。`)}</p>
-                    <label><input type="checkbox" checked={reviewedRetry} onChange={(event) => setReviewedRetry(event.target.checked)} /> {t(`I checked my provider account for part ${chunkProgress.blockedIndex + 1} and want to send it again`, `我已检查服务商账户中第 ${chunkProgress.blockedIndex + 1} 部分的情况，并希望重新发送`)}</label>
+                    <label className="checkbox-label confirmation-consent"><input type="checkbox" checked={reviewedRetry} onChange={(event) => setReviewedRetry(event.target.checked)} /><span>{t(`I checked my provider account for part ${chunkProgress.blockedIndex + 1} and want to send it again`, `我已检查服务商账户中第 ${chunkProgress.blockedIndex + 1} 部分的情况，并希望重新发送`)}</span></label>
                   </div>
                 )}
               </>
@@ -2164,7 +2161,7 @@ export function MeetingWorkspace({
               </div>
             )}
             {confirmStage === "memo" && ((confirmed?.agentPlan && m.jobs.some(j=>j.agentId===confirmed.agentPlan!.id && j.state!=="completed")) || (!confirmed?.agentPlan && confirmed?.plan && m.jobs.some(j=>j.pipelineId===confirmed.plan!.id && j.state!=="completed"))) && (
-              <label><input type="checkbox" checked={reviewedRetry} onChange={e=>setReviewedRetry(e.target.checked)} /> {t("I reviewed the previous request outcome and billing. I authorize a new paid attempt for the unfinished step.", "我已核对之前请求的结果和账单，并允许为未完成步骤提交新的付费请求。")}</label>
+              <label className="checkbox-label confirmation-consent"><input type="checkbox" checked={reviewedRetry} onChange={e=>setReviewedRetry(e.target.checked)} /><span>{t("I reviewed the previous request outcome and billing. I authorize a new paid attempt for the unfinished step.", "我已核对之前请求的结果和账单，并允许为未完成步骤提交新的付费请求。")}</span></label>
             )}
             <div className="modal-actions">
               <Button

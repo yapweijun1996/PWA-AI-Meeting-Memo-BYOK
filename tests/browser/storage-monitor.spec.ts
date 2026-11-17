@@ -48,6 +48,7 @@ async function storedSnapshot(page: Page) {
 test("settings storage monitor lists meetings with their size and changes nothing", async ({ page }) => {
   const meeting = await seedMeeting(page, "Storage monitor fixture");
   await page.goto("./#/settings");
+  await page.getByRole("tab", { name: "Storage", exact: true }).click();
   const panel = page.getByRole("region", { name: "Storage monitor" });
   await expect(panel).toBeVisible();
   await expect(panel.getByText("Meeting document")).toHaveCount(0);
@@ -80,6 +81,7 @@ test("settings storage monitor follows the display language", async ({ page }) =
   await page.goto("./#/settings");
   await page.getByRole("tab", { name: "Appearance" }).click();
   await page.getByLabel("Display language / 显示语言").selectOption("zh-CN");
+  await page.getByRole("tab", { name: "存储", exact: true }).click();
   const panel = page.getByRole("region", { name: "存储监控" });
   await panel.getByRole("button", { name: "扫描存储" }).click();
   await expect(panel.locator(".storage-meetings > li", { hasText: "存储监控示例" })).toContainText(/会议文档 \d+(\.\d)? (B|KB|MB)/);

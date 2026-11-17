@@ -66,16 +66,18 @@ async function appearance(page: Page, theme: string, palette: string) {
 }
 
 for (const width of [390,768,1440])
-  for (const view of ["library","settings","appearance","transcript","speakers","playback","memo","immersive"] as const)
+  for (const view of ["library","settings","appearance","storage","about","transcript","speakers","playback","memo","immersive"] as const)
     test(`theme matrix ${view} at ${width}px`, async ({page},info) => {
       test.setTimeout(120000);
       await page.setViewportSize({width,height:1000});
       const {hash} = await prepare(page);
       const base = "/PWA-AI-Meeting-Memo-BYOK/";
       if (view === "library") await page.goto(base);
-      else if (view === "settings" || view === "appearance") {
+      else if (view === "settings" || view === "appearance" || view === "storage" || view === "about") {
         await page.goto(base+"#/settings");
         if (view === "appearance") await page.getByRole("tab",{name:"Appearance",exact:true}).click();
+        if (view === "storage") await page.getByRole("tab",{name:"Storage",exact:true}).click();
+        if (view === "about") await page.getByRole("tab",{name:"About",exact:true}).click();
       }
       else {
         await page.goto(base+hash);

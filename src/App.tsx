@@ -13,6 +13,7 @@ import {
   Clock,
   FolderOpen,
   HelpCircle,
+  HardDrive,
   Leaf,
   Languages,
   Menu,
@@ -374,9 +375,10 @@ export default function App() {
             <Icon glyph={HelpCircle} size="control" />
             <span className="nav-text">{t("How it works", "使用说明")}</span>
           </Button>
-          <div className="local-label">
-            <span className="status-dot" />
-            <span className="nav-text">{t("Saved on this device · Local storage", "已保存在此设备 · 本地存储")}</span>
+          <div className="local-label" role="note" tabIndex={0} data-tooltip={t("Saved on this device · Local storage", "已保存在此设备 · 本地存储")}>
+            <span className="status-dot" aria-hidden="true" />
+            <Icon glyph={HardDrive} size="control" className="local-storage-icon" />
+            <span className="nav-text">{t("Saved locally on this device", "已保存在此设备 · 本地存储")}</span>
           </div>
           <div id="pwa-sidebar-slot" />
         </div>
@@ -438,8 +440,8 @@ export default function App() {
         </header>
         <main id="main-content" tabIndex={-1}>
           {error && (
-            <div className="notice danger" role="alert">
-              {translateMessage(error, uiLanguage)}
+            <div className="notice danger app-error" role="alert">
+              <span>{translateMessage(error, uiLanguage)}</span>
               <Button
                 className="icon-button"
                 onClick={() => setError("")}

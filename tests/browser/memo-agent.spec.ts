@@ -407,7 +407,7 @@ test("Chinese selective confirmation captures the resolved memo language and rem
     })
     .check();
   await expect(dialog).toContainText("总费用未知");
-  await expect(dialog).toContainText("Simplified Chinese");
+  await expect(dialog).toContainText("简体中文");
   expect(calls).toBe(0);
   expect(
     await dialog.evaluate(

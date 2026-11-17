@@ -42,6 +42,35 @@ async function messages(page: Page) {
   return page.evaluate(() => (window as unknown as { __sidebarWorkerProbe: WorkerProbe }).__sidebarWorkerProbe.messages);
 }
 
+test("maximum-text sidebar keeps confirmation and Cancel reachable after real wheel scrolling", async ({ page }, info) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.addInitScript(() => localStorage.setItem("meeting-memo:font-size", "xxlarge"));
+  await page.goto("./");
+  await page.getByRole("button", { name: "Open navigation", exact: true }).click();
+  const sidebar = page.locator(".sidebar"), controls = page.locator(".pwa-sidebar");
+  await page.mouse.move(100, 280); await page.mouse.wheel(0, 1500);
+  await expect.poll(() => sidebar.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  const opener = controls.getByRole("button", { name: "Open update confirmation", exact: true });
+  await opener.click();
+  const confirm = controls.getByRole("button", { name: "Confirm update", exact: true });
+  const cancel = controls.getByRole("button", { name: "Cancel", exact: true });
+  await expect(confirm).toBeFocused();
+  console.log(JSON.stringify({ engine: info.project.name, sidebar: await sidebar.boundingBox(), confirm: await confirm.boundingBox(), cancel: await cancel.boundingBox(), scroll: await sidebar.evaluate(element => ({ top: element.scrollTop, height: element.clientHeight, total: element.scrollHeight })) }));
+  await page.screenshot({ path: info.outputPath("large-text-update-confirmation.png") });
+  await expect(confirm).toBeInViewport(); await expect(cancel).toBeInViewport();
+  for (const button of [confirm, cancel]) {
+    const box = (await button.boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(568);
+  }
+  expect(await sidebar.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  await cancel.click();
+  await expect(opener).toBeFocused(); expect(await messages(page)).toEqual([]);
+  await expect(opener).toBeInViewport();
+  await page.mouse.move(100, 280); await page.mouse.wheel(0, -2000);
+  await expect.poll(() => sidebar.evaluate(element => element.scrollTop)).toBe(0);
+});
+
 test("sidebar confirmation stays at its anchored initiator and Cancel never activates", async ({ page }) => {
   await page.goto("./#/settings");
   await page.evaluate(() => window.scrollTo(0, 300));
@@ -134,6 +163,14 @@ test("sidebar blockers and registration failures stay local and confirmation rec
   const opener = controls.getByRole("button", { name: "Open update confirmation", exact: true });
   const model = page.getByLabel("Memo model ID");
   await model.fill("synthetic-unsaved-model");
+  for (const tab of ["Storage", "About"]) {
+    await page.getByRole("tab", { name: tab, exact: true }).click();
+    await opener.click();
+    await expect(controls.getByRole("status")).toHaveText("Save your settings before updating.");
+    expect(await messages(page)).toEqual([]);
+  }
+  await page.getByRole("tab", { name: "API & models", exact: true }).click();
+  await expect(model).toHaveValue("synthetic-unsaved-model");
   await opener.click();
   await expect(controls.getByRole("status")).toHaveText("Save your settings before updating.");
   await expect(page.getByText("Save your settings before updating.", { exact: true })).toHaveCount(1);

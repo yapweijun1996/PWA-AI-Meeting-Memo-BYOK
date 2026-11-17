@@ -5,6 +5,14 @@
 .evidence-preview { flex-basis: 100%; margin: 2px 0; line-height: 1.6; overflow-wrap: anywhere; }
 .evidence-preview button { max-width: 100%; padding: 0; color: var(--text-body); font-size: var(--text-base); font-weight: 500; line-height: 1.6; text-align: left; }
 .evidence-preview-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.evidence-preview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.source-link-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.memo-review-item .memo-priority { margin: 0; }
+.memo-review-item .memo-support { margin-top: 10px; }
+.memo-review-item .original-text { margin: 0 0 8px; }
+.memo-review-item .source-links { margin: 8px 0; }
+.memo-review-item .cited-evidence { margin: 8px 0 0; }
+@media (max-width: 600px) { .evidence-preview-grid { grid-template-columns: minmax(0, 1fr); } }
 .evidence-pages { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 @media (max-width: 400px) {
   .workspace-panel.memo-review-panel:has(.memo-version) > .panel-toolbar,

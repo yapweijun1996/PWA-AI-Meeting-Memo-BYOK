@@ -1,5 +1,13 @@
 // Translate only application-owned fixed messages; never rewrite user content.
 const messages: Record<string, string> = {
+  "This meeting cannot retain the bounded review responses within the local record limit. Back it up or use the existing memo workflow. No new request was sent.": "此会议的本地记录容量不足以保存限定数量的复核回应。请先备份会议，或使用原有纪要流程。尚未发送新的请求。",
+  "This meeting cannot retain the bounded review responses within the local record limit. Back up or use the existing memo workflow. No new request was sent.": "此会议的本地记录容量不足以保存限定数量的复核回应。请先备份会议，或使用原有纪要流程。尚未发送新的请求。",
+  "The received response exceeds the local meeting record budget. Export the unsaved response before leaving this page.": "收到的回应超过会议本地记录容量。离开此页面前，请先导出尚未保存的回应。",
+  "Meeting history cannot retain another bounded review. Back it up before further processing.": "会议历史容量不足以保存另一轮复核。继续处理前，请先备份会议。",
+  "Selective review currently requires OpenAI GPT-6 Luna.": "选择性复核目前需要使用 OpenAI GPT-6 Luna。",
+  "Add transcript text before planning a selective review.": "请先添加转录文字，再规划选择性复核。",
+  "Could not prepare selective review.": "无法准备选择性复核。",
+  "The standard memo plan is unavailable.": "常规纪要计划目前不可用。",
   "Request stopped. Review the recorded outcome and provider account before a new paid attempt.": "请求已停止。再次付费提交前，请核对记录的结果和服务商账户。",
   "Selective review paused. Saved responses were retained.": "选择性复核已暂停，已保存的回应仍保留。",
   "Selective review paused. Saved steps were retained.": "选择性复核已暂停，已保存的步骤仍保留。",

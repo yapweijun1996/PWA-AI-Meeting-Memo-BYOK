@@ -1,5 +1,29 @@
 import { expect, it } from "vitest";
 import { translateMessage } from "../src/ui-messages";
+import { memoLanguageLabel } from "../src/i18n";
+import { memoLanguageInstruction, memoLanguageName } from "../src/domain/memo-language";
+
+it("localizes display labels without changing provider language instructions", () => {
+  expect(memoLanguageLabel("meeting", "zh-CN")).toBe("会议语言");
+  expect(memoLanguageLabel("en", "zh-CN")).toBe("英语");
+  expect(memoLanguageLabel("zh-CN", "zh-CN")).toBe("简体中文");
+  expect(memoLanguageLabel("ms", "zh-CN")).toBe("马来语");
+  expect(memoLanguageLabel("meeting", "en")).toBe("Meeting language");
+  expect(memoLanguageLabel("meeting", "ms")).toBe("Meeting language");
+  expect(memoLanguageName("zh-CN")).toBe("Simplified Chinese");
+  expect(memoLanguageInstruction("zh-CN")).toContain("Write the notes in Simplified Chinese");
+});
+
+it("translates current and legacy review storage refusals without changing the original error", () => {
+  const current = "This meeting cannot retain the bounded review responses within the local record limit. Back it up or use the existing memo workflow. No new request was sent.";
+  const legacy = current.replace("Back it up", "Back up");
+  for (const message of [current, legacy]) {
+    expect(translateMessage(message, "zh-CN")).toContain("尚未发送新的请求");
+    expect(translateMessage(message, "zh-CN")).toContain("本地记录容量不足");
+    expect(translateMessage(message, "en")).toBe(message);
+  }
+  expect(translateMessage("The received response exceeds the local meeting record budget. Export the unsaved response before leaving this page.", "zh-CN")).toContain("先导出尚未保存的回应");
+});
 
 it("long memo confirmation errors and saved-step status retain Chinese text", () => {
   expect(translateMessage("Memo plan paused. Saved steps were retained.", "zh-CN")).toBe("纪要计划已暂停，已保存的步骤得到保留。");

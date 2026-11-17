@@ -53,7 +53,7 @@ for (const [preference, instruction] of [
     await page.getByRole("tab", {name: /Meeting notes|会议笔记/}).click();
     await page.getByRole("button", {name: /^(Generate meeting notes|生成会议笔记)$/}).click();
     const confirmation = page.getByRole("dialog");
-    await expect(confirmation).toContainText(preference === "interface" ? "Simplified Chinese" : ({meeting: "Meeting language", en: "English", "zh-CN": "Simplified Chinese", ms: "Malay"} as const)[preference]);
+    await expect(confirmation).toContainText(preference === "interface" ? "简体中文" : ({meeting: "Meeting language", en: "English", "zh-CN": "Simplified Chinese", ms: "Malay"} as const)[preference]);
     expect(calls).toBe(0);
     await confirmation.getByRole("button", {name: /^(Confirm and send|确认并发送)$/}).click();
     await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic language result");

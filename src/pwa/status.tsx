@@ -118,7 +118,22 @@ export function PwaStatus() {
     } catch { setCheckMessage(t("Could not check for updates. Try again.", "\u65e0\u6cd5\u68c0\u67e5\u66f4\u65b0\uff0c\u8bf7\u91cd\u8bd5\u3002")); }
     finally { setChecking(false); }
   }
-  useEffect(() => { if (confirmation.open) confirmButton.current?.focus({ preventScroll: true }); }, [confirmation]);
+  function revealSidebarControls(control: HTMLElement) {
+    const sidebar = control.closest<HTMLElement>("aside.sidebar");
+    if (!sidebar || !control.isConnected || getComputedStyle(sidebar).overflowY !== "auto") return;
+    const target = control.closest(".pwa-sidebar-actions") ?? control;
+    const bounds = target.getBoundingClientRect(), viewport = sidebar.getBoundingClientRect();
+    const padding = getComputedStyle(sidebar);
+    const bottom = viewport.bottom - parseFloat(padding.paddingBottom);
+    const top = viewport.top + parseFloat(padding.paddingTop);
+    if (bounds.bottom > bottom) sidebar.scrollTop += bounds.bottom - bottom;
+    else if (bounds.top < top) sidebar.scrollTop -= top - bounds.top;
+  }
+  useEffect(() => {
+    if (!confirmation.open || !confirmButton.current) return;
+    confirmButton.current.focus({ preventScroll: true });
+    if (confirmation.origin === "sidebar") revealSidebarControls(confirmButton.current);
+  }, [confirmation]);
   function blocker(): string {
     if (document.querySelector("dialog[open]")) return "Save or close the open editor before updating.";
     if (isSettingsDirty()) return "Save your settings before updating.";
@@ -138,7 +153,12 @@ export function PwaStatus() {
   function cancelUpdate() {
     const origin = confirmation.origin;
     closeConfirmation();
-    requestAnimationFrame(() => (origin === "sidebar" ? sidebarUpdateButton : bannerUpdateButton).current?.focus({ preventScroll: true }));
+    requestAnimationFrame(() => {
+      const button = (origin === "sidebar" ? sidebarUpdateButton : bannerUpdateButton).current;
+      if (!button) return;
+      button.focus({ preventScroll: true });
+      if (origin === "sidebar") revealSidebarControls(button);
+    });
   }
   async function update() {
     const reason = blocker();
