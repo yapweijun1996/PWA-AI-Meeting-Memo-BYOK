@@ -588,7 +588,7 @@ export function Settings() {
         <section className="settings-panel">
           <h2>{t("About this workspace", "关于此工作空间")}</h2>
           <p className="muted">
-            {t("Browser-first, offline review, and bring-your-own keys. Cloud processing needs a connection and an open page. Supported uploads are stored up to 50 MiB; cloud uploads are limited to 25 MB. Longer recordings may need an externally prepared transcript. Live provider quality and physical-phone validation are tracked separately.", "浏览器优先，支持离线审阅并使用自己的密钥。云端处理需要网络并保持页面打开。本地录音上限为 50 MiB，云端上传上限为 25 MB。较长录音可能需要外部准备的转录。真实服务商质量与实体手机验证另行跟踪。")}
+            {t("Browser-first, offline review, and bring-your-own keys. Recordings larger than 24,000,000 bytes can be imported as local parts for supported MP3/MPEG and M4A/MP4 formats, up to 4 GiB. Larger files in other formats require conversion. Actual support depends on the device, browser, format and available storage. Each cloud transcription upload is limited to 25 MB; processing requires a connection and an open page. Live provider quality and physical-phone validation remain open.", "浏览器优先，支持离线审阅并使用自己的密钥。超过 24,000,000 字节的录音，支持的 MP3/MPEG 或 M4A/MP4 格式可在本地分块导入，最大 4 GiB；其他格式的大文件需要转换。实际支持范围受设备、浏览器、格式和可用存储影响。每次云端转录上传上限为 25 MB，处理时需要网络并保持页面打开。真实服务商质量和实体手机验证仍待完成。")}
           </p>
           <a
             className="text-button"
