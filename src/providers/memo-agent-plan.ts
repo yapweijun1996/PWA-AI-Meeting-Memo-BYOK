@@ -1,3 +1,4 @@
+import { type MemoTemplate } from "../domain/memo-templates";
 import {
   id,
   MAX_JOBS,
@@ -59,6 +60,7 @@ export function planAgentMemo(
   meeting: Meeting,
   selection: Selection,
   outputLanguage: MemoOutputLanguage,
+  template?: MemoTemplate,
 ): MemoAgentPlan {
   const route = newAgentRoute(selection);
   if (!meeting.segments.some((source) => source.text.trim()))
@@ -78,7 +80,7 @@ export function planAgentMemo(
     route,
     createdAt: new Date().toISOString(),
     sourceRevision: meeting.revision,
-    outputLanguage,
+    outputLanguage, template,
     snapshot: {
       title: meeting.title,
       date: meeting.date,
@@ -136,11 +138,13 @@ export function agentMeeting(meeting: Meeting, plan: MemoAgentPlan): Meeting {
 export function resumableAgentMemo(
   meeting: Meeting,
   selection: Selection,
+  template?: MemoTemplate,
 ): MemoAgentPlan | undefined {
   return [...(meeting.memoAgents ?? [])]
     .reverse()
     .find(
       (plan) =>
+        (plan.template ?? "decision") === (template ?? "decision") &&
         plan.state !== "completed" &&
         plan.sourceRevision === meeting.revision &&
         plan.provider === selection.provider &&

@@ -1,3 +1,4 @@
+import { clientDraft, type MemoTemplate } from "../domain/memo-templates";
 import type { MemoOutputLanguage } from "../domain/memo-language";
 import {
   runMemoPipeline,
@@ -47,6 +48,7 @@ export async function runJob(
   stage: Job["stage"],
   confirmed?: {
     selection: Selection;
+    template?: MemoTemplate;
     outputLanguage?: MemoOutputLanguage;
     plan?: MemoPipeline | null;
     agentPlan?: MemoAgentPlan;
@@ -160,6 +162,7 @@ export async function runJob(
               undefined,
               "",
               outputLanguage,
+              confirmed?.template,
             );
       let latest = await getMeeting(m.id);
       if (!latest) throw new Error("The meeting was removed while processing.");
@@ -202,6 +205,8 @@ export async function runJob(
               createdAt: new Date().toISOString(),
               sourceRevision: m.revision,
               items: result,
+              template: confirmed?.template,
+              externalCopy: clientDraft(confirmed?.template, result),
               originalItems: structuredClone(result),
             },
           ],

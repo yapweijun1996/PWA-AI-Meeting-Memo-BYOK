@@ -1,3 +1,4 @@
+import { blueprints, factLabels } from "./memo-templates";
 import {
   id,
   ref,
@@ -284,12 +285,12 @@ export function markdown(m: Meeting, selectedVersionId?: string): string {
     m.memos.find((v) => v.id === selectedVersionId) || m.memos.at(-1);
   if (memo) {
     lines.push(
-      `## Meeting memo${memo.sourceRevision !== m.revision && memo.items.some((i) => i.reviewedRevision !== m.revision) ? " — source changed; re-review required" : ""}`,
+      `## Meeting memo${memo.template ? " · " + blueprints[memo.template].name[0] : ""}${memo.sourceRevision !== m.revision && memo.items.some((i) => i.reviewedRevision !== m.revision) ? " — source changed; re-review required" : ""}`,
       "",
     );
     for (const item of memo.items.filter((i) => i.review !== "rejected")) {
       lines.push(
-        `### ${item.type} · ${item.review}`,
+        `### ${item.type} · ${item.review}${item.factStatus ? " · " + factLabels[item.factStatus][0] : ""}`,
         item.text,
         `Owner: ${item.ownerId ? speakerName(m, [item.ownerId]) : "To confirm"} | Due: ${item.dueDate || "To confirm"}`,
         `Sources: ${item.sources.map(ref).join(", ")}`,

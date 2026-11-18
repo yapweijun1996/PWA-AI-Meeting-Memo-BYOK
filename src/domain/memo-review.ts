@@ -63,10 +63,10 @@ export function summarizeMemoReview(meeting: Meeting, memoId: string): MemoRevie
 }
 
 function itemState(item: MemoItem): unknown[] {
-  return [item.id, item.type, item.text, item.ownerId, item.dueDate, item.dueOriginal, item.sources.map(source => [source.id, source.revision]), item.review, item.reviewedRevision ?? null];
+  return [item.id, item.type, item.text, item.ownerId, item.dueDate, item.dueOriginal, item.sources.map(source => [source.id, source.revision]), item.review, item.reviewedRevision ?? null, ...(item.factStatus ? [item.factStatus] : [])];
 }
 async function fingerprint(meeting: Meeting, memo: MemoVersion): Promise<string> {
-  const bytes = new TextEncoder().encode(JSON.stringify([meeting.revision, memo.id, memo.sourceRevision, memo.items.map(itemState)]));
+  const bytes = new TextEncoder().encode(JSON.stringify([meeting.revision, memo.id, memo.sourceRevision, memo.items.map(itemState), ...(memo.template === "client" ? [memo.externalCopy ?? ""] : [])]));
   const hash = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(hash)].map(value => value.toString(16).padStart(2, "0")).join("");
 }
@@ -112,12 +112,13 @@ export function restoreMemoVersion(meeting: Meeting, memoId: string, now = new D
     id: id(), createdAt: now, sourceRevision: memo.sourceRevision, model: memo.model,
     items: memo.items.map(item => ({ ...structuredClone(item), review: "pending", reviewedRevision: null })),
     ...(memo.originalItems ? { originalItems: structuredClone(memo.originalItems) } : {}),
+    template: memo.template, externalCopy: memo.externalCopy,
     restoredFrom: memo.id,
   };
   return ensureRestorableBackup(meeting, { ...meeting, schemaVersion: 2, memos: [...meeting.memos, restored] });
 }
 
-export type MemoItemEdit = { text?: string; ownerId?: string | null; dueDate?: string | null };
+export type MemoItemEdit = { factStatus?: MemoItem["factStatus"]; text?: string; ownerId?: string | null; dueDate?: string | null };
 const MAX_UNDO_CHARACTERS = 256_000;
 /** Bounded undo history: old entries may be evicted as newer edits exceed the shared budget. */
 export function editMemoItem(meeting: Meeting, memoId: string, itemId: string, edit: MemoItemEdit): Meeting {
@@ -128,8 +129,8 @@ export function editMemoItem(meeting: Meeting, memoId: string, itemId: string, e
   if (edit.ownerId && !meeting.speakers.some(speaker => speaker.id === edit.ownerId)) throw new Error("The selected owner is unavailable.");
   if (edit.dueDate && edit.dueDate.length > 80) throw new Error("The due date is too long.");
   const textChanged = nextText !== before.text, ownerChanged = edit.ownerId !== undefined && edit.ownerId !== before.ownerId, dueChanged = edit.dueDate !== undefined && edit.dueDate !== before.dueDate;
-  if (!textChanged && !ownerChanged && !dueChanged) return meeting;
-  const after: MemoItem = { ...before, text: nextText, ownerId: edit.ownerId === undefined ? before.ownerId : edit.ownerId, dueDate: edit.dueDate === undefined ? before.dueDate : edit.dueDate, review: "edited", reviewedRevision: null };
+  if (!textChanged && !ownerChanged && !dueChanged && (!edit.factStatus || edit.factStatus === before.factStatus)) return meeting;
+  const after: MemoItem = { ...before, ...(edit.factStatus ? {factStatus: edit.factStatus} : {}), text: nextText, ownerId: edit.ownerId === undefined ? before.ownerId : edit.ownerId, dueDate: edit.dueDate === undefined ? before.dueDate : edit.dueDate, review: "edited", reviewedRevision: null };
   const history = [...(memo.editUndo ?? []), { before: structuredClone(before), after: structuredClone(after) }].slice(-10);
   // Never evict another version's history; retain as much as fits for this version.
   const otherCharacters = meeting.memos.filter(value => value.id !== memoId).reduce((total, value) => total + JSON.stringify(value.editUndo ?? []).length, 0);

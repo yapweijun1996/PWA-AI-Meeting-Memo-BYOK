@@ -1,3 +1,4 @@
+import { memoSpeakerLabel, type MemoTemplate } from "../domain/memo-templates";
 import { getMemoOutputLanguage } from "./credentials";
 import { id, pipelineSourceSegments, MAX_JOBS, MAX_MEETING_JSON_BYTES, MAX_MEMO_ITEM_SOURCES, type Meeting, type MemoItem } from "../domain/model";
 import { buildMemoInput, MEMO_INPUT_MAX_CHARS, MemoInputError, type MemoInput } from "./memo-input";
@@ -31,6 +32,7 @@ export function planMemo(
   m: Meeting,
   provider: "openai" | "openrouter",
   model: string,
+  template?: MemoTemplate,
 ): MemoPipeline | null {
   try {
     buildMemoInput(m);
@@ -46,6 +48,7 @@ export function planMemo(
     model,
     createdAt: new Date().toISOString(),
     sourceRevision: m.revision,
+    template,
     outputLanguage: getMemoOutputLanguage(),
     snapshot: {
       title: m.title,
@@ -167,10 +170,10 @@ export function synthesisInput(p: MemoPipeline): MemoInput {
       type: p.snapshot.kind,
       glossary: p.snapshot.glossary,
     },
-    speakers: p.snapshot.speakers.map(({ id, name, confirmed }) => ({
-      id,
-      name,
-      confirmed,
+    speakers: p.snapshot.speakers.map((speaker,index) => ({
+      id: speaker.id,
+      name: memoSpeakerLabel(speaker,index),
+      confirmed: speaker.confirmed,
     })),
     facts: p.results.map((result) => {
       const quotes = new Map(
@@ -178,10 +181,10 @@ export function synthesisInput(p: MemoPipeline): MemoInput {
       );
       return {
         items: result!.items.map(
-          ({ id, type, text, ownerId, dueDate, dueOriginal, sources }) => ({
+          ({ id, type, text, factStatus, ownerId, dueDate, dueOriginal, sources }) => ({
             id,
             type,
-            text,
+            text, factStatus,
             ownerId,
             dueDate,
             dueOriginal,

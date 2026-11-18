@@ -453,7 +453,7 @@ test("long speaker-aware memos compact transport input and restore original evid
     expect(body.input).toContain("LAST_LONG_TRANSCRIPT_MARKER");
     for (const speaker of fixture.speakers) {
       expect(body.input).toContain(speaker.id);
-      expect(body.input).toContain(speaker.name);
+      expect(body.input).not.toContain(speaker.name);
     }
     const input = JSON.parse(body.input) as {
       speakers: Array<{ id: string; name: string; confirmed: boolean }>;
@@ -461,9 +461,9 @@ test("long speaker-aware memos compact transport input and restore original evid
     };
     capturedInput = input;
     expect(input.speakers).toEqual(
-      fixture.speakers.map(({ id, name, confirmed }) => ({
+      fixture.speakers.map(({ id, confirmed }, index) => ({
         id,
-        name,
+        name: `Speaker ${index + 1}`,
         confirmed,
       })),
     );
@@ -1480,4 +1480,70 @@ test("long OpenAI diarization shows an advisory before a paid submission", async
     dialog.getByRole("button", { name: "Confirm and send" }),
   ).toBeEnabled();
   expect(calls).toBe(0);
+});
+
+test("five memo templates retain versions, cited passages and a separate customer export", async ({page}) => {
+  await page.goto(base);
+  await create(page);
+  const meetingRoute = new URL(page.url()).hash;
+  await page.getByRole("link", {name:"Settings & API keys"}).click();
+  await page.getByLabel("OpenAI API key",{exact:true}).fill("synthetic-template-key");
+  await page.getByRole("button",{name:"Save settings"}).click();
+  await expect(page.getByRole("button",{name:"Saved on this device"})).toBeVisible();
+  await page.evaluate(hash => { location.hash = hash; }, meetingRoute);
+  await page.getByRole("tab",{name:/Meeting notes/}).click();
+  const picker = page.getByRole("combobox",{name:"Memo type",exact:true});
+  await expect(picker).toHaveValue("decision");
+  const cases = [
+    ["decision","Decision & Action Memo","action","Completion criteria"],
+    ["requirements","Requirements Memo","discussion","Expected behavior"],
+    ["incident","Incident Memo","discussion","Event time"],
+    ["uat","UAT Memo","discussion","Test result"],
+    ["client","Client Recap","action","Party"],
+  ];
+  for (const [key, title, type, field] of cases) {
+    await page.route("https://api.openai.com/v1/responses", async route => {
+      const body = route.request().postDataJSON();
+      expect(body.instructions).toContain(title);
+      expect(body.text.format.schema.properties.items.items.required).toContain("fact_status");
+      const source = JSON.parse(body.input).segments[0];
+      const item = {type, text:"Review the stock process.", owner_speaker_id:null, due_date:null, due_original:null,
+        fact_status:"proposed", field_values:[], source_segment_ids:[source.id],
+        ...(key === "client" ? {client_copy:"Please review the stock process."} : {})};
+      await route.fulfill({headers:{"Access-Control-Allow-Origin":"*"},json:{status:"completed",output:[{type:"message",content:[{type:"output_text",text:JSON.stringify({items:[item]})}]}]}});
+    },{times:1});
+    await picker.selectOption(key);
+    await page.getByRole("button",{name:key === "decision" ? "Generate meeting notes":"Generate new version",exact:true}).click();
+    await expect(page.getByRole("dialog")).toContainText(title);
+    await confirmMemo(page);
+    const note = page.locator("article.memo-item").first();
+    await expect(note).toContainText(field + ": Pending confirmation");
+    await expect(note).toContainText("Proposed");
+    await note.getByRole("button",{name:/View original words/}).click();
+    await expect(page.getByRole("dialog")).toContainText(/stock process/i);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  }
+  await page.getByRole("button",{name:"Evidence Review",exact:true}).click();
+  await page.getByRole("combobox",{name:"Fact status",exact:true}).selectOption("pending");
+  await page.getByRole("button",{name:"✓ Accept",exact:true}).click();
+  page.once("dialog", prompt => void prompt.accept());
+  await page.getByRole("button",{name:"Finish review",exact:true}).click();
+  await expect(page.getByText("Final reviewed version",{exact:true})).toBeVisible();
+  const version = page.getByLabel("Memo version",{exact:true});
+  await expect(version.locator("option")).toHaveCount(5);
+  await page.getByText("Client copy · edit and preview",{exact:true}).click();
+  const external = page.getByLabel("Client-facing text",{exact:true});
+  await expect(external).toHaveValue("Please review the stock process.");
+  await external.fill("Please provide one invoice sample.");
+  await external.blur();
+  await expect(page.getByText("Draft for review",{exact:true})).toBeVisible();
+  await expect(page.getByText("Please provide one invoice sample.",{exact:true}).last()).toBeVisible();
+  await page.getByLabel("I reviewed this exact text for sharing with the client.").check();
+  const downloaded = page.waitForEvent("download");
+  await page.getByRole("button",{name:"Download client copy"}).click();
+  expect(await readFile((await (await downloaded).path())!, "utf8")).toBe("Please provide one invoice sample.");
+  await page.reload();
+  await page.getByRole("tab",{name:/Meeting notes/}).click();
+  await expect(page.getByLabel("Memo version",{exact:true}).locator("option")).toHaveCount(5);
 });

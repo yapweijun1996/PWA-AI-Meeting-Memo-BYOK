@@ -1,3 +1,4 @@
+import { blueprints, type MemoTemplate } from "../domain/memo-templates";
 import { Button, Field } from "../components/controls";
 import { Icon } from "../components/Icon";
 import { CheckCircle2, CircleAlert, Settings2, ShieldCheck, Sparkles, Wallet } from "lucide-react";
@@ -15,6 +16,7 @@ import "./memo-confirmation.css";
 
 export type MemoConfirmation = {
   selection: Selection;
+  template?: MemoTemplate;
   outputLanguage?: MemoOutputLanguage;
   plan?: MemoPipeline | null;
   planError?: string;
@@ -80,6 +82,7 @@ export function MemoGenerationConfirmation({
         <dl className="memo-confirm-settings">
           <div><dt>{localRecovery ? t("Original provider", "原服务商") : t("Provider", "接收方")}</dt><dd>{selection.provider === "openai" ? "OpenAI · api.openai.com" : "OpenRouter · openrouter.ai"}</dd></div>
           <div><dt>{t("AI model", "AI 模型")}</dt><dd>{selection.model}</dd></div>
+          <div><dt>{t("Memo type","纪要类型")}</dt><dd>{confirmation.template ? t(...blueprints[confirmation.template].name) : t("Meeting notes", "会议笔记")}</dd></div>
           <div><dt>{t("Output language", "输出语言")}</dt><dd>{memoLanguageLabel(confirmation.outputLanguage ?? "meeting", language)}</dd></div>
           <div><dt>{t("Data source", "数据来源")}</dt><dd>{agentPlan ? t("Selected excerpts, speakers and context", "选取的片段、说话人和背景") : t("Transcript, speakers and context", "转录、说话人和背景")}</dd></div>
           <div><dt>{t("Transcript size", "转录规模")}</dt><dd>{t(`${meeting.segments.length.toLocaleString()} passages`, `${meeting.segments.length.toLocaleString()} 段`)}</dd></div>

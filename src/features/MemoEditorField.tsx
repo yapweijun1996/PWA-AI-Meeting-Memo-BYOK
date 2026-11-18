@@ -2,6 +2,7 @@ import { Button } from "../components/controls";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 type Props = {
+  allowEmpty?: boolean;
   label: string;
   value: string;
   disabled: boolean;
@@ -16,7 +17,7 @@ type Props = {
 };
 
 /** A single source-bound paragraph; unsaved text stays visible after failures. */
-export function MemoEditorField({ label, value, disabled, failureText, showTools, autoFocus = false, headingText, bulletText, onSave, onDirtyChange, onSelectionChange }: Props) {
+export function MemoEditorField({ allowEmpty = false, label, value, disabled, failureText, showTools, autoFocus = false, headingText, bulletText, onSave, onDirtyChange, onSelectionChange }: Props) {
   const [draft, setDraft] = useState(value);
   const [failed, setFailed] = useState(false);
   const [, renderSaved] = useState(0);
@@ -29,7 +30,7 @@ export function MemoEditorField({ label, value, disabled, failureText, showTools
   const flush = useCallback(async () => {
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     if (saving.current || current.current === saved.current) return;
-    if (!current.current.trim()) { if (mounted.current) setFailed(true); window.dispatchEvent(new Event("memo-draft-failed")); return; }
+    if (!allowEmpty && !current.current.trim()) { if (mounted.current) setFailed(true); window.dispatchEvent(new Event("memo-draft-failed")); return; }
     const sent = current.current;
     saving.current = true;
     try {
@@ -48,7 +49,7 @@ export function MemoEditorField({ label, value, disabled, failureText, showTools
       if (mounted.current) { renderSaved(version => version + 1); if (current.current === saved.current) setFailed(false); }
       callbacks.current.onDirtyChange(current.current !== saved.current);
     }
-  }, []);
+  }, [allowEmpty]);
   useEffect(() => {
     if (!saving.current && current.current === saved.current && value !== saved.current) {
       current.current = value;

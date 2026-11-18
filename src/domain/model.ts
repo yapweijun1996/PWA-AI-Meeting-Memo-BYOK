@@ -1,3 +1,4 @@
+import { MEMO_TEMPLATES } from "./memo-templates";
 import { MEMO_OUTPUT_LANGUAGES } from "./memo-language";
 import { z } from "zod";
 import {AgentContextItemSchema, MEMO_AGENT_LEGACY_REQUEST_LIMIT, MEMO_AGENT_MAX_REQUESTS, MEMO_AGENT_MAX_TOOLS_PER_RESPONSE, MEMO_AGENT_RECORD_BYTES} from "./memo-agent-contract";
@@ -52,6 +53,8 @@ export const MemoItemSchema = z
       "risk",
     ]),
     text,
+    clientText: z.string().max(2000).optional(),
+    factStatus: z.enum(["proposed","confirmed","pending"]).optional(),
     ownerId: transcriptId.nullable(),
     dueDate: z.string().max(80).nullable(),
     dueOriginal: z.string().max(200).nullable(),
@@ -182,6 +185,7 @@ const ReferencedPipelineSnapshotSchema = PipelineSnapshotSchema.omit({segments: 
 }).strict();
 export const MemoAgentPlanSchema = z.object({
   id: key, provider: z.enum(["openai", "openrouter"]), model: z.string().min(1).max(100),
+  template: z.enum(MEMO_TEMPLATES).optional(),
   route: AgentRouteSchema.optional(),
   createdAt: z.iso.datetime(), sourceRevision: z.number().int().positive(),
   outputLanguage: z.enum(MEMO_OUTPUT_LANGUAGES), snapshot: ReferencedPipelineSnapshotSchema,
@@ -200,6 +204,7 @@ export const MemoPipelineSchema = z
     createdAt: z.string(),
     sourceRevision: z.number().int().positive(),
     outputLanguage: z.enum(MEMO_OUTPUT_LANGUAGES).optional(),
+    template: z.enum(MEMO_TEMPLATES).optional(),
     snapshot: z.union([PipelineSnapshotSchema, ReferencedPipelineSnapshotSchema]),
     state: z.enum(["ready", "running", "paused", "blocked", "completed"]),
     chunks: z.array(z.array(transcriptId).min(1).max(20000)).min(1).max(8),
@@ -291,6 +296,8 @@ export const MeetingSchema = z
             sourceRevision: z.number().int().positive(),
             model: z.string().max(100),
             items: z.array(MemoItemSchema).max(500),
+            template: z.enum(MEMO_TEMPLATES).optional(),
+            externalCopy: z.string().max(20000).optional(),
             originalItems: z.array(MemoItemSchema).max(500).optional(),
             restoredFrom: key.optional(),
             reviewCompletion: z.object({
@@ -420,7 +427,7 @@ export function validateMeeting(value: unknown): Meeting {
     const assistantIds = plan.context.filter(item => item.kind === "assistant").map(item => item.jobId);
     if (new Set(assistantIds).size !== assistantIds.length || assistantIds.some(jobId => !plan.jobIds.includes(jobId) || !m.jobs.some(job => job.id === jobId && job.state === "completed" && job.assistantRecord !== undefined)))
       throw new Error("Unresolved agent context.");
-    if (plan.state === "completed" && (!plan.memoId || !m.memos.some(memo => memo.id === plan.memoId && memo.sourceRevision === plan.sourceRevision)))
+    if (plan.state === "completed" && (!plan.memoId || !m.memos.some(memo => memo.id === plan.memoId && memo.template === plan.template && memo.sourceRevision === plan.sourceRevision)))
       throw new Error("Invalid completed agent memo.");
   }
   if (
@@ -468,7 +475,7 @@ export function validateMeeting(value: unknown): Meeting {
         pipeline.results.some((r) => !r) ||
         !m.memos.some(
           (v) =>
-            v.id === pipeline.memoId &&
+            v.id === pipeline.memoId && v.template === pipeline.template &&
             v.sourceRevision === pipeline.sourceRevision,
         ))
     )

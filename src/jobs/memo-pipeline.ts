@@ -1,3 +1,4 @@
+import { clientDraft, type MemoTemplate } from "../domain/memo-templates";
 import { id, type Meeting, type Job, type MemoItem } from "../domain/model";
 import { getMeeting, saveMeeting } from "../storage/repository";
 import { generateMemo, ProviderError } from "../providers/api";
@@ -142,6 +143,7 @@ export async function runMemoPipeline(
             ? " Synthesize only the supplied candidate facts and their exact source quotations. Cite candidate item ids in source_segment_ids. Preserve contradictions and uncertainty; these candidates are not human-verified. Never resolve a conflict by guessing."
             : extractionInstructions(p),
           p.outputLanguage ?? "meeting",
+          p.template,
         );
         if (prepared) {
           p.memoId = id();
@@ -187,6 +189,8 @@ export async function runMemoPipeline(
                   sourceRevision: p.sourceRevision,
                   model: `${p.provider}: ${p.model}`.slice(0, 100),
                   items,
+                  template: p.template,
+                  externalCopy: clientDraft(p.template, items),
                   originalItems: structuredClone(items),
                 },
               ],
@@ -252,11 +256,13 @@ export function resumablePipeline(
   m: Meeting,
   selection: Selection,
   includeFailures = false,
+  template?: MemoTemplate,
 ): MemoPipeline | undefined {
   return [...(m.memoPipelines ?? [])]
     .reverse()
     .find(
       (p) =>
+        (p.template ?? "decision") === (template ?? "decision") &&
         p.state !== "completed" &&
         (includeFailures || p.state !== "blocked") &&
         p.sourceRevision === m.revision &&

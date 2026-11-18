@@ -1,3 +1,4 @@
+import { memoSpeakerLabel } from "../domain/memo-templates";
 import type { Meeting } from "../domain/model";
 
 export const MEMO_INPUT_MAX_CHARS = 80_000;
@@ -78,9 +79,9 @@ export function buildMemoInput(m: Meeting): MemoInput {
       type: m.kind,
       glossary: m.glossary,
     },
-    speakers: m.speakers.map((speaker) => ({
+    speakers: m.speakers.map((speaker,index) => ({
       id: speaker.id,
-      name: speaker.name,
+      name: memoSpeakerLabel(speaker,index),
       confirmed: speaker.confirmed,
     })),
   };
