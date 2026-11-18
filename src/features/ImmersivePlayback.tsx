@@ -104,7 +104,9 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
   const currentSpeakers = meeting.speakers.filter((speaker) => displayedIds.has(speaker.id));
   const rosterSpeakers = relevantRoster ? currentSpeakers : meeting.speakers;
   const showUnknownLabel = activeUnknown || (!current.length && contextUnknown);
-  const tableAvailable = meeting.speakers.length >= 2 && meeting.speakers.length <= 5;
+  const tableAvailable = meeting.speakers.length >= 2 && meeting.speakers.length <= 10;
+  const longTable = meeting.speakers.length >= 6 && tableAvailable;
+  const sideSeats = Math.ceil((meeting.speakers.length - 2) / 2);
   const showTable = speakerLayout === "table" && tableAvailable;
   const glowSeat = showTable && playing && status === "playing" && !activeUnknown && activeIds.size === 1
     ? meeting.speakers.findIndex((speaker) => activeIds.has(speaker.id)) : -1;
@@ -422,11 +424,18 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
               {relevantRoster && !rosterSpeakers.length && !showUnknownLabel && <p>{t("No attributed speech or retained context here.", "此处没有已归属发言或保留的上下文。")}</p>}
               <Button type="button" onClick={() => { close(); onEditSpeakers(); }}>{t("Edit speakers", "编辑说话人")}</Button>
             </div>
-            {showTable ? <div className="immersive-table-speakers" data-count={meeting.speakers.length} data-glow-seat={glowSeat >= 0 ? glowSeat : undefined} role="group" tabIndex={0} aria-label={t("Meeting speaker labels", "会议说话人标签")}>
-              {meeting.speakers.map((speaker) => {
+            {showTable ? <div className={longTable ? "immersive-table-speakers long-table" : "immersive-table-speakers"} style={longTable ? {"--seat-columns": sideSeats + 2} as CSSProperties : undefined} data-count={meeting.speakers.length} data-glow-seat={glowSeat >= 0 ? glowSeat : undefined} role="group" tabIndex={0} aria-label={t("Meeting speaker labels", "会议说话人标签")}>
+              {meeting.speakers.map((speaker, index) => {
                 const atPosition = activeIds.has(speaker.id);
                 const speaking = playing && status === "playing" && atPosition;
-                return <div className="immersive-table-speaker" key={speaker.id} data-speaker-id={speaker.id} data-active={speaking} data-position={atPosition}>
+                let seat: CSSProperties | undefined;
+                if (longTable) {
+                  const endSeat = index - (meeting.speakers.length - 2);
+                  seat = endSeat >= 0
+                    ? {gridRow: 2, gridColumn: endSeat === 0 ? 1 : sideSeats + 2}
+                    : {gridRow: index < sideSeats ? 1 : 3, gridColumn: 2 + index % sideSeats};
+                }
+                return <div className="immersive-table-speaker" style={seat} key={speaker.id} data-speaker-id={speaker.id} data-active={speaking} data-position={atPosition}>
                   <SpeakerAvatar id={speaker.id} image={avatars[speaker.id]} className="immersive-avatar" />
                   <strong title={speaker.name}>{speaker.name}</strong>
                   <span className="immersive-confirmation">{speaker.confirmed ? t("Name confirmed", "姓名已确认") : t("Unconfirmed", "未确认")}</span>

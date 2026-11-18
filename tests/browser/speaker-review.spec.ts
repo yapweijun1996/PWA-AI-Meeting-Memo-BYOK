@@ -1273,7 +1273,7 @@ test("immersive table keeps four labels in fixed positions around the table", as
   expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 });
 
-test("immersive table is available for five labels and not for six", async ({ page }) => {
+test("immersive table supports five labels and ten fixed seats on desktop and phone", async ({ page }) => {
   await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
   const fixture = fixtureMeeting();
   for (let index = 3; index <= 5; index++) fixture.speakers.push({ ...fixture.speakers[0], id: `20000000-0000-4000-8000-00000000000${index}`, name: `Speaker ${index}` });
@@ -1289,10 +1289,31 @@ test("immersive table is available for five labels and not for six", async ({ pa
   expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   expect((await new AxeBuilder({ page }).include(".immersive").withTags(["wcag2a", "wcag2aa"]).analyze()).violations).toEqual([]);
   await dialog.getByRole("button", { name: "Exit immersive" }).click();
-  fixture.speakers.push({ ...fixture.speakers[0], id: "20000000-0000-4000-8000-000000000006", name: "Speaker 6" });
+  for (let index = 6; index <= 10; index++) fixture.speakers.push({ ...fixture.speakers[0], id: crypto.randomUUID(), name: `Speaker ${index}` });
   await createFixture(page, "speaker-review.wav", fixture);
   await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Table", exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", {name:"Table",exact:true}).click();
+  const cards = dialog.locator(".long-table .immersive-table-speaker");
+  await expect(cards).toHaveCount(10);
+  const positions = () => cards.evaluateAll(elements => elements.map(element => {
+    const {x,y} = element.getBoundingClientRect();
+    return [element.getAttribute("data-speaker-id"),x,y];
+  }));
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({width,height:844});
+    const before = await positions();
+    await page.locator("audio").evaluate(element => {
+      (element as HTMLMediaElement).currentTime = 2;
+      element.dispatchEvent(new Event("seeked"));
+    });
+    await expect(cards.locator('xpath=self::*[@data-position="true"]')).toHaveCount(2);
+    await dialog.getByRole("button",{name:"Play audio"}).click();
+    await expect(dialog.locator('.long-table [data-active="true"]')).toHaveCount(2);
+    expect(await positions()).toEqual(before);
+    await dialog.getByRole("button",{name:"Pause audio"}).click();
+    expect(await positions()).toEqual(before);
+    expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  }
 });
 
 test("immersive fullscreen hides controls while playing and restores them on interaction", async ({ page }) => {
