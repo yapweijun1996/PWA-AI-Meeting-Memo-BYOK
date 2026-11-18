@@ -2462,22 +2462,45 @@ details[open] > summary {
 .immersive-table-speakers { position: relative; isolation: isolate; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; flex: 0 1 clamp(240px, 35vh, 340px); min-height: 0; width: min(100%, 680px); overflow-y: auto; }
 .immersive-table-speakers::before { content: ""; position: absolute; z-index: -1; left: 10%; right: 10%; top: 36%; height: 32%; border: 2px solid var(--immersive-control-border); border-radius: 50%; background: var(--immersive-control-bg); pointer-events: none; }
 .immersive-table-speaker { display: flex; flex: 0 0 33.333%; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; padding: 4px; overflow-wrap: anywhere; font-size: var(--font-size-immersive-table-speaker); }
-.immersive-table-speakers[data-count="4"] { flex-basis: clamp(240px, 32vh, 320px); min-height: 240px; }
-.immersive-table-speakers[data-count="4"]::before { z-index: -2; left: 15%; right: 15%; top: 30%; height: 40%; }
-.immersive-table-speakers[data-count="4"]::after { content: ""; position: absolute; z-index: -1; left: calc(15% + 12px); right: calc(15% + 12px); top: calc(30% + 12px); height: calc(40% - 24px); border: 1px solid var(--immersive-border); border-radius: 50%; background: var(--immersive-stage-bg); pointer-events: none; }
-.immersive-table-speakers[data-count="4"][data-glow-seat]::after { background: radial-gradient(circle at var(--table-glow-x) var(--table-glow-y), color-mix(in srgb, var(--immersive-accent) 14%, transparent), transparent 48%), var(--immersive-stage-bg); }
-.immersive-table-speakers[data-count="4"][data-glow-seat="0"] { --table-glow-x: 30%; --table-glow-y: 5%; }
-.immersive-table-speakers[data-count="4"][data-glow-seat="1"] { --table-glow-x: 70%; --table-glow-y: 5%; }
-.immersive-table-speakers[data-count="4"][data-glow-seat="2"] { --table-glow-x: 5%; --table-glow-y: 75%; }
-.immersive-table-speakers[data-count="4"][data-glow-seat="3"] { --table-glow-x: 95%; --table-glow-y: 75%; }
-.immersive-table-speakers[data-count="4"] .immersive-table-speaker { position: absolute; width: clamp(94px, 24%, 160px); transform: translate(-50%, -50%); }
-.immersive-table-speakers[data-count="4"] .immersive-table-speaker:nth-child(1) { left: 32%; top: 25%; }
-.immersive-table-speakers[data-count="4"] .immersive-table-speaker:nth-child(2) { left: 68%; top: 25%; }
-.immersive-table-speakers[data-count="4"] .immersive-table-speaker:nth-child(3) { left: 17%; top: 75%; }
-.immersive-table-speakers[data-count="4"] .immersive-table-speaker:nth-child(4) { left: 83%; top: 75%; }
+.immersive-table-speakers[data-count="4"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: auto minmax(40px, 1fr) auto;
+  align-content: stretch;
+  width: min(100%, 360px);
+  flex-basis: 320px;
+  min-height: 312px;
+}
+.immersive-table-speakers[data-count="4"]::before {
+  position: relative;
+  inset: auto;
+  grid-area: 2 / 1 / 3 / -1;
+  height: auto;
+  margin: 2px 6%;
+  border-color: var(--immersive-table-edge);
+  border-radius: var(--radius-immersive-table);
+  background:
+    radial-gradient(ellipse at var(--table-glow-x, 50%) var(--table-glow-y, 50%), var(--table-glow, transparent), transparent 55%),
+    repeating-linear-gradient(2deg, transparent 0 8px, color-mix(in srgb, var(--immersive-table-edge) 9%, transparent) 9px, transparent 11px),
+    var(--immersive-table-wood);
+  box-shadow: var(--shadow-immersive-table-rim);
+}
+.immersive-table-speakers[data-count="4"][data-glow-seat] { --table-glow: color-mix(in srgb, var(--immersive-accent) 22%, transparent); }
+.immersive-table-speakers[data-glow-seat="0"], .immersive-table-speakers[data-glow-seat="2"] { --table-glow-x: 25%; }
+.immersive-table-speakers[data-glow-seat="1"], .immersive-table-speakers[data-glow-seat="3"] { --table-glow-x: 75%; }
+.immersive-table-speakers[data-glow-seat="0"], .immersive-table-speakers[data-glow-seat="1"] { --table-glow-y: 0%; }
+.immersive-table-speakers[data-glow-seat="2"], .immersive-table-speakers[data-glow-seat="3"] { --table-glow-y: 100%; }
+.immersive-table-speakers[data-count="4"] .immersive-table-speaker:nth-child(-n+2) { grid-row: 1; }
+.immersive-table-speakers[data-count="4"] .immersive-table-speaker:nth-child(n+3) { grid-row: 3; }
+.immersive-table-speakers[data-count="4"] .immersive-table-speaker strong,
+.immersive-table-speakers[data-count="4"] .immersive-confirmation {
+  border-radius: var(--radius-pill);
+  background: var(--immersive-control-bg);
+  padding: 1px 8px;
+}
 .immersive-table-speakers[data-count="4"] .immersive-table-speaker strong { display: -webkit-box; max-width: 100%; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.25; }
 .immersive-table-speaker .immersive-avatar { position: relative; width: 58px; height: 58px; font-size: 22px; }
-.immersive-table-speakers[data-count="4"] .immersive-avatar { width: clamp(58px, 5vw, 64px); height: clamp(58px, 5vw, 64px); }
+.immersive-table-speakers[data-count="4"] .immersive-avatar { width: clamp(40px, 5vw, 48px); height: clamp(40px, 5vw, 48px); }
 .immersive-table-speaker strong { font-size: var(--text-sm); }
 .immersive-table-speaker .immersive-confirmation { font-size: var(--text-xs); line-height: 1.25; }
 .immersive-table-speaker[data-active="true"] .immersive-avatar { border-color: var(--immersive-accent); box-shadow: var(--shadow-immersive-speaker-active); animation: immersive-speaker-glow 3s ease-in-out infinite; }
@@ -2592,8 +2615,6 @@ details[open] > summary {
   .immersive-table-speakers { max-height: 320px; }
   .immersive-table-speaker { flex-basis: 50%; }
   .immersive-table-speakers[data-count="4"] { flex-basis: 280px; height: 280px; }
-  .immersive-table-speakers[data-count="4"] .immersive-table-speaker:nth-child(1), .immersive-table-speakers[data-count="4"] .immersive-table-speaker:nth-child(3) { left: 25%; }
-  .immersive-table-speakers[data-count="4"] .immersive-table-speaker:nth-child(2), .immersive-table-speakers[data-count="4"] .immersive-table-speaker:nth-child(4) { left: 75%; }
   .immersive-transcript { position: absolute; z-index: var(--layer-immersive-transcript-sheet); inset: auto 8px 8px; width: auto; height: min(90%, 600px); min-height: 0; max-height: none; box-shadow: var(--shadow-immersive-transcript-sheet); }
   .immersive .immersive-panel-width { display: none; }
   .immersive-controls { flex: none; }

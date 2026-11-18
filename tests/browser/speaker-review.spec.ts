@@ -1254,8 +1254,9 @@ test("immersive table keeps four labels in fixed positions around the table", as
   expect(seats[0].y).toBe(seats[1].y);
   expect(seats[2].y).toBe(seats[3].y);
   expect(seats[2].y).toBeGreaterThan(seats[0].y);
-  expect(seats[2].x).toBeLessThan(seats[0].x);
-  expect(seats[3].x).toBeGreaterThan(seats[1].x);
+  expect(seats[2].x).toBe(seats[0].x);
+  expect(seats[3].x).toBe(seats[1].x);
+  expect(seats[1].x).toBeGreaterThan(seats[0].x);
   await page.locator("audio").evaluate((element) => {
     Object.defineProperty(element, "error", { configurable: true, get: () => null });
     (element as HTMLMediaElement).currentTime = 1.5;

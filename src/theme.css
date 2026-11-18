@@ -144,6 +144,10 @@
   --immersive-text-muted: var(--text-muted);
   --immersive-fallback-bg: var(--action-selected-bg);
   --radius-immersive-stage: 14px;
+  --shadow-immersive-table-rim: inset 0 0 0 5px color-mix(in srgb, var(--immersive-table-edge) 18%, transparent);
+  --radius-immersive-table: 24px;
+  --immersive-table-edge: #cbb497;
+  --immersive-table-wood: #fff1db;
   --immersive-stage-bg: var(--bg-surface);
   --immersive-control-selected-bg: var(--action-selected-bg);
   --radius-immersive-person: 8px;
@@ -323,6 +327,8 @@
   --caption-highlight-text: #2d3e52;
 }
 :root[data-theme="dark"] {
+  --immersive-table-edge: #806951;
+  --immersive-table-wood: #44382d;
   color-scheme: dark;
   --text-body: #dce2eb;
   --text-heading: #f3f5f8;
