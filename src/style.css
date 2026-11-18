@@ -487,6 +487,8 @@ small {
   flex-shrink: 0;
 }
 .main-shell {
+  --workspace-max-width: 1510px;
+  --workspace-gutter: 46px;
   margin-left: 246px;
 }
 .topbar {
@@ -494,7 +496,8 @@ small {
   top: 0;
   z-index: var(--layer-topbar);
   height: 52px;
-  padding: 0 46px;
+  padding: 0 max(var(--workspace-gutter), calc((100% - var(--workspace-max-width)) / 2 + var(--workspace-gutter)));
+  column-gap: 10px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -541,9 +544,9 @@ small {
   white-space: nowrap;
 }
 main {
-  max-width: 1510px;
+  max-width: var(--workspace-max-width);
   margin: 0 auto;
-  padding: 28px 46px 20px;
+  padding: 28px var(--workspace-gutter) 20px;
   outline: none;
 }
 .page-heading {
@@ -2753,14 +2756,11 @@ details[open] > summary {
     padding-right: 16px;
   }
   .main-shell {
+    --workspace-gutter: 28px;
     margin-left: 220px;
   }
   main {
-    padding: 32px 28px 20px;
-  }
-  .topbar {
-    padding-left: 28px;
-    padding-right: 28px;
+    padding: 32px var(--workspace-gutter) 20px;
   }
   .welcome-panel {
     padding: 25px;
@@ -3190,8 +3190,8 @@ details[open] > summary {
   }
   .topbar {
     height: calc(56px + env(safe-area-inset-top, 0px));
-    padding-left: max(12px, env(safe-area-inset-left, 0px));
-    padding-right: max(18px, env(safe-area-inset-right, 0px));
+    padding-left: max(20px, env(safe-area-inset-left, 0px));
+    padding-right: max(20px, env(safe-area-inset-right, 0px));
     background: var(--palette-11);
     position: sticky;
     top: 0;
