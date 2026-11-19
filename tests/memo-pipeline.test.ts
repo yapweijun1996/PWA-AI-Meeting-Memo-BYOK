@@ -1,6 +1,7 @@
 import "fake-indexeddb/auto";
 import { expect, test, vi, afterEach } from "vitest";
 import { createMeeting, segment, validateMeeting } from "../src/domain/model";
+import { reviewSegments } from "../src/domain/operations";
 import {
   planMemo,
   extractionInput,
@@ -408,4 +409,45 @@ test("referenced plan refuses missing evidence instead of substituting the curre
   const bad = structuredClone(saved);
   if ("sourceRefs" in bad.memoPipelines[0].snapshot) bad.memoPipelines[0].snapshot.sourceRefs.push({...p.snapshot.sourceRefs[0]});
   expect(() => validateMeeting(bad)).toThrow("Duplicate pipeline source ID");
+});
+
+test("validates a review-only flag on restored legacy pipeline evidence at the same revision", async () => {
+  const m = longMeeting();
+  const plan = planMemo(m, selection.provider, selection.model)!;
+  if (!("sourceRefs" in plan.snapshot)) throw new Error("Expected referenced plan");
+  const { sourceRefs: _refs, ...metadata } = plan.snapshot;
+  const snapshot = { ...metadata, segments: structuredClone(m.segments) };
+  m.memoPipelines = [{ ...plan, snapshot }];
+  const { meeting: restored } = await readBackup(new File([JSON.stringify(m)], "legacy-plan.json"));
+  expect(restored.memoPipelines?.[0].snapshot).toEqual(snapshot);
+
+  const reviewed = structuredClone(restored);
+  reviewed.segments[0].reviewed = true;
+  expect(validateMeeting(reviewed)).toEqual(reviewed);
+
+  restored.updatedAt = "2020-01-01T00:00:00.000Z";
+  const saved = await saveMeeting(reviewSegments(restored, [restored.segments[0].id], true));
+  expect(saved.version).toBe(restored.version + 1);
+  expect(saved.updatedAt).not.toBe(restored.updatedAt);
+  expect(saved.revision).toBe(restored.revision);
+  expect(saved.undo).toHaveLength(1);
+  expect(await getMeeting(saved.id)).toEqual(saved);
+
+  const { meeting: backedUp } = await readBackup(new File([JSON.stringify(saved)], "reviewed-legacy-plan.json"));
+  expect(backedUp.segments[0]).toEqual({ ...snapshot.segments[0], reviewed: true });
+  expect(backedUp.memoPipelines?.[0].snapshot).toEqual(snapshot);
+});
+
+test("rejects text changes in a legacy backup snapshot at the same revision", async () => {
+  const m = longMeeting();
+  const plan = planMemo(m, selection.provider, selection.model)!;
+  if (!("sourceRefs" in plan.snapshot)) throw new Error("Expected referenced plan");
+  const { sourceRefs: _refs, ...metadata } = plan.snapshot;
+  const segments = structuredClone(m.segments);
+  segments[0].text = "Conflicting legacy snapshot text";
+  m.segments[0].reviewed = true;
+  m.memoPipelines = [{ ...plan, snapshot: { ...metadata, segments } }];
+  expect(() => validateMeeting(m)).toThrow("Pipeline sources do not match meeting evidence.");
+  await expect(readBackup(new File([JSON.stringify(m)], "invalid-legacy-plan.json")))
+    .rejects.toThrow("Pipeline sources do not match meeting evidence.");
 });

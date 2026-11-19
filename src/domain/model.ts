@@ -342,6 +342,9 @@ export type MemoAgentPlan = z.infer<typeof MemoAgentPlanSchema>;
 export type { ReferenceVideo };
 export const ref = (s: { id: string; revision: number }) =>
   `${s.id}:${s.revision}`;
+export function serializeSegmentEvidence({ reviewed: _reviewed, ...evidence }: Segment): string {
+  return JSON.stringify(evidence);
+}
 /** Resolve saved plan references against immutable current/history revisions, including legacy copies. */
 export function pipelineSourceSegments(m: Meeting, pipeline: NonNullable<Meeting["memoPipelines"]>[number]): Segment[] {
   return memoSnapshotSegments(m, pipeline.snapshot);
@@ -376,7 +379,7 @@ export function validateMeeting(value: unknown): Meeting {
     throw new Error("Unknown speaker reference");
   const immutable = new Map<string, string>();
   for (const s of [...m.history, ...m.segments]) {
-    const value = JSON.stringify(s);
+    const value = serializeSegmentEvidence(s);
     if (immutable.has(ref(s)) && immutable.get(ref(s)) !== value)
       throw new Error("Conflicting evidence revisions");
     immutable.set(ref(s), value);
@@ -460,7 +463,7 @@ export function validateMeeting(value: unknown): Meeting {
     );
     if (
       snapshotSegments.some(
-        (s) => immutable.get(ref(s)) !== JSON.stringify(s),
+        (s) => immutable.get(ref(s)) !== serializeSegmentEvidence(s),
       )
     )
       throw new Error("Pipeline sources do not match meeting evidence.");

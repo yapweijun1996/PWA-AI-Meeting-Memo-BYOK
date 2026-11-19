@@ -139,7 +139,14 @@ test("review waits for an in-flight source change and requires re-review", async
   const meeting = await setup(page);
   await page.getByRole("tab", { name: /Transcript/ }).click();
   await holdMeetingWrites(page, meeting.id);
-  await page.getByRole("button", { name: "Mark reviewed", exact: true }).first().click();
+  // Marking a passage reviewed is review metadata and no longer changes the source revision,
+  // so the in-flight source change here is a real wording correction.
+  await page.getByRole("button", { name: "Edit passage", exact: true }).first().click();
+  await page.getByLabel("Transcript text").fill("The source was corrected while review waited.");
+  await page.getByRole("button", { name: "Save correction" }).click();
+  // The edit dialog stays open while its write is held; dismiss it so the notes tab is reachable.
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Edit this passage" })).toHaveCount(0);
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
   if (await page.getByRole("button", { name: "Evidence Review" }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review" }).click();
   const article = page.locator(".memo-item").first();

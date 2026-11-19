@@ -2,6 +2,7 @@ import { blueprints, factLabels } from "./memo-templates";
 import {
   id,
   ref,
+  serializeSegmentEvidence,
   validateMeeting,
   type Meeting,
   type Segment,
@@ -60,30 +61,41 @@ export function clearSpeakerVoiceDecisions(m: Meeting, speakerId: string): Meeti
   );
   return validateMeeting({ ...m, voiceDecisions: kept.length ? kept : undefined });
 }
-export function editMeeting(
+type UndoSnapshot = Meeting["undo"][number];
+
+function undoSnapshot(m: UndoSnapshot): UndoSnapshot {
+  return {
+    title: m.title,
+    date: m.date,
+    timezone: m.timezone,
+    speakers: m.speakers,
+    segments: m.segments,
+    speakerLinks: m.speakerLinks,
+    voiceDecisions: m.voiceDecisions,
+  };
+}
+
+function applyMeetingEdit(
   m: Meeting,
   change: (draft: Meeting) => void,
+  revisesEvidence: boolean,
 ): Meeting {
   const draft = structuredClone(m);
-  draft.undo = [
-    ...m.undo,
-    {
-      title: m.title,
-      date: m.date,
-      timezone: m.timezone,
-      speakers: structuredClone(m.speakers),
-      segments: structuredClone(m.segments),
-      speakerLinks: structuredClone(m.speakerLinks),
-      voiceDecisions: structuredClone(m.voiceDecisions),
-    },
-  ].slice(-20);
-  const existing = new Set(draft.history.map(ref));
-  for (const s of m.segments)
-    if (!existing.has(ref(s))) draft.history.push(structuredClone(s));
+  draft.undo = [...m.undo, structuredClone(undoSnapshot(m))].slice(-20);
+  if (revisesEvidence) {
+    const existing = new Set(draft.history.map(ref));
+    for (const s of m.segments)
+      if (!existing.has(ref(s))) draft.history.push(structuredClone(s));
+  }
   change(draft);
-  draft.revision = m.revision + 1;
+  if (revisesEvidence) draft.revision = m.revision + 1;
   return validateMeeting(draft);
 }
+
+export function editMeeting(m: Meeting, change: (draft: Meeting) => void): Meeting {
+  return applyMeetingEdit(m, change, true);
+}
+
 function nextRevision(m: Meeting, s: Segment) {
   return (
     Math.max(
@@ -97,6 +109,11 @@ export function editSegment(
   segmentId: string,
   patch: Partial<Pick<Segment, "text" | "speakerIds" | "reviewed">>,
 ): Meeting {
+  const source = m.segments.find((s) => s.id === segmentId);
+  if (source && typeof patch.reviewed === "boolean" && patch.reviewed !== source.reviewed &&
+      serializeSegmentEvidence({ ...source, ...patch }) === serializeSegmentEvidence(source)) {
+    return reviewSegments(m, [segmentId], patch.reviewed);
+  }
   return editMeeting(m, (d) => {
     d.segments = d.segments.map((s) =>
       s.id === segmentId
@@ -107,13 +124,13 @@ export function editSegment(
 }
 export function reviewSegments(m: Meeting, ids: string[], reviewed: boolean): Meeting {
   const targets = new Set(ids);
-  return editMeeting(m, (draft) => {
+  return applyMeetingEdit(m, (draft) => {
     draft.segments = draft.segments.map((segment) =>
       targets.has(segment.id) && segment.reviewed !== reviewed
-        ? { ...segment, reviewed, revision: nextRevision(m, segment), parents: [ref(segment)] }
+        ? { ...segment, reviewed }
         : segment,
     );
-  });
+  }, false);
 }
 export function assignSegments(
   m: Meeting,
@@ -229,11 +246,16 @@ export function splitSegment(
 export function undoEdit(m: Meeting): Meeting {
   const snapshot = m.undo.at(-1);
   if (!snapshot) throw new Error("No edit to undo.");
-  const next = editMeeting(m, (d) => {
+  const { segments, ...metadata } = undoSnapshot(m);
+  const { segments: previousSegments, ...previousMetadata } = undoSnapshot(snapshot);
+  const evidenceUnchanged =
+    JSON.stringify(metadata) === JSON.stringify(previousMetadata) &&
+    segments.length === previousSegments.length &&
+    segments.every((s, i) => serializeSegmentEvidence(s) === serializeSegmentEvidence(previousSegments[i]));
+  const next = applyMeetingEdit(m, (d) => {
     Object.assign(d, structuredClone(snapshot));
-  });
+  }, !evidenceUnchanged);
   next.undo = m.undo.slice(0, -1);
-  // Restoring content is a new source revision; old memo versions still need review.
   return next;
 }
 export function replaceTranscript(
