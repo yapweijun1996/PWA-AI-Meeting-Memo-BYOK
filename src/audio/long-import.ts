@@ -2,9 +2,11 @@ import type { Meeting } from "../domain/model";
 import { planMp3Split, readMp3Chunk } from "./mp3-split";
 import { planMp4Split, readMp4Chunk } from "./mp4-split";
 import {
+  attachLongAudio,
   checkCapacity,
   requestPersistence,
   storeLongAudio,
+  type LongAudioManifest,
 } from "../storage/long-audio-store";
 
 const SINGLE_REQUEST_LIMIT = 24_000_000;
@@ -35,15 +37,11 @@ export function isLongRecordingCandidate(file: File): boolean {
   return file.size > SINGLE_REQUEST_LIMIT;
 }
 
-export async function importLongRecording(
+async function prepareLongRecording(
   file: File,
   meetingId: string,
   opts: LongImportOptions = {},
-): Promise<{
-  audio: NonNullable<Meeting["audio"]>;
-  warnings: string[];
-  persistence: "granted" | "denied" | "unsupported" | "skipped";
-}> {
+) {
   if (file.size > MAX_LONG_AUDIO) throw new Error("Long recordings must be 4 GiB or smaller.");
   const extension = file.name.toLowerCase().split(".").pop();
   const mime = file.type.toLowerCase().split(";")[0]?.trim();
@@ -91,7 +89,7 @@ export async function importLongRecording(
         meta: metaOf(chunk, index),
         read: () => readMp4Chunk(file, mp4Plan!, index),
       }));
-  const manifest = await storeLongAudio({
+  const input = {
     meetingId,
     format,
     mimeType: file.type || (format === "mp3" ? "audio/mpeg" : "audio/mp4"),
@@ -102,24 +100,32 @@ export async function importLongRecording(
     replace: opts.replace,
     expectedHash: opts.expectedHash,
     expectedMeetingVersion: opts.expectedMeetingVersion,
-    onProgress: (done, total) => opts.onProgress?.({ phase: "storing", done, total }),
-  });
-  return {
-    audio: {
-      name: file.name,
-      type: file.type || (format === "mp3" ? "audio/mpeg" : "audio/mp4"),
-      size: file.size,
-      duration: manifest.totalSeconds,
-      hash: manifest.manifestSha256,
-      present: true,
-      chunked: {
-        format,
-        chunkCount: manifest.chunks.length,
-        totalSeconds: manifest.totalSeconds,
-        manifestSha256: manifest.manifestSha256,
-      },
+    onProgress: (done: number, total: number) => opts.onProgress?.({ phase: "storing", done, total }),
+  } satisfies Parameters<typeof storeLongAudio>[0];
+  const audioFor = (manifest: LongAudioManifest): NonNullable<Meeting["audio"]> => ({
+    name: file.name,
+    type: input.mimeType,
+    size: file.size,
+    duration: manifest.totalSeconds,
+    hash: manifest.manifestSha256,
+    present: true,
+    chunked: {
+      format,
+      chunkCount: manifest.chunks.length,
+      totalSeconds: manifest.totalSeconds,
+      manifestSha256: manifest.manifestSha256,
     },
-    warnings,
-    persistence,
-  };
+  });
+  return { input, audioFor, warnings, persistence };
+}
+
+export async function importLongRecording(file: File, meetingId: string, opts: LongImportOptions = {}) {
+  const { input, audioFor, warnings, persistence } = await prepareLongRecording(file, meetingId, opts);
+  return { audio: audioFor(await storeLongAudio(input)), warnings, persistence };
+}
+
+export async function attachLongRecording(file: File, meeting: Meeting, opts: LongImportOptions = {}) {
+  const { input, audioFor, warnings, persistence } = await prepareLongRecording(file, meeting.id, opts);
+  const saved = await attachLongAudio(input, meeting, audioFor);
+  return { meeting: saved, warnings, persistence };
 }

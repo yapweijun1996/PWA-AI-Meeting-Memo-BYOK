@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { db } from "./repository";
+import type { Meeting } from "../domain/model";
+import { db, nextMeetingVersion, trackMeetingWrite } from "./repository";
 import { deleteAcousticFeatures } from "./acoustic-store";
 
 export interface ChunkMeta {
@@ -60,6 +61,13 @@ export class LongAudioQuotaError extends Error {
 }
 
 const MiB = 1024 * 1024;
+const stagingPrefix = "staging:";
+// Without Web Locks, retain stages for 24 hours after the last staged write.
+// For legacy stages without a lease, the grace period starts at first cleanup.
+const stagingLeaseMs = 24 * 60 * 60 * 1000;
+const StagingLeaseSchema = z.object({ updatedAt: z.number().finite(), usesWebLock: z.boolean() });
+const identityError = "Recording identity could not be verified. Use the original recording; for an older restored backup, export a new backup from the original meeting first. Existing data was retained.";
+const incompleteStage = "Staged recording is incomplete. Existing data was retained; import the recording again.";
 export async function checkCapacity(
   neededBytes: number,
   estimate?: () => Promise<{ usage?: number; quota?: number }>,
@@ -122,14 +130,20 @@ function abortIfRequested(signal?: AbortSignal): void {
 function isQuotaError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "QuotaExceededError";
 }
-async function deleteChunkRows(meetingId: string): Promise<void> {
+function stageLockName(stagingId: string): string {
+  return `meeting-memo:long-audio-stage:${stagingId.slice(stagingPrefix.length)}`;
+}
+async function deleteStagingRows(stagingId: string): Promise<void> {
   const database = await db();
-  const tx = database.transaction("audioChunks", "readwrite");
-  await tx.objectStore("audioChunks").delete(IDBKeyRange.bound([meetingId, 0], [meetingId, Infinity]));
-  await tx.done;
+  const tx = database.transaction(["audioChunks", "audioManifests"], "readwrite");
+  await Promise.all([
+    tx.objectStore("audioChunks").delete(IDBKeyRange.bound([stagingId, 0], [stagingId, Infinity])),
+    tx.objectStore("audioManifests").delete(stagingId),
+    tx.done,
+  ]);
 }
 
-export async function storeLongAudio(input: {
+type LongAudioInput = {
   meetingId: string;
   format: "mp3" | "mp4";
   mimeType: string;
@@ -141,12 +155,48 @@ export async function storeLongAudio(input: {
   replace?: boolean;
   expectedHash?: string;
   expectedMeetingVersion?: number;
-}): Promise<LongAudioManifest> {
+};
+
+export function storeLongAudio(input: LongAudioInput): Promise<LongAudioManifest> {
+  return publishLongAudio(input, async (manifest) => manifest);
+}
+
+export function attachLongAudio(
+  input: LongAudioInput,
+  meeting: Meeting,
+  audioFor: (manifest: LongAudioManifest) => NonNullable<Meeting["audio"]>,
+): Promise<Meeting> {
+  const write = publishLongAudio({
+    ...input, meetingId: meeting.id, replace: true, expectedHash: meeting.audio?.hash, expectedMeetingVersion: meeting.version,
+  }, async (manifest, putMeeting) => {
+    const updated = nextMeetingVersion({ ...meeting, audio: audioFor(manifest) });
+    await putMeeting(updated);
+    return updated;
+  });
+  return trackMeetingWrite(meeting.id, write);
+}
+
+type FinishPublication<T> = (manifest: LongAudioManifest, putMeeting: (meeting: Meeting) => Promise<string>) => Promise<T>;
+
+function publishLongAudio<T>(input: LongAudioInput, finish: FinishPublication<T>): Promise<T> {
+  const stagingId = `${stagingPrefix}${crypto.randomUUID()}`;
+  const locks = globalThis.navigator?.locks;
+  const publish = () => stageAndPublishLongAudio(input, finish, stagingId, Boolean(locks));
+  return locks ? locks.request(stageLockName(stagingId), { mode: "exclusive" }, publish) : publish();
+}
+
+async function stageAndPublishLongAudio<T>(
+  input: LongAudioInput,
+  finish: FinishPublication<T>,
+  stagingId: string,
+  usesWebLock: boolean,
+): Promise<T> {
   const database = await db();
   const existing = await database.get("audioManifests", input.meetingId);
   if (existing !== undefined && !input.replace) throw new Error("Long audio already exists for this meeting; pass replace: true to replace it.");
+  const previous = existing === undefined ? undefined : parseStoredManifest(existing, input.meetingId);
+  if (previous) await verifyManifestIdentity(previous);
   // Stage under a unique namespace. Only the final transaction touches live rows.
-  const stagingId = `staging:${crypto.randomUUID()}`;
   try {
     const chunks: ChunkMeta[] = [];
     let totalBytes = 0;
@@ -158,13 +208,20 @@ export async function storeLongAudio(input: {
       abortIfRequested(input.signal);
       if (blob.size > 24 * MiB) throw new Error("Each long-audio chunk must be 24 MiB or smaller.");
       const bytes = await blob.arrayBuffer();
+      if (!bytes.byteLength || bytes.byteLength !== blob.size) throw new LongAudioIntegrityError("Recording chunk is incomplete.");
       const meta: ChunkMeta = {
         ...source.meta,
         index: source.meta.index,
         byteLength: bytes.byteLength,
         sha256: await sha256(bytes),
       };
-      await database.put("audioChunks", bytes, [stagingId, meta.index]);
+      const stage = database.transaction(["audioChunks", "audioManifests"], "readwrite");
+      await Promise.all([
+        stage.objectStore("audioChunks").put(bytes, [stagingId, meta.index]),
+        // A staging-only owner key also protects these rows from older startup cleanup.
+        stage.objectStore("audioManifests").put({ updatedAt: Date.now(), usesWebLock }, stagingId),
+        stage.done,
+      ]);
       chunks.push(meta);
       totalBytes += bytes.byteLength;
       input.onProgress?.(position + 1, input.chunks.length);
@@ -182,53 +239,65 @@ export async function storeLongAudio(input: {
       createdAt: new Date().toISOString(),
       chunks,
     };
-    let manifest: LongAudioManifest = { ...unsigned, manifestSha256: await contentIdentity(unsigned) };
-    let sameContent = false;
-    if (existing !== undefined) {
-      const previous = ManifestSchema.parse(existing);
-      if (previous.meetingId !== input.meetingId) throw new LongAudioIntegrityError("Recording ownership is invalid.");
-      await verifyManifestIdentity(previous);
-      sameContent = await contentIdentity(previous) === manifest.manifestSha256;
-      // Identical reattachment preserves legacy hashes and all dependent checkpoints.
-      if (sameContent) manifest = previous;
+    const hash = await contentIdentity(unsigned);
+    if (previous && await contentIdentity(previous) !== hash) throw new LongAudioIntegrityError(identityError);
+    // Keep the live legacy hash referenced by existing speech and voice checkpoints.
+    const manifest = previous ?? parseStoredManifest({ ...unsigned, manifestSha256: hash }, input.meetingId);
+    if (input.expectedHash !== undefined && manifest.manifestSha256 !== input.expectedHash)
+      throw new LongAudioIntegrityError(identityError);
+
+    // Web Crypto can outlive an IndexedDB transaction. Verify each private staged
+    // row before opening the publish transaction, then check again for missing rows at publication.
+    for (const chunk of chunks) {
+      abortIfRequested(input.signal);
+      const bytes = await database.get("audioChunks", [stagingId, chunk.index]);
+      if (!bytes || bytes.byteLength !== chunk.byteLength || await sha256(bytes) !== chunk.sha256)
+        throw new LongAudioIntegrityError(incompleteStage);
     }
-    if (input.expectedHash && manifest.manifestSha256 !== input.expectedHash)
-      throw new LongAudioIntegrityError("Recording identity could not be verified. Use the original recording; for an older restored backup, export a new backup from the original meeting first. Existing data was retained.");
-    const tx = database.transaction(["audioChunks", "audioManifests", "meetings", "acousticEmbeddings", "acousticIdentities", "acousticAssignments", "acousticCheckpoints"], "readwrite");
+    const tx = database.transaction(["audioChunks", "audioManifests", "meetings"], "readwrite");
+    const abortTransaction = () => {
+      try { tx.abort(); } catch { /* The transaction may already be finished. */ }
+    };
+    input.signal?.addEventListener("abort", abortTransaction, { once: true });
     try {
       abortIfRequested(input.signal);
       const latest = await tx.objectStore("audioManifests").get(input.meetingId);
       if (JSON.stringify(latest) !== JSON.stringify(existing)) throw new Error("Another import changed this recording. Existing data was retained.");
-      if (input.expectedMeetingVersion !== undefined && (await tx.objectStore("meetings").get(input.meetingId))?.version !== input.expectedMeetingVersion)
+      const meeting = await tx.objectStore("meetings").get(input.meetingId);
+      if (input.expectedMeetingVersion !== undefined && meeting?.version !== input.expectedMeetingVersion)
         throw new Error("Another tab changed this meeting. Reload before attaching the recording.");
+      if (meeting?.audio && (!meeting.audio.chunked || meeting.audio.hash !== manifest.manifestSha256 ||
+        meeting.audio.chunked.manifestSha256 !== manifest.manifestSha256)) throw new LongAudioIntegrityError(identityError);
       const rows = tx.objectStore("audioChunks");
-      await rows.delete(IDBKeyRange.bound([input.meetingId, 0], [input.meetingId, Infinity]));
+      if (!previous && !meeting?.audio && input.expectedHash === undefined &&
+        await rows.count(IDBKeyRange.bound([input.meetingId, 0], [input.meetingId, Infinity])))
+        throw new LongAudioIntegrityError(identityError);
       for (const chunk of chunks) {
         abortIfRequested(input.signal);
         const bytes = await rows.get([stagingId, chunk.index]);
-        if (!bytes || bytes.byteLength !== chunk.byteLength) throw new LongAudioIntegrityError("Staged recording is incomplete. Existing data was retained; import the recording again.");
+        if (!bytes || bytes.byteLength !== chunk.byteLength) throw new LongAudioIntegrityError(incompleteStage);
         await rows.put(bytes, [input.meetingId, chunk.index]);
         await rows.delete([stagingId, chunk.index]);
       }
       await tx.objectStore("audioManifests").put(manifest, input.meetingId);
-      if (existing !== undefined && !sameContent) {
-        for (const name of ["acousticEmbeddings", "acousticIdentities", "acousticAssignments"] as const)
-          await tx.objectStore(name).delete(IDBKeyRange.bound([input.meetingId, ""], [input.meetingId, "\uffff"]));
-        await tx.objectStore("acousticCheckpoints").delete(input.meetingId);
-      }
+      await tx.objectStore("audioManifests").delete(stagingId);
+      const result = await finish(manifest, updated => tx.objectStore("meetings").put(updated));
       abortIfRequested(input.signal);
       await tx.done;
+      return result;
     } catch (error) {
-      try { tx.abort(); } catch { /* The transaction may already have aborted. */ }
+      abortTransaction();
       await tx.done.catch(() => undefined);
+      abortIfRequested(input.signal);
       throw error;
+    } finally {
+      input.signal?.removeEventListener("abort", abortTransaction);
     }
-    return manifest;
   } catch (error) {
     if (isQuotaError(error)) throw new LongAudioQuotaError();
     throw error;
   } finally {
-    try { await deleteChunkRows(stagingId); } catch { /* Startup cleanup can reclaim orphaned staging rows. */ }
+    try { await deleteStagingRows(stagingId); } catch { /* Startup cleanup can reclaim orphaned staging rows. */ }
   }
 }
 
@@ -241,12 +310,15 @@ export async function verifyManifestIdentity(manifest: LongAudioManifest): Promi
     throw new LongAudioIntegrityError("Long-audio manifest failed integrity verification.");
 }
 
-export async function getLongAudioManifest(meetingId: string): Promise<LongAudioManifest | undefined> {
-  const value = await (await db()).get("audioManifests", meetingId);
-  if (value === undefined) return undefined;
+function parseStoredManifest(value: unknown, meetingId: string): LongAudioManifest {
   const result = ManifestSchema.safeParse(value);
   if (!result.success || result.data.meetingId !== meetingId) throw new LongAudioIntegrityError("Stored long-audio manifest is malformed.");
   return result.data;
+}
+
+export async function getLongAudioManifest(meetingId: string): Promise<LongAudioManifest | undefined> {
+  const value = await (await db()).get("audioManifests", meetingId);
+  return value === undefined ? undefined : parseStoredManifest(value, meetingId);
 }
 
 export async function getLongAudioChunk(meetingId: string, index: number, options: { verify?: boolean } = {}): Promise<Blob> {
@@ -291,18 +363,57 @@ export async function deleteLongAudio(meetingId: string): Promise<void> {
 
 export async function cleanupIncompleteLongAudio(): Promise<number> {
   const database = await db();
-  const tx = database.transaction(["audioChunks", "audioManifests"], "readwrite");
+  const tx = database.transaction(["audioChunks", "audioManifests", "meetings"], "readwrite");
   const chunks = tx.objectStore("audioChunks");
-  const manifestIds = new Set(await tx.objectStore("audioManifests").getAllKeys());
+  const manifestIds = await tx.objectStore("audioManifests").getAllKeys();
+  const stagingIds = new Set(manifestIds.filter(id => id.startsWith(stagingPrefix)));
+  const retainedIds = new Set([
+    ...manifestIds,
+    ...await tx.objectStore("meetings").getAllKeys(),
+  ]);
   let removed = 0;
-  let cursor = await chunks.openCursor();
+  let cursor = await chunks.openKeyCursor();
   while (cursor) {
     const key = cursor.key as [string, number];
-    if (!manifestIds.has(key[0])) {
-      await cursor.delete();
-      removed += 1;
+    if (!retainedIds.has(key[0])) {
+      if (key[0].startsWith(stagingPrefix)) {
+        stagingIds.add(key[0]);
+      } else {
+        await chunks.delete(key);
+        removed += 1;
+      }
     }
     cursor = await cursor.continue();
+  }
+  await tx.done;
+  // Await cross-tab locks outside the cursor transaction. Each acquired lock
+  // protects the lease check and deletion together with the staging writes.
+  const locks = globalThis.navigator?.locks;
+  for (const stagingId of stagingIds) {
+    removed += locks
+      ? await locks.request(stageLockName(stagingId), { ifAvailable: true }, lock => lock ? cleanupAbandonedStage(stagingId, true) : 0)
+      : await cleanupAbandonedStage(stagingId, false);
+  }
+  return removed;
+}
+
+async function cleanupAbandonedStage(stagingId: string, holdsWebLock: boolean): Promise<number> {
+  const database = await db();
+  const tx = database.transaction(["audioChunks", "audioManifests", "meetings"], "readwrite");
+  const manifests = tx.objectStore("audioManifests");
+  const stored = await manifests.get(stagingId);
+  const lease = StagingLeaseSchema.safeParse(stored);
+  const chunks = tx.objectStore("audioChunks");
+  const range = IDBKeyRange.bound([stagingId, 0], [stagingId, Infinity]);
+  let removed = 0;
+  if (!await tx.objectStore("meetings").getKey(stagingId)) {
+    if (stored === undefined && await chunks.count(range)) {
+      await manifests.put({ updatedAt: Date.now(), usesWebLock: false }, stagingId);
+    } else if (lease.success && ((holdsWebLock && lease.data.usesWebLock) || lease.data.updatedAt <= Date.now() - stagingLeaseMs)) {
+      removed = await chunks.count(range);
+      await chunks.delete(range);
+      await manifests.delete(stagingId);
+    }
   }
   await tx.done;
   return removed;

@@ -2,7 +2,8 @@ import "fake-indexeddb/auto";
 import { openDB } from "idb";
 import { describe, expect, it, vi } from "vitest";
 import { backupMeeting, readBackup } from "../src/storage/backup";
-import { createMeeting } from "../src/domain/model";
+import { createMeeting, segment } from "../src/domain/model";
+import { getChunkSpeech, putChunkSpeech } from "../src/storage/chunk-speech-store";
 import {
   checkCapacity,
   cleanupIncompleteLongAudio,
@@ -16,6 +17,7 @@ import {
 import * as repo from "../src/storage/repository";
 
 vi.stubGlobal("window", new EventTarget());
+vi.stubGlobal("navigator", {});
 const meta = (index: number) => ({ index, ownStartSeconds: index * 10, ownDurationSeconds: 10, leadInSeconds: 0 });
 const input = (meetingId: string, bytes: string[]) => ({
   meetingId,
@@ -77,15 +79,103 @@ describe("long audio IndexedDB store", () => {
     expect(await database.get("audioChunks", [orphanId, 0])).toBeUndefined();
   });
 
-  it("requires replace:true and replaces existing chunk data", async () => {
+  it("publishes a staged import after startup cleanup runs during a paused read", async () => {
+    const meetingId = crypto.randomUUID();
+    const recording = input(meetingId, ["first", "second"]);
+    const database = await repo.db();
+    const removed: number[] = [];
+    recording.chunks[1].read = async () => {
+      const staged = (await database.getAllKeys("audioChunks")).filter(([owner]) => owner.startsWith("staging:"));
+      expect(staged).toHaveLength(1);
+      expect(await getLongAudioManifest(meetingId)).toBeUndefined();
+      removed.push(await cleanupIncompleteLongAudio());
+      return new Blob(["second"]);
+    };
+
+    await storeLongAudio(recording);
+
+    expect(removed).toEqual([0]);
+    expect(await (await getLongAudioChunk(meetingId, 0)).text()).toBe("first");
+    expect(await (await getLongAudioChunk(meetingId, 1)).text()).toBe("second");
+    expect((await database.getAllKeys("audioManifests")).filter(owner => owner.startsWith("staging:"))).toEqual([]);
+  });
+
+  it("preserves a held stage and immediately reclaims an abandoned stage that used a lock", async () => {
+    const held = new Set<string>();
+    vi.stubGlobal("navigator", { locks: {
+      async request(name: string, options: LockOptions, callback: (lock: Lock | null) => unknown) {
+        if (held.has(name)) {
+          expect(options.ifAvailable).toBe(true);
+          return callback(null);
+        }
+        held.add(name);
+        try { return await callback({ name, mode: "exclusive" }); }
+        finally { held.delete(name); }
+      },
+    } });
+    const database = await repo.db();
+    const abandoned = `staging:${crypto.randomUUID()}`;
+    const recording = input(crypto.randomUUID(), ["first", "second"]);
+    recording.chunks[1].read = async () => {
+      const [active] = (await database.getAllKeys("audioManifests"))
+        .filter(owner => owner.startsWith("staging:") && owner !== abandoned);
+      expect(held).toContain(active.replace("staging:", "meeting-memo:long-audio-stage:"));
+      const lease = await database.get("audioManifests", active) as { updatedAt: number; usesWebLock: boolean };
+      await database.put("audioManifests", { ...lease, updatedAt: 0 }, active);
+      expect(await cleanupIncompleteLongAudio()).toBe(1);
+      expect(await database.get("audioChunks", [active, 0])).toBeDefined();
+      expect(await database.get("audioChunks", [abandoned, 0])).toBeUndefined();
+      expect(await database.get("audioManifests", abandoned)).toBeUndefined();
+      return new Blob(["second"]);
+    };
+    try {
+      await database.put("audioChunks", new ArrayBuffer(2), [abandoned, 0]);
+      await database.put("audioManifests", { updatedAt: Date.now(), usesWebLock: true }, abandoned);
+      await storeLongAudio(recording);
+      await verifyLongAudio(recording.meetingId);
+      expect(held.size).toBe(0);
+    } finally {
+      vi.stubGlobal("navigator", {});
+    }
+  });
+
+  it("reclaims stale unlocked and legacy staging rows after a 24-hour grace period", async () => {
+    const database = await repo.db();
+    const leased = `staging:${crypto.randomUUID()}`;
+    const legacy = `staging:${crypto.randomUUID()}`;
+    const now = Date.now();
+    const grace = 24 * 60 * 60 * 1000;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      await database.put("audioChunks", new ArrayBuffer(2), [leased, 0]);
+      await database.put("audioManifests", { updatedAt: now - grace + 1, usesWebLock: false }, leased);
+      await database.put("audioChunks", new ArrayBuffer(2), [legacy, 0]);
+      expect(await cleanupIncompleteLongAudio()).toBe(0);
+      clock.mockReturnValue(now + 1);
+      expect(await cleanupIncompleteLongAudio()).toBe(1);
+      expect(await database.get("audioChunks", [leased, 0])).toBeUndefined();
+      expect(await database.get("audioManifests", leased)).toBeUndefined();
+      expect(await database.get("audioChunks", [legacy, 0])).toBeDefined();
+      clock.mockReturnValue(now + grace);
+      expect(await cleanupIncompleteLongAudio()).toBe(1);
+      expect(await database.get("audioChunks", [legacy, 0])).toBeUndefined();
+      expect(await database.get("audioManifests", legacy)).toBeUndefined();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("requires replace:true and repairs only the existing recording", async () => {
     const meetingId = crypto.randomUUID();
     const first = await storeLongAudio(input(meetingId, ["old"]));
     await expect(storeLongAudio(input(meetingId, ["rejected"]))).rejects.toThrow("already exists");
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    const replacement = await storeLongAudio({ ...input(meetingId, ["new", "data"]), replace: true });
-    expect(replacement.totalBytes).toBe(7);
-    expect(replacement.createdAt).not.toBe(first.createdAt);
-    expect((await getLongAudioManifest(meetingId))?.chunks).toHaveLength(2);
+    await expect(storeLongAudio({ ...input(meetingId, ["new", "data"]), replace: true }))
+      .rejects.toThrow("Recording identity could not be verified");
+    expect(await getLongAudioManifest(meetingId)).toEqual(first);
+    expect(await (await getLongAudioChunk(meetingId, 0)).text()).toBe("old");
+    await (await repo.db()).delete("audioChunks", [meetingId, 0]);
+    expect(await storeLongAudio({ ...input(meetingId, ["old"]), replace: true })).toEqual(first);
+    expect(await (await getLongAudioChunk(meetingId, 0)).text()).toBe("old");
   });
 
   it("deletes chunks and manifest with their meeting only", async () => {
@@ -125,6 +215,42 @@ describe("long audio IndexedDB store", () => {
     expect(second.manifestSha256).toBe(first.manifestSha256);
   });
 
+  it("retains surviving chunks during startup and checks the saved meeting when its manifest is lost", async () => {
+    const meeting = createMeeting();
+    const first = await storeLongAudio(input(meeting.id, ["surviving", "missing"]));
+    const saved = await repo.saveMeeting({ ...meeting, audio: { hash: first.manifestSha256, size: first.totalBytes,
+      type: "audio/mpeg", name: "original.mp3", duration: 20, present: true,
+      chunked: { format: "mp3", chunkCount: 2, totalSeconds: 20, manifestSha256: first.manifestSha256 } } });
+    const database = await repo.db();
+    await database.delete("audioManifests", saved.id);
+    await database.delete("audioChunks", [saved.id, 1]);
+    await database.put("acousticCheckpoints", { kept: true }, saved.id);
+    await cleanupIncompleteLongAudio();
+    const bytes = await database.get("audioChunks", [saved.id, 0]);
+    expect(new TextDecoder().decode(bytes)).toBe("surviving");
+    await expect(storeLongAudio({ ...input(saved.id, ["different", "missing"]), replace: true })).rejects.toThrow("Recording identity");
+    expect(await database.get("audioChunks", [saved.id, 0])).toEqual(bytes);
+    expect(await getLongAudioManifest(saved.id)).toBeUndefined();
+    expect(await repo.getMeeting(saved.id)).toEqual(saved);
+    await storeLongAudio({ ...input(saved.id, ["surviving", "missing"]), replace: true });
+    await verifyLongAudio(saved.id);
+    expect(await database.get("acousticCheckpoints", saved.id)).toEqual({ kept: true });
+  });
+
+  it("refuses unidentified existing chunks and an unverifiable legacy manifest", async () => {
+    const meetingId = crypto.randomUUID();
+    const database = await repo.db();
+    const bytes = new TextEncoder().encode("original").buffer;
+    await database.put("audioChunks", bytes, [meetingId, 0]);
+    const candidate = { ...input(meetingId, ["different"]), replace: true };
+    await expect(storeLongAudio(candidate)).rejects.toThrow("Recording identity");
+    const damaged = { meetingId, chunks: [{ index: 0 }], manifestSha256: "0".repeat(64) };
+    await database.put("audioManifests", damaged, meetingId);
+    await expect(storeLongAudio(candidate)).rejects.toBeInstanceOf(LongAudioIntegrityError);
+    expect(await database.get("audioManifests", meetingId)).toEqual(damaged);
+    expect(await database.get("audioChunks", [meetingId, 0])).toEqual(bytes);
+  });
+
   it("preserves old chunks and acoustic evidence when replacement is cancelled", async () => {
     const meetingId = crypto.randomUUID();
     const first = await storeLongAudio(input(meetingId, ["original", "retained"]));
@@ -139,37 +265,63 @@ describe("long audio IndexedDB store", () => {
     expect(await database.get("acousticCheckpoints", meetingId)).toEqual({ sentinel: "retained" });
   });
 
-  it.each(["read", "stage-quota", "commit-quota", "missing-stage", "wrong-identity"])("retains originals after %s failure", async (failure) => {
+  it.each(["read", "stage-quota", "commit-quota", "commit-write", "missing-stage", "corrupt-stage", "incomplete", "wrong-identity"])("retains originals after %s failure", async (failure) => {
     const meetingId = crypto.randomUUID();
     const first = await storeLongAudio(input(meetingId, ["original", "retained"]));
     const database = await repo.db();
     await database.put("acousticCheckpoints", { sentinel: "retained" }, meetingId);
+    await database.put("acousticEmbeddings", { vector: [1] }, [meetingId, "sample"]);
+    await database.put("acousticIdentities", { voice: 1 }, [meetingId, "voice"]);
+    await database.put("acousticAssignments", { voice: 1 }, [meetingId, "label"]);
+    await database.put("transcriptPages", { original: "source" }, [meetingId, "run", 0]);
+    await database.put("chunkSpeech", { original: "speech" }, [meetingId, 0]);
     const originalPut = IDBObjectStore.prototype.put;
     vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
       const key = args[1] as [string, number];
-      if (this.name === "audioChunks" && ((failure === "stage-quota" && key[0].startsWith("staging:")) || (failure === "commit-quota" && key[0] === meetingId)))
+      if (this.name === "audioChunks" && ((failure === "stage-quota" && key[0].startsWith("staging:")) || (failure === "commit-quota" && key[0] === meetingId && key[1] === 1)))
         throw new DOMException("quota", "QuotaExceededError");
+      if (failure === "commit-write" && this.name === "audioManifests" && args[1] === meetingId) throw new Error("Manifest write failed");
+      if (failure === "corrupt-stage" && this.name === "audioChunks" && key[0].startsWith("staging:") && key[1] === 1)
+        args[0] = new ArrayBuffer((args[0] as ArrayBuffer).byteLength);
       return originalPut.apply(this, args);
     });
-    const replacement = input(meetingId, ["new", "data"]);
+    const replacement = input(meetingId, failure === "wrong-identity" ? ["original", "modified"]
+      : failure === "incomplete" ? ["original"] : ["original", "retained"]);
     if (failure === "read") replacement.chunks[1].read = async () => { throw new Error("Unreadable file"); };
-    if (failure === "missing-stage") replacement.chunks[1].read = async () => { await cleanupIncompleteLongAudio(); return new Blob(["data"]); };
+    if (failure === "missing-stage") {
+      const originalGet = IDBObjectStore.prototype.get;
+      vi.spyOn(IDBObjectStore.prototype, "get").mockImplementation(function (this: IDBObjectStore, key) {
+        // Remove the second staged chunk after publication has copied the first.
+        if (this.name === "audioChunks" && this.transaction.mode === "readwrite" &&
+          Array.isArray(key) && typeof key[0] === "string" && key[0].startsWith("staging:") && key[1] === 1) this.delete(key);
+        return originalGet.call(this, key);
+      });
+    }
+    const reason = { read: "Unreadable file", "stage-quota": "quota", "commit-quota": "quota",
+      "commit-write": "Manifest write failed", "missing-stage": "Staged recording", "corrupt-stage": "Staged recording",
+      incomplete: "Recording identity", "wrong-identity": "Recording identity" }[failure]!;
     try {
-      await expect(storeLongAudio({ ...replacement, replace: true, expectedHash: failure === "wrong-identity" ? first.manifestSha256 : undefined })).rejects.toThrow();
+      await expect(storeLongAudio({ ...replacement, replace: true, expectedHash: first.manifestSha256 })).rejects.toThrow(reason);
     } finally { vi.restoreAllMocks(); }
     expect(await getLongAudioManifest(meetingId)).toEqual(first);
     expect(await (await getLongAudioChunk(meetingId, 0)).text()).toBe("original");
     expect(await (await getLongAudioChunk(meetingId, 1)).text()).toBe("retained");
     expect(await database.get("acousticCheckpoints", meetingId)).toEqual({ sentinel: "retained" });
+    expect(await database.get("acousticEmbeddings", [meetingId, "sample"])).toEqual({ vector: [1] });
+    expect(await database.get("acousticIdentities", [meetingId, "voice"])).toEqual({ voice: 1 });
+    expect(await database.get("acousticAssignments", [meetingId, "label"])).toEqual({ voice: 1 });
+    expect(await database.get("transcriptPages", [meetingId, "run", 0])).toEqual({ original: "source" });
+    expect(await database.get("chunkSpeech", [meetingId, 0])).toEqual({ original: "speech" });
   });
 
   it("rejects a stale import without overwriting the winning recording", async () => {
     const meetingId = crypto.randomUUID();
     await storeLongAudio(input(meetingId, ["original"]));
-    const candidate = input(meetingId, ["stale"]);
+    const candidate = input(meetingId, ["original"]);
     candidate.chunks[0].read = async () => {
-      await storeLongAudio({ ...input(meetingId, ["winner"]), replace: true });
-      return new Blob(["stale"]);
+      await repo.deleteMeeting(meetingId);
+      await storeLongAudio(input(meetingId, ["winner"]));
+      return new Blob(["original"]);
     };
     await expect(storeLongAudio({ ...candidate, replace: true })).rejects.toThrow("Another import");
     expect(await (await getLongAudioChunk(meetingId, 0)).text()).toBe("winner");
@@ -210,12 +362,19 @@ describe("long audio IndexedDB store", () => {
     await verifyLongAudio(meeting.id);
     expect(await database.get("acousticCheckpoints", meeting.id)).toEqual({ sentinel: "retained" });
     const saved = await repo.saveMeeting({ ...meeting, audio: { name: "legacy.mp3", type: "audio/mpeg", size: 16, duration: 20, hash, present: true,
-      chunked: { format: "mp3", chunkCount: 2, totalSeconds: 20, manifestSha256: hash } } });
+      chunked: { format: "mp3", chunkCount: 2, totalSeconds: 20, manifestSha256: hash } },
+      jobs: [{ id: crypto.randomUUID(), stage: "speech", state: "completed", billing: "possibly_charged", inputRevision: meeting.revision,
+        requestId: null, createdAt: meeting.createdAt, updatedAt: meeting.updatedAt, message: "Saved", chunk: { index: 0, total: 2 } }],
+    });
+    const speech = { speakers: [], segments: [segment("Saved first part")], duration: 10, requestId: null };
+    await putChunkSpeech(saved.id, 0, speech);
     const restored = await readBackup(new File([await backupMeeting(saved)], "legacy.zip"));
     expect(restored.meeting.audio!.hash).toBe(first.manifestSha256);
     expect((await repo.getMeeting(meeting.id))!.audio!.hash).toBe(hash);
+    await repo.saveMeeting(restored.meeting, restored.audio);
     const attached = await storeLongAudio({ ...input(restored.meeting.id, ["original", "retained"]), expectedHash: restored.meeting.audio!.hash });
     expect(attached.manifestSha256).toBe(restored.meeting.audio!.hash);
+    expect(await getChunkSpeech(restored.meeting.id, 0)).toEqual(speech);
     await expect(storeLongAudio({ ...input(crypto.randomUUID(), ["original", "retained"]), expectedHash: hash })).rejects.toThrow("older restored backup");
   });
 

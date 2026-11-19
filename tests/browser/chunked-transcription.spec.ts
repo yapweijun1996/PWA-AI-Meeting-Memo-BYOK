@@ -1,4 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
+import { unzipSync, zipSync } from "fflate";
+import { readFile } from "node:fs/promises";
 
 test.use({ serviceWorkers: "block" });
 test.describe.configure({ timeout: 120_000 });
@@ -120,7 +122,8 @@ test("chunked transcription confirms before sequential per-part requests and mer
   await expect(page.getByText(/Part 1\/\d+/)).toBeVisible();
 });
 
-test("chunked transcription stops after a failed part and resumes only unsaved parts", async ({ page }) => {
+for (const restore of [false, true]) {
+test(restore ? "restored transcription resumes only unsaved parts after reattachment" : "chunked transcription stops after a failed part and resumes only unsaved parts", async ({ page }, info) => {
   const routes = installSpeechRoute(page, { failOn: 2 });
   await routes.finished;
   await prepare(page, "Chunked transcription failure");
@@ -133,9 +136,24 @@ test("chunked transcription stops after a failed part and resumes only unsaved p
   await expect.poll(() => routes.count).toBe(2);
   // Parts are merged into the transcript only after every part is saved.
   await expect(page.getByText("CHUNK_RESULT_1", { exact: true })).toHaveCount(0);
+  const resume = page.getByRole("button", { name: `Resume transcription (1 of ${total} parts done)` });
+  if (restore) {
+    await expect(resume).toBeEnabled();
+    await page.getByText("Export", { exact: true }).click();
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Full backup with audio", exact: true }).click();
+    const path = info.outputPath("resume.zip");
+    await (await download).saveAs(path);
+    page.on("dialog", (dialog) => dialog.accept());
+    await page.getByLabel("Restore backup", { exact: true }).setInputFiles(path);
+    await expect(page.getByRole("heading", { name: "Chunked transcription failure (restored)", exact: true })).toBeVisible();
+    await page.getByLabel("Attach audio", { exact: true }).setInputFiles({ name: "long-meeting.mp3", mimeType: "audio/mpeg", buffer: syntheticMp3() });
+    await expect(resume).toBeEnabled();
+    expect(routes.count).toBe(2);
+  }
   await page.reload();
-  await expect(page.getByRole("button", { name: `Resume transcription (1 of ${total} parts done)` })).toBeEnabled();
-  await page.getByRole("button", { name: `Resume transcription (1 of ${total} parts done)` }).click();
+  await expect(resume).toBeEnabled();
+  await resume.click();
   const resumeDialog = page.getByRole("dialog");
   await expect(resumeDialog.getByRole("button", { name: `Confirm and send ${total - 1} requests` })).toBeEnabled();
   await resumeDialog.getByRole("button", { name: `Confirm and send ${total - 1} requests` }).click();
@@ -143,6 +161,7 @@ test("chunked transcription stops after a failed part and resumes only unsaved p
   expect(routes.count).toBe(total + 1);
   expect(routes.maxInFlight).toBe(1);
 });
+}
 
 for (const restore of [false, true]) {
 test(`unknown chunk outcomes require account review before an explicit resend (restore: ${restore})`, async ({ page }, info) => {
@@ -220,8 +239,13 @@ test("restored completed transcription blocks missing checkpoints before consent
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Full backup with audio", exact: true }).click();
   const path = info.outputPath("checkpoints.zip"); await (await download).saveAs(path);
+  const files = unzipSync(await readFile(path));
+  expect(files["chunk-speech.json"]).toBeDefined();
+  delete files["chunk-speech.json"];
   page.on("dialog", dialog => dialog.accept());
-  await page.getByLabel("Restore backup", { exact: true }).setInputFiles(path);
+  await page.getByLabel("Restore backup", { exact: true }).setInputFiles({
+    name: "older-checkpoints.zip", mimeType: "application/zip", buffer: Buffer.from(zipSync(files)),
+  });
   await expect(page.getByRole("heading", { name: "Checkpoint backup (restored)", exact: true })).toBeVisible();
   await page.getByLabel("Attach audio", { exact: true }).setInputFiles({ name: "long-meeting.mp3", mimeType: "audio/mpeg", buffer: syntheticMp3() });
   await expect(page.getByText(/plays from \d+ local parts/)).toBeVisible();

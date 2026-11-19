@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProviderError } from "../src/providers/api";
 import type * as ProviderApi from "../src/providers/api";
 import { createMeeting, MeetingSchema, segment } from "../src/domain/model";
+import { backupMeeting, readBackup } from "../src/storage/backup";
 import { deleteChunkSpeech, getChunkSpeech } from "../src/storage/chunk-speech-store";
 import { storeLongAudio } from "../src/storage/long-audio-store";
 import { getMeeting, saveMeeting } from "../src/storage/repository";
@@ -16,16 +17,16 @@ vi.mock("../src/providers/api", async () => {
 });
 vi.stubGlobal("window", new EventTarget());
 const selection = { provider: "openrouter" as const, model: "scribe" };
+const recording = (leadInSeconds = 0) => ({
+  format: "mp3" as const, mimeType: "audio/mpeg", totalSeconds: 30, sampleRate: 44100,
+  chunks: ["a", "b", "c"].map((value, index) => ({
+    meta: { index, ownStartSeconds: index * 10, ownDurationSeconds: 10, leadInSeconds: index === 0 ? 0 : leadInSeconds },
+    read: async () => new Blob([value]),
+  })),
+});
 const prepare = async (leadInSeconds = 0) => {
   const meeting = createMeeting();
-  const chunks = ["a", "b", "c"];
-  const manifest = await storeLongAudio({
-    meetingId: meeting.id, format: "mp3", mimeType: "audio/mpeg", totalSeconds: 30, sampleRate: 44100,
-    chunks: chunks.map((value, index) => ({
-      meta: { index, ownStartSeconds: index * 10, ownDurationSeconds: 10, leadInSeconds: index === 0 ? 0 : leadInSeconds },
-      read: async () => new Blob([value]),
-    })),
-  });
+  const manifest = await storeLongAudio({ ...recording(leadInSeconds), meetingId: meeting.id });
   const saved = await saveMeeting({
     ...meeting,
     audio: { name: "meeting.mp3", type: "audio/mpeg", size: manifest.totalBytes, duration: 30, hash: manifest.manifestSha256, present: true,
@@ -122,6 +123,30 @@ describe("chunked speech runner", () => {
     await runChunkedSpeech(interrupted!, { selection, reviewedChunks: [0] });
     expect(mocks.transcribe).toHaveBeenCalledTimes(4);
   });
+
+  it("resumes a restored backup without replaying completed or unreviewed chunks", async () => {
+    const meeting = await prepare();
+    mocks.transcribe.mockResolvedValueOnce(response("first", 1));
+    mocks.transcribe.mockRejectedValueOnce(new ProviderError("Timed out", true, false, true));
+    await expect(runChunkedSpeech(meeting, { selection })).rejects.toThrow("Timed out");
+    const interrupted = (await getMeeting(meeting.id))!;
+    const restored = await readBackup(new File([await backupMeeting(interrupted)], "resume.zip"));
+    const copy = await saveMeeting(restored.meeting, restored.audio);
+    await storeLongAudio({ ...recording(), meetingId: copy.id, expectedHash: copy.audio!.hash });
+    const attached = await saveMeeting({ ...copy, audio: { ...copy.audio!, present: true } });
+
+    expect(mocks.transcribe).toHaveBeenCalledTimes(2);
+    mocks.transcribe.mockClear();
+    await expect(runChunkedSpeech(attached, { selection })).rejects.toThrow("Review billing");
+    expect(mocks.transcribe).not.toHaveBeenCalled();
+    mocks.transcribe.mockResolvedValueOnce(response("second", 1));
+    mocks.transcribe.mockResolvedValueOnce(response("third", 1));
+    const resumed = await runChunkedSpeech(attached, { selection, reviewedChunks: [1] });
+    expect(mocks.transcribe.mock.calls.map((call) => call[4])).toEqual(["recording-0002.mp3", "recording-0003.mp3"]);
+    expect(resumed.segments.map((item) => item.text)).toEqual(["first", "second", "third"]);
+    expect(await getMeeting(meeting.id)).toEqual(interrupted);
+  });
+
   it("never resubmits completed chunks when their separate saved results are missing", async () => {
     mocks.transcribe.mockResolvedValue(response("saved original", 1));
     const meeting = await prepare();

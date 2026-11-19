@@ -59,7 +59,7 @@ import {
 import { getAudio, getMeeting, saveMeeting } from "../storage/repository";
 import { backupMeeting, meetingBackupDocument, download, safeFilename } from "../storage/backup";
 import { inspectAudio } from "../audio/files";
-import { importLongRecording, isLongRecordingCandidate } from "../audio/long-import";
+import { attachLongRecording, isLongRecordingCandidate } from "../audio/long-import";
 import { getLongAudioManifest, type LongAudioManifest } from "../storage/long-audio-store";
 import { ChunkedAudio, type PlayerLike } from "../audio/chunked-audio";
 import { getKey, getSelection, getSpeechEstimate, getUiLanguage, getMemoOutputLanguage } from "../providers/credentials";
@@ -820,14 +820,10 @@ export function MeetingWorkspace({
         if (m.audio && !m.audio.chunked)
           throw new Error("This meeting belongs to a different recording. Create a new meeting to preserve its source evidence.");
         if (!m.audio && m.segments.some((segment) => segment.start !== null) && !confirm(t("Confirm this is the original recording for the imported timestamps. Verify playback before relying on the evidence.", "请确认这是导入时间戳对应的原始录音。依赖此证据前请验证播放。"))) return;
-        const result = await importLongRecording(file, m.id, {
-          replace: true,
-          expectedHash: m.audio?.hash,
-          expectedMeetingVersion: m.version,
+        const result = await attachLongRecording(file, m, {
           onProgress: (progress) => setImportProgress(`${progress.phase}: ${progress.done}/${progress.total}`),
         });
-        const saved = await saveMeeting({ ...m, audio: result.audio });
-        onUpdate(saved);
+        onUpdate(result.meeting);
         if (result.warnings.length) setNotice(result.warnings.join(" "));
       } else {
         const info = await inspectAudio(file);

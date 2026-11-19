@@ -1,6 +1,7 @@
 import { removeMeetingAvatars, trackAvatarWrite } from "./speaker-avatars";
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import { validateMeeting, type Meeting } from "../domain/model";
+import type { ChunkSpeech } from "./chunk-speech-store";
 interface Store extends DBSchema {
   meetings: { key: string; value: Meeting };
   audio: { key: string; value: { bytes: ArrayBuffer; type: string } | Blob };
@@ -64,19 +65,33 @@ export async function getMeeting(id: string) {
 }
 const writes = new Set<Promise<Meeting>>();
 const failedMeetings = new Set<string>();
+type RestoredChunkSpeech = { recordingHash: string; chunks: { index: number; speech: ChunkSpeech }[] };
+const pendingChunkSpeech = new WeakMap<Meeting, RestoredChunkSpeech & { meetingId: string; chunkCount: number }>();
+
+/** Hold validated rows until the existing restore confirmation saves this copy. */
+export function prepareRestoredChunkSpeech(m: Meeting, checkpoint: RestoredChunkSpeech): void {
+  const chunkCount = m.audio?.chunked?.chunkCount;
+  if (m.version !== 0 || chunkCount === undefined || m.audio?.hash !== checkpoint.recordingHash) {
+    throw new Error("Restored chunk speech does not match the meeting's recording identity.");
+  }
+  pendingChunkSpeech.set(m, { ...checkpoint, meetingId: m.id, chunkCount });
+}
+
 export function saveMeeting(m: Meeting, audio?: Blob | null): Promise<Meeting> {
-  const write = writeMeeting(m, audio);
+  return trackMeetingWrite(m.id, writeMeeting(m, audio).catch(error => {
+    failedMeetings.add(m.id);
+    throw error;
+  }));
+}
+export function trackMeetingWrite(id: string, pendingWrite: Promise<Meeting>): Promise<Meeting> {
+  const write = pendingWrite.then(saved => {
+    channel?.postMessage(id);
+    failedMeetings.delete(id);
+    return saved;
+  });
   writes.add(write);
-  void write.then(
-    () => {
-      writes.delete(write);
-      failedMeetings.delete(m.id);
-    },
-    () => {
-      writes.delete(write);
-      failedMeetings.add(m.id);
-    },
-  );
+  const settled = () => writes.delete(write);
+  void write.then(settled, settled);
   return write;
 }
 export async function flushWrites() {
@@ -86,43 +101,63 @@ export async function flushWrites() {
       "Resolve the local save error before updating. Your unsaved changes are still in this page.",
     );
 }
-async function writeMeeting(m: Meeting, audio?: Blob | null): Promise<Meeting> {
-  const value = validateMeeting({
+export function nextMeetingVersion(m: Meeting): Meeting {
+  return validateMeeting({
     ...m,
     version: m.version + 1,
     updatedAt: new Date().toISOString(),
   });
+}
+async function writeMeeting(m: Meeting, audio?: Blob | null): Promise<Meeting> {
+  const value = nextMeetingVersion(m);
+  const checkpoint = pendingChunkSpeech.get(m);
   const encoded = audio
     ? { bytes: await audio.arrayBuffer(), type: audio.type }
     : undefined;
+  if (checkpoint && (m.version !== 0 || value.id !== checkpoint.meetingId || value.audio?.hash !== checkpoint.recordingHash ||
+      value.audio?.chunked?.chunkCount !== checkpoint.chunkCount || value.audio.present || encoded !== undefined)) {
+    throw new Error("Restored chunk speech does not match the meeting's recording identity.");
+  }
   const tx = (await db()).transaction(
-    ["meetings", "audio", "acousticEmbeddings", "acousticIdentities", "acousticAssignments", "acousticCheckpoints"],
+    ["meetings", "audio", "acousticEmbeddings", "acousticIdentities", "acousticAssignments", "acousticCheckpoints",
+      ...(checkpoint ? ["chunkSpeech"] as const : [])],
     "readwrite",
   );
   const previous = await tx.objectStore("meetings").get(m.id);
-  if ((previous?.version ?? 0) !== m.version) {
+  if ((previous?.version ?? 0) !== m.version || (checkpoint && previous)) {
     tx.abort();
     await tx.done.catch(() => {});
     throw new ConflictError();
   }
-  await tx.objectStore("meetings").put(value);
-  if (audio === null) await tx.objectStore("audio").delete(m.id);
-  else if (encoded !== undefined)
-    await tx.objectStore("audio").put(encoded, m.id);
-  const previousAudioHash = previous?.audio?.hash;
-  const nextAudioHash = value.audio?.hash;
-  if (previousAudioHash !== undefined && previousAudioHash !== nextAudioHash) {
-    // Recording replacement invalidates only derived acoustic state. Historical
-    // provider pages/attempts remain immutable and are retained for citation.
-    await Promise.all([
-      tx.objectStore("acousticEmbeddings").delete(IDBKeyRange.bound([m.id, ""], [m.id, "\uffff"])),
-      tx.objectStore("acousticIdentities").delete(IDBKeyRange.bound([m.id, ""], [m.id, "\uffff"])),
-      tx.objectStore("acousticAssignments").delete(IDBKeyRange.bound([m.id, ""], [m.id, "\uffff"])),
-      tx.objectStore("acousticCheckpoints").delete(m.id),
-    ]);
+  try {
+    if (checkpoint) {
+      const speech = tx.objectStore("chunkSpeech");
+      for (const chunk of checkpoint.chunks) await speech.add(chunk.speech, [value.id, chunk.index]);
+    }
+    await tx.objectStore("meetings").put(value);
+    if (audio === null) await tx.objectStore("audio").delete(m.id);
+    else if (encoded !== undefined)
+      await tx.objectStore("audio").put(encoded, m.id);
+    const previousAudioHash = previous?.audio?.hash;
+    const nextAudioHash = value.audio?.hash;
+    if (previousAudioHash !== undefined && previousAudioHash !== nextAudioHash) {
+      // Recording replacement invalidates only derived acoustic state. Historical
+      // provider pages/attempts remain immutable and are retained for citation.
+      await Promise.all([
+        tx.objectStore("acousticEmbeddings").delete(IDBKeyRange.bound([m.id, ""], [m.id, "\uffff"])),
+        tx.objectStore("acousticIdentities").delete(IDBKeyRange.bound([m.id, ""], [m.id, "\uffff"])),
+        tx.objectStore("acousticAssignments").delete(IDBKeyRange.bound([m.id, ""], [m.id, "\uffff"])),
+        tx.objectStore("acousticCheckpoints").delete(m.id),
+      ]);
+    }
+    await tx.done;
+  } catch (error) {
+    try { tx.abort(); } catch { /* A failed request may already have aborted the transaction. */ }
+    await tx.done.catch(() => undefined);
+    throw error;
   }
-  await tx.done;
-  channel?.postMessage(m.id);
+  // trackMeetingWrite broadcasts the change after the write settles.
+  if (checkpoint) pendingChunkSpeech.delete(m);
   return value;
 }
 export async function getAudio(id: string) {
