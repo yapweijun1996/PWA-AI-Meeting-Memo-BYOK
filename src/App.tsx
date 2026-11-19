@@ -716,7 +716,7 @@ export default function App() {
               await created(await saveMeeting(sampleMeeting()));
               setHelp(false);
             } catch {
-              setError(t("Could not save the example.", "???????"));
+              setError(t("Could not save the example.", "无法保存示例。"));
             }
           }}
         />
