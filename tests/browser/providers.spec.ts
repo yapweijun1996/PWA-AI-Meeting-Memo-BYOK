@@ -196,8 +196,9 @@ test("memo submissions require confirmation, preserve evidence and mark source c
   expect(requests).toBe(0);
   await confirmMemo(page);
   if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
+  // Memo templates append unconfirmed action fields below the provider text.
   await expect(page.getByLabel("action note")).toHaveValue(
-    "Review inventory with finance.",
+    /^Review inventory with finance\.(\n[^\n]+: Pending confirmation)+$/,
   );
   expect(requests).toBe(1);
   await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
@@ -309,7 +310,7 @@ test("memo submissions require confirmation, preserve evidence and mark source c
   await confirmMemo(page);
   if (await page.getByRole("button", { name: "Evidence Review", exact: true }).getAttribute("aria-pressed") !== "true") await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(page.getByLabel("action note")).toHaveValue(
-    "Review inventory with finance.",
+    /^Review inventory with finance\.(\n[^\n]+: Pending confirmation)+$/,
   );
   await expect(page.getByLabel("Memo version").locator("option")).toHaveCount(
     2,
@@ -323,7 +324,7 @@ test("memo submissions require confirmation, preserve evidence and mark source c
   await expect(
     page
       .locator(".original-text")
-      .getByText("Review inventory with finance.", { exact: true }),
+      .getByText(/Review inventory with finance\./),
   ).toBeVisible();
   expect(requests).toBe(2);
 });
