@@ -1,5 +1,6 @@
 import { Button } from "./components/controls";
 import { LanguageMenu } from "./components/LanguageMenu";
+import { InstallButton } from "./pwa/InstallButton";
 import { Masonry } from "./components/Masonry";
 import { Icon } from "./components/Icon";
 import { translateUi } from "./i18n";
@@ -431,6 +432,7 @@ export default function App() {
             setLanguageSaving(true);
             void saveUiLanguagePreference(language).catch(() => setError(t("Wait for settings to finish saving, or check local storage.", "请等待设置保存完成，或检查本地存储。"))).finally(() => setLanguageSaving(false));
           }} />
+          <InstallButton placement="topbar" />
           <span className="privacy-top" data-tooltip={t("Meetings are saved locally. AI requests use your selected provider.", "\u4f1a\u8bae\u4fdd\u5b58\u5728\u672c\u5730\u3002AI \u8bf7\u6c42\u4f7f\u7528\u60a8\u9009\u62e9\u7684\u670d\u52a1\u5546\u3002")}>
             <Icon glyph={ShieldCheck} size="compact" />
             {online

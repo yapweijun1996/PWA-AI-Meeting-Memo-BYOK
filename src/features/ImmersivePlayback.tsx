@@ -25,6 +25,20 @@ function joinedText(parts: string[]) {
   }, "");
 }
 
+function tableSeat(index: number, count: number, topSeats: number) {
+  const longTable = count >= 6;
+  if (longTable && index >= count - 2) {
+    return { row: 2, column: index === count - 2 ? 1 : topSeats + 2, span: 1 };
+  }
+  const onTop = index < topSeats;
+  const row = onTop ? 1 : 3;
+  const indexInRow = onTop ? index : index - topSeats;
+  if (longTable) return { row, column: 2 + indexInRow, span: 1 };
+  // Each seat spans two tracks, leaving one empty track on either side of an odd roster's shorter row.
+  const offset = onTop ? 0 : count % 2;
+  return { row, column: 1 + offset + 2 * indexInRow, span: 2 };
+}
+
 export function ImmersivePlayback({ meeting, clock, position, duration, rate, playing, status, onSeek, onTogglePlayback, onChangeRate, onEditSpeakers, t }: Props) {
   const { avatars } = useSpeakerAvatars(meeting.id);
   const host = useRef<HTMLDivElement>(null);
@@ -53,11 +67,13 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
   const [showCaptions, setShowCaptions] = useState(true);
   const [showRoster, setShowRoster] = useState(false);
   const [relevantRoster, setRelevantRoster] = useState(false);
-  const [speakerLayout, setSpeakerLayout] = useState<"single" | "table">("single");
+  const [speakerLayout, setSpeakerLayout] = useState<"single" | "table">("table");
   const [controlError, setControlError] = useState(false);
   const [fullscreenError, setFullscreenError] = useState(false);
   const [size, setSize] = useState("normal");
   const [follow, setFollow] = useState(true);
+  // Read-only diagnostic: which interaction last paused transcript follow.
+  const [pauseReason, setPauseReason] = useState("");
   const [page, setPage] = useState(0);
   const [followStart, setFollowStart] = useState(0);
   const [untimedPage, setUntimedPage] = useState(0);
@@ -104,12 +120,25 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
   const currentSpeakers = meeting.speakers.filter((speaker) => displayedIds.has(speaker.id));
   const rosterSpeakers = relevantRoster ? currentSpeakers : meeting.speakers;
   const showUnknownLabel = activeUnknown || (!current.length && contextUnknown);
-  const tableAvailable = meeting.speakers.length >= 2 && meeting.speakers.length <= 10;
-  const longTable = meeting.speakers.length >= 6 && tableAvailable;
-  const sideSeats = Math.ceil((meeting.speakers.length - 2) / 2);
+  const speakerCount = meeting.speakers.length;
+  const tableAvailable = speakerCount >= 2 && speakerCount <= 10;
+  const longTable = speakerCount >= 6;
   const showTable = speakerLayout === "table" && tableAvailable;
+  const topSeats = Math.ceil((longTable ? speakerCount - 2 : speakerCount) / 2);
+  const seatColumns = longTable ? topSeats + 2 : topSeats * 2;
   const glowSeat = showTable && playing && status === "playing" && !activeUnknown && activeIds.size === 1
     ? meeting.speakers.findIndex((speaker) => activeIds.has(speaker.id)) : -1;
+  const tableStyle = { "--seat-columns": seatColumns } as CSSProperties;
+  if (glowSeat >= 0) {
+    const { row, column, span } = tableSeat(glowSeat, speakerCount, topSeats);
+    const edgeColumns = longTable ? 1 : 0;
+    const surfaceColumns = seatColumns - 2 * edgeColumns;
+    const center = column - 1 - edgeColumns + span / 2;
+    Object.assign(tableStyle, {
+      "--table-glow-x": `${Math.max(0, Math.min(1, center / surfaceColumns)) * 100}%`,
+      "--table-glow-y": `${(row - 1) * 50}%`,
+    });
+  }
   const automatic = playbackCaptionWindowStart(captions, exact, 40);
   const boundedStart = Math.min(followStart, Math.max(0, captions.length - 40));
   const stableStart = Math.abs(automatic - boundedStart) > 12 ? automatic : boundedStart;
@@ -386,8 +415,8 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
   const captionAttribution = textCaptions.map((caption) => caption.speakerIds.length ? speakerName(meeting, caption.speakerIds) : t("Unknown speaker", "未知说话人")).join(" + ");
   const captionState = status === "error" || status === "buffering" ? state : current.length
     ? playing && status === "playing" ? t("Speaking", "正在发言") : t("At this position", "此位置的归属") : retainedLabel;
-  const suspend = () => { setPage(start); setFollow(false); };
-  const jumpToCurrent = () => { setSearch(""); setFollow(true); };
+  const suspend = (reason: string) => { setPage(start); setFollow(false); setPauseReason(reason); };
+  const jumpToCurrent = () => { setSearch(""); setFollow(true); setPauseReason(""); };
   return <>
     <Button ref={opener} type="button" className="button secondary compact" onClick={enter}><Icon glyph={Maximize2} size="compact" /> {t("Immersive playback", "沉浸式播放")}</Button>
     <div ref={host} hidden={!open} className="immersive" role="dialog" aria-modal="true" aria-label={t("Immersive playback", "沉浸式播放")}>
@@ -424,18 +453,12 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
               {relevantRoster && !rosterSpeakers.length && !showUnknownLabel && <p>{t("No attributed speech or retained context here.", "此处没有已归属发言或保留的上下文。")}</p>}
               <Button type="button" onClick={() => { close(); onEditSpeakers(); }}>{t("Edit speakers", "编辑说话人")}</Button>
             </div>
-            {showTable ? <div className={longTable ? "immersive-table-speakers long-table" : "immersive-table-speakers"} style={longTable ? {"--seat-columns": sideSeats + 2} as CSSProperties : undefined} data-count={meeting.speakers.length} data-glow-seat={glowSeat >= 0 ? glowSeat : undefined} role="group" tabIndex={0} aria-label={t("Meeting speaker labels", "会议说话人标签")}>
+            {showTable ? <div className={longTable ? "immersive-table-speakers long-table" : "immersive-table-speakers"} style={tableStyle} data-count={speakerCount} data-glow-seat={glowSeat >= 0 ? glowSeat : undefined} role="group" tabIndex={0} aria-label={t("Meeting speaker labels", "会议说话人标签")}>
               {meeting.speakers.map((speaker, index) => {
                 const atPosition = activeIds.has(speaker.id);
                 const speaking = playing && status === "playing" && atPosition;
-                let seat: CSSProperties | undefined;
-                if (longTable) {
-                  const endSeat = index - (meeting.speakers.length - 2);
-                  seat = endSeat >= 0
-                    ? {gridRow: 2, gridColumn: endSeat === 0 ? 1 : sideSeats + 2}
-                    : {gridRow: index < sideSeats ? 1 : 3, gridColumn: 2 + index % sideSeats};
-                }
-                return <div className="immersive-table-speaker" style={seat} key={speaker.id} data-speaker-id={speaker.id} data-active={speaking} data-position={atPosition}>
+                const { row, column, span } = tableSeat(index, speakerCount, topSeats);
+                return <div className="immersive-table-speaker" style={{ gridRow: row, gridColumn: `${column} / span ${span}` }} key={speaker.id} data-speaker-id={speaker.id} data-active={speaking} data-position={atPosition}>
                   <SpeakerAvatar id={speaker.id} image={avatars[speaker.id]} className="immersive-avatar" />
                   <strong title={speaker.name}>{speaker.name}</strong>
                   <span className="immersive-confirmation">{speaker.confirmed ? t("Name confirmed", "姓名已确认") : t("Unconfirmed", "未确认")}</span>
@@ -467,10 +490,10 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
           {panel && <aside className="immersive-transcript" aria-label={t("Transcript", "转录")} style={{ "--transcript-width": `${panelWidth}%` } as CSSProperties}>
             <div className="immersive-panel-head"><h2>{t("Transcript", "转录")}</h2><Button type="button" onClick={() => { setPanel(false); transcriptToggle.current?.focus(); }} aria-label={t("Close transcript", "关闭转录")}><Icon glyph={X} size="small" /></Button></div>
             <label className="immersive-panel-width">{t("Panel width", "面板宽度")} <input type="range" aria-label={t("Transcript panel width", "转录面板宽度")} aria-valuetext={`${panelWidth}%`} min="25" max="45" step="1" value={panelWidth} onChange={(event) => setPanelWidth(Number(event.target.value))} /><span>{panelWidth}%</span></label>
-            <label className="immersive-search"><span>{t("Search transcript", "搜索转录")}</span><input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); setUntimedPage(0); setFollow(false); }} placeholder={t("Search text or speaker", "搜索文字或说话人")} /></label>
-            <div className="immersive-follow-row"><p className="immersive-follow-status">{follow && !searchTerm ? t("Following playback", "正在跟随播放") : searchTerm ? t("Search results · follow paused", "搜索结果 · 跟随已暂停") : t("Follow paused", "跟随已暂停")}</p><Button type="button" onClick={jumpToCurrent}>{t("Jump to current", "跳至当前位置")}</Button></div>
-            <div ref={transcript} className="immersive-transcript-list" onWheel={suspend} onTouchMove={suspend} onPointerDown={suspend} onKeyDown={suspend} tabIndex={0}>
-              {visible.map((caption) => <Button key={caption.id} type="button" data-immersive-caption={caption.id} className={current.includes(caption) ? "is-current" : ""} onClick={() => { suspend(); onSeek(caption.start); }}>
+            <label className="immersive-search"><span>{t("Search transcript", "搜索转录")}</span><input type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); setUntimedPage(0); setFollow(false); setPauseReason("search"); }} placeholder={t("Search text or speaker", "搜索文字或说话人")} /></label>
+            <div className="immersive-follow-row"><p className="immersive-follow-status" data-follow-pause-reason={follow ? undefined : pauseReason || undefined}>{follow && !searchTerm ? t("Following playback", "正在跟随播放") : searchTerm ? t("Search results · follow paused", "搜索结果 · 跟随已暂停") : t("Follow paused", "跟随已暂停")}</p><Button type="button" onClick={jumpToCurrent}>{t("Jump to current", "跳至当前位置")}</Button></div>
+            <div ref={transcript} className="immersive-transcript-list" onWheel={() => suspend("wheel")} onTouchMove={() => suspend("touch")} onPointerDown={() => suspend("pointer")} onKeyDown={(event) => suspend(`key:${event.key}`)} tabIndex={0}>
+              {visible.map((caption) => <Button key={caption.id} type="button" data-immersive-caption={caption.id} className={current.includes(caption) ? "is-current" : ""} onClick={() => { suspend("caption-click"); onSeek(caption.start); }}>
                 <span className="immersive-row-meta"><span>{formatTime(caption.start)}</span><strong>{caption.speakerIds.length ? speakerName(meeting, caption.speakerIds) : t("Unknown speaker", "未知说话人")}</strong></span>
                 <span>{caption.fragments.map((fragment, index) => <span key={fragment.id} className={fragmentsAtTime([fragment], exact).length ? "is-current-fragment" : undefined}>{index > 0 && joinedText([caption.fragments[index - 1].text, fragment.text]) !== caption.fragments[index - 1].text + fragment.text ? " " : ""}{fragment.text}</span>)}</span>
               </Button>)}
@@ -479,7 +502,7 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
               {matchingUntimed.length > 0 && <details className="immersive-untimed" open={searchTerm ? true : undefined}><summary><span>{t("Timing unavailable", "时间不可用")}</span> ({matchingUntimed.length})</summary>{matchingUntimed.slice(untimedPage, untimedPage + 40).map((segment) => <p key={segment.id}>{segment.speakerIds.length ? speakerName(meeting, segment.speakerIds) : t("Unknown speaker", "未知说话人")}: {segment.text}</p>)}
                 {matchingUntimed.length > 40 && <div><Button type="button" disabled={untimedPage === 0} onClick={() => setUntimedPage(Math.max(0, untimedPage - 40))}>{t("Earlier untimed", "较早的无时间片段")}</Button><Button type="button" disabled={untimedPage + 40 >= matchingUntimed.length} onClick={() => setUntimedPage(untimedPage + 40)}>{t("Later untimed", "较晚的无时间片段")}</Button></div>}
               </details>}
-            <div className="immersive-paging"><Button type="button" disabled={start === 0} onClick={() => { setFollow(false); setPage(Math.max(0, start - 40)); }}><Icon glyph={ChevronLeft} size="small" />{t("Earlier", "更早")}</Button><span>{t("Caption groups", "字幕组")} {matchingCaptions.length ? start + 1 : 0}–{Math.min(start + 40, matchingCaptions.length)} {t("of", "/")} {matchingCaptions.length}</span><Button type="button" disabled={start + 40 >= matchingCaptions.length} onClick={() => { setFollow(false); setPage(start + 40); }}>{t("Later", "更晚")}<Icon glyph={ChevronRight} size="small" /></Button></div>
+            <div className="immersive-paging"><Button type="button" disabled={start === 0} onClick={() => { setFollow(false); setPauseReason("page-earlier"); setPage(Math.max(0, start - 40)); }}><Icon glyph={ChevronLeft} size="small" />{t("Earlier", "更早")}</Button><span>{t("Caption groups", "字幕组")} {matchingCaptions.length ? start + 1 : 0}–{Math.min(start + 40, matchingCaptions.length)} {t("of", "/")} {matchingCaptions.length}</span><Button type="button" disabled={start + 40 >= matchingCaptions.length} onClick={() => { setFollow(false); setPauseReason("page-later"); setPage(start + 40); }}>{t("Later", "更晚")}<Icon glyph={ChevronRight} size="small" /></Button></div>
           </aside>}
         </div>
         <footer ref={controls} hidden={!controlsVisible} className="immersive-controls">

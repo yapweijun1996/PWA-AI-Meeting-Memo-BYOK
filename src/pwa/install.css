@@ -1,0 +1,42 @@
+.topbar-install {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 8px;
+  min-height: 44px;
+  margin-inline-start: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--action-selected-border);
+  border-radius: var(--radius-button);
+  background: var(--action-selected-bg);
+  color: var(--color-accent-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.topbar-install:hover {
+  background: var(--surface-subtle);
+  border-color: var(--color-accent-text);
+}
+.topbar-install:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.topbar-install svg {
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .topbar-install {
+    justify-content: center;
+    width: 44px;
+    padding: 8px;
+  }
+  .topbar-install .install-label {
+    display: none;
+  }
+}
+/* Sits above the update control inside the sidebar footer. */
+.pwa-sidebar-install {
+  order: 1;
+}

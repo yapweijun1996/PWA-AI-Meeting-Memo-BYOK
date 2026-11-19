@@ -4,13 +4,14 @@ import { translateUi } from "../i18n";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { version as appVersion } from "../../package.json";
-import { AlertTriangle, Check, Download, RefreshCw, WifiOff, X } from "lucide-react";
+import { AlertTriangle, Check, RefreshCw, WifiOff, X } from "lucide-react";
 import { isProcessing } from "../jobs/runner";
 import { flushWrites } from "../storage/repository";
 import { avatarWritesPending, flushAvatarWrites } from "../storage/speaker-avatars";
 import { flushSettingsWrites, isSettingsDirty } from "../providers/credentials";
 import { useUiLanguage } from "../ui-language";
 import { translateMessage } from "../ui-messages";
+import { InstallButton } from "./InstallButton";
 export function PwaStatus() {
   const language = useUiLanguage();
   const displayBuild = __BUILD_ID__.startsWith("local-") ? `local-${__BUILD_ID__.slice(-8)}` : __BUILD_ID__.slice(0, 8);
@@ -28,12 +29,6 @@ export function PwaStatus() {
     [updating, setUpdating] = useState(false),
     [error, setError] = useState(""),
     [offline, setOffline] = useState(!navigator.onLine);
-  const [install, setInstall] = useState<
-    Event & {
-      prompt: () => Promise<void>;
-      userChoice: Promise<{ outcome: string }>;
-    }
-  >();
   useEffect(() => {
     const on = () => setOffline(!navigator.onLine);
     let controlled = !!navigator.serviceWorker?.controller;
@@ -45,18 +40,8 @@ export function PwaStatus() {
       "controllerchange",
       controlChanged,
     );
-    const prompt = (e: Event) => {
-      e.preventDefault();
-      setInstall(
-        e as Event & {
-          prompt: () => Promise<void>;
-          userChoice: Promise<{ outcome: string }>;
-        },
-      );
-    };
     addEventListener("online", on);
     addEventListener("offline", on);
-    addEventListener("beforeinstallprompt", prompt);
     if (import.meta.env.PROD && "serviceWorker" in navigator) {
       void navigator.serviceWorker
         .register(`${import.meta.env.BASE_URL}sw.js`, {
@@ -94,7 +79,6 @@ export function PwaStatus() {
       );
       removeEventListener("online", on);
       removeEventListener("offline", on);
-      removeEventListener("beforeinstallprompt", prompt);
     };
   }, []);
   async function checkForUpdates() {
@@ -260,6 +244,7 @@ export function PwaStatus() {
     <>
       {sidebarSlot && createPortal(<div className="pwa-sidebar">
         <span className="pwa-version" data-tooltip={__BUILD_ID__}>{t("Version", "\u7248\u672c")} {appVersion} - {displayBuild}</span>
+        <InstallButton placement="sidebar" />
         {confirmation.open && confirmation.origin === "sidebar" && !updating ? <div className="pwa-sidebar-actions">
           <Button ref={confirmButton} type="button" className="pwa-sidebar-button pwa-sidebar-confirm" aria-label={t("Confirm update", "确认更新")} data-tooltip={t("Confirm update", "确认更新")} onClick={() => void update()}><Icon glyph={Check} size="compact" />{t("Confirm update", "确认更新")}</Button>
           <Button type="button" className="pwa-sidebar-button pwa-sidebar-cancel" aria-label={t("Cancel", "取消")} data-tooltip={t("Cancel", "取消")} onClick={cancelUpdate}><Icon glyph={X} size="compact" /></Button>
@@ -299,25 +284,6 @@ export function PwaStatus() {
               {updating ? t("Updating…", "正在更新…") : t("Update now", "立即更新")}
             </Button>
           )}
-        </div>
-      )}
-      {install && (
-        <div className="notice install">
-          <Icon glyph={Download} size="status" />
-          <span>{t("Make this workspace feel at home on your device.", "将此工作空间安装到您的设备。")}</span>
-          <Button
-            className="button secondary compact"
-            onClick={async () => {
-              await install.prompt();
-              await install.userChoice;
-              setInstall(undefined);
-            }}
-          >
-            {t("Install app", "安装应用")}
-          </Button>
-          <Button className="text-button" onClick={() => setInstall(undefined)}>
-            {t("Later", "稍后")}
-          </Button>
         </div>
       )}
       {error && !sidebarError && (

@@ -1065,6 +1065,91 @@ test("immersive view enters and exits native Chromium fullscreen", async ({ page
   await expect.poll(() => page.locator("audio").evaluate((element) => (element as HTMLMediaElement).currentTime)).toBe(1.5);
 });
 
+test("immersive transcript keeps following playback across a long transcript without user input", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
+  await createFixture(page, "speaker-review.wav", longFixtureMeeting());
+  await page.getByRole("button", { name: "Play audio", exact: true }).click();
+  await page.locator("audio").dispatchEvent("playing");
+  await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  await dialog.getByRole("button", { name: "Reading", exact: true }).click();
+  const list = dialog.locator(".immersive-transcript-list");
+  const failures: string[] = [];
+  // 120 long captions start at 4 s, 0.27 s apart. No wheel, pointer, touch or key event is sent.
+  for (let time = 4.1; time < 36.2; time += 0.54) {
+    await page.locator("audio").evaluate((element, value) => {
+      (element as HTMLMediaElement).currentTime = value;
+      element.dispatchEvent(new Event("timeupdate"));
+    }, time);
+    await page.waitForTimeout(60);
+    const state = await dialog.evaluate((element) => {
+      const box = element.querySelector(".immersive-transcript-list")!.getBoundingClientRect();
+      const row = element.querySelector<HTMLElement>(".immersive-transcript-list .is-current");
+      const rowBox = row?.getBoundingClientRect();
+      return {
+        status: element.querySelector(".immersive-follow-status")?.textContent ?? "",
+        current: row?.textContent?.slice(0, 40) ?? null,
+        visible: !!rowBox && rowBox.bottom > box.top && rowBox.top < box.bottom,
+        range: element.querySelector(".immersive-paging span")?.textContent ?? "",
+      };
+    });
+    if (state.status !== "Following playback" || !state.visible) failures.push(`${time.toFixed(2)}s ${JSON.stringify(state)}`);
+  }
+  expect(failures).toEqual([]);
+  await expect(list).toBeVisible();
+});
+
+test("immersive transcript keeps following the real media clock without user input", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "This native audio clock probe uses Chromium's WAV decoder.");
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.addInitScript(() => {
+    (window as Window & { nativeFixturePlay?: typeof HTMLMediaElement.prototype.play }).nativeFixturePlay = HTMLMediaElement.prototype.play;
+    HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable"));
+  });
+  await createFixture(page, "speaker-review.wav", longFixtureMeeting(), true);
+  await page.locator("audio").evaluate((element) => {
+    const media = element as HTMLMediaElement;
+    const nativePlay = (window as Window & { nativeFixturePlay?: typeof media.play }).nativeFixturePlay;
+    if (!nativePlay) throw new Error("Native audio play method is unavailable.");
+    media.play = nativePlay;
+    media.currentTime = 0;
+    media.dispatchEvent(new Event("seeked"));
+  });
+  await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  await dialog.getByRole("button", { name: "Reading", exact: true }).click();
+  await dialog.getByRole("button", { name: "Play audio" }).click();
+  const samples: string[] = [];
+  const failures: string[] = [];
+  let lastTime = 0;
+  // No wheel, pointer, touch or key event is sent while the native clock advances past the first 40 captions.
+  for (let index = 0; index < 120; index += 1) {
+    await page.waitForTimeout(250);
+    const state = await dialog.evaluate((element) => {
+      const media = document.querySelector("audio") as HTMLMediaElement;
+      const box = element.querySelector(".immersive-transcript-list")!.getBoundingClientRect();
+      const row = element.querySelector<HTMLElement>(".immersive-transcript-list .is-current");
+      const rowBox = row?.getBoundingClientRect();
+      return {
+        t: Math.round(media.currentTime * 100) / 100,
+        status: element.querySelector(".immersive-follow-status")?.textContent ?? "",
+        current: !!row,
+        visible: !!rowBox && rowBox.bottom > box.top && rowBox.top < box.bottom,
+        range: element.querySelector(".immersive-paging span")?.textContent ?? "",
+      };
+    });
+    lastTime = state.t;
+    if (index % 8 === 0) samples.push(JSON.stringify(state));
+    if (state.t > 36.2) break;
+    if (state.status !== "Following playback" || (state.current && !state.visible)) failures.push(JSON.stringify(state));
+  }
+  console.log(samples.join("\n"));
+  expect(lastTime, "the native audio clock must advance past the first 40 captions").toBeGreaterThan(30);
+  expect(failures.slice(0, 5)).toEqual([]);
+});
+
 test("immersive playback shows overlap and remains accessible on a narrow viewport", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
@@ -1102,6 +1187,7 @@ test("immersive speaker glow follows playback and respects reduced motion", asyn
   });
   await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  await dialog.getByRole("button", { name: "Single", exact: true }).click();
   const avatar = dialog.locator(".immersive-current-speaker .immersive-avatar").first();
   await expect(avatar).toHaveCSS("animation-name", "none");
   await dialog.getByRole("button", { name: "Play audio" }).click();
@@ -1152,7 +1238,7 @@ test("immersive table keeps speaker positions stable and follows source attribut
   await seek(1.5);
   await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Immersive playback" });
-  await dialog.getByRole("button", { name: "Table", exact: true }).click();
+  const table = dialog.getByRole("group", { name: "Meeting speaker labels", exact: true });
   const cards = dialog.locator(".immersive-table-speaker");
   await expect(cards).toHaveCount(2);
   await expect(cards.filter({ hasText: "Speaker 2" })).toHaveAttribute("data-position", "true");
@@ -1162,6 +1248,9 @@ test("immersive table keeps speaker positions stable and follows source attribut
   const positions = await cards.evaluateAll((elements) => elements.map((element) => { const box = element.getBoundingClientRect(); return [box.x, box.y]; }));
   await dialog.getByRole("button", { name: "Play audio" }).click();
   await expect(dialog.locator('.immersive-table-speaker[data-active="true"]')).toHaveCount(1);
+  await expect(table).toHaveAttribute("data-glow-seat", "1");
+  await expect(table).toHaveCSS("--table-glow-x", "50%");
+  await expect(table).toHaveCSS("--table-glow-y", "100%");
   const speakingAvatar = dialog.locator('.immersive-table-speaker[data-active="true"] .immersive-avatar');
   await expect.poll(() => speakingAvatar.evaluate((element) => getComputedStyle(element, "::after").animationName)).toBe("immersive-speaker-ring");
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -1170,6 +1259,7 @@ test("immersive table keeps speaker positions stable and follows source attribut
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await seek(2);
   await expect(dialog.locator('.immersive-table-speaker[data-active="true"]')).toHaveCount(2);
+  await expect(table).not.toHaveAttribute("data-glow-seat");
   await expect(dialog.locator(".immersive-caption-meta")).toContainText("Speaker 1");
   await expect(dialog.locator(".immersive-caption-meta")).toContainText("Speaker 2");
   expect(await cards.evaluateAll((elements) => elements.map((element) => { const box = element.getBoundingClientRect(); return [box.x, box.y]; }))).toEqual(positions);
@@ -1185,6 +1275,90 @@ test("immersive table keeps speaker positions stable and follows source attribut
   await dialog.getByRole("button", { name: "Single", exact: true }).click();
   await expect(dialog.locator(".immersive-current-speakers")).toBeVisible();
   expect(sourceSnapshot(await storedMeeting(page))).toBe(before);
+});
+
+for (const count of [2, 3, 4, 5]) {
+  test(`immersive defaults to the shared table with ${count} seats`, async ({ page, browserName }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
+    const fixture = fixtureMeeting();
+    for (let number = 3; number <= count; number++) {
+      fixture.speakers.push({ ...fixture.speakers[0], id: `20000000-0000-4000-8000-00000000000${number}`, name: `Speaker ${number}` });
+    }
+    await createFixture(page, "speaker-review.wav", fixture);
+    await page.locator("audio").evaluate((element) => {
+      (element as HTMLMediaElement).currentTime = 0.2;
+      element.dispatchEvent(new Event("seeked"));
+    });
+    await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+    const tableButton = dialog.getByRole("button", { name: "Table", exact: true });
+    const singleButton = dialog.getByRole("button", { name: "Single", exact: true });
+    const table = dialog.getByRole("group", { name: "Meeting speaker labels", exact: true });
+    await expect(tableButton).toHaveAttribute("aria-pressed", "true");
+    await expect(singleButton).toHaveAttribute("aria-pressed", "false");
+    await expect(table.locator("strong")).toHaveText(fixture.speakers.map(speaker => speaker.name));
+    for (const { width, height } of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize({ width, height });
+      await expect(table).toHaveCSS("display", "grid");
+      const { surface, matchesTokens, rows, tableCenter } = await table.evaluate((element) => {
+        const surface = getComputedStyle(element, "::before");
+        const reference = document.createElement("span");
+        reference.style.cssText = "border-radius:var(--radius-immersive-table);background:var(--immersive-table-wood);box-shadow:var(--shadow-immersive-table-rim)";
+        element.append(reference);
+        const tokens = getComputedStyle(reference);
+        const matchesTokens = surface.borderTopLeftRadius === tokens.borderTopLeftRadius &&
+          surface.backgroundColor === tokens.backgroundColor && surface.boxShadow === tokens.boxShadow;
+        reference.remove();
+        const bounds = element.getBoundingClientRect();
+        const rows = [...element.querySelectorAll(".immersive-table-speaker")].map((seat) => {
+          const { x, y, width } = seat.getBoundingClientRect();
+          return { x, y, width };
+        });
+        return { surface: surface.backgroundImage, matchesTokens, rows, tableCenter: bounds.x + bounds.width / 2 };
+      });
+      expect(matchesTokens).toBe(true);
+      expect(surface).toContain("repeating-linear-gradient");
+      const top = rows.filter(seat => seat.y === rows[0].y);
+      const bottom = rows.filter(seat => seat.y === rows.at(-1)!.y);
+      expect(top).toHaveLength(Math.ceil(count / 2));
+      expect(bottom).toHaveLength(Math.floor(count / 2));
+      expect(bottom[0].y).toBeGreaterThan(top[0].y);
+      for (const row of [top, bottom]) {
+        const last = row.at(-1)!;
+        expect(Math.abs((row[0].x + last.x + last.width) / 2 - tableCenter)).toBeLessThan(1);
+      }
+      expect(bottom[0].width).toBeCloseTo(top[0].width, 0);
+      if (browserName === "chromium" && process.env.PLAYBACK_UX_SCREENSHOTS === "1") {
+        await page.screenshot({ path: `test-results/immersive-table/${count}-speakers-${width}.png`, animations: "disabled" });
+      }
+    }
+    await tableButton.focus();
+    await page.keyboard.press("Tab");
+    await expect(table).toBeFocused();
+    await singleButton.click();
+    await expect(singleButton).toHaveAttribute("aria-pressed", "true");
+    await expect(tableButton).toHaveAttribute("aria-pressed", "false");
+    await expect(table).toHaveCount(0);
+    await expect(dialog.getByRole("group", { name: "Speaker attribution and context" })).toContainText("Speaker 1");
+  });
+}
+
+test("immersive falls back to Single with one speaker", async ({ page }) => {
+  await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
+  const fixture = fixtureMeeting();
+  fixture.speakers = fixture.speakers.slice(0, 1);
+  fixture.segments.forEach(segment => { segment.speakerIds = segment.speakerIds.filter(id => id === speakerIds[0]); });
+  await createFixture(page, "speaker-review.wav", fixture);
+  await page.locator("audio").evaluate((element) => {
+    (element as HTMLMediaElement).currentTime = 0.2;
+    element.dispatchEvent(new Event("seeked"));
+  });
+  await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  await expect(dialog.getByRole("group", { name: "Speaker layout" })).toHaveCount(0);
+  await expect(dialog.getByRole("group", { name: "Meeting speaker labels" })).toHaveCount(0);
+  await expect(dialog.getByRole("group", { name: "Speaker attribution and context" })).toContainText("Speaker 1");
 });
 
 for (const width of [1440, 768, 390]) for (const theme of ["light", "dark"]) {
@@ -1247,7 +1421,6 @@ test("immersive table keeps four labels in fixed positions around the table", as
   await createFixture(page, "speaker-review.wav", fixture);
   await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Immersive playback" });
-  await dialog.getByRole("button", { name: "Table", exact: true }).click();
   const cards = dialog.locator(".immersive-table-speaker");
   await expect(cards).toHaveCount(4);
   const seats = await cards.evaluateAll((elements) => elements.map((element) => { const box = element.getBoundingClientRect(); return { x: box.x, y: box.y }; }));
@@ -1264,6 +1437,8 @@ test("immersive table keeps four labels in fixed positions around the table", as
   });
   await dialog.getByRole("button", { name: "Play audio" }).click();
   await expect(dialog.locator(".immersive-table-speakers")).toHaveAttribute("data-glow-seat", "1");
+  await expect(dialog.locator(".immersive-table-speakers")).toHaveCSS("--table-glow-x", "75%");
+  await expect(dialog.locator(".immersive-table-speakers")).toHaveCSS("--table-glow-y", "0%");
   await expect(dialog.locator(".immersive-caption-meta")).toContainText("Speaker 2");
   expect(await cards.evaluateAll((elements) => elements.map((element) => { const box = element.getBoundingClientRect(); return { x: box.x, y: box.y }; }))).toEqual(seats);
   await page.locator("audio").evaluate((element) => { (element as HTMLMediaElement).currentTime = 2; element.dispatchEvent(new Event("seeked")); });
@@ -1277,31 +1452,46 @@ test("immersive table supports five labels and ten fixed seats on desktop and ph
   await page.addInitScript(() => { HTMLElement.prototype.requestFullscreen = () => Promise.reject(new Error("unavailable")); });
   const fixture = fixtureMeeting();
   for (let index = 3; index <= 5; index++) fixture.speakers.push({ ...fixture.speakers[0], id: `20000000-0000-4000-8000-00000000000${index}`, name: `Speaker ${index}` });
+  const longName = "A speaker with a long name that occupies more than two lines at this table";
+  fixture.speakers[4].name = longName;
   await createFixture(page, "speaker-review.wav", fixture);
   await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Immersive playback" });
-  await dialog.getByRole("button", { name: "Table", exact: true }).click();
   await expect(dialog.locator(".immersive-table-speaker")).toHaveCount(5);
   await page.setViewportSize({ width: 924, height: 728 });
   const content = dialog.locator(".immersive-content");
   expect(await content.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const longLabel = dialog.locator(".immersive-table-speaker strong").filter({ hasText: longName });
+  await expect(longLabel).toHaveAttribute("title", longName);
+  await expect(longLabel).toHaveCSS("-webkit-line-clamp", "2");
+  expect(await longLabel.evaluate(element => {
+    const style = getComputedStyle(element);
+    const chrome = ["paddingTop", "paddingBottom", "borderTopWidth", "borderBottomWidth"].reduce((sum, key) => sum + parseFloat(style[key as "paddingTop"]), 0);
+    return element.getBoundingClientRect().height - chrome <= 2 * parseFloat(style.lineHeight) + 1;
+  })).toBe(true);
   expect((await new AxeBuilder({ page }).include(".immersive").withTags(["wcag2a", "wcag2aa"]).analyze()).violations).toEqual([]);
   await dialog.getByRole("button", { name: "Exit immersive" }).click();
   for (let index = 6; index <= 10; index++) fixture.speakers.push({ ...fixture.speakers[0], id: crypto.randomUUID(), name: `Speaker ${index}` });
   await createFixture(page, "speaker-review.wav", fixture);
   await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
-  await dialog.getByRole("button", {name:"Table",exact:true}).click();
   const cards = dialog.locator(".long-table .immersive-table-speaker");
   await expect(cards).toHaveCount(10);
   const positions = () => cards.evaluateAll(elements => elements.map(element => {
     const {x,y} = element.getBoundingClientRect();
-    return [element.getAttribute("data-speaker-id"),x,y];
+    return [element.getAttribute("data-speaker-id"), x, y] as const;
   }));
   for (const width of [390, 1280]) {
     await page.setViewportSize({width,height:844});
     const before = await positions();
+    const [, left, middle] = before[8];
+    const [, right, otherMiddle] = before[9];
+    expect(left).toBeLessThan(before[0][1]);
+    expect(right).toBeGreaterThan(before[3][1]);
+    expect(middle).toBe(otherMiddle);
+    expect(middle).toBeGreaterThan(before[0][2]);
+    expect(middle).toBeLessThan(before[4][2]);
     await page.locator("audio").evaluate(element => {
       (element as HTMLMediaElement).currentTime = 2;
       element.dispatchEvent(new Event("seeked"));
@@ -1328,7 +1518,6 @@ test("immersive fullscreen hides controls while playing and restores them on int
   await page.locator("audio").evaluate((element) => { Object.defineProperty(element, "error", { configurable: true, get: () => null }); });
   await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Immersive playback" });
-  await dialog.getByRole("button", { name: "Table", exact: true }).click();
   await dialog.getByRole("button", { name: "Focus", exact: true }).click();
   await dialog.getByRole("button", { name: "Play audio" }).click();
   await page.locator("audio").dispatchEvent("playing");
@@ -1382,6 +1571,7 @@ test("immersive position shows overlapping attribution while paused and keeps la
   });
   await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  await dialog.getByRole("button", { name: "Single", exact: true }).click();
   const current = dialog.locator(".immersive-current-speaker");
   await expect(current).toHaveCount(2);
   await expect(dialog.getByText("Paused at this position")).toHaveClass(/immersive-sr-only/);
@@ -1491,6 +1681,18 @@ test("immersive responsive modes and stage shortcuts preserve playback", async (
   });
   expect(layout.transcriptTop).toBeGreaterThanOrEqual(layout.stageBottom - 1);
   await page.setViewportSize({ width: 1280, height: 900 });
+  // Table is the default layout: the caption must sit below the table and stay inside the stage.
+  await expect(dialog.getByRole("button", { name: "Table", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const tableLayout = await dialog.evaluate((element) => {
+    const stageBox = element.querySelector(".immersive-stage")!.getBoundingClientRect();
+    const tableBox = element.querySelector(".immersive-table-speakers")!.getBoundingClientRect();
+    const captionBox = element.querySelector(".immersive-caption-content")!.getBoundingClientRect();
+    return { stageBottom: stageBox.bottom, tableBottom: tableBox.bottom, captionTop: captionBox.top, captionBottom: captionBox.bottom };
+  });
+  expect(tableLayout.captionTop).toBeGreaterThanOrEqual(tableLayout.tableBottom - 1);
+  expect(tableLayout.captionBottom).toBeLessThanOrEqual(tableLayout.stageBottom + 1);
+  // The original caption-placement contract applies to the single-speaker view.
+  await dialog.getByRole("button", { name: "Single", exact: true }).click();
   const desktop = await dialog.evaluate((element) => {
     const stageBox = element.querySelector(".immersive-stage")!.getBoundingClientRect();
     const transcriptBox = element.querySelector(".immersive-transcript")!.getBoundingClientRect();
@@ -1579,6 +1781,7 @@ test("immersive playback labels between-word context while paused", async ({ pag
   await page.locator("audio").evaluate((element) => { (element as HTMLMediaElement).currentTime = 0.75; element.dispatchEvent(new Event("seeked")); });
   await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  await dialog.getByRole("button", { name: "Single", exact: true }).click();
   await expect(dialog.getByText("Between words · context only", { exact: true })).toHaveClass(/immersive-sr-only/);
   await expect(dialog.locator('.immersive-person[data-active="true"]')).toHaveCount(0);
   await expect(dialog.locator('.immersive-current-speaker[data-context="true"]')).toContainText("Speaker 1");
@@ -1601,6 +1804,7 @@ test("immersive retains only inactive speaker context through a short same-speak
   await seek(0.5);
   await page.getByRole("button", { name: "Immersive playback", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  await dialog.getByRole("button", { name: "Single", exact: true }).click();
   await dialog.getByRole("button", { name: "Play audio" }).click();
   await expect(dialog.locator('.immersive-current-speaker[data-active="true"]')).toContainText("Speaker 1");
   const activeHeight = await dialog.locator(".immersive-current-speaker").evaluate((element) => element.getBoundingClientRect().height);
@@ -2206,6 +2410,8 @@ test("immersive view keeps its layout while speakers, captions and highlights ch
   const dialog = page.getByRole("dialog", { name: "Immersive playback" });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator(".immersive-person")).toHaveCount(19);
+  await expect(dialog.getByRole("group", { name: "Speaker layout" })).toHaveCount(0);
+  await expect(dialog.getByRole("group", { name: "Speaker attribution and context" })).toBeVisible();
   const audio = page.locator("audio");
   const measure = () => page.evaluate(() => {
     const box = (selector: string) => document.querySelector(selector)?.getBoundingClientRect();
@@ -2349,6 +2555,7 @@ test("immersive captions fit the stage when transcript width and viewport change
   await createFixture(page, "speaker-review.wav", meeting);
   await page.getByRole("button", { name: "Immersive playback" }).click();
   const dialog = page.getByRole("dialog", { name: "Immersive playback" });
+  await dialog.getByRole("button", { name: "Single", exact: true }).click();
   await dialog.getByLabel("Playback position").fill("0.2");
   const caption = dialog.locator(".immersive-caption-content");
   await expect(caption).toContainText("If you could");
