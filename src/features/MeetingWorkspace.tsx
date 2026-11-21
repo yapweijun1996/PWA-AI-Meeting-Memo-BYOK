@@ -58,7 +58,7 @@ import {
   splitSegment,
   undoEdit,
 } from "../domain/operations";
-import { getAudio, getMeeting, saveMeeting } from "../storage/repository";
+import { getAudio, getMeeting, saveMeeting, trackMeetingOperation } from "../storage/repository";
 import { backupMeeting, meetingBackupDocument, download, safeFilename } from "../storage/backup";
 import { inspectAudio } from "../audio/files";
 import { attachLongRecording, isLongRecordingCandidate } from "../audio/long-import";
@@ -94,12 +94,14 @@ import { SpeakerModelNotice } from "./SpeakerModelNotice";
 export function MeetingWorkspace({
   meeting: m,
   recoveryAtAppLevel = false,
+  deletedRemotely = false,
   onUpdate,
   onDelete,
   onError,
 }: {
   meeting: Meeting;
   recoveryAtAppLevel?: boolean;
+  deletedRemotely?: boolean;
   onUpdate: (m: Meeting) => void;
   onDelete: () => Promise<void>;
   onError: (s: string) => void;
@@ -213,7 +215,7 @@ export function MeetingWorkspace({
     window.addEventListener("memo-agent-recovery-changed",changed);
     return ()=>window.removeEventListener("memo-agent-recovery-changed",changed);
   },[m.id]);
-  const locked = saving || processing || dirtyMemoItems.size > 0 || agentRecovery;
+  const locked = saving || processing || dirtyMemoItems.size > 0 || agentRecovery || deletedRemotely;
   const activeLocalWrites = useRef(0);
   useEffect(() => {
     const changed = () => setProcessing(isProcessingMeeting(m.id));
@@ -306,11 +308,14 @@ export function MeetingWorkspace({
       chunkPlayer.removeEventListener("error", reportPlaybackError);
     };
   }, [chunkPlayer, chunkPlaybackError]);
-  async function persist(next: Meeting, blob?: Blob) {
+  async function persist(next: Meeting | (() => Promise<Meeting>), blob?: Blob) {
     activeLocalWrites.current += 1;
     setSaving(true);
     try {
-      const write = saveMeeting(next, blob);
+      if (deletedRemotely) throw new Error(t("This meeting was deleted in another tab. Copy your draft before leaving.", "此会议已在另一个标签页删除。离开前请复制草稿。"));
+      const write = typeof next === "function"
+        ? trackMeetingOperation(m.id, async () => saveMeeting(await next(), blob))
+        : saveMeeting(next, blob);
       pendingMeetingWrite.current = write;
       let saved: Meeting;
       try { saved = await write; }
@@ -812,8 +817,8 @@ export function MeetingWorkspace({
       setChunkProgressText("");
     }
   }
-  async function attach(file?: File) {
-    if (!file) return;
+  async function attach(file: File) {
+    if (deletedRemotely) return;
     setSaving(true);
     try {
       if (isLongRecordingCandidate(file)) {
@@ -940,7 +945,7 @@ export function MeetingWorkspace({
   const evidenceHasTime = !!evidence && evidence.start !== null && evidence.end !== null && Number.isFinite(evidence.start) && Number.isFinite(evidence.end) && evidence.start >= 0 && evidence.end > evidence.start;
   const { workspaceRef, playerBarRef } = usePlayerClearance(canPlay);
   return (
-    <div ref={workspaceRef} className={`${canPlay ? "workspace has-player" : "workspace"}${tab === "memo" && miniPlayer ? " memo-mini-active" : ""}`}>
+    <div ref={workspaceRef} data-unsaved-edit={deletedRemotely || undefined} className={`${canPlay ? "workspace has-player" : "workspace"}${tab === "memo" && miniPlayer ? " memo-mini-active" : ""}`}>
       {!recoveryAtAppLevel && <AgentResponseRecovery meetingId={m.id} localSave={{ title: m.title, onUpdate, onError }} t={t} />}
       <a href="#/" className="back-link">
         <Icon glyph={ArrowLeft} size="compact" />
@@ -1047,7 +1052,10 @@ export function MeetingWorkspace({
               type="file"
               accept="audio/*,.m4a,.mp4,.webm,.flac"
               disabled={locked}
-              onChange={(e) => void attach(e.target.files?.[0])}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void trackMeetingOperation(m.id, () => attach(file));
+              }}
             />
           </label>
           <Button
@@ -1607,7 +1615,7 @@ export function MeetingWorkspace({
                   const scope = reviewSummary?.priorityItemIds.length && (!memo.template || priorityOnly) ? { kind: "priority" as const, itemIds: reviewSummary.priorityItemIds } : { kind: "all" as const, itemIds: memo.items.map(item => item.id) };
                   const text = t(`Finish this review session for ${scope.itemIds.length} ${scope.kind === "priority" ? "priority" : "total"} items? ${reviewSummary?.pending ?? 0} items still need individual confirmation. Their states will not change.`, `完成本次复核（${scope.itemIds.length} 项${scope.kind === "priority" ? "重点项目" : "全部项目"}）？仍有 ${reviewSummary?.pending ?? 0} 项待逐条确认，其状态不会改变。`);
                   if (!confirm(text)) return;
-                  try { await persist(await completeMemoReview(m, memo.id, scope)); }
+                  try { await persist(() => completeMemoReview(m, memo.id, scope)); }
                   catch (error) { onError(error instanceof Error ? error.message : t("Could not finish the review.", "无法完成复核。")); }
                 })()}>{t("Finish review", "完成复核")}</Button>
                 {memo.id !== m.memos.at(-1)?.id && <Button className="button secondary compact" disabled={locked || dirtyMemoItems.size > 0} onClick={() => void (async () => {
@@ -2048,7 +2056,7 @@ export function MeetingWorkspace({
             )}
             <div className="modal-actions">
               <Button className="button secondary" onClick={() => setAcousticConfirm(false)}>{t("Cancel", "取消")}</Button>
-              <Button className="button primary" onClick={() => void analyzeAcousticVoices()}>{t("Download and analyze locally", "下载并在本地分析")}</Button>
+              <Button className="button primary" disabled={deletedRemotely} onClick={() => void trackMeetingOperation(m.id, analyzeAcousticVoices)}>{t("Download and analyze locally", "下载并在本地分析")}</Button>
             </div>
           </div>
         </Modal>

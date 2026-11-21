@@ -63,7 +63,7 @@ export async function getMeeting(id: string) {
   const m = await (await db()).get("meetings", id);
   return m ? validateMeeting(m) : undefined;
 }
-const writes = new Set<Promise<Meeting>>();
+const writes = new Map<Promise<unknown>, string>();
 const failedMeetings = new Set<string>();
 type RestoredChunkSpeech = { recordingHash: string; chunks: { index: number; speech: ChunkSpeech }[] };
 const pendingChunkSpeech = new WeakMap<Meeting, RestoredChunkSpeech & { meetingId: string; chunkCount: number }>();
@@ -90,13 +90,20 @@ export function trackMeetingWrite(id: string, pendingWrite: Promise<Meeting>, re
     if (!receiptWrite) failedMeetings.delete(id);
     return saved;
   });
-  writes.add(write);
+  return trackPendingMeetingWrite(id, write);
+}
+function trackPendingMeetingWrite<T>(id: string, write: Promise<T>): Promise<T> {
+  writes.set(write, id);
   const settled = () => writes.delete(write);
   void write.then(settled, settled);
   return write;
 }
+export function trackMeetingOperation<T>(id: string, operation: () => Promise<T>): Promise<T> {
+  // Register before preparation yields, including work that precedes the first database write.
+  return trackPendingMeetingWrite(id, Promise.resolve().then(operation));
+}
 export async function flushWrites(onFlushed?: () => void) {
-  while (writes.size) await Promise.all([...writes]);
+  while (writes.size) await Promise.all([...writes.keys()]);
   if (failedMeetings.size)
     throw new Error(
       "Resolve the local save error before updating. Your unsaved changes are still in this page.",
@@ -105,6 +112,8 @@ export async function flushWrites(onFlushed?: () => void) {
   onFlushed?.();
 }
 export async function clearDeletedMeetingWriteFailure(id: string) {
+  const pendingForMeeting = [...writes].filter(([, meetingId]) => meetingId === id).map(([write]) => write);
+  if (pendingForMeeting.length) await Promise.allSettled(pendingForMeeting);
   if (failedMeetings.has(id) && (await (await db()).getKey("meetings", id)) === undefined)
     failedMeetings.delete(id);
 }
@@ -208,6 +217,7 @@ export async function deleteMeeting(id: string) {
     tx.objectStore("chunkAttempts").delete(IDBKeyRange.bound([id, "", 0], [id, "\uffff", Infinity])),
   ]);
   await tx.done;
+  failedMeetings.delete(id);
   channel?.postMessage(id);
   try { await trackAvatarWrite(removeMeetingAvatars(id)); }
   catch { throw new Error("The meeting was deleted, but its profile images could not be removed from local storage."); }
@@ -216,8 +226,8 @@ const channel =
   typeof BroadcastChannel !== "undefined"
     ? new BroadcastChannel("meeting-memo-byok-changes")
     : null;
-channel?.addEventListener("message", () =>
-  window.dispatchEvent(new Event("memo-storage-changed")),
+channel?.addEventListener("message", (event) =>
+  window.dispatchEvent(new CustomEvent("memo-storage-changed", { detail: event.data })),
 );
 export async function recoverJobs(m: Meeting): Promise<Meeting> {
   if (!m.jobs.some((j) => j.state === "in_flight")) return m;

@@ -1,6 +1,7 @@
 import {changeTopbarLanguage} from "./helpers/language";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { sampleMeeting, type Meeting } from "../../src/domain/model";
+import { encodePcm16Wav } from "../../src/audio/wav";
 import { memo, readPiMeeting, setup } from "./helpers/memo-pi";
 
 test.use({ serviceWorkers: "block", reducedMotion: "reduce" });
@@ -14,6 +15,7 @@ type WorkerProbe = {
   releaseFactWrite?: () => void;
   factWriteCommitted?: boolean;
   postedBeforeFactCommit?: boolean;
+  releaseLocalPreparation?: () => void;
 };
 const observations = new WeakMap<Page, { errors: string[]; external: string[] }>();
 
@@ -504,6 +506,199 @@ test.describe("touch viewport update", () => {
     await page.setViewportSize(browserName === "webkit" ? { width: 390, height: 844 } : { width: 412, height: 915 });
     await verifyLateFactWrite(page, "controller change");
   });
+  test("a confirmed Finish review survives the mobile update reload", async ({ page, browserName }) => {
+    await page.setViewportSize(browserName === "webkit" ? { width: 390, height: 844 } : { width: 412, height: 915 });
+    await verifyFinishReviewDuringUpdate(page);
+  });
+});
+
+async function updateAfterSkipWaiting(page: Page) {
+  const banner = page.locator(".notice.update");
+  await banner.getByRole("button", { name: "Update now", exact: true }).click();
+  await banner.getByRole("button", { name: "Confirm update", exact: true }).click();
+  await expect.poll(() => messages(page)).toEqual([{ type: "SKIP_WAITING" }]);
+}
+
+async function activateWhilePreparationIsHeld(page: Page) {
+  await expect.poll(() => page.evaluate(() => !!(window as unknown as { __sidebarWorkerProbe: WorkerProbe })
+    .__sidebarWorkerProbe.releaseLocalPreparation)).toBe(true);
+  const reloaded = page.waitForEvent("domcontentloaded");
+  await page.evaluate(async () => {
+    const probe = (window as unknown as { __sidebarWorkerProbe: WorkerProbe }).__sidebarWorkerProbe;
+    const registration = (await navigator.serviceWorker.getRegistration())!;
+    Object.assign(registration, { waiting: null });
+    window.addEventListener("beforeunload", () => {
+      sessionStorage.setItem("reload-while-preparation-held", String(!!probe.releaseLocalPreparation));
+    }, { once: true });
+    navigator.serviceWorker.dispatchEvent(new Event("controllerchange"));
+    // Keep the preparation pending across the controllerchange task.
+    setTimeout(() => {
+      const release = probe.releaseLocalPreparation!;
+      delete probe.releaseLocalPreparation;
+      release();
+    }, 150);
+  });
+  await reloaded;
+  expect(await page.evaluate(() => sessionStorage.getItem("reload-while-preparation-held"))).toBe("false");
+}
+
+async function verifyFinishReviewDuringUpdate(page: Page) {
+  await seedFactReview(page);
+  await updateAfterSkipWaiting(page);
+  await page.evaluate(() => {
+    const probe = (window as unknown as { __sidebarWorkerProbe: WorkerProbe }).__sidebarWorkerProbe;
+    const digest = crypto.subtle.digest.bind(crypto.subtle);
+    crypto.subtle.digest = async (algorithm, data) => {
+      crypto.subtle.digest = digest;
+      await new Promise<void>(resolve => { probe.releaseLocalPreparation = resolve; });
+      return digest(algorithm, data);
+    };
+  });
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "Finish review", exact: true }).click();
+  await activateWhilePreparationIsHeld(page);
+  await openFactReview(page);
+  await expect(page.getByText(/Review session completed/)).toBeVisible();
+  const [saved] = (await readPiMeeting(page)).memos;
+  expect(saved.reviewCompletion).toMatchObject({ kind: "all", reviewed: 0, pending: 1 });
+  expect(saved.items[0].review).toBe("pending");
+}
+
+test("a confirmed Finish review survives controller change before its digest completes", ({ page }) =>
+  verifyFinishReviewDuringUpdate(page));
+
+async function attachSyntheticRecording(page: Page) {
+  await page.getByLabel("Attach audio", { exact: true }).setInputFiles({
+    name: "local-checksum.wav", mimeType: "audio/wav",
+    buffer: Buffer.from(await encodePcm16Wav(new Float32Array(8000), 8000).arrayBuffer()),
+  });
+}
+
+test("a recording attachment starts blocking reload before its checksum returns", async ({ page }) => {
+  await seedFactReview(page);
+  await updateAfterSkipWaiting(page);
+  await page.evaluate(() => {
+    const probe = (window as unknown as { __sidebarWorkerProbe: WorkerProbe }).__sidebarWorkerProbe;
+    const post = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function(message: unknown) {
+      if (message instanceof File) {
+        probe.releaseLocalPreparation = () => post.call(this, message);
+      } else {
+        post.call(this, message);
+      }
+    };
+  });
+  await attachSyntheticRecording(page);
+  await activateWhilePreparationIsHeld(page);
+  expect((await readPiMeeting(page)).audio).toMatchObject({ name: "local-checksum.wav", present: true });
+});
+
+test("confirmed voice analysis blocks update reload while loading its local meeting", async ({ page }) => {
+  const id = await seedFactReview(page);
+  await attachSyntheticRecording(page);
+  await expect(page.locator(".recording-info")).toContainText("local-checksum.wav");
+  await updateAfterSkipWaiting(page);
+  await page.evaluate(meetingId => {
+    const probe = (window as unknown as { __sidebarWorkerProbe: WorkerProbe }).__sidebarWorkerProbe;
+    const get = IDBObjectStore.prototype.get;
+    IDBObjectStore.prototype.get = function(query) {
+      const request = get.call(this, query);
+      if (this.name === "meetings" && this.transaction.mode === "readonly" && query === meetingId) {
+        IDBObjectStore.prototype.get = get;
+        request.addEventListener("success", event => {
+          event.stopImmediatePropagation();
+          probe.releaseLocalPreparation = () => request.dispatchEvent(new Event("success"));
+        }, { capture: true, once: true });
+      }
+      return request;
+    };
+  }, id);
+  await page.getByRole("button", { name: "Auto-match voices", exact: true }).click();
+  // A WAV is rejected by the actual local analyzer before it can download a model.
+  await page.getByRole("button", { name: "Download and analyze locally", exact: true }).click();
+  await activateWhilePreparationIsHeld(page);
+});
+
+async function failOrdinaryFactSave(page: Page, id: string) {
+  await page.evaluate(meetingId => {
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function(value: Meeting, ...args) {
+      if (this.name === "meetings" && value.id === meetingId) {
+        IDBObjectStore.prototype.put = put;
+        throw new DOMException("Synthetic ordinary meeting save failure", "QuotaExceededError");
+      }
+      return put.call(this, value, ...args);
+    };
+  }, id);
+  await page.getByRole("combobox", { name: "Fact status", exact: true }).selectOption("confirmed");
+  await expect(page.getByText("Synthetic ordinary meeting save failure", { exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Fact status", exact: true })).toHaveValue("proposed");
+}
+
+async function deleteFromWorkspace(page: Page) {
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "Delete meeting", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Your meetings." })).toBeVisible();
+}
+
+test("a confirmed meeting deletion commits before controller change reloads the page", async ({ page }) => {
+  const id = await seedFactReview(page);
+  await updateAfterSkipWaiting(page);
+  await holdFactWrite(page, id);
+  await page.evaluate(() => {
+    const probe = (window as unknown as { __sidebarWorkerProbe: WorkerProbe }).__sidebarWorkerProbe;
+    const remove = IDBObjectStore.prototype.delete;
+    IDBObjectStore.prototype.delete = function(query) {
+      if (this.name === "meetings") probe.releaseLocalPreparation = probe.releaseFactWrite;
+      return remove.call(this, query);
+    };
+  });
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "Delete meeting", exact: true }).click();
+  await activateWhilePreparationIsHeld(page);
+  await expect(page.getByRole("heading", { name: "Your meetings." })).toBeVisible();
+  await expect(page.getByText("ERP workflow discovery", { exact: true })).toHaveCount(0);
+});
+
+test("confirmed local deletion releases the failed meeting save update guard", async ({ page }) => {
+  const id = await seedFactReview(page);
+  await failOrdinaryFactSave(page, id);
+  const banner = page.locator(".notice.update");
+  await banner.getByRole("button", { name: "Update now" }).click();
+  await banner.getByRole("button", { name: "Confirm update" }).click();
+  await expect(page.getByText(/Resolve the local save error before updating/)).toBeVisible();
+  expect(await messages(page)).toEqual([]);
+  await deleteFromWorkspace(page);
+  await updateAfterSkipWaiting(page);
+});
+
+test("confirmed deletion in another tab releases the failed save guard for a clean workspace", async ({ page, context }) => {
+  const id = await seedFactReview(page);
+  await failOrdinaryFactSave(page, id);
+  const other = await context.newPage();
+  await other.goto(page.url());
+  await deleteFromWorkspace(other);
+  await expect(page.locator(".meeting-heading")).toHaveCount(0);
+  await expect(page.getByText("Choose a meeting from your library.")).toBeVisible();
+  await updateAfterSkipWaiting(page);
+});
+
+test("confirmed deletion in another tab keeps an open transcript draft until the user closes it", async ({ page, context }) => {
+  const id = await seedFactReview(page);
+  await failOrdinaryFactSave(page, id);
+  await page.getByRole("tab", { name: "Transcript" }).click();
+  await page.getByRole("button", { name: "Edit passage", exact: true }).first().click();
+  const draft = page.getByLabel("Transcript text");
+  await draft.fill("A local draft that can still be copied.");
+  const other = await context.newPage();
+  await other.goto(page.url());
+  await deleteFromWorkspace(other);
+  await expect(page.locator(`.sidebar a[href="#/meetings/${id}"]`)).toHaveCount(0);
+  await expect(draft).toHaveValue("A local draft that can still be copied.");
+  await page.keyboard.press("Escape");
+  await expect(draft).toHaveCount(0);
+  await expect(page.getByText("Choose a meeting from your library.")).toBeVisible();
+  await updateAfterSkipWaiting(page);
 });
 
 test("an acknowledged orphan receipt no longer blocks a confirmed update", async ({ page, context }) => {
