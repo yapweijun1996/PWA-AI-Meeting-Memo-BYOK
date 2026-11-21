@@ -249,3 +249,9 @@ Live transcription, platform audio capture, collaboration, and cross-device sync
 3. **IMP-020 — Export and restore complete resumable checkpoints.** Start archive and staging measurements with IMP-005 in parallel and prove transfer against the new stores, with billing continuity and key exclusion.
 4. **IMP-010 — Establish a labelled cross-chunk voice baseline.** Start annotation alongside IMP-024 where recordings and reviewers are available and use the results to gate matcher changes.
 5. **IMP-001 — Complete installed-phone offline and update acceptance.** Schedule physical devices early and coordinate accessibility and resource measurements with IMP-016 and IMP-005.
+
+## 2026-11-21 additions
+
+- [Podcast from meeting content](docs/PODCAST-FROM-MEETING-IDEAS.md) records seven planned formats and a two-week spike for a short, cited action brief.
+- [Speech model exploration](docs/MODEL-EXPLORATION-2026-11-21.md) records the supplied TTS and STT catalog snapshot and the evidence required for route promotion.
+- [Live session findings](docs/LIVE-TEST-FINDINGS-2026-11-21.md) records the observed Pi stop, speaker check, screenshot QA, and open verification questions from build `9da7bcf`.
