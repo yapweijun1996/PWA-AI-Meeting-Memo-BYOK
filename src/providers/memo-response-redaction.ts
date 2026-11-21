@@ -14,12 +14,10 @@ type Fields = Map<string, Field>;
 type MatchSecret = ReturnType<typeof agentSecretMatcher>;
 type Spans = ReturnType<MatchSecret>;
 type MarkRedaction = (start: number, end: number, head: boolean) => void;
-type ResponseGroup = [type: string | undefined, item: string | undefined, output: string | undefined, part: string | null | undefined];
-type ResponseTail = { group: ResponseGroup; field: Field };
 const MAX_RESPONSE_PATH_DEPTH = 6;
 const indexFields = new Set(["output_index", "content_index", "summary_index", "index"]);
 const chatDeltaFields = new Set(["content", "reasoning", "reasoning_content", "reasoning_text"]);
-const relevantFields = new Set(["type", "text", "delta", "item_id", "arguments", ...indexFields, ...chatDeltaFields]);
+const responseEventFields = new Set(["type", "delta", "item_id", ...indexFields]);
 const responsePartIndexes = new Map([
   ["response.output_text.delta", "content_index"],
   ["response.refusal.delta", "content_index"],
@@ -38,13 +36,28 @@ function jsonStringEnd(json: string, start: number, quoteOrEscape: RegExp) {
   return json.length;
 }
 
-/** Locate response fields even when the last frame or JSON string is incomplete. */
-function responseFields(json: string, offset: (index: number) => number, recovery = false) {
+function isTrackedField(path: PathPart[], name: string, mode: "output" | "stream") {
+  const [root, item, container, part, index, fn] = path;
+  if (mode === "output") {
+    return path.length === 4 && root === "output" && typeof item === "number" &&
+      container === "content" && typeof part === "number" && (name === "type" || name === "text");
+  }
+  if (path.length === 0) return responseEventFields.has(name);
+  if (root !== "choices" || typeof item !== "number") return false;
+  if (path.length === 2) return name === "index";
+  if (container !== "delta") return false;
+  if (path.length === 3) return chatDeltaFields.has(name);
+  if (part !== "tool_calls" || typeof index !== "number") return false;
+  return (path.length === 5 && name === "index") ||
+    (path.length === 6 && fn === "function" && name === "arguments");
+}
+
+/** Retain only fields used by the adapter redactor, even if the frame is malformed. */
+function responseFields(json: string, offset: (index: number) => number, mode: "output" | "stream") {
   const fields: Field[] = [];
   const stack: Container[] = [];
   const quoteOrEscape = /["\\]/g;
   let skippedDepth = 0;
-  let unterminatedString = false;
   for (let cursor = 0; cursor < json.length;) {
     const char = json[cursor++];
     const container = stack.at(-1);
@@ -65,28 +78,27 @@ function responseFields(json: string, offset: (index: number) => number, recover
     } else if (char === '"') {
       const start = cursor;
       const end = jsonStringEnd(json, start, quoteOrEscape);
-      unterminatedString = end === json.length;
       cursor = end + 1;
       if (skippedDepth || !container?.path) continue;
       if (container.member === undefined) {
         container.member = decodeAgentJsonEscapes(json.slice(start, end));
-      } else if (typeof container.member === "string" && (relevantFields.has(container.member) ||
-          (recovery && container.path[3] === "reasoning_details" && (container.member === "summary" || container.member === "data")))) {
+      } else if (typeof container.member === "string" && isTrackedField(container.path, container.member, mode)) {
         const raw = json.slice(start, end);
-        fields.push({ path: [...container.path, container.member], start: offset(start), complete: !unterminatedString,
+        fields.push({ path: [...container.path, container.member], start: offset(start), complete: end !== json.length,
           raw, text: decodeAgentJsonEscapes(raw) });
       }
     } else if (!skippedDepth && !jsonDelimiters.test(char)) {
       const start = cursor - 1;
       while (cursor < json.length && !jsonDelimiters.test(json[cursor])) cursor++;
-      if (container?.path && typeof container.member === "string" && indexFields.has(container.member)) {
+      if (container?.path && typeof container.member === "string" && indexFields.has(container.member) &&
+          isTrackedField(container.path, container.member, mode)) {
         const raw = json.slice(start, cursor);
         fields.push({ path: [...container.path, container.member], start: offset(start), complete: cursor < json.length,
           raw, text: String(Number(raw)) });
       }
     }
   }
-  return { fields, incomplete: !!(stack.length || skippedDepth || unterminatedString) };
+  return fields;
 }
 
 function addPart<Key>(parts: Map<Key, Field[]>, key: Key, field: Field) {
@@ -169,13 +181,13 @@ function wireRedactions(wire: string, key: string) {
 
 export function redactMemoResponse(body: string, key: string): string {
   if (!key) return body;
-  const { fields } = responseFields(body, index => index);
+  const fields = responseFields(body, index => index, "output");
   const { mark, apply } = wireRedactions(body, key);
   redactOutput(fields, agentSecretMatcher(key), mark);
   return apply();
 }
 
-function trackFrameDeltas(fields: Field[], event: string, deltas: Map<string, Field[]>, incomplete: boolean) {
+function trackFrameDeltas(fields: Field[], event: string, deltas: Map<string, Field[]>) {
   const rootFields = new Map<PathPart, Field>();
   const choiceIndexes = new Map<number, string>();
   const toolIndexes = new Map<string, string>();
@@ -193,7 +205,7 @@ function trackFrameDeltas(fields: Field[], event: string, deltas: Map<string, Fi
   const delta = rootFields.get("delta");
   const partIndex = type === undefined ? undefined : responsePartIndexes.get(type);
   let responseGroup: string | undefined;
-  if (delta && (partIndex !== undefined || (incomplete && type === undefined))) {
+  if (delta && partIndex !== undefined) {
     const identity = (name: string) => {
       const field = rootFields.get(name);
       return field?.complete ? field.text : undefined;
@@ -201,9 +213,6 @@ function trackFrameDeltas(fields: Field[], event: string, deltas: Map<string, Fi
     const item = identity("item_id");
     const output = identity("output_index");
     const part = typeof partIndex === "string" ? identity(partIndex) : partIndex;
-    if (incomplete && (type === undefined || item === undefined || output === undefined || part === undefined)) {
-      return { group: [type, item, output, part], field: delta } satisfies ResponseTail;
-    }
     responseGroup = JSON.stringify([type, item, output ?? "0", part === undefined ? "0" : part]);
   }
 
@@ -223,43 +232,6 @@ function trackFrameDeltas(fields: Field[], event: string, deltas: Map<string, Fi
       addPart(deltas, JSON.stringify(["chat", index, leaf, toolIndex]), field);
     }
   }
-}
-
-function trackChatReasoning(fields: Field[], runs: Map<string, Field[]>, match: MatchSecret, mark: MarkRedaction) {
-  const choices = new Map<number, string>();
-  const entries = new Map<string, Fields>();
-  for (const field of fields) {
-    const [root, choice, member, leaf, entry, name] = field.path;
-    if (root !== "choices" || typeof choice !== "number") continue;
-    if (member === "index" && field.path.length === 3) choices.set(choice, field.text);
-    if (member === "delta" && leaf === "reasoning_details" && typeof entry === "number" &&
-        typeof name === "string" && field.path.length === 6) {
-      rememberField(entries, `${choice}/${entry}`, name, field);
-    }
-  }
-  for (const entry of entries.values()) {
-    const type = entry.get("type");
-    if (!type) continue;
-    const choice = type.path[1] as number;
-    const index = choices.get(choice) ?? String(choice);
-    const value = type.text === "reasoning.summary" ? entry.get("summary") :
-      type.text === "reasoning.text" ? entry.get("text") : undefined;
-    if (!value && (type.text !== "reasoning.encrypted" || !entry.has("data"))) continue;
-    const previous = runs.get(index);
-    if (value && previous?.[0].path[5] === value.path[5]) {
-      previous.push(value);
-    } else {
-      if (previous) markParts(previous, match, mark);
-      if (value) runs.set(index, [value]);
-      else runs.delete(index);
-    }
-  }
-}
-
-function markResponseContinuation(group: Field[], tail: Field, match: MatchSecret, tailPrefix: string, mark: MarkRedaction) {
-  const text = group.map(field => field.text).join("");
-  const spans = match(text + tailPrefix, 1).filter(span => span.start < text.length && span.end > text.length);
-  if (spans.length) markPartSpans([...group, tail], spans, mark);
 }
 
 function* sseFrames(wire: string) {
@@ -296,89 +268,216 @@ function* sseFrames(wire: string) {
   }
 }
 
-function* stringValues(wire: string, jsonBody: boolean): Generator<StringPart> {
-  const quoteOrEscape = /["\\]/g;
-  const whitespace = /\s/;
-  function* scan(json: string, offset: (index: number) => number) {
-    for (let quote = json.indexOf('"'); quote !== -1; quote = json.indexOf('"', quote + 1)) {
-      const start = quote + 1;
-      const end = jsonStringEnd(json, start, quoteOrEscape);
-      quote = end;
-      let next = end + 1;
-      while (next < json.length && whitespace.test(json[next])) next++;
-      if (json[next] === ":" || end === start) continue;
-      const raw = json.slice(start, end);
-      yield { start: offset(start), raw, text: decodeAgentJsonEscapes(raw) };
-    }
-  }
-  if (jsonBody) {
-    yield* scan(wire, index => index);
-    return;
-  }
-  for (const { json, offset } of sseFrames(wire)) {
-    yield* scan(json, offset);
-  }
-}
-
-function markStreamOrder(wire: string, jsonBody: boolean, match: MatchSecret, mark: MarkRedaction) {
-  let text = "";
-  const chunk: string[] = [];
-  for (const field of stringValues(wire, jsonBody)) {
-    chunk.push(field.text);
-    if (chunk.length < 4096) continue;
-    text += chunk.join("");
-    chunk.length = 0;
-  }
-  const spans = match(text + chunk.join(""), 1);
-  if (spans.length) markPartSpans(stringValues(wire, jsonBody), spans, mark);
-}
-
 export function redactMemoSse(wire: string, key: string): string {
-  return redactSse(wire, key, false);
-}
-
-/** Recovery alone tries all compatible continuations and stream-order string values for truncated data.
- * An unrelated concatenation that spells the exact active key can be masked in that artifact. */
-export function redactMemoRecoveryWire(wire: string, key: string): string {
-  return redactSse(wire, key, true);
-}
-
-function redactSse(wire: string, key: string, recovery: boolean): string {
   if (!key) return wire;
-  const first = wire.trimStart()[0];
-  const jsonBody = first === "{" || (recovery && first === "[");
-  if (jsonBody && !recovery) return redactMemoResponse(wire, key);
+  if (wire.trimStart()[0] === "{") return redactMemoResponse(wire, key);
   const match = agentSecretMatcher(key);
   const { mark, apply } = wireRedactions(wire, key);
-  if (jsonBody) {
-    const { fields, incomplete } = responseFields(wire, index => index);
-    redactOutput(fields, match, mark);
-    if (incomplete) markStreamOrder(wire, true, match, mark);
-    return apply();
-  }
   const deltas = new Map<string, Field[]>();
-  const reasoningRuns = new Map<string, Field[]>();
-  let tail: ResponseTail | undefined;
-  let incomplete = false;
   for (const { event, json, offset } of sseFrames(wire)) {
-    const frame = responseFields(json, offset, recovery);
-    tail = trackFrameDeltas(frame.fields, event, deltas, recovery && frame.incomplete) ?? tail;
-    if (recovery) {
-      incomplete ||= frame.incomplete;
-      trackChatReasoning(frame.fields, reasoningRuns, match, mark);
-    }
+    trackFrameDeltas(responseFields(json, offset, "stream"), event, deltas);
   }
-  // Cap the shared tail scan per group. A JSON escape expands a code unit by at most six.
-  const tailPrefix = tail?.field.text.slice(0, 6 * key.length) ?? "";
-  for (const [groupId, group] of deltas) {
-    markParts(group, match, mark);
-    if (!tail || !tailPrefix) continue;
-    const identity = JSON.parse(groupId) as (string | null)[];
-    if (identity[0] !== "chat" && tail.group.every((value, index) => value === undefined || value === identity[index])) {
-      markResponseContinuation(group, tail.field, match, tailPrefix, mark);
-    }
-  }
-  for (const run of reasoningRuns.values()) markParts(run, match, mark);
-  if (incomplete) markStreamOrder(wire, false, match, mark);
+  for (const group of deltas.values()) markParts(group, match, mark);
   return apply();
+}
+
+type RecoveryKind = "outputText" | "refusal" | "reasoningSummary" | "reasoningText" | "toolArguments" | "other";
+type RecoveryContent = {
+  kind: RecoveryKind;
+  text: string;
+  fragmentCount: number;
+  tailCutMidString: boolean;
+};
+export type MemoRecoveryArtifact = {
+  content: RecoveryContent[];
+  byteLength: number;
+  frameCount: number;
+  eventCounts: Record<string, number>;
+};
+
+const responseEventKinds = new Map<string, RecoveryKind>();
+for (const [family, kind] of [
+  ["output_text", "outputText"],
+  ["refusal", "refusal"],
+  ["reasoning_summary_text", "reasoningSummary"],
+  ["reasoning_text", "reasoningText"],
+  ["function_call_arguments", "toolArguments"],
+] as const) {
+  for (const phase of ["delta", "done"]) responseEventKinds.set(`response.${family}.${phase}`, kind);
+}
+for (const phase of ["added", "done"]) {
+  responseEventKinds.set(`response.reasoning_summary_part.${phase}`, "reasoningSummary");
+  responseEventKinds.set(`response.content_part.${phase}`, "outputText");
+}
+const recoveryEventNames = new Set([
+  ...responseEventKinds.keys(),
+  "response.created", "response.in_progress", "response.completed", "response.incomplete",
+  "response.failed", "response.output_item.added", "response.output_item.done", "error",
+]);
+const MAX_RECOVERY_CONTEXT_DEPTH = 8;
+
+/** Assemble SSE data lines without retaining an offset record for each line. */
+function* recoveryFrames(wire: string) {
+  let event = "";
+  let data = "";
+  let hasData = false;
+  for (const [line, text] of wire.matchAll(/([^\r\n]*)(?:\r\n|[\r\n]|$)/g)) {
+    if (!line) break;
+    if (!text) {
+      if (hasData) yield { event, data };
+      event = data = "";
+      hasData = false;
+    } else if (text.startsWith("event:")) {
+      event = text.slice(6).trim();
+    } else if (text.startsWith("data:")) {
+      const value = text.slice(text[5] === " " ? 6 : 5);
+      data = hasData ? data + "\n" + value : value;
+      hasData = true;
+    }
+  }
+  if (hasData) yield { event, data };
+}
+
+type RecoveryStringVisitor = (
+  start: number, end: number, key: string | undefined, parents: (string | undefined)[], depth: number, cut: boolean,
+) => boolean | void;
+
+function visitRecoveryStrings(json: string, visit: RecoveryStringVisitor) {
+  const quoteOrEscape = /["\\]/g;
+  const whitespace = /\s/;
+  const parents: (string | undefined)[] = [];
+  let depth = 0;
+  let member: string | undefined;
+  for (let cursor = 0; cursor < json.length;) {
+    const char = json[cursor++];
+    if (char === "{" || char === "[") {
+      if (depth < MAX_RECOVERY_CONTEXT_DEPTH) parents[depth] = member;
+      depth++;
+      member = undefined;
+    } else if (char === "}" || char === "]") {
+      depth = Math.max(0, depth - 1);
+      member = undefined;
+    } else if (char === ",") {
+      member = undefined;
+    } else if (char === '"') {
+      const start = cursor;
+      const end = jsonStringEnd(json, start, quoteOrEscape);
+      const cut = end === json.length;
+      cursor = end + 1;
+      let next = cursor;
+      while (next < json.length && whitespace.test(json[next])) next++;
+      // A colon identifies a field name even when a neighboring token is malformed.
+      if (json[next] === ":") {
+        member = depth <= MAX_RECOVERY_CONTEXT_DEPTH ? decodeAgentJsonEscapes(json.slice(start, end)) : undefined;
+        cursor = next + 1;
+      } else {
+        if (visit(start, end, member, parents, depth, cut)) return;
+        member = undefined;
+      }
+    }
+  }
+}
+
+function contentKind(
+  field: string | undefined, parents: (string | undefined)[], depth: number, eventKind?: RecoveryKind,
+): RecoveryKind {
+  if (depth > MAX_RECOVERY_CONTEXT_DEPTH) return "other";
+  if (depth === 1 && eventKind && (field === "delta" || field === "text")) return eventKind;
+  switch (field) {
+    case "output_text": return "outputText";
+    case "refusal": return "refusal";
+    case "reasoning":
+    case "reasoning_content":
+    case "reasoning_text": return "reasoningText";
+    case "reasoning_summary":
+    case "summary_text": return "reasoningSummary";
+    case "arguments": return "toolArguments";
+    case "content":
+      if (depth === 4 && parents[1] === "choices" &&
+          (parents[3] === "delta" || parents[3] === "message")) return "outputText";
+      break;
+    case "summary":
+      if ((depth === 1 && eventKind === "reasoningSummary") ||
+          parents[depth - 2] === "reasoning_details") return "reasoningSummary";
+      break;
+    case "text":
+      // Arrays and their entries each occupy one level. The enclosing field identifies the part.
+      if (depth === 2 && parents[1] === "part" && eventKind) return eventKind;
+      if (parents[depth - 2] === "reasoning_details") return "reasoningText";
+      if (parents[depth - 2] === "summary") return "reasoningSummary";
+      if (parents[depth - 2] === "content") return "outputText";
+      break;
+  }
+  return "other";
+}
+
+/** Project received content into a page-only artifact without retaining frames or grouping by identity. */
+export function buildMemoRecoveryArtifact(wire: string, key: string, byteLength: number): MemoRecoveryArtifact {
+  type Fragments = { chunks: string[]; batch: string[]; count: number; cut: boolean };
+  const kinds = new Map<RecoveryKind, Fragments>();
+  const eventCounts: Record<string, number> = {};
+  let frameCount = 0;
+  const isJson = (body: string) => /^\s*[[{"]/.test(body);
+  if (isJson(wire) || !/(?:^|[\r\n])(?:data|event):/.test(wire)) {
+    collectFrame(wire, "");
+  } else {
+    for (const { event, data } of recoveryFrames(wire)) collectFrame(data, event);
+  }
+  return {
+    byteLength, frameCount, eventCounts,
+    content: Array.from(kinds, ([kind, fragments]) => {
+      fragments.chunks.push(fragments.batch.join(""));
+      return {
+        kind,
+        text: redactAgentSecret(fragments.chunks.join(""), key),
+        fragmentCount: fragments.count,
+        tailCutMidString: fragments.cut,
+      };
+    }),
+  };
+
+  function add(kind: RecoveryKind, text: string, cut: boolean) {
+    let fragments = kinds.get(kind);
+    if (!fragments) {
+      fragments = { chunks: [], batch: [], count: 0, cut: false };
+      kinds.set(kind, fragments);
+    }
+    fragments.count++;
+    fragments.cut = cut;
+    if (text) fragments.batch.push(text);
+    if (fragments.batch.length === 4096) {
+      fragments.chunks.push(fragments.batch.join(""));
+      fragments.batch.length = 0;
+    }
+  }
+
+  function collectFrame(data: string, headerEvent: string) {
+    frameCount++;
+    if (!isJson(data)) {
+      if (headerEvent && recoveryEventNames.has(headerEvent)) countEvent(headerEvent);
+      if (data) add("other", data, false);
+      return;
+    }
+    let event = recoveryEventNames.has(headerEvent) ? headerEvent : "";
+    if (!event) {
+      // Resolve a JSON event name even when it occurs after the content.
+      visitRecoveryStrings(data, (start, end, field, _parents, depth, cut) => {
+        if (depth !== 1 || field !== "type" || cut) return;
+        const value = decodeAgentJsonEscapes(data.slice(start, end));
+        if (!recoveryEventNames.has(value)) return;
+        event = value;
+        return true;
+      });
+    }
+    if (event) countEvent(event);
+    const eventKind = responseEventKinds.get(event);
+    visitRecoveryStrings(data, (start, end, field, parents, depth, cut) => {
+      if (depth === 1 && field === "type" && event && data.slice(start, end) === event) return;
+      add(contentKind(field, parents, depth, eventKind), decodeAgentJsonEscapes(data.slice(start, end)), cut);
+    });
+  }
+
+  function countEvent(event: string) {
+    eventCounts[event] = (eventCounts[event] ?? 0) + 1;
+  }
 }

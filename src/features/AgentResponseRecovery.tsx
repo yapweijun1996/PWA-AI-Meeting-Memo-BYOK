@@ -55,11 +55,11 @@ export function AgentResponseRecovery({
           "此页面仍保留已移除密钥的请求记录及限制内的回应。请保持页面开启，重试本地保存或先导出回应；不会重复发送请求。服务商收费仍未知。",
         )}
       </p>
-      {pending.wireResponse && (
+      {pending.recoveryArtifact && (
         <p>
           {t(
-            "This response could not be decoded within the supported record format. Local retry saves only its receipt; export the raw response before releasing this page copy.",
-            "此回应无法转换为受支持的记录格式。本地重试仅保存请求记录；释放页面副本前请先导出原始回应。",
+            "Local retry saves only the receipt. Export the recovery artifact to keep the available text grouped by content type. The file omits raw frames and cannot be imported as a backup.",
+            "\u672c\u5730\u91cd\u8bd5\u4ec5\u4fdd\u5b58\u8bf7\u6c42\u8bb0\u5f55\u3002\u8bf7\u5bfc\u51fa\u6062\u590d\u6587\u4ef6\u4ee5\u4fdd\u7559\u6309\u5185\u5bb9\u7c7b\u578b\u6574\u7406\u7684\u6587\u5b57\u3002\u6587\u4ef6\u7701\u7565\u539f\u59cb\u6570\u636e\u5e27\uff0c\u4e14\u65e0\u6cd5\u4f5c\u4e3a\u5907\u4efd\u5bfc\u5165\u3002",
           )}
         </p>
       )}

@@ -20,11 +20,15 @@ import {
 import * as repository from "../src/storage/repository";
 import { backupMeeting, readBackup } from "../src/storage/backup";
 import * as agentTransport from "../src/providers/memo-agent-transport";
-import { MEMO_AGENT_REQUEST_BYTES } from "../src/domain/memo-agent-contract";
+import { MEMO_AGENT_REQUEST_BYTES, MEMO_AGENT_RESPONSE_BYTES } from "../src/domain/memo-agent-contract";
 
 const selection = { provider: "openai" as const, model: "gpt-6-luna" };
 const key = "sk-synthetic-agent-unit-key";
+const redaction = "[redacted provider key]";
 const meetingIds: string[] = [];
+function recoveredContent(meetingId: string) {
+  return pendingAgentReceipt(meetingId)?.recoveryArtifact?.content;
+}
 afterEach(() => {
   for (const meetingId of meetingIds.splice(0))
     acknowledgeAgentExport(meetingId);
@@ -391,7 +395,7 @@ test.each([400, 408, 429, 500, "disconnect", "truncated"])(
     expect(latest.jobs[0].usage).toBeNull();
     expect(JSON.stringify(latest)).not.toContain(key);
     if (status === "truncated") {
-      expect(pendingAgentReceipt(meeting.id)?.wireResponse).toContain("response.created");
+      expect(pendingAgentReceipt(meeting.id)?.recoveryArtifact?.eventCounts).toEqual({ "response.created": 1 });
       await expect(runAgentMemo(latest, latest.memoAgents![0], key, signal, true)).rejects.toThrow("unsaved");
       acknowledgeAgentExport(meeting.id);
     }
@@ -671,7 +675,7 @@ test("schema coercion cannot make invalid raw tool arguments into consulted evid
   ).toBe(true);
 });
 
-test("an unsupported decoded response retains its bounded wire text for explicit export", async () => {
+test("an unsupported decoded response retains its bounded logical content for explicit export", async () => {
   const { meeting, plan, signal } = await setup();
   const args: Record<string, unknown> = {};
   let cursor = args;
@@ -687,9 +691,8 @@ test("an unsupported decoded response retains its bounded wire text for explicit
   });
   vi.stubGlobal("fetch", request);
   await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
-  expect(pendingAgentReceipt(meeting.id)?.wireResponse).toContain(
-    "response.completed",
-  );
+  expect(pendingAgentReceipt(meeting.id)?.recoveryArtifact?.eventCounts).toHaveProperty(["response.completed"], 1);
+  expect(recoveredContent(meeting.id)).toContainEqual(expect.objectContaining({ kind: "toolArguments" }));
   expect(JSON.stringify(pendingAgentReceipt(meeting.id))).not.toContain(key);
   const saved = await recoverAgentReceipt(meeting.id);
   expect(saved.jobs[0]).toMatchObject({
@@ -703,8 +706,9 @@ test("an unsupported decoded response retains its bounded wire text for explicit
 
 test("oversized wire responses stop at the disclosed boundary without retrying or inventing usage", async () => {
   const { meeting, plan, signal } = await setup();
+  const prefix = 'event: response.output_text.delta\ndata: {"delta":"Captured paid text. ';
   const request = vi.fn(
-    async () => new Response("x".repeat(4 * 1024 * 1024 + 1)),
+    async () => new Response(prefix + "x".repeat(MEMO_AGENT_RESPONSE_BYTES + 1 - prefix.length)),
   );
   vi.stubGlobal("fetch", request);
   await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
@@ -713,6 +717,10 @@ test("oversized wire responses stop at the disclosed boundary without retrying o
   expect(latest.jobs[0].state).toBe("outcome_unknown");
   expect(latest.jobs[0].usage).toBeNull();
   expect(latest.memos).toEqual([]);
+  const artifact = pendingAgentReceipt(meeting.id)?.recoveryArtifact;
+  expect(artifact?.byteLength).toBe(MEMO_AGENT_RESPONSE_BYTES);
+  expect(artifact?.content[0]).toMatchObject({ kind: "outputText", fragmentCount: 1, tailCutMidString: true });
+  expect(artifact?.content[0].text.startsWith("Captured paid text. ")).toBe(true);
 });
 
 async function recoveryFixture(advanced = false) {
@@ -1180,7 +1188,9 @@ test.each(["malformed SSE", "body disconnect"])("bounded paid output survives %s
   const saved = (await getMeeting(meeting.id))!;
   expect(saved.jobs[0].state).toBe("outcome_unknown");
   const recovery = pendingAgentReceipt(meeting.id);
-  expect(recovery?.wireResponse).toContain(marker);
+  expect(recovery?.recoveryArtifact?.content).toEqual([
+    { kind: "other", text: marker + " " + redaction, fragmentCount: 1, tailCutMidString: false },
+  ]);
   expect(JSON.stringify(recovery)).not.toContain(key);
   await expect(runAgentMemo(saved, saved.memoAgents![0], key, signal, true)).rejects.toThrow("unsaved");
   expect(request).toHaveBeenCalledTimes(1);
@@ -1239,7 +1249,9 @@ test.each(["no items", "unfinished item"])("a terminal response containing paid 
   vi.stubGlobal("fetch", request);
   await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
   expect(request).toHaveBeenCalledTimes(1);
-  expect(pendingAgentReceipt(meeting.id)?.wireResponse).toContain("Synthetic evidence for human review.");
+  expect(recoveredContent(meeting.id)).toContainEqual(expect.objectContaining({
+    kind: "outputText", text: expect.stringContaining("Synthetic evidence for human review."),
+  }));
   expect((await getMeeting(meeting.id))!.memos).toEqual(meeting.memos);
 });
 
@@ -1321,18 +1333,24 @@ test.each(["memo slots", "response reserve"])("durable intent checks the latest 
   expect(saved.memoAgents![0].jobIds).toHaveLength(0);
 });
 
-test("terminal SSE export removes escaped credentials from decoded fields and malformed fragments", async () => {
+test("terminal SSE export masks escaped values and omits arbitrary transport fields", async () => {
   const { meeting, plan, signal } = await setup();
   const escaped = "\\u0073" + key.slice(1);
   const output = final(meeting.segments[0].id);
   const frame = { type: "response.completed", response: { id: key, status: "completed", output: [output] } };
-  const wire = "data: " + JSON.stringify(frame).replace(key, escaped) + "\n\n: fragment " + escaped + "\n";
+  const wire = "event: " + key + "\ndata: " + JSON.stringify(frame).replace(key, escaped) +
+    "\n\n: fragment " + escaped + "\n";
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(wire, { headers: { "content-type": "text/event-stream" } })));
   await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
-  const exported = pendingAgentReceipt(meeting.id)!.wireResponse!;
-  expect(JSON.parse(exported.split("\n")[0].slice(6)).response.id).toBe("[redacted provider key]");
-  expect(exported).toContain(": fragment [redacted provider key]");
-  expect(exported).toContain("Synthetic evidence for human review.");
+  const exported = receiptExport(pendingAgentReceipt(meeting.id)!);
+  expect(exported).toMatchObject({ version: 2, recoveryArtifact: { eventCounts: { "response.completed": 1 } } });
+  expect(exported).not.toHaveProperty("wireResponse");
+  expect(exported.recoveryArtifact!.content).toEqual(expect.arrayContaining([
+    expect.objectContaining({ kind: "other", text: expect.stringContaining(redaction) }),
+    expect.objectContaining({ kind: "outputText", text: expect.stringContaining("Synthetic evidence for human review.") }),
+  ]));
+  expect(JSON.stringify(exported)).not.toContain(key);
+  expect(JSON.stringify(exported)).not.toContain(": fragment ");
 });
 
 test.each(["Responses tool arguments", "Responses reasoning", "Chat tool arguments", "Chat reasoning"])(
@@ -1359,7 +1377,6 @@ test.each(["Responses tool arguments", "Responses reasoning", "Chat tool argumen
     };
     const wire = frame("before " + key.slice(0, 9), 0) + frame(key.slice(9, 18), 1) +
       truncatedFrame(key.slice(18) + " after");
-    const expected = frame("before [redacted provider key]", 0) + frame("", 1) + truncatedFrame(" after");
     const request = vi.fn(async () => {
       expect((await getMeeting(meeting.id))!.jobs.at(-1)?.state).toBe("in_flight");
       return new Response(wire, { headers: { "content-type": "text/event-stream" } });
@@ -1367,22 +1384,39 @@ test.each(["Responses tool arguments", "Responses reasoning", "Chat tool argumen
     vi.stubGlobal("fetch", request);
     await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
     const pending = pendingAgentReceipt(meeting.id)!;
-    expect(pending.wireResponse).toBe(expected);
-    expect(receiptExport(pending).wireResponse).toBe(expected);
+    const kind = stream.endsWith("arguments") ? "toolArguments" : chat ? "reasoningText" : "reasoningSummary";
+    expect(pending.recoveryArtifact?.content).toContainEqual({
+      kind, text: "before " + redaction + " after", fragmentCount: 3, tailCutMidString: true,
+    });
+    const exported = receiptExport(pending);
+    expect(exported.version).toBe(2);
+    expect(exported.recoveryArtifact).toBe(pending.recoveryArtifact);
+    expect(JSON.stringify(exported)).not.toContain(key);
     expect((await getMeeting(meeting.id))!.jobs.at(-1)?.state).toBe("outcome_unknown");
     expect(request).toHaveBeenCalledTimes(1);
   },
 );
 
-async function exportInterruptedPiWire(wire: string, useChat = false) {
+function disconnectedResponse(wire: string, splitAt?: number) {
+  const bytes = new TextEncoder().encode(wire);
+  return new Response(new ReadableStream({
+    start(controller) {
+      if (splitAt === undefined) controller.enqueue(bytes);
+      else {
+        controller.enqueue(bytes.subarray(0, splitAt));
+        controller.enqueue(bytes.subarray(splitAt));
+      }
+    },
+    pull(controller) { controller.error(new Error("Synthetic reader disconnect")); },
+  }), { headers: { "content-type": "text/event-stream" } });
+}
+
+async function exportInterruptedPi(wire: string, useChat = false, splitAt?: number) {
   const { meeting, plan, signal } = await setup();
   const request = vi.fn(async () => {
     const saved = (await getMeeting(meeting.id))!;
     expect(saved.jobs.at(-1)?.state).toBe("in_flight");
-    return new Response(new ReadableStream({
-      start(controller) { controller.enqueue(new TextEncoder().encode(wire)); },
-      pull(controller) { controller.error(new Error("Synthetic reader disconnect")); },
-    }), { headers: { "content-type": "text/event-stream" } });
+    return disconnectedResponse(wire, splitAt);
   });
   vi.stubGlobal("fetch", request);
   await expect(runAgentMemo(meeting, useChat ? planAgentMemo(meeting, routerSelection, "en") : plan, key, signal))
@@ -1392,52 +1426,67 @@ async function exportInterruptedPiWire(wire: string, useChat = false) {
   expect(saved.jobs).toHaveLength(1);
   expect(saved.jobs[0].state).toBe("outcome_unknown");
   const pending = pendingAgentReceipt(meeting.id)!;
-  const exported = receiptExport(pending).wireResponse;
-  expect(exported).toBe(pending.wireResponse);
-  return exported;
+  const exported = receiptExport(pending);
+  expect(exported).toMatchObject({ version: 2, recoveryArtifact: { byteLength: new TextEncoder().encode(wire).length } });
+  expect(pending.job.assistantRecord).toBeDefined();
+  expect(exported.job).not.toHaveProperty("assistantRecord");
+  expect(exported).not.toHaveProperty("wireResponse");
+  return exported.recoveryArtifact!;
 }
 
-test("interrupted Pi export masks consecutive Chat reasoning summaries and text with unrelated entries intact", async () => {
-  const summary = (summary: string) => ({ type: "reasoning.summary", summary, index: 0 });
-  const text = (text: string) => ({ type: "reasoning.text", text, index: 1 });
-  const frame = (...reasoning_details: object[]) =>
-    `data: ${JSON.stringify({ choices: [{ index: 0, delta: { reasoning_details } }] })}\n\n`;
-  const encrypted = { type: "reasoning.encrypted", data: "unrelated opaque entry", index: 2 };
-  const [first, middle, last] = [key.slice(0, 9), key.slice(9, 18), key.slice(18)];
-  const wire = frame(summary("before " + first)) + frame(summary(middle), summary(last + " after"), encrypted,
-    text("before " + first)) + frame(text(middle)) + frame(text(last + " after")) +
-    frame(summary(first), encrypted, summary(middle + last));
-  const expected = frame(summary("before [redacted provider key]")) + frame(summary(""), summary(" after"), encrypted,
-    text("before [redacted provider key]")) + frame(text("")) + frame(text(" after")) +
-    frame(summary(first), encrypted, summary(middle + last));
-  expect(await exportInterruptedPiWire(wire, true)).toBe(expected);
+test.each([
+  ["summary", "reasoningSummary"], ["text", "reasoningText"], ["arguments", "toolArguments"],
+] as const)("interrupted Chat %s is masked before its trailing discriminator is received", async (field, kind) => {
+  const frame = (id: string, text: string) => {
+    const delta = field === "arguments" ? { tool_calls: [{ function: { arguments: text }, index: 4 }] }
+      : { reasoning_details: [{ [field]: text, type: `reasoning.${field}`, index: 4 }] };
+    return `data: ${JSON.stringify({ id, choices: [{ delta, index: 2 }] })}\n\n`;
+  };
+  const unrelated = 'data: {"id":"independent","choices":[{"index":9,"delta":{"content":"Unrelated paid output."}}]}\n\n';
+  const tail = frame("third", key.slice(18) + " after").split(' after"')[0] + " after";
+  const wire = frame("first", "before " + key.slice(0, 9)) + unrelated + frame("second", key.slice(9, 18)) + tail;
+  const artifact = await exportInterruptedPi(wire, true);
+  expect(artifact.content).toEqual(expect.arrayContaining([
+    { kind, text: "before " + redaction + " after", fragmentCount: 3, tailCutMidString: true },
+    { kind: "outputText", text: "Unrelated paid output.", fragmentCount: 1, tailCutMidString: false },
+  ]));
+  expect(artifact.content.find(section => section.kind === "other")?.text).toContain("independent");
 });
 
-test.each(["function_call_arguments", "output_text"])(
-  "interrupted Pi export masks a Responses %s tail preceding its item identity", async family => {
-    const type = `response.${family}.delta`;
-    const frame = (delta: string, item_id: string, output_index: number) =>
-      `event: ${type}\ndata: ${JSON.stringify({ type, delta, item_id, output_index, content_index: 1 })}\n\n`;
-    const tail = (delta: string) => frame(delta, "synthetic-first-item", 2).split(',"item_id"')[0] + ",";
-    const first = (delta: string) => frame(delta, "synthetic-first-item", 2);
-    const other = frame("independent prefix " + key.slice(0, 17), "synthetic-other-item", 4);
-    const wire = first("before " + key.slice(0, 9)) + other + first(key.slice(9, 18)) + tail(key.slice(18) + " after");
-    const expected = first("before [redacted provider key]") + other + first("") + tail(" after");
-    expect(await exportInterruptedPiWire(wire)).toBe(expected);
-  },
-);
+test.each([
+  ["function_call_arguments", "toolArguments"], ["output_text", "outputText"],
+  ["reasoning_summary_text", "reasoningSummary"], ["refusal", "refusal"],
+] as const)("interrupted Pi export masks a Responses %s tail preceding its item identity", async (family, kind) => {
+  const type = `response.${family}.delta`;
+  const frame = (delta: string, item_id: string, output_index: number) =>
+    `event: ${type}\ndata: ${JSON.stringify({ type, delta, item_id, output_index, content_index: 1 })}\n\n`;
+  const tail = frame(key.slice(18) + " after", "synthetic-final-item", 2).split(',"item_id"')[0] + ",";
+  const other = 'data: {"type":"response.created","response":{"id":"Unrelated metadata."}}\n\n';
+  const wire = frame("before " + key.slice(0, 9), "synthetic-first-item", 2) + other +
+    frame(key.slice(9, 18), "synthetic-second-item", 4) + tail;
+  const artifact = await exportInterruptedPi(wire);
+  expect(artifact.content).toContainEqual({
+    kind, text: "before " + redaction + " after", fragmentCount: 3, tailCutMidString: false,
+  });
+  expect(artifact.content.find(section => section.kind === "other")?.text).toContain("Unrelated metadata.");
+});
 
-test("interrupted Pi export uses stream order when the Responses tail has no open group", async () => {
+test("a Responses tail with mismatched metadata stays in its own kind", async () => {
   const type = "response.output_text.delta";
   const wire = `event: ${type}\ndata: {"metadata":{"unlisted":["before ${key.slice(0, 18)}"]},"delta"\ndata: :"${key.slice(18)} after",`;
-  const expected = `event: ${type}\ndata: {"metadata":{"unlisted":["before [redacted provider key]"]},"delta"\ndata: :" after",`;
-  expect(await exportInterruptedPiWire(wire)).toBe(expected);
+  const artifact = await exportInterruptedPi(wire);
+  expect(artifact.content).toEqual([
+    { kind: "other", text: "before " + key.slice(0, 18), fragmentCount: 1, tailCutMidString: false },
+    { kind: "outputText", text: key.slice(18) + " after", fragmentCount: 1, tailCutMidString: false },
+  ]);
 });
 
 test("interrupted Pi export preserves a Responses tail with no matching continuation", async () => {
   const type = "response.output_text.delta";
   const wire = `event: ${type}\ndata: {"delta":"unrelated tail",`;
-  expect(await exportInterruptedPiWire(wire)).toBe(wire);
+  expect((await exportInterruptedPi(wire)).content).toEqual([
+    { kind: "outputText", text: "unrelated tail", fragmentCount: 1, tailCutMidString: false },
+  ]);
 });
 
 test.each([
@@ -1455,40 +1504,112 @@ test.each([
   const delta = (delta: string, output_index: number) =>
     event("response.output_text.delta", { item_id: "synthetic-item", output_index, content_index: 0, delta, unrelated: "keep" });
   const lookalike = fixture.slice(0, -1) + "X";
-  const wire = delta("before " + fragments[0], 0) + delta(lookalike, 1) +
-    delta(fragments[1] + " after " + lookalike, 0);
+  const alternate = event("response.refusal.delta", { delta: lookalike, output_index: 1 });
+  const tail = delta(fragments[1] + " after " + lookalike, 0).split('","unrelated"')[0];
+  const wire = delta("before " + fragments[0], 0) + alternate + tail;
   const request = vi.fn().mockResolvedValue(new Response(wire, { headers: { "content-type": "text/event-stream" } }));
   vi.stubGlobal("fetch", request);
   await expect(runAgentMemo(meeting, plan, fixture, signal)).rejects.toThrow();
-  const exported = receiptExport(pendingAgentReceipt(meeting.id)!).wireResponse!;
-  const frames = exported.split("\r\n").filter(line => line.startsWith("data: ")).map(line => JSON.parse(line.slice(6)));
-  expect(frames).toHaveLength(3);
-  expect(frames.map(frame => frame.unrelated)).toEqual(["keep", "keep", "keep"]);
-  expect(frames[1].delta).toBe(lookalike);
-  expect(frames[0].delta + frames[2].delta).toBe("before [redacted provider key] after " + lookalike);
+  const artifact = receiptExport(pendingAgentReceipt(meeting.id)!).recoveryArtifact!;
+  expect(artifact.content).toEqual(expect.arrayContaining([
+    { kind: "outputText", text: "before " + redaction + " after " + lookalike, fragmentCount: 2, tailCutMidString: true },
+    { kind: "refusal", text: lookalike, fragmentCount: 1, tailCutMidString: false },
+  ]));
   expect(request).toHaveBeenCalledTimes(1);
 });
 
-test("Pi recovery keeps unrelated content indexes and reconstructs a multiline truncated SSE text part", async () => {
+test("Pi recovery joins readable paid text across multiline and truncated SSE frames", async () => {
   const { meeting, plan, signal } = await setup();
   const line = (text: string) => "data: " + text;
   const wire = [
     'event: response.output_text.delta',
     line('{"output_index":0,'),
-    line('"content_index":0,"delta":"before ' + key.slice(0, 10) + '"}'),
+    line('"content_index":0,"delta":"Decision: "}'),
     "",
     'event: response.output_text.delta',
-    line(JSON.stringify({ output_index: 0, content_index: 1, delta: "unrelated part" })),
+    line(JSON.stringify({ output_index: 0, content_index: 1, delta: "ship the draft " })),
     "",
     'event: response.output_text.delta',
-    line('{"output_index":0,"content_index":0,"delta":"' + key.slice(10) + ' after'),
+    line('{"output_index":0,"content_index":0,"delta":"on Friday.'),
   ].join("\n");
   const request = vi.fn().mockResolvedValue(new Response(wire, { headers: { "content-type": "text/event-stream" } }));
   vi.stubGlobal("fetch", request);
   await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
-  const saved = receiptExport(pendingAgentReceipt(meeting.id)!).wireResponse!;
-  expect(saved).toBe(wire.replace(key.slice(0, 10), "[redacted provider key]").replace(key.slice(10), ""));
+  expect(recoveredContent(meeting.id)).toEqual([
+    { kind: "outputText", text: "Decision: ship the draft on Friday.", fragmentCount: 3, tailCutMidString: true },
+  ]);
   expect(request).toHaveBeenCalledTimes(1);
+});
+
+test.each([
+  ["content index", "response.output_text.delta", "item-a", 3],
+  ["item ID", "response.output_text.delta", "item-b", 2],
+  ["event family", "response.refusal.delta", "item-a", 2],
+] as const)("malformed terminal does not broaden redaction during receipt recovery (%s)", async (_variant, type, item_id, content_index) => {
+  const { meeting, plan, signal } = await setup();
+  const event = (type: string, data: object) => `event: ${type}\r\ndata: ${JSON.stringify(data)}\r\n\r\n`;
+  const firstType = "response.output_text.delta";
+  const prefix = "before " + key.slice(0, 18);
+  const suffix = key.slice(18) + " after";
+  const wire = event("response.created", { type: "response.created", response: { id: "R".repeat(1001), status: "in_progress" } }) +
+    event(firstType, { type: firstType, item_id: "item-a", output_index: 7, content_index: 2, delta: prefix }) +
+    event(type, { delta: suffix, type, item_id, output_index: 7, content_index }) +
+    'event: response.completed\r\ndata: {"type":\r\n\r\n';
+  const request = vi.fn().mockResolvedValue(new Response(wire, { headers: { "content-type": "text/event-stream" } }));
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow("responseId");
+  const exported = receiptExport(pendingAgentReceipt(meeting.id)!);
+  // The overlong response ID cannot enter a decoded record.
+  expect(exported.job).toMatchObject({ state: "outcome_unknown" });
+  expect(exported.job).not.toHaveProperty("assistantRecord");
+  const content = exported.recoveryArtifact!.content;
+  if (type === firstType) {
+    expect(content).toContainEqual({ kind: "outputText", text: "before " + redaction + " after", fragmentCount: 2, tailCutMidString: false });
+  } else {
+    expect(content).toEqual(expect.arrayContaining([
+      { kind: "outputText", text: prefix, fragmentCount: 1, tailCutMidString: false },
+      { kind: "refusal", text: suffix, fragmentCount: 1, tailCutMidString: false },
+    ]));
+  }
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
+test("Pi recovery masks a JSON escape cut across HTTP chunks without losing adjacent text", async () => {
+  const wire = 'event: response.output_text.delta\ndata: {"delta":"before ' +
+    "\\u0073" + key.slice(1) + ' after';
+  const artifact = await exportInterruptedPi(wire, false, wire.indexOf("\\u0073") + 4);
+  expect(artifact.content).toEqual([
+    { kind: "outputText", text: "before " + redaction + " after", fragmentCount: 1, tailCutMidString: true },
+  ]);
+});
+
+test("two interrupted exports keep separate paid text and require a fresh outcome review for each attempt", async () => {
+  const { meeting, plan, signal } = await setup();
+  const request = vi.fn(async () => {
+    const attempt = request.mock.calls.length;
+    const frame = (text: string) => `data: ${JSON.stringify({ type: "response.output_text.delta", delta: text })}\n\n`;
+    return disconnectedResponse(frame(`Attempt ${attempt}: ` + key.slice(0, 12)) + frame(key.slice(12) + " retained."));
+  });
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
+  const first = receiptExport(pendingAgentReceipt(meeting.id)!);
+  let persisted = (await getMeeting(meeting.id))!;
+  await expect(runAgentMemo(persisted, persisted.memoAgents![0], key, signal, true)).rejects.toThrow("unsaved");
+  acknowledgeAgentExport(meeting.id);
+  await expect(runAgentMemo(persisted, persisted.memoAgents![0], key, signal)).rejects.toThrow("previous paid outcome");
+  expect(request).toHaveBeenCalledTimes(1);
+
+  await expect(runAgentMemo(persisted, persisted.memoAgents![0], key, signal, true)).rejects.toThrow();
+  const second = receiptExport(pendingAgentReceipt(meeting.id)!);
+  persisted = (await getMeeting(meeting.id))!;
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(persisted.memoAgents![0].jobIds).toEqual([first.job.id, second.job.id]);
+  expect(persisted.jobs.map(job => job.state)).toEqual(["outcome_unknown", "outcome_unknown"]);
+  expect(first.recoveryArtifact?.content[0].text).toBe("Attempt 1: " + redaction + " retained.");
+  expect(second.recoveryArtifact?.content[0].text).toBe("Attempt 2: " + redaction + " retained.");
+  acknowledgeAgentExport(meeting.id);
+  await expect(runAgentMemo(persisted, persisted.memoAgents![0], key, signal)).rejects.toThrow("previous paid outcome");
+  expect(request).toHaveBeenCalledTimes(2);
 });
 
 test("Pi masks split finished output in the assistant record, memo and restored backup", async () => {

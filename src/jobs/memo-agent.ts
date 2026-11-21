@@ -38,7 +38,7 @@ import {
   readAgentReportedUsage,
 } from "../providers/agent-record";
 import { normalizeMemo } from "../providers/api";
-import { redactMemoRecoveryWire, redactMemoSse } from "../providers/memo-response-redaction";
+import { buildMemoRecoveryArtifact, redactMemoSse } from "../providers/memo-response-redaction";
 import { getMeeting, saveMeeting } from "../storage/repository";
 import { hasPendingAgentReceipt, retainAgentReceipt } from "./agent-recovery";
 
@@ -568,16 +568,16 @@ export async function runAgentMemo(
           responseId: string | null = null;
         let reportedUsage: Job["usage"] = null;
         let upstreamProvider: string | undefined;
-        let capturedWire: string | undefined;
+        let capturedWire: { text: string; byteLength: number } | undefined;
         let preSubmissionError: unknown;
         let receivedSuccessfulHttp = false;
         const finishedOutputIndexes = new Set<number>();
         let terminalOutputCount = 0;
         let unfinishedOutput = false;
         const requestSignal = AbortSignal.any([signal, ...(options?.signal ? [options.signal] : []), AbortSignal.timeout(9 * 60 * 1000)]);
-        const finishReceipt = async (updated: Job, recoveryWire?: string) => {
-          const wireResponse = recoveryWire === undefined ? undefined : redactMemoRecoveryWire(recoveryWire, key);
-          const recovery = { meetingId: meeting.id, agentId: plan.id, job: updated, wireResponse };
+        const finishReceipt = async (updated: Job, recoveryWire?: typeof capturedWire) => {
+          const recoveryArtifact = recoveryWire && buildMemoRecoveryArtifact(recoveryWire.text, key, recoveryWire.byteLength);
+          const recovery = { meetingId: meeting.id, agentId: plan.id, job: updated, recoveryArtifact };
           try {
             await persist((latest) =>
               checkpoint({
@@ -591,7 +591,7 @@ export async function runAgentMemo(
             retainAgentReceipt(recovery);
             throw error;
           }
-          if (wireResponse) retainAgentReceipt(recovery);
+          if (recoveryArtifact) retainAgentReceipt(recovery);
         };
         try {
           if (stopped) return completedStream(requestError(stopped.message));
@@ -708,21 +708,24 @@ export async function runAgentMemo(
                 while (reader) {
                   const { done, value } = await reader.read();
                   if (done) break;
-                  total += value.byteLength;
-                  if (total > MEMO_AGENT_RESPONSE_BYTES) {
-                    await reader.cancel();
+                  const remaining = MEMO_AGENT_RESPONSE_BYTES - total;
+                  if (value.byteLength > remaining) {
+                    pieces.push(decoder.decode(value.subarray(0, remaining), { stream: true }));
+                    total += remaining;
+                    void reader.cancel().catch(() => undefined);
                     throw new Error(
                       "The provider response exceeds the 4 MiB response budget.",
                     );
                   }
                   pieces.push(decoder.decode(value, { stream: true }));
+                  total += value.byteLength;
                 }
               } finally {
                 reader?.releaseLock();
                 pieces.push(decoder.decode());
-                capturedWire = pieces.join("");
+                if (total) capturedWire = { text: pieces.join(""), byteLength: total };
               }
-              return new Response(redactMemoSse(capturedWire, key), {
+              return new Response(redactMemoSse(capturedWire?.text ?? "", key), {
                 status: response.status,
                 statusText: response.statusText,
                 headers: response.headers,

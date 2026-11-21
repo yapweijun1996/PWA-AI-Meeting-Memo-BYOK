@@ -129,7 +129,7 @@ test("a bounded completed response in unsupported wire format remains available 
   expect(saved.jobs).toHaveLength(1);
   expect(attempts).toHaveLength(1);
   expect(unexpected).toEqual([]);
-  // An adapter may preserve the original in the receipt or expose the documented raw export.
+  // An adapter may preserve the original in the receipt or expose the recovery artifact.
   if (!saved.jobs[0].assistantRecord?.includes(marker)) {
     const recovery = page.getByRole("alert", { name: "Unsaved review response" });
     await expect(recovery).toBeVisible();
@@ -138,7 +138,16 @@ test("a bounded completed response in unsupported wire format remains available 
     const reader = await (await downloaded).createReadStream();
     const chunks = [];
     for await (const chunk of reader!) chunks.push(Buffer.from(chunk));
-    expect(Buffer.concat(chunks).toString("utf8")).toContain(marker);
+    const receipt = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    expect(receipt).toMatchObject({
+      version: 2,
+      recoveryArtifact: {
+        content: expect.arrayContaining([
+          expect.objectContaining({ kind: "outputText", text: expect.stringContaining(marker) }),
+        ]),
+      },
+    });
+    expect(receipt).not.toHaveProperty("wireResponse");
   }
   expect(attempts).toHaveLength(1);
 });
@@ -240,7 +249,7 @@ test("a late Pi response remains exportable while navigating without its deleted
   const chunks = [];
   for await (const chunk of reader!) chunks.push(Buffer.from(chunk));
   const receipt = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  expect(receipt).toMatchObject({ format: "meeting-memo-agent-receipt", meetingId });
+  expect(receipt).toMatchObject({ format: "meeting-memo-agent-receipt", version: 1, meetingId });
   expect(receipt.job.assistantRecord).toContain("recover-after-delete");
   await recovery.getByRole("button", { name: /release this page copy/ }).click();
   await expect(recovery).toHaveCount(0);
