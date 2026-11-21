@@ -18,6 +18,7 @@ export function LanguageMenu({
   return (
     <ChoiceMenu
       className="topbar-language"
+      showSelectedTitle
       label={label}
       value={language === "zh-CN" || language === "ms" ? language : "en"}
       options={uiLanguageOptions}

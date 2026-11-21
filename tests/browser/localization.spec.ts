@@ -117,7 +117,7 @@ test("Chinese history retains request billing uncertainty after reload", async (
 test("topbar language choice persists and Malay fallback is explicit", async ({ page }) => {
   await page.goto("/PWA-AI-Meeting-Memo-BYOK/");
   const trigger = page.locator(".topbar-language > button");
-  await expect(trigger).toContainText("English");
+  await expect(trigger).toHaveAccessibleName("Display language: English");
   await expect(trigger.locator("svg").first()).toBeVisible();
   expect((await trigger.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await trigger.click();
@@ -127,7 +127,7 @@ test("topbar language choice persists and Malay fallback is explicit", async ({ 
   await expect(page.locator("html")).toHaveAttribute("lang", "ms");
   await expect(page.getByRole("link", { name: /Mesyuarat anda/ })).toBeVisible();
   await page.reload();
-  await expect(trigger).toContainText("Bahasa Melayu");
+  await expect(trigger).toHaveAccessibleName(/: Bahasa Melayu$/);
 });
 
 test("help guide remains usable on a narrow screen", async ({ page }) => {

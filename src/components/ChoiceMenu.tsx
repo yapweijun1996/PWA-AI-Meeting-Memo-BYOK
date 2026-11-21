@@ -17,6 +17,7 @@ export function ChoiceMenu<T extends string>({
   options,
   onChange,
   busy = false,
+  showSelectedTitle = false,
   icon,
   className = "",
 }: {
@@ -25,6 +26,7 @@ export function ChoiceMenu<T extends string>({
   options: readonly ChoiceOption<T>[];
   onChange: (value: T) => void;
   busy?: boolean;
+  showSelectedTitle?: boolean;
   icon?: ReactNode;
   className?: string;
 }) {
@@ -35,7 +37,7 @@ export function ChoiceMenu<T extends string>({
   const firstFocus = useRef<"selected" | "first" | "last">("selected");
   const search = useRef({ text: "", at: 0 });
   const id = useId();
-  const selected = options.find((option) => option.value === value);
+  const selectedLabel = options.find((option) => option.value === value)?.label ?? value;
   const items = () =>
     Array.from(
       menu.current?.querySelectorAll<HTMLButtonElement>(
@@ -87,7 +89,8 @@ export function ChoiceMenu<T extends string>({
         ref={trigger}
         type="button"
         className="choice-menu-trigger"
-        aria-label={`${label}: ${selected?.label ?? value}`}
+        aria-label={`${label}: ${selectedLabel}`}
+        title={showSelectedTitle ? selectedLabel : undefined}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
@@ -102,7 +105,7 @@ export function ChoiceMenu<T extends string>({
         }}
       >
         {icon}
-        <span className="choice-menu-value">{selected?.label ?? value}</span>
+        <span className="choice-menu-value">{selectedLabel}</span>
         <Icon glyph={ChevronDown} size="small" />
       </Button>
       {open && (
