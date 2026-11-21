@@ -4359,6 +4359,7 @@ details[open] > summary {
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
 }
+.topbar-theme:focus-visible { outline-offset: -2px; }
 @media (min-width: 761px) and (max-width: 1200px) {
   .topbar { height: auto; min-height: var(--topbar-height); flex-wrap: wrap; }
   .topbar .breadcrumb {

@@ -43,3 +43,18 @@ it("keeps switching in the current tab when storage writes are denied", () => {
   expect(toggleTheme()).toBe(false);
   expect(document.documentElement.dataset.theme).toBe("light");
 });
+
+it("syncs a font-only storage event without undoing the tab-only theme", () => {
+  const storage = startWithTheme("light");
+  storage.setItem.mockImplementationOnce(() => { throw new DOMException("Storage denied", "SecurityError"); });
+  expect(toggleTheme()).toBe(false);
+  expect(document.documentElement.dataset.theme).toBe("dark");
+  expect(storage.getItem(preferences.theme.key)).toBe("light");
+
+  const fontKey = "meeting-memo:font-family";
+  storage.setItem(fontKey, "georgia");
+  window.dispatchEvent(Object.assign(new Event("storage"), { key: fontKey, newValue: "georgia" }));
+
+  expect(document.documentElement.dataset.font).toBe("georgia");
+  expect(document.documentElement.dataset.theme).toBe("dark");
+});

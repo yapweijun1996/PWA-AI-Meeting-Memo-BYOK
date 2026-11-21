@@ -18,6 +18,8 @@ const malay: Record<string, string> = {
   "Saved locally on this device": "Disimpan pada peranti ini",
   "Storage": "Storan", "About": "Perihal",
   "Dismiss notification": "Tutup pemberitahuan",
+  "Dismiss notice for one week": "Tutup notis selama seminggu",
+  "Display language": "Bahasa paparan",
   "Workspace": "Ruang kerja", "Your meetings": "Mesyuarat anda", "Needs review": "Perlu semakan",
   "New meeting": "Mesyuarat baharu", "Restore backup": "Pulihkan sandaran", "RECENT MEETINGS": "MESYUARAT TERKINI",
   "View all meetings": "Lihat semua mesyuarat", "View all": "Lihat semua",

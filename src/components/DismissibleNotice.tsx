@@ -60,7 +60,7 @@ export function DismissibleNotice({ id, dismissLabel, children }: {
   if (!visible) return null;
   return <div className="notice dismissible-notice" role="status">
     <span>{children}</span>
-    <IconButton ref={button} label={dismissLabel} onClick={event => {
+    <IconButton ref={button} label={dismissLabel} title={dismissLabel} onClick={event => {
       dismissNotice(id);
       focusContentAfter(event.currentTarget);
       refresh();

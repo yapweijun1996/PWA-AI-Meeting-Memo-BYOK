@@ -42,7 +42,7 @@ export function initializeAppearance() {
       try { applySize(parseSize(localStorage.getItem(sizeKey))); } catch { applySize("normal"); }
     }
     if (event.key === key || event.key === null) {
-      try { apply(parse(localStorage.getItem(key))); applySize(parseSize(localStorage.getItem(sizeKey))); applyTheme(parseTheme(localStorage.getItem(themeKey))); applyPalette(parsePalette(localStorage.getItem(paletteKey))); } catch { apply("default"); applySize("normal"); applyTheme("light"); applyPalette(parsePalette(null)); }
+      try { apply(parse(localStorage.getItem(key))); } catch { apply("default"); }
     }
   });
 }

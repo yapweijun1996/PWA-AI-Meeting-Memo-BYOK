@@ -45,6 +45,15 @@ for (const mobile of [false, true]) {
       });
     });
 
+    test("localizes the dismiss button name and title in Malay", async ({ page }) => {
+      await page.goto("./");
+      await expect(dismiss(page)).toBeVisible();
+      await changeTopbarLanguage(page, "ms");
+      const close = page.locator(".dismissible-notice").getByRole("button");
+      await expect.soft(close).toHaveAccessibleName("Tutup notis selama seminggu");
+      await expect.soft(close).toHaveAttribute("title", "Tutup notis selama seminggu");
+    });
+
     test("localizes dismissal, restores keyboard focus and repeats each week across reload", async ({ page }) => {
       await page.clock.install();
       await page.goto("./");

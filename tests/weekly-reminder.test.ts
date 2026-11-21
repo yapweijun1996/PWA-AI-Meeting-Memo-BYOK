@@ -1,11 +1,13 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { UiLanguage } from "../src/i18n";
 import { PwaStatus } from "../src/pwa/status";
 import { dismissNotice, shouldShowNotice } from "../src/storage/weekly-reminder";
 
 const message = "Offline installation is unavailable. Your local meetings can still be backed up.";
-const statusFixture = vi.hoisted(() => ({ error: "" }));
+const statusFixture = vi.hoisted(() => ({ error: "", language: "en" as UiLanguage }));
+vi.mock("../src/ui-language", () => ({ useUiLanguage: () => statusFixture.language }));
 vi.mock("react", async importOriginal => {
   const react = await importOriginal<typeof import("react")>();
   return {
@@ -16,6 +18,7 @@ vi.mock("react", async importOriginal => {
 
 afterEach(() => {
   statusFixture.error = "";
+  statusFixture.language = "en";
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -27,11 +30,16 @@ function renderStatus(error: string) {
   return renderToStaticMarkup(createElement(PwaStatus));
 }
 
-it("renders a named weekly dismissal control for the offline installation failure", () => {
+it.each([
+  ["en", "Dismiss notice for one week"],
+  ["zh-CN", "\u5173\u95ed\u63d0\u793a\uff0c\u4e00\u5468\u540e\u518d\u63d0\u9192"],
+  ["ms", "Tutup notis selama seminggu"],
+] as const)("renders the localized weekly dismissal name and title in %s", (language, label) => {
   vi.stubGlobal("localStorage", fakeStorage());
+  statusFixture.language = language;
   const markup = renderStatus(message);
-  expect(markup).toContain(message);
-  expect(markup).toContain('aria-label="Dismiss notice for one week"');
+  expect.soft(markup).toContain(`aria-label="${label}"`);
+  expect.soft(markup).toContain(`title="${label}"`);
   expect(markup).toContain('type="button"');
   expect(markup).toContain('role="status"');
 });

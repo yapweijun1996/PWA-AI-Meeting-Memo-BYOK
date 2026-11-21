@@ -3,6 +3,12 @@ import { expect, test, type Page } from "@playwright/test";
 import { uiLanguageOptions } from "../../src/ui-language-options";
 import { changeTopbarLanguage } from "./helpers/language";
 
+const languageNames = {
+  en: "Display language: English",
+  "zh-CN": "\u663e\u793a\u8bed\u8a00: \u7b80\u4f53\u4e2d\u6587",
+  ms: "Bahasa paparan: Bahasa Melayu",
+};
+
 async function checkLayout(page: Page, width: number) {
   const trigger = page.locator(".topbar-language > button");
   const badge = page.locator(".topbar .privacy-top");
@@ -48,7 +54,7 @@ async function checkLanguages(page: Page, width: number) {
       await changeTopbarLanguage(page, language.value);
       await expect(breadcrumb).not.toHaveText(previousText);
     }
-    await expect(trigger).toHaveAccessibleName(new RegExp(`: ${language.label}$`));
+    await expect(trigger).toHaveAccessibleName(languageNames[language.value]);
     await expect(trigger).toHaveAttribute("title", language.label);
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
     if (compact) await expect(value).toBeHidden();

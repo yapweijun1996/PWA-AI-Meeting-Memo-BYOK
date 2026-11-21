@@ -8,6 +8,7 @@ test.use({ serviceWorkers: "block", reducedMotion: "reduce" });
 const settings = "./#/settings";
 const switchToDark = "Switch to dark theme";
 const switchToLight = "Switch to light theme";
+const fontSizes = ["small", "normal", "large", "xlarge", "xxlarge"];
 const toggle = (page: Page) => page.locator(".topbar-theme");
 
 async function expectAction(button: Locator, label: string, icon: "moon" | "sun") {
@@ -103,6 +104,53 @@ test("theme action names follow the display language in both directions", async 
     await button.click();
   }
 });
+
+for (const width of [1440, 1024, 768, 390]) {
+  test(`keeps the whole theme focus ring visible at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(settings);
+    await page.getByRole("tab", { name: "Appearance" }).click();
+    const theme = page.getByRole("combobox", { name: "Theme", exact: true });
+    const fontSize = page.getByRole("combobox", { name: "Font size", exact: true });
+    const button = toggle(page);
+    const root = page.locator("html");
+    for (const mode of ["light", "dark"]) {
+      await theme.selectOption(mode);
+      await expect(root).toHaveAttribute("data-theme", mode);
+      for (const size of fontSizes) {
+        await fontSize.selectOption(size);
+        await expect(root).toHaveAttribute("data-font-size", size);
+        await page.keyboard.press("Tab");
+        await button.focus();
+        await expect(button).toBeFocused();
+        await expect(button).toHaveCSS("outline-style", "solid");
+        await expect(button).toHaveCSS("outline-width", "2px");
+
+        const { ring, clip } = await button.evaluate(element => {
+          const topbar = element.closest<HTMLElement>(".topbar")!;
+          const header = topbar.getBoundingClientRect();
+          const button = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          const extent = parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth);
+          const viewport = document.documentElement;
+          return {
+            ring: { top: button.top - extent, right: button.right + extent,
+              bottom: button.bottom + extent, left: button.left - extent },
+            clip: { top: Math.max(0, header.top + topbar.clientTop),
+              right: Math.min(viewport.clientWidth, header.left + topbar.clientLeft + topbar.clientWidth),
+              bottom: Math.min(viewport.clientHeight, header.top + topbar.clientTop + topbar.clientHeight),
+              left: Math.max(0, header.left + topbar.clientLeft) },
+          };
+        });
+        const variant = `${width}px, ${mode}, ${size}`;
+        expect.soft(ring.top, `${variant}: top edge`).toBeGreaterThanOrEqual(clip.top);
+        expect.soft(ring.right, `${variant}: right edge`).toBeLessThanOrEqual(clip.right);
+        expect.soft(ring.bottom, `${variant}: bottom edge`).toBeLessThanOrEqual(clip.bottom);
+        expect.soft(ring.left, `${variant}: left edge`).toBeGreaterThanOrEqual(clip.left);
+      }
+    }
+  });
+}
 
 for (const width of [320, 390, 768]) {
   test(`topbar fits with largest text and every palette at ${width}px`, async ({ page }) => {
