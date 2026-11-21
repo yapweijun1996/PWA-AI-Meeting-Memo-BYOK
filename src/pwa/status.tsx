@@ -158,91 +158,115 @@ export function PwaStatus() {
     }
     closeConfirmation();
     setUpdating(true);
+    let stopped = false;
+    let refreshing = false;
+    let cleanup: () => void = () => undefined;
+    const activationError = "Update did not activate. Try again when connected.";
+    const saveError = "Save your changes before updating.";
+    const timer = setTimeout(() => stop(refreshing ? saveError : activationError), 15000);
+    function stop(message?: string) {
+      if (stopped) return;
+      stopped = true;
+      clearTimeout(timer);
+      cleanup();
+      if (message) {
+        setUpdating(false);
+        setError(message);
+      }
+    }
+    function handleSaveError(error: unknown) {
+      stop(error instanceof Error ? error.message : saveError);
+    }
+    function afterMeetingWrites(action: () => void) {
+      return flushWrites(() => {
+        if (stopped) return;
+        const reason = blocker();
+        if (reason) stop(reason);
+        else action();
+      }).catch(handleSaveError);
+    }
+    function reloadWhenSafe() {
+      refreshing = true;
+      return afterMeetingWrites(() => {
+        location.reload();
+        stop();
+      });
+    }
     try {
       await flushWrites();
       await flushSettingsWrites();
       await flushAvatarWrites();
     } catch (e) {
-      setUpdating(false);
-      setError(
-        e instanceof Error ? e.message : "Save your changes before updating.",
-      );
+      handleSaveError(e);
       return;
     }
+    if (stopped) return;
     // A newer waiting worker can replace the one captured by React state
     // between opening the confirmation and accepting it.
     let registration: ServiceWorkerRegistration | undefined;
     try {
       registration = await navigator.serviceWorker.getRegistration(import.meta.env.BASE_URL);
     } catch {
-      setUpdating(false);
-      setError("Update did not activate. Try again when connected.");
+      stop(activationError);
       return;
     }
+    if (stopped) return;
     // Local saves and the registration lookup can yield while a receipt arrives.
     const lateBlocker = blocker();
     if (lateBlocker) {
-      setUpdating(false);
-      setError(lateBlocker);
+      stop(lateBlocker);
       return;
     }
     if (!registration?.waiting && !registration?.installing && refreshReady) {
-      location.reload();
+      await reloadWhenSafe();
       return;
     }
     if (!registration || (!registration.waiting && !registration.installing)) {
-      setUpdating(false);
-      setError("Update did not activate. Try again when connected.");
+      stop(activationError);
       return;
     }
+    const currentRegistration = registration;
     const observed = new Set<ServiceWorker>();
     const attempted = new Set<ServiceWorker>();
+    let checkingWrites = false;
     const watch = (worker: ServiceWorker | null) => {
       if (!worker || observed.has(worker)) return;
       observed.add(worker);
       worker.addEventListener("statechange", activateLatest);
     };
     function activateLatest() {
-      if (!registration) return;
+      if (stopped || refreshing || checkingWrites) return;
       const reason = blocker();
       if (reason) {
-        clearTimeout(timer);
-        cleanup();
-        setUpdating(false);
-        setError(reason);
+        stop(reason);
         return;
       }
-      watch(registration.installing);
-      const worker = registration.waiting;
+      watch(currentRegistration.installing);
+      const worker = currentRegistration.waiting;
       if (!worker || attempted.has(worker)) return;
-      attempted.add(worker);
-      watch(worker);
-      worker.postMessage({ type: "SKIP_WAITING" });
+      checkingWrites = true;
+      void afterMeetingWrites(() => {
+        if (refreshing) return;
+        watch(currentRegistration.installing);
+        const latest = currentRegistration.waiting;
+        if (!latest || attempted.has(latest)) return;
+        attempted.add(latest);
+        watch(latest);
+        latest.postMessage({ type: "SKIP_WAITING" });
+      }).finally(() => { checkingWrites = false; });
     }
-    const cleanup = () => {
-      registration?.removeEventListener("updatefound", activateLatest);
+    cleanup = () => {
+      currentRegistration.removeEventListener("updatefound", activateLatest);
       for (const worker of observed) worker.removeEventListener("statechange", activateLatest);
       navigator.serviceWorker.removeEventListener("controllerchange", activated);
     };
-    const timer = setTimeout(() => {
-      cleanup();
-      setUpdating(false);
-      setError("Update did not activate. Try again when connected.");
-    }, 15000);
     function activated() {
-      clearTimeout(timer);
-      cleanup();
-      const reason = blocker();
-      if (reason) {
-        setRefreshReady(true);
-        setUpdating(false);
-        setError(reason);
-        return;
-      }
-      location.reload();
+      setWaiting(undefined);
+      setRefreshReady(true);
+      void reloadWhenSafe();
     }
     navigator.serviceWorker.addEventListener("controllerchange", activated, { once: true });
-    registration.addEventListener("updatefound", activateLatest);
+    currentRegistration.addEventListener("updatefound", activateLatest);
     activateLatest();
   }
   const errorText = language === "zh-CN" ? ({

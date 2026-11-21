@@ -1,9 +1,20 @@
 import {changeTopbarLanguage} from "./helpers/language";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
+import { sampleMeeting, type Meeting } from "../../src/domain/model";
+import { memo, readPiMeeting, setup } from "./helpers/memo-pi";
 
 test.use({ serviceWorkers: "block", reducedMotion: "reduce" });
 
-type WorkerProbe = { messages: { type: string }[]; failRegistration: boolean };
+type WorkerProbe = {
+  messages: { type: string }[];
+  failRegistration: boolean;
+  delayRegistration?: Promise<void>;
+  releaseRegistration?: () => void;
+  registrationRequested?: boolean;
+  releaseFactWrite?: () => void;
+  factWriteCommitted?: boolean;
+  postedBeforeFactCommit?: boolean;
+};
 const observations = new WeakMap<Page, { errors: string[]; external: string[] }>();
 
 test.beforeEach(async ({ page }) => {
@@ -19,13 +30,23 @@ test.beforeEach(async ({ page }) => {
     Object.defineProperty(window, "__sidebarWorkerProbe", { configurable: true, value: probe });
     const waiting = Object.assign(new EventTarget(), {
       state: "installed",
-      postMessage(message: { type: string }) { probe.messages.push(message); },
+      postMessage(message: { type: string }) {
+        probe.messages.push(message);
+        if (probe.releaseFactWrite && !probe.factWriteCommitted) probe.postedBeforeFactCommit = true;
+      },
     });
     const active = Object.assign(new EventTarget(), { state: "activated" });
     const registration = Object.assign(new EventTarget(), { waiting, active, installing: null, update: async () => {} });
     Object.defineProperties(navigator.serviceWorker, {
       register: { configurable: true, value: async () => registration },
-      getRegistration: { configurable: true, value: async () => { if (probe.failRegistration) throw new Error("Synthetic registration unavailable"); return registration; } },
+      getRegistration: { configurable: true, value: async () => {
+        if (probe.failRegistration) throw new Error("Synthetic registration unavailable");
+        if (probe.delayRegistration) {
+          probe.registrationRequested = true;
+          await probe.delayRegistration;
+        }
+        return registration;
+      } },
       ready: { configurable: true, get: () => Promise.resolve(registration) },
       controller: { configurable: true, get: () => active },
     });
@@ -321,3 +342,216 @@ for (const boundary of ["installation", "controller change"] as const) {
     }
   });
 }
+
+async function openFactReview(page: Page) {
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page.getByRole("button", { name: "Evidence Review" }).click();
+  return page.getByRole("combobox", { name: "Fact status", exact: true });
+}
+
+async function seedFactReview(page: Page) {
+  const meeting = sampleMeeting();
+  const item = {
+    id: crypto.randomUUID(), type: "decision" as const, text: "Keep the current invoice timing.",
+    ownerId: null, dueDate: null, dueOriginal: null, review: "pending" as const,
+    sources: [{ id: meeting.segments[4].id, revision: meeting.segments[4].revision }],
+    factStatus: "proposed" as const,
+  };
+  meeting.memos = [{ id: crypto.randomUUID(), model: "fixture", createdAt: meeting.updatedAt,
+    sourceRevision: meeting.revision, template: "decision", items: [item], originalItems: [item] }];
+  await page.goto("./");
+  await expect(page.locator(".loading-library")).toHaveCount(0);
+  await page.evaluate(async value => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("meeting-memo-byok-v1");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction("meetings", "readwrite");
+        tx.oncomplete = () => resolve();
+        tx.onabort = () => reject(tx.error);
+        tx.objectStore("meetings").add(value);
+      });
+    } finally { db.close(); }
+  }, meeting);
+  await page.goto(`./#/meetings/${meeting.id}`);
+  await expect(await openFactReview(page)).toHaveValue("proposed");
+  return meeting.id;
+}
+
+async function holdFactWrite(page: Page, meetingId: string) {
+  await page.evaluate(async id => {
+    const probe = (window as unknown as { __sidebarWorkerProbe: WorkerProbe }).__sidebarWorkerProbe;
+    const factTransactions = new WeakSet<IDBTransaction>();
+    const transaction = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function(...args: Parameters<IDBDatabase["transaction"]>) {
+      const tx = transaction.apply(this, args);
+      if (this.name === "meeting-memo-byok-v1" && tx.mode === "readwrite" && tx.objectStoreNames.contains("meetings")) {
+        // Register before the app wraps the transaction and starts awaiting completion.
+        tx.addEventListener("complete", () => {
+          if (factTransactions.has(tx)) probe.factWriteCommitted = true;
+        });
+      }
+      return tx;
+    };
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function(value: Meeting, ...args) {
+      const request = put.call(this, value, ...args);
+      if (this.name === "meetings" && value.id === id && value.memos[0].items[0].factStatus === "confirmed") {
+        factTransactions.add(this.transaction);
+      }
+      return request;
+    };
+    window.addEventListener("beforeunload", () => {
+      sessionStorage.setItem("reload-before-fact-commit", String(!probe.factWriteCommitted));
+    });
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("meeting-memo-byok-v1");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    // Keep a real transaction open ahead of the application's write until the update boundary fires.
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("meetings", "readwrite");
+      const store = tx.objectStore("meetings");
+      let held = true;
+      probe.releaseFactWrite = () => { held = false; };
+      tx.oncomplete = () => db.close();
+      tx.onabort = () => reject(tx.error);
+      const keep = () => {
+        store.get(id).onsuccess = () => {
+          resolve();
+          if (held) keep();
+        };
+      };
+      keep();
+    });
+  }, meetingId);
+}
+
+async function verifyLateFactWrite(page: Page, boundary: "installation" | "controller change" | "refresh lookup") {
+  const meetingId = await seedFactReview(page);
+  const banner = page.locator(".notice.update");
+  if (boundary !== "controller change") {
+    await page.evaluate(async phase => {
+      const registration = (await navigator.serviceWorker.getRegistration())!;
+      if (phase === "installation") {
+        Object.assign(registration, { installing: registration.waiting, waiting: null });
+      } else {
+        Object.assign(registration, { waiting: null });
+        navigator.serviceWorker.dispatchEvent(new Event("controllerchange"));
+        const probe = (window as unknown as { __sidebarWorkerProbe: WorkerProbe }).__sidebarWorkerProbe;
+        probe.delayRegistration = new Promise<void>(resolve => { probe.releaseRegistration = resolve; });
+      }
+    }, boundary);
+  }
+  await banner.getByRole("button", { name: boundary === "refresh lookup" ? "Refresh page" : "Update now" }).click();
+  await banner.getByRole("button", { name: "Confirm update" }).click();
+  await expect(banner.getByRole("button", { name: "Updating…" })).toBeDisabled();
+  if (boundary === "controller change") await expect.poll(() => messages(page)).toEqual([{ type: "SKIP_WAITING" }]);
+  if (boundary === "refresh lookup") await expect.poll(() => page.evaluate(() =>
+    (window as unknown as { __sidebarWorkerProbe: WorkerProbe }).__sidebarWorkerProbe.registrationRequested)).toBe(true);
+
+  await holdFactWrite(page, meetingId);
+  const fact = page.getByRole("combobox", { name: "Fact status", exact: true });
+  await fact.selectOption("confirmed");
+  await expect(fact).toBeDisabled();
+  await expect(page.locator('dialog[open], [data-unsaved-edit="true"]')).toHaveCount(0);
+
+  if (boundary === "installation") {
+    await page.evaluate(async () => {
+      const registration = (await navigator.serviceWorker.getRegistration())!;
+      const worker = registration.installing!;
+      Object.assign(registration, { installing: null, waiting: worker });
+      worker.dispatchEvent(new Event("statechange"));
+      (window as unknown as { __sidebarWorkerProbe: WorkerProbe }).__sidebarWorkerProbe.releaseFactWrite!();
+    });
+    await expect.poll(() => messages(page)).toEqual([{ type: "SKIP_WAITING" }]);
+    expect(await page.evaluate(() => (window as unknown as { __sidebarWorkerProbe: WorkerProbe })
+      .__sidebarWorkerProbe.postedBeforeFactCommit)).toBeUndefined();
+  }
+
+  const reloaded = page.waitForEvent("domcontentloaded");
+  await page.evaluate(async phase => {
+    const probe = (window as unknown as { __sidebarWorkerProbe: WorkerProbe }).__sidebarWorkerProbe;
+    if (phase === "refresh lookup") {
+      probe.releaseRegistration!();
+    } else {
+      const registration = (await navigator.serviceWorker.getRegistration())!;
+      Object.assign(registration, { waiting: null });
+      navigator.serviceWorker.dispatchEvent(new Event("controllerchange"));
+    }
+    // Give an unsafe reload a chance to start while IndexedDB is still held.
+    setTimeout(() => probe.releaseFactWrite!(), 150);
+  }, boundary);
+  await reloaded;
+  expect(await page.evaluate(() => sessionStorage.getItem("reload-before-fact-commit"))).toBe("false");
+  await expect(await openFactReview(page)).toHaveValue("confirmed");
+  const [saved] = (await readPiMeeting(page)).memos;
+  expect(saved.items[0].factStatus).toBe("confirmed");
+  expect(saved.originalItems?.[0].factStatus).toBe("proposed");
+}
+
+for (const boundary of ["installation", "controller change", "refresh lookup"] as const) {
+  test(`a late Fact status change commits before update ${boundary}`, ({ page }) => verifyLateFactWrite(page, boundary));
+}
+
+test.describe("touch viewport update", () => {
+  test.use({ isMobile: true, hasTouch: true });
+  test("a late Fact status change commits before the mobile update reload", async ({ page, browserName }) => {
+    await page.setViewportSize(browserName === "webkit" ? { width: 390, height: 844 } : { width: 412, height: 915 });
+    await verifyLateFactWrite(page, "controller change");
+  });
+});
+
+test("an acknowledged orphan receipt no longer blocks a confirmed update", async ({ page, context }) => {
+  await setup(page);
+  let request: Route | undefined;
+  await page.route("https://api.openai.com/v1/responses", route => { request = route; });
+  await page.getByRole("button", { name: "Generate meeting notes", exact: true }).first().click();
+  const confirmation = page.getByRole("dialog");
+  await confirmation.getByRole("checkbox", { name: /I understand the selected data/ }).check();
+  await confirmation.getByRole("button", { name: "Generate new notes", exact: true }).click();
+  await expect.poll(() => !!request).toBe(true);
+  const meeting = await readPiMeeting(page);
+  await page.evaluate(({ meetingId, jobId }) => {
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function(value: Meeting, ...args) {
+      if (this.name === "meetings" && value.id === meetingId && value.jobs.some(job => job.id === jobId)) {
+        const count = Number(sessionStorage.getItem("rejected-receipt-writes"));
+        sessionStorage.setItem("rejected-receipt-writes", String(count + 1));
+        throw new DOMException("Synthetic receipt storage failure", "QuotaExceededError");
+      }
+      return put.call(this, value, ...args);
+    };
+  }, { meetingId: meeting.id, jobId: meeting.jobs[0].id });
+  const meetingUrl = page.url();
+  await page.getByRole("link", { name: "All meetings", exact: true }).click();
+  await request!.fulfill({ json: { id: "orphan-response", status: "completed", output: [memo(meeting.segments[0].id)] } });
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("rejected-receipt-writes"))).toBe("2");
+
+  const other = await context.newPage();
+  await other.goto(meetingUrl);
+  other.once("dialog", dialog => dialog.accept());
+  await other.getByRole("button", { name: "Delete meeting", exact: true }).click();
+  await expect(other.getByRole("heading", { name: "Your meetings." })).toBeVisible();
+  const recovery = page.getByRole("alert", { name: "Unsaved review response" });
+  const banner = page.locator(".notice.update");
+  await expect(recovery).toBeVisible();
+  await banner.getByRole("button", { name: "Update now" }).click();
+  await expect(page.getByText("Save or export the unsaved review response before updating.")).toBeVisible();
+  expect(await messages(page)).toEqual([]);
+  const downloaded = page.waitForEvent("download");
+  await recovery.getByRole("button", { name: "Export unsaved response" }).click();
+  const stream = await (await downloaded).createReadStream();
+  const chunks = [];
+  for await (const chunk of stream!) chunks.push(Buffer.from(chunk));
+  expect(JSON.parse(Buffer.concat(chunks).toString("utf8")).job.memoResponse).toContain("orphan-response");
+  await recovery.getByRole("button", { name: /release this page copy/ }).click();
+  await expect(recovery).toHaveCount(0);
+  await banner.getByRole("button", { name: "Update now" }).click();
+  await banner.getByRole("button", { name: "Confirm update" }).click();
+  await expect.poll(() => messages(page)).toEqual([{ type: "SKIP_WAITING" }]);
+});
