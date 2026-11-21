@@ -451,3 +451,16 @@ test("rejects text changes in a legacy backup snapshot at the same revision", as
   await expect(readBackup(new File([JSON.stringify(m)], "invalid-legacy-plan.json")))
     .rejects.toThrow("Pipeline sources do not match meeting evidence.");
 });
+
+test("a stale confirmation cannot submit synthesis again after another caller completed its plan", async () => {
+  vi.stubGlobal("window", new EventTarget());
+  vi.stubGlobal("navigator", {});
+  const request = vi.fn(async (_url: unknown, init: { body: string }) => response(init.body));
+  vi.stubGlobal("fetch", request);
+  const meeting = await saveMeeting(longMeeting());
+  const proposed = planMemo(meeting, selection.provider, selection.model)!;
+  const completed = await runMemoPipeline(meeting, selection, proposed);
+  const recovered = await runMemoPipeline(completed, selection, proposed);
+  expect(request).toHaveBeenCalledTimes(proposed.chunks.length + 1);
+  expect(recovered).toEqual(completed);
+});

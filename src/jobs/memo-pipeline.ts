@@ -63,6 +63,7 @@ export async function runMemoPipeline(
       );
     let p = structuredClone(proposed);
     const existing = current.memoPipelines?.find((v) => v.id === p.id);
+    if (existing?.state === "completed") return current;
     if (existing) p = structuredClone(existing);
     else
       current = await saveMeeting({

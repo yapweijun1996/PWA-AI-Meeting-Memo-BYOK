@@ -3,6 +3,7 @@ import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, Message, Model } from "@earendil-works/pi-ai";
 import {
   id,
+  MemoItemSchema,
   MAX_JOBS,
   ref,
   type Meeting,
@@ -146,7 +147,7 @@ export async function runAgentMemo(
         memoAgents: [...(current.memoAgents ?? []), plan],
       });
     const frozen = agentMeeting(current, plan);
-    const persist = async (update: (latest: Meeting) => Meeting) => {
+    const persist = async (update: (latest: Meeting) => Meeting, reserveNextResponse = false) => {
       const latest = await getMeeting(meeting.id);
       if (!latest) throw new Error("The meeting was removed while processing.");
       const savedPlan = latest.memoAgents?.find(
@@ -163,7 +164,7 @@ export async function runAgentMemo(
           "Another tab changed this review. Reload before continuing.",
         );
       const value = update(latest);
-      assertAgentStorageBudget(value, false);
+      assertAgentStorageBudget(value, reserveNextResponse);
       current = await saveMeeting(value);
       onCheckpoint?.(current);
       window.dispatchEvent(new Event("memo-storage-changed"));
@@ -181,28 +182,54 @@ export async function runAgentMemo(
       }
     };
     const toolResult = (name: string, args: unknown) => {
-      if (name === "search_transcript")
-        return searchAgentTranscript(frozen.segments, args);
-      if (name === "read_transcript_range")
-        return readAgentTranscript(frozen.segments, args);
-      throw new Error(
-        "Unknown review tool. Only local transcript search and range reading are available.",
-      );
+      if (name !== "search_transcript" && name !== "read_transcript_range")
+        throw new Error("Unknown local transcript tool.");
+      const lookup = name === "search_transcript" ? searchAgentTranscript : readAgentTranscript;
+      const result = lookup(frozen.segments, args);
+      if (redactAgentSecret(result.text, key) !== result.text)
+        throw new Error("This lookup cannot return exact evidence without disclosing the provider credential.");
+      return result;
+    };
+    const usedCallIds = new Set<string>();
+    const validateToolBurst = (response: AssistantMessage) => {
+      const calls = response.content.filter(part => part.type === "toolCall");
+      // The Responses adapter stores call_id|item_id but addresses outputs by call_id.
+      const ids = calls.map(call => response.api === "openai-responses" ? call.id.split("|", 1)[0] : call.id);
+      if (calls.length > MEMO_AGENT_MAX_TOOLS_PER_RESPONSE ||
+          new Set(ids).size !== ids.length || ids.some(id => usedCallIds.has(id))) {
+        plan.failure = {
+          kind: "limit",
+          message: "The assistant exceeded its per-response tool budget or reused a tool call ID. Its response is saved.",
+        };
+        throw new Error(plan.failure.message);
+      }
+      if (response.stopReason === "stop" && calls.length)
+        throw new Error("The assistant response contained unexpected tool calls. Its record is saved.");
+      for (const id of ids) usedCallIds.add(id);
+      return calls;
     };
     const recoverTools = () => {
       const next: MemoAgentPlan["context"] = [];
+      const savedResults = new Map(plan.context.filter(item => item.kind === "tool").map(item => [item.callId, item]));
+      const lastAssistant = plan.context.filter(item => item.kind === "assistant").at(-1);
+      let previousStep = -1;
       plan.consulted = [];
       for (const item of plan.context)
         if (item.kind === "assistant") {
           const job = current!.jobs.find((job) => job.id === item.jobId)!;
+          if (job.stepIndex === undefined || job.stepIndex <= previousStep)
+            throw new Error("The saved assistant history conflicts with the recorded provider attempt order.");
+          previousStep = job.stepIndex;
           const response = readAgentAssistant(job.assistantRecord!);
           next.push(item);
-          const calls = response.content.filter(part => part.type === "toolCall");
-          if (calls.length > MEMO_AGENT_MAX_TOOLS_PER_RESPONSE)
-              throw new Error(
-                "A saved response exceeds the per-response tool burst limit. Export its record for inspection.",
-              );
+          const calls = validateToolBurst(response);
           for (const call of calls) {
+            const saved = savedResults.get(call.id);
+            // A later assistant saw this failure. Only outstanding tools may be retried locally.
+            if (saved?.isError && item !== lastAssistant) {
+              next.push(saved);
+              continue;
+            }
             // Replay only deterministic, read-only tools against the same frozen revision.
             let text: string,
               isError = false;
@@ -212,6 +239,8 @@ export async function runAgentMemo(
                   "The previous tool arguments were incomplete. Request a valid bounded range.",
                 );
               const result = toolResult(call.name, call.arguments);
+              if (saved && !saved.isError && (saved.name !== call.name || saved.text !== result.text))
+                throw new Error("Stored tool evidence differs from this range.");
               text = result.text;
               plan.consulted = mergeConsulted(plan.consulted, result.consulted);
             } catch {
@@ -237,6 +266,8 @@ export async function runAgentMemo(
         JSON.parse(agentAssistantText(record)),
         frozen, undefined, plan.template, plan.outputLanguage,
       );
+      if (!items.every(item => MemoItemSchema.safeParse(item).success))
+        throw new Error("The final result exceeds the editable memo field limits. Its original response is saved.");
       const consulted = new Set(plan.consulted.map(ref));
       if (
         items.some((item) =>
@@ -284,6 +315,8 @@ export async function runAgentMemo(
         });
       });
     };
+    // Confirmed continuation upgrades legacy metadata even when a saved final ends it locally.
+    if (!localOnly) plan.requestLimit = MEMO_AGENT_MAX_REQUESTS;
     recoverTools();
     const lastAssistant = [...plan.context]
       .reverse()
@@ -316,8 +349,6 @@ export async function runAgentMemo(
     const { agentModel, assertAgentTransport, streamAgentRoute } = await import("../providers/memo-agent-transport");
     const model = agentModel(route);
     const requestError = (message: string) => createRequestError(model, message);
-    // Explicit continuation upgrades legacy metadata without resetting durable attempts.
-    plan.requestLimit = MEMO_AGENT_MAX_REQUESTS;
     plan.state = "running";
     plan.failure = null;
     await persist(checkpoint);
@@ -529,8 +560,14 @@ export async function runAgentMemo(
         let reportedUsage: Job["usage"] = null;
         let upstreamProvider: string | undefined;
         let boundedWireResponse: string | undefined;
+        let preSubmissionError: unknown;
+        let receivedSuccessfulHttp = false;
+        const finishedOutputIndexes = new Set<number>();
+        let terminalOutputCount = 0;
+        let unfinishedOutput = false;
         const requestSignal = AbortSignal.any([signal, ...(options?.signal ? [options.signal] : []), AbortSignal.timeout(9 * 60 * 1000)]);
-        const finishReceipt = async (updated: Job) => {
+        const finishReceipt = async (updated: Job, wireResponse?: string) => {
+          const recovery = { meetingId: meeting.id, agentId: plan.id, job: updated, wireResponse };
           try {
             await persist((latest) =>
               checkpoint({
@@ -541,13 +578,10 @@ export async function runAgentMemo(
               }),
             );
           } catch (error) {
-            retainAgentReceipt({
-              meetingId: meeting.id,
-              agentId: plan.id,
-              job: updated,
-            });
+            retainAgentReceipt(recovery);
             throw error;
           }
+          if (wireResponse) retainAgentReceipt(recovery);
         };
         try {
           if (stopped) return completedStream(requestError(stopped.message));
@@ -566,18 +600,32 @@ export async function runAgentMemo(
             throw new Error(plan.failure.message);
           }
           assertRequestAvailable();
-          if (current!.jobs.length >= MAX_JOBS)
-            throw new Error("The meeting job ledger is full. Saved responses remain available; no new request was sent.");
-          assertAgentStorageBudget(current!);
+          // The SDK can emit an unbounded validation error containing the original arguments.
+          const toolOutputs = new Map(plan.context.filter(item => item.kind === "tool").map(item => [item.callId, item.text]));
+          const boundedMessages = context.messages.map((message): Message => {
+            if (message.role !== "toolResult") return message;
+            const text = toolOutputs.get(message.toolCallId);
+            if (text === undefined) throw new Error("The local tool result was not checkpointed.");
+            return { ...message, content: [{ type: "text", text }] };
+          });
           const result = await streamAgentRoute(route, {
             ...context,
-            messages: [...context.messages, { role: "system", content: agentRequestInstruction(plan), timestamp: Date.now() }],
+            messages: [...boundedMessages, { role: "system", content: agentRequestInstruction(plan), timestamp: Date.now() }],
           }, {
             ...options,
             apiKey: key,
             maxRetries: 0,
             signal: requestSignal,
             onProviderStreamEvent: (event) => {
+              if (plan.provider === "openai" && event && typeof event === "object") {
+                const frame = event as { type?: unknown; output_index?: unknown; response?: { output?: unknown } };
+                if (frame.type === "response.output_item.done" && typeof frame.output_index === "number")
+                  finishedOutputIndexes.add(frame.output_index);
+                if ((frame.type === "response.completed" || frame.type === "response.incomplete") && Array.isArray(frame.response?.output)) {
+                  terminalOutputCount = frame.response.output.length;
+                  unfinishedOutput = frame.response.output.some((_, index) => !finishedOutputIndexes.has(index));
+                }
+              }
               if (plan.provider === "openrouter" && event && typeof event === "object") {
                 const reported = event as { model?: unknown; provider?: unknown };
                 if (typeof reported.provider === "string") upstreamProvider = redactAgentSecret(reported.provider, key).slice(0, 80);
@@ -590,36 +638,46 @@ export async function runAgentMemo(
             fetch: async (input, init) => {
               if (++fetchCalls !== 1)
                 throw new Error("Automatic provider retries are disabled.");
-              assertAgentTransport(route, input, init);
-              if (requestSignal.aborted)
-                throw new Error("Selective review paused before submission.");
-              // Recheck immediately before creating the durable attempt receipt.
-              assertRequestAvailable();
-              job = {
-                id: id(),
-                stage: "memo",
-                agentId: plan.id,
-                stepIndex: plan.jobIds.length,
-                state: "in_flight",
-                billing: "possibly_charged",
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                requestId: null,
-                inputRevision: plan.sourceRevision,
-                provider: plan.provider,
-                model: plan.model,
-                outputLanguage: plan.outputLanguage,
-                estimateUsd: null,
-                reportedCostUsd: null,
-                message:
-                  "Selective review request recorded. Keep this page open; provider charge is unknown.",
-              };
-              plan.jobIds.push(job.id);
-              await persist((latest) => {
-                if (latest.jobs.some((job) => job.state === "in_flight"))
-                  throw new Error("Another tab is processing this meeting.");
-                return checkpoint({ ...latest, jobs: [...latest.jobs, job!] });
-              });
+              try {
+                assertAgentTransport(route, input, init);
+                if (requestSignal.aborted)
+                  throw new Error("Selective review paused before submission.");
+                // Recheck immediately before creating the durable attempt receipt.
+                assertRequestAvailable();
+                job = {
+                  id: id(),
+                  stage: "memo",
+                  agentId: plan.id,
+                  stepIndex: plan.jobIds.length,
+                  state: "in_flight",
+                  billing: "possibly_charged",
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  requestId: null,
+                  inputRevision: plan.sourceRevision,
+                  provider: plan.provider,
+                  model: plan.model,
+                  outputLanguage: plan.outputLanguage,
+                  estimateUsd: null,
+                  reportedCostUsd: null,
+                  message:
+                    "Selective review request recorded. Keep this page open; provider charge is unknown.",
+                };
+                plan.jobIds.push(job.id);
+                await persist((latest) => {
+                  if (latest.jobs.some((job) => job.state === "in_flight"))
+                    throw new Error("Another tab is processing this meeting.");
+                  if (latest.jobs.length >= MAX_JOBS)
+                    throw new Error("The meeting job ledger is full. Saved responses remain available; no new request was sent.");
+                  if (latest.memos.length >= 30)
+                    throw new Error("Meeting history cannot retain another bounded review. Back it up before further processing.");
+                  return checkpoint({ ...latest, jobs: [...latest.jobs, job!] });
+                }, true);
+              } catch (error) {
+                // Pi converts fetch-hook exceptions into assistant error results.
+                preSubmissionError = error;
+                throw error;
+              }
               if (requestSignal.aborted)
                 throw new Error("Selective review paused before submission.");
               sent = true;
@@ -629,10 +687,12 @@ export async function runAgentMemo(
                 redirect: "error",
                 credentials: "omit",
               });
-              responseId =
-                response.headers.get("x-request-id")?.slice(0, 200) ?? null;
+              receivedSuccessfulHttp = response.ok;
+              const headerId = response.headers.get("x-request-id");
+              responseId = headerId === null ? null : redactAgentSecret(headerId, key).slice(0, 200);
               const reader = response.body?.getReader();
-              const pieces: Uint8Array[] = [];
+              const decoder = new TextDecoder();
+              const pieces: string[] = [];
               let total = 0;
               try {
                 while (reader) {
@@ -645,37 +705,36 @@ export async function runAgentMemo(
                       "The provider response exceeds the 4 MiB response budget.",
                     );
                   }
-                  pieces.push(value);
+                  pieces.push(decoder.decode(value, { stream: true }));
                 }
               } finally {
                 reader?.releaseLock();
+                pieces.push(decoder.decode());
+                boundedWireResponse = redactAgentSecret(pieces.join(""), key);
               }
-              const bytes = new Uint8Array(total);
-              let offset = 0;
-              for (const piece of pieces) {
-                bytes.set(piece, offset);
-                offset += piece.length;
-              }
-              const clean = redactAgentSecret(
-                new TextDecoder().decode(bytes),
-                key,
-              );
-              boundedWireResponse = clean;
-              return new Response(clean, {
+              return new Response(boundedWireResponse, {
                 status: response.status,
                 statusText: response.statusText,
                 headers: response.headers,
               });
             },
           });
-          if (!job || !current!.jobs.some((value) => value.id === job!.id))
+          if (preSubmissionError) throw preSubmissionError;
+          if (!job)
+            throw new Error(requestSignal.aborted
+              ? "Selective review paused before submission."
+              : "Pi could not prepare the next provider request. No new request was sent.");
+          if (!current!.jobs.some((value) => value.id === job!.id))
             throw new Error(
               "No provider request was submitted. Its durable local receipt could not be recorded.",
             );
+          if (responseId === null && typeof result.responseId === "string")
+            responseId = redactAgentSecret(result.responseId, key).slice(0, 200);
           const record = recordAgentAssistant(result, key);
-          readAgentAssistant(record);
-          const successful =
-            result.stopReason !== "error" && result.stopReason !== "aborted";
+          const decoded = readAgentAssistant(record);
+          // A terminal Responses event can contain output the SDK never reconstructed.
+          const successful = result.stopReason !== "error" && result.stopReason !== "aborted" &&
+            !unfinishedOutput && decoded.content.length >= terminalOutputCount;
           const updated: Job = {
             ...job,
             state: successful
@@ -684,7 +743,7 @@ export async function runAgentMemo(
                 ? "outcome_unknown"
                 : "failed_before_send",
             billing: sent ? "possibly_charged" : "not_submitted",
-            requestId: responseId ?? result.responseId?.slice(0, 200) ?? null,
+            requestId: responseId,
             updatedAt: new Date().toISOString(),
             assistantRecord: record,
             usage: reportedUsage,
@@ -694,40 +753,20 @@ export async function runAgentMemo(
               ? "Assistant response saved. Provider charge is unknown; review the result."
               : "Request stopped. Review the recorded outcome and provider account before a new paid attempt.",
           };
-          if (successful)
+          if (successful) {
             plan.context.push({ kind: "assistant", jobId: job.id });
-          await finishReceipt(updated);
-          const calls = result.content.filter(
-            (part) => part.type === "toolCall",
-          );
-          const ids = calls.map((call) => call.id);
-          const oldIds = new Set(
-            plan.context
-              .filter((item) => item.kind === "tool")
-              .map((item) => item.callId),
-          );
-          if (!successful) throw new Error(updated.message);
-          if (
-            calls.length > MEMO_AGENT_MAX_TOOLS_PER_RESPONSE ||
-            new Set(ids).size !== ids.length ||
-            ids.some((id) => oldIds.has(id))
-          ) {
-            plan.failure = {
-              kind: "limit",
-              message:
-                "The assistant exceeded its per-response tool budget or reused a tool call ID. Its response is saved.",
-            };
-            throw new Error(plan.failure.message);
+          } else {
+            plan.state = signal.aborted ? "paused" : "blocked";
+            plan.failure = { kind: "request", message: updated.message };
           }
+          await finishReceipt(updated, !successful && receivedSuccessfulHttp ? boundedWireResponse : undefined);
+          if (!successful) throw new Error(updated.message);
+          validateToolBurst(decoded);
           if (result.stopReason !== "stop" && result.stopReason !== "toolUse")
             throw new Error(
               "The assistant response was incomplete. Its record is saved; no automatic retry was made.",
             );
-          if (calls.length && result.stopReason !== "toolUse")
-            throw new Error(
-              "The assistant response contained unexpected tool calls. Its record is saved.",
-            );
-          return completedStream(readAgentAssistant(record));
+          return completedStream(decoded);
         } catch (error) {
           stopped = new Error(
             localText(
@@ -752,16 +791,11 @@ export async function runAgentMemo(
               billing: sent ? "possibly_charged" : "not_submitted",
               updatedAt: new Date().toISOString(),
               requestId: responseId,
+              usage: reportedUsage,
+              upstreamProvider,
               message: stopped.message,
             };
-            await finishReceipt(failed).catch(() => undefined);
-            if (boundedWireResponse)
-              retainAgentReceipt({
-                meetingId: meeting.id,
-                agentId: plan.id,
-                job: failed,
-                wireResponse: boundedWireResponse,
-              });
+            await finishReceipt(failed, boundedWireResponse).catch(() => undefined);
           }
           return completedStream(requestError(stopped.message));
         }

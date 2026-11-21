@@ -7,8 +7,10 @@ import { Icon } from "../components/Icon";
 import { usePlayerClearance } from "./usePlayerClearance";
 import { translateUi } from "../i18n";
 import { planMemo, type MemoPipeline } from "../providers/memo-plan";
+import { markInterruptedRequests } from "../jobs/memo-interruption";
 import { resumablePipeline } from "../jobs/memo-pipeline";
-import {canRecoverAgentFinalLocally, planAgentMemo, resumableAgentMemo, supportsAgentMemo} from "../providers/memo-agent-plan";
+import { remainingAgentRequests } from "../domain/memo-agent-requests";
+import {hasSavedAgentFinal, planAgentMemo, resumableAgentMemo, supportsAgentMemo} from "../providers/memo-agent-plan";
 import {AgentResponseRecovery} from "./AgentResponseRecovery";
 import {pendingAgentReceipt} from "../jobs/agent-recovery";
 import { speakerBackground } from "../components/speaker-appearance";
@@ -564,22 +566,25 @@ export function MeetingWorkspace({
     });
     setConfirmStage("memo");
   }
-  async function process() {
+  async function process(action: "generate" | "recover" = "generate") {
     if (!confirmStage) return;
-    const localOnly = confirmStage === "memo" && Boolean(confirmed?.agentPlan && canRecoverAgentFinalLocally(m, confirmed.agentPlan));
+    const localOnly = action === "recover";
+    if (localOnly && (!confirmed?.agentPlan || confirmStage !== "memo" || !hasSavedAgentFinal(m, confirmed.agentPlan))) return;
     if (confirmStage === "memo") {
+      if (locked || isProcessingMeeting(m.id) || pendingAgentReceipt(m.id)) return;
+      if (!localOnly && confirmed?.agentPlan && remainingAgentRequests(confirmed.agentPlan) === 0) return;
       if (!confirmed || (!localOnly && (!costAcknowledged || !getKey(confirmed.selection.provider))) || (confirmed.planError && !confirmed.agentPlan)) return;
       const previousAttempt = confirmed.agentPlan
         ? m.jobs.some(job => job.agentId === confirmed.agentPlan!.id && job.state !== "completed")
         : confirmed.plan && m.jobs.some(job => job.pipelineId === confirmed.plan!.id && job.state !== "completed");
       if (!localOnly && previousAttempt && !reviewedRetry) return;
     }
+    if (confirmStage === "memo" && !navigateTab("memo")) return;
     const stage = confirmStage;
     setConfirmStage(undefined);
     setProcessing(true);
     setProcessingKind(localOnly ? "local" : "provider");
     setChunkProgressText("");
-    if (stage === "memo") navigateTab("memo");
     setNotice("");
     let acousticProvider: WavLmSpeakerEmbeddingProvider | undefined;
     let acousticRequestController: AbortController | undefined;
@@ -867,6 +872,7 @@ export function MeetingWorkspace({
     }
   }
   async function markInterrupted() {
+    if (locked || pendingAgentReceipt(m.id)) return;
     try {
       if (navigator.locks) {
         const locks = await navigator.locks.query();
@@ -879,21 +885,7 @@ export function MeetingWorkspace({
         )
       )
         return;
-      await persist({
-        ...m,
-        memoPipelines: m.memoPipelines?.map(p => ({...p,state: m.jobs.some(j=>j.pipelineId===p.id && j.state==="in_flight") ? "blocked" as const : p.state})),
-        jobs: m.jobs.map((j) =>
-          j.state === "in_flight"
-            ? {
-                ...j,
-                state: "outcome_unknown",
-                billing: "possibly_charged",
-                message:
-                  "Manually marked interrupted. Review the provider account before retrying.",
-              }
-            : j,
-        ),
-      });
+      await persist(markInterruptedRequests(m));
     } catch (e) {
       onError(e instanceof Error ? e.message : "Could not resolve job state.");
     }
@@ -1105,6 +1097,7 @@ export function MeetingWorkspace({
           </span>
           <Button
             className="button secondary compact"
+            disabled={locked}
             onClick={() => void markInterrupted()}
           >
             {t("Review interruption", "检查中断")}
@@ -1844,14 +1837,14 @@ export function MeetingWorkspace({
         <span>{t(`${plan.consulted.length}/${plan.snapshot.sourceRefs.length} passages read in local lookups; this is not full coverage or a quality score.`, `本地读取已涉及 ${plan.consulted.length}/${plan.snapshot.sourceRefs.length} 段；这不代表完整覆盖或质量评分。`)}</span>
         <span>{t("State","状态")}: {uiLanguage === "zh-CN" ? ({ready:"待执行",running:"执行中",paused:"已暂停",blocked:"已停止，需核对",completed:"已完成"})[plan.state] : plan.state}</span>
         {plan.failure && <p>{translateMessage(plan.failure.message,uiLanguage)}</p>}
-        {!processing && plan.state!=="completed" && plan.sourceRevision===m.revision && <Button className="button secondary" onClick={()=>prepareSavedAgentConfirmation(plan.id)}>{t("Review generation plan","查看生成计划")}</Button>}
+        {!processing && plan.state!=="completed" && plan.sourceRevision===m.revision && <Button className="button secondary" disabled={locked} onClick={()=>prepareSavedAgentConfirmation(plan.id)}>{t("Review generation plan","查看生成计划")}</Button>}
         {!!plan.jobIds.length && <Button className="button secondary" onClick={()=>download(new Blob([JSON.stringify({format:"meeting-memo-agent-records",version:1,plan,jobs:m.jobs.filter(job=>job.agentId===plan.id)})],{type:"application/json"}),`${safeFilename(m.title)}-review-records.json`)}>{t("Export recorded responses","导出已记录回应")}</Button>}
       </section>)}
       {(m.memoPipelines ?? []).map(p => (
         <section className={`notice memo-plan-progress${p.state === "blocked" ? " sand" : ""}`} key={p.id} aria-label={t("Long memo progress", "长纪要进度")}>
           <strong role="status">{t("Long memo", "长纪要")} · {p.results.filter(Boolean).length}/{p.chunks.length} {t("extractions saved", "步提取已保存")}</strong>
           <span>{t("State", "状态")}: {uiLanguage === "zh-CN" ? ({ready:"待执行",running:"执行中",paused:"已暂停",blocked:"已停止，需核对",completed:"已完成"})[p.state] : p.state}</span>
-          {!processing && p.state !== "completed" && <Button className="button secondary" onClick={() => prepareConfirmation("memo")}>{t("Review generation plan", "查看生成计划")}</Button>}
+          {!processing && p.state !== "completed" && <Button className="button secondary" disabled={locked} onClick={() => prepareConfirmation("memo")}>{t("Review generation plan", "查看生成计划")}</Button>}
         </section>
       ))}
       {(m.jobs.length > 0 || m.runs.length > 0) && (
@@ -2083,8 +2076,6 @@ export function MeetingWorkspace({
               try {
                 const agentPlan = enabled ? resumableAgentMemo(m, confirmed.selection, confirmed.template) ?? planAgentMemo(m, confirmed.selection, getMemoOutputLanguage(), confirmed.template) : undefined;
                 setConfirmed({ ...confirmed, agentPlan, outputLanguage: agentPlan?.outputLanguage ?? confirmed.plan?.outputLanguage ?? getMemoOutputLanguage() });
-                setReviewedRetry(false);
-                setCostAcknowledged(false);
               } catch (error) {
                 onError(error instanceof Error ? error.message : "Could not prepare selective review.");
               }
@@ -2101,7 +2092,7 @@ export function MeetingWorkspace({
               requestAnimationFrame(() => workspaceRef.current?.querySelector<HTMLElement>(`[role="tab"][data-tab-value="${next}"]`)?.focus({ preventScroll: true }));
             }}
             onClose={() => setConfirmStage(undefined)}
-            onGenerate={() => void process()}
+            onGenerate={action => void process(action)}
           />
         </Modal>
       )}

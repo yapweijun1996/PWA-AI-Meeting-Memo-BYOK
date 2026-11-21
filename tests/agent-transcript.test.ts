@@ -170,3 +170,16 @@ test("provider secrets are redacted in both plaintext and escaped response recor
   );
   expect(redactAgentSecret(`Error: ${key}`, key)).not.toContain(key);
 });
+
+test("the last search page fits 8 KiB including its null cursor", () => {
+  const sources = Array.from({ length: 8 }, (_, index) =>
+    segment(index === 7 ? "x" + "\0".repeat(79) + "a" : "x" + "\0".repeat(167)),
+  );
+  const first = searchAgentTranscript(sources, { query: "x" });
+  expect(new TextEncoder().encode(first.text).byteLength).toBeLessThanOrEqual(MEMO_AGENT_TOOL_BYTES);
+  const page = JSON.parse(first.text);
+  expect(page.nextIndex).toBe(7);
+  const last = JSON.parse(searchAgentTranscript(sources, { query: "x", startIndex: page.nextIndex }).text);
+  expect([...page.matches, ...last.matches].map(match => match.id)).toEqual(sources.map(source => source.id));
+  expect(last.nextIndex).toBeNull();
+});

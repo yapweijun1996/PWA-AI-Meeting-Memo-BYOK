@@ -51,3 +51,27 @@ test("a local-only request cannot use a tool response as permission for another 
   expect(fetch).not.toHaveBeenCalled();
   expect(await getMeeting(saved.id)).toEqual(saved);
 });
+
+test("local final recovery respects a recorded failed range lookup", async () => {
+  const { meeting, confirmed } = await fixture({ attempts: 2 });
+  const plan = confirmed.agentPlan;
+  const failedRange = {
+    kind: "tool" as const, callId: "local-range", name: "read_transcript_range",
+    text: "Operation aborted", isError: true, timestamp: 1,
+  };
+  const saved = await saveMeeting({ ...meeting, memoAgents: [{ ...plan, context: [plan.context[0], failedRange, plan.context[1]] }] });
+  await expect(runJob(saved, "memo", { ...confirmed, agentPlan: saved.memoAgents![0] })).rejects.toThrow("did not read");
+  expect(fetch).not.toHaveBeenCalled();
+  expect(await getMeeting(saved.id)).toEqual(saved);
+});
+
+test("a restored final cannot cite a range first requested by a later provider attempt", async () => {
+  const { meeting, confirmed } = await fixture({ attempts: 2 });
+  const [read, final] = meeting.jobs;
+  const jobs = [{ ...final, stepIndex: 0 }, { ...read, stepIndex: 1 }];
+  const plan = { ...confirmed.agentPlan, jobIds: jobs.map(job => job.id) };
+  const saved = await saveMeeting({ ...meeting, jobs, memoAgents: [plan] });
+  await expect(runJob(saved, "memo", { ...confirmed, agentPlan: saved.memoAgents![0] })).rejects.toThrow("attempt order");
+  expect(fetch).not.toHaveBeenCalled();
+  expect(await getMeeting(saved.id)).toEqual(saved);
+});

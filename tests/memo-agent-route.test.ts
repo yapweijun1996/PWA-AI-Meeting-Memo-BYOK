@@ -24,6 +24,7 @@ test("the pinned OpenRouter SDK serializes the frozen route without fallback or 
     const body = JSON.parse(init!.body as string);
     expect(body).toMatchObject({
       model: selection.model,
+      store: false,
       reasoning: { effort: "high" },
       max_tokens: 32768,
       provider: {
@@ -88,6 +89,7 @@ test("transport policy rejects substitutions, unsupported tools and silent fallb
   const body = {
     model: selection.model,
     stream: true,
+    store: false,
     max_tokens: 32768,
     reasoning: { effort: "high" },
     provider: {
@@ -105,6 +107,7 @@ test("transport policy rejects substitutions, unsupported tools and silent fallb
     { reasoning: { effort: "low" } },
     { max_tokens: 4096 },
     { store: true },
+    { store: undefined },
     { tools: [{ type: "function", function: { name: "run_shell" } }] },
     { provider: { ...body.provider, allow_fallbacks: true } },
     { provider: { ...body.provider, require_parameters: false } },
