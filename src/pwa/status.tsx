@@ -1,4 +1,5 @@
 import { Button } from "../components/controls";
+import { DismissibleNotice } from "../components/DismissibleNotice";
 import { Icon } from "../components/Icon";
 import { translateUi } from "../i18n";
 import { useEffect, useRef, useState } from "react";
@@ -13,6 +14,7 @@ import { flushSettingsWrites, isSettingsDirty } from "../providers/credentials";
 import { useUiLanguage } from "../ui-language";
 import { translateMessage } from "../ui-messages";
 import { InstallButton } from "./InstallButton";
+const offlineInstallationError = "Offline installation is unavailable. Your local meetings can still be backed up.";
 export function PwaStatus() {
   const language = useUiLanguage();
   const displayBuild = __BUILD_ID__.startsWith("local-") ? `local-${__BUILD_ID__.slice(-8)}` : __BUILD_ID__.slice(0, 8);
@@ -70,11 +72,7 @@ export function PwaStatus() {
           };
           document.addEventListener("visibilitychange", check);
         })
-        .catch(() =>
-          setError(
-            "Offline installation is unavailable. Your local meetings can still be backed up.",
-          ),
-        );
+        .catch(() => setError(offlineInstallationError));
     }
     return () => {
       navigator.serviceWorker?.removeEventListener(
@@ -246,7 +244,7 @@ export function PwaStatus() {
     activateLatest();
   }
   const errorText = language === "zh-CN" ? ({
-    "Offline installation is unavailable. Your local meetings can still be backed up.": "离线安装不可用。您仍可备份本地会议。",
+    [offlineInstallationError]: "离线安装不可用。您仍可备份本地会议。",
     "Save or close the open editor before updating.": "更新前请保存或关闭打开的编辑器。",
     "Wait for the profile image to finish saving before updating.": "\u66f4\u65b0\u524d\u8bf7\u7b49\u5f85\u5934\u50cf\u4fdd\u5b58\u5b8c\u6210\u3002",
     "Save your settings before updating.": "更新前请先保存设置。",
@@ -314,11 +312,15 @@ export function PwaStatus() {
           )}
         </div>
       )}
-      {error && !sidebarError && (
+      {error && !sidebarError && (error === offlineInstallationError ? (
+        <DismissibleNotice id="offline-installation" dismissLabel={t("Dismiss notice for one week", "\u5173\u95ed\u63d0\u793a\uff0c\u4e00\u5468\u540e\u518d\u63d0\u9192")}>
+          {errorText}
+        </DismissibleNotice>
+      ) : (
         <div className="notice" role="status">
           {errorText}
         </div>
-      )}
+      ))}
     </>
   );
 }
