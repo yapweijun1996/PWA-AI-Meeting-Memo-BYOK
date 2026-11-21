@@ -4,6 +4,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import {
   sampleMeeting,
   validateMeeting,
+  type Job,
   type Meeting,
 } from "../src/domain/model";
 import { saveMeeting, getMeeting } from "../src/storage/repository";
@@ -13,6 +14,8 @@ import { readAgentAssistant } from "../src/providers/agent-record";
 import { previewHistoryCleanup } from "../src/domain/history-cleanup";
 import {
   acknowledgeAgentExport,
+  hasPendingAgentReceipt,
+  pendingAgentMeetingId,
   pendingAgentReceipt,
   receiptExport,
   recoverAgentReceipt,
@@ -1368,7 +1371,7 @@ test.each(["Responses", "Chat", "text/plain", "abort"] as const)(
   },
 );
 
-test("an interrupted receipt can be saved locally after a write failure without offering an export", async () => {
+test("an interrupted receipt can be saved locally after a transient write failure", async () => {
   const { meeting, plan, signal } = await setup();
   const original = repository.saveMeeting;
   let rejected = false;
@@ -1385,11 +1388,78 @@ test("an interrupted receipt can be saved locally after a write failure without 
   await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow("quota");
   expect(pendingAgentReceipt(meeting.id)?.job.state).toBe("outcome_unknown");
   expect(JSON.stringify(pendingAgentReceipt(meeting.id))).not.toContain(marker);
-  expect(() => exportedReceipt(meeting.id)).toThrow("unavailable for export");
   const saved = await recoverAgentReceipt(meeting.id);
   expect(saved.jobs[0].state).toBe("outcome_unknown");
   expect(pendingAgentReceipt(meeting.id)).toBeUndefined();
   await expect(runAgentMemo(saved, saved.memoAgents![0], key, signal)).rejects.toThrow("previous paid outcome");
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
+test.each([1, 100])("an interrupted attempt %i remains counted after repeated save failures, receipt export and release", async attempt => {
+  const { meeting, plan, signal } = await setup();
+  const priorJobs: Job[] = Array.from({ length: attempt - 1 }, (_, stepIndex) => ({
+    id: crypto.randomUUID(), agentId: plan.id, stage: "memo", stepIndex,
+    state: "outcome_unknown", billing: "possibly_charged", requestId: null,
+    createdAt: meeting.createdAt, updatedAt: meeting.updatedAt, inputRevision: meeting.revision,
+    ...selection, outputLanguage: plan.outputLanguage, message: "Synthetic prior attempt",
+  }));
+  const savedPlan = { ...plan, jobIds: priorJobs.map(job => job.id) };
+  const initial = await saveMeeting({ ...meeting, schemaVersion: 2, jobs: priorJobs, memoAgents: [savedPlan] });
+  const put = IDBObjectStore.prototype.put;
+  const failedWrite = vi.fn(() => { throw new DOMException("Synthetic quota failure", "QuotaExceededError"); });
+  const putSpy = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (this: IDBObjectStore, value, key) {
+    if (this.name === "meetings") {
+      const { jobs } = value as Meeting;
+      if (jobs.length === attempt && jobs.at(-1)?.state === "outcome_unknown") failedWrite();
+    }
+    return put.call(this, value, key);
+  });
+  const marker = "Synthetic text lost on disconnect";
+  const request = vi.fn(async (_url, init) => {
+    expect(init.method).toBe("POST");
+    expect((await getMeeting(meeting.id))!.jobs.at(-1)?.state).toBe("in_flight");
+    return interruptedResponse("data: " + marker, "text/event-stream");
+  });
+  vi.stubGlobal("fetch", request);
+
+  await expect(runAgentMemo(initial, initial.memoAgents![0], key, signal, attempt > 1)).rejects.toThrow("quota");
+  await expect(recoverAgentReceipt(meeting.id)).rejects.toThrow("quota");
+  await expect(recoverAgentReceipt(meeting.id)).rejects.toThrow("quota");
+  expect(failedWrite).toHaveBeenCalledTimes(3);
+  expect(pendingAgentMeetingId()).toBe(meeting.id);
+  expect(hasPendingAgentReceipt()).toBe(true);
+  const before = (await getMeeting(meeting.id))!;
+  const durableJob = before.jobs.at(-1)!;
+  expect(durableJob.state).toBe("in_flight");
+  expect(before.memoAgents![0].jobIds).toEqual([...savedPlan.jobIds, durableJob.id]);
+  await expect(runAgentMemo(before, before.memoAgents![0], key, signal, true)).rejects.toThrow("unsaved review response");
+
+  const receipt = exportedReceipt(meeting.id);
+  expect(receipt).toMatchObject({
+    format: "meeting-memo-agent-receipt", version: 1, meetingId: meeting.id, agentId: plan.id,
+    job: { id: durableJob.id, ...selection, stepIndex: attempt - 1, state: "outcome_unknown", billing: "possibly_charged", usage: null },
+  });
+  expect(receipt).not.toHaveProperty("wireResponse");
+  expect(receipt.job).not.toHaveProperty("assistantRecord");
+  expect(receipt.job).not.toHaveProperty("memoResponse");
+  expect(JSON.stringify(receipt)).not.toContain(marker);
+  expect(hasPendingAgentReceipt()).toBe(true);
+  acknowledgeAgentExport(meeting.id);
+  expect(pendingAgentMeetingId()).toBeUndefined();
+  expect(hasPendingAgentReceipt()).toBe(false);
+  await expect(repository.flushWrites()).resolves.toBeUndefined();
+  const after = (await getMeeting(meeting.id))!;
+  expect(after).toEqual(before);
+  await expect(runAgentMemo(after, after.memoAgents![0], key, signal, true)).rejects.toThrow("unfinished request");
+
+  putSpy.mockRestore();
+  const restored = await readBackup(new File([await backupMeeting(after)], "interrupted-review.zip"));
+  const copy = await saveMeeting(restored.meeting);
+  expect(copy.memoAgents![0].jobIds).toEqual(before.memoAgents![0].jobIds);
+  expect(copy.jobs.at(-1)).toMatchObject({ id: durableJob.id, state: "outcome_unknown" });
+  await expect(runAgentMemo(copy, copy.memoAgents![0], key, signal)).rejects.toThrow("previous paid outcome");
+  if (attempt === 100)
+    await expect(runAgentMemo(copy, copy.memoAgents![0], key, signal, true)).rejects.toThrow("100-request limit");
   expect(request).toHaveBeenCalledTimes(1);
 });
 

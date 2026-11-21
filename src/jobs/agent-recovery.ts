@@ -27,8 +27,13 @@ const pending = new Map<string, { receipt: PendingMemoReceipt; context?: Standar
 
 /** Pure export payload for recovery controls, including when the meeting was removed. */
 export function receiptExport(receipt: PendingMemoReceipt) {
-  if (receipt.receiptOnly) throw new Error("The interrupted response is unavailable for export.");
-  return { format: "meeting-memo-agent-receipt", version: 1, ...receipt };
+  const header = { format: "meeting-memo-agent-receipt", version: 1 };
+  if (!receipt.receiptOnly) return { ...header, ...receipt };
+  const { meetingId, agentId, job } = receipt;
+  const metadata = { ...job };
+  delete metadata.assistantRecord;
+  delete metadata.memoResponse;
+  return { ...header, meetingId, agentId, job: metadata };
 }
 const changed = () =>
   window.dispatchEvent(new Event("memo-agent-recovery-changed"));

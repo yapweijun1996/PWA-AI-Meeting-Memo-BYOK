@@ -36,7 +36,7 @@ export function AgentResponseRecovery({
     return subscribeAgentRecovery(changed);
   }, [meetingId]);
   if (!pending) return null;
-  const canExport = !pending.receiptOnly;
+  const canDismissReceipt = pending.receiptOnly && !localSave;
   return (
     <section
       className="notice sand"
@@ -85,7 +85,7 @@ export function AgentResponseRecovery({
       >
         {t("Retry local save only", "仅重试本地保存")}
       </Button>}
-      {canExport && <Button
+      <Button
         className="button secondary"
         disabled={busy}
         onClick={() => {
@@ -102,8 +102,8 @@ export function AgentResponseRecovery({
         }}
       >
         {t("Export unsaved response", "导出未保存回应")}
-      </Button>}
-      {(exported || (!canExport && !localSave)) && (
+      </Button>
+      {(exported || canDismissReceipt) && (
         <Button
           className="button secondary"
           pending={busy}
@@ -118,7 +118,7 @@ export function AgentResponseRecovery({
             if (pendingAgentReceipt(meetingId) === pending) acknowledgeAgentExport(meetingId);
           }}
         >
-          {canExport ? t(
+          {exported ? t(
             "I saved the export; release this page copy",
             "我已保存导出文件，释放页面副本",
           ) : t("Dismiss receipt", "\u5173\u95ed\u8bf7\u6c42\u8bb0\u5f55")}

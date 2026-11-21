@@ -212,6 +212,92 @@ test("a stream disconnect after headers keeps the earlier tool response and stop
   expect(unexpected).toEqual([]);
 });
 
+test("an interrupted receipt with repeated save failures releases navigation and unload after export acknowledgement", async ({ page }) => {
+  await page.addInitScript(() => {
+    const fetchResponse = window.fetch;
+    window.fetch = async (...args) => {
+      const response = await fetchResponse(...args);
+      if (response.headers.get("x-synthetic-stream") !== "disconnect") return response;
+      const body = response.body!.pipeThrough(new TransformStream({
+        flush() { throw new TypeError("Synthetic connection lost while reading the body"); },
+      }));
+      return new Response(body, { status: response.status, headers: response.headers });
+    };
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (value, ...args) {
+      if (this.name === "meetings" && value.jobs.at(-1)?.state === "outcome_unknown" && value.jobs.at(-1)?.assistantRecord !== undefined) {
+        const failures = Number(sessionStorage.getItem("synthetic-pi-outcome-write-failures"));
+        sessionStorage.setItem("synthetic-pi-outcome-write-failures", String(failures + 1));
+        throw new DOMException("Synthetic outcome quota failure", "QuotaExceededError");
+      }
+      return put.call(this, value, ...args);
+    };
+  });
+  const { attempts, unexpected } = await startReview(page, route => route.fulfill({
+    contentType: "text/event-stream", headers: {
+      "x-synthetic-stream": "disconnect", "access-control-expose-headers": "x-synthetic-stream",
+    }, body: sse([memo("synthetic-passage")]),
+  }));
+  const meetingUrl = page.url();
+  const recovery = page.getByRole("alert", { name: "Unsaved review response" });
+  const retry = recovery.getByRole("button", { name: "Retry local save only" });
+  const release = recovery.getByRole("button", { name: /release this page copy/ });
+  const exportButton = recovery.getByRole("button", { name: "Export unsaved response" });
+  const interruption = page.getByRole("button", { name: "Review interruption", exact: true });
+  const unloadAllowed = () => page.evaluate(() => window.dispatchEvent(new Event("beforeunload", { cancelable: true })));
+  await expect(interruption).toBeDisabled();
+  await retry.click();
+  await retry.click();
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("synthetic-pi-outcome-write-failures"))).toBe("3");
+
+  await expect(release).toHaveCount(0);
+  await expect(recovery.getByRole("button", { name: "Dismiss receipt" })).toHaveCount(0);
+  expect(await unloadAllowed()).toBe(false);
+  await page.getByRole("link", { name: "All meetings", exact: true }).click();
+  await expect(page.getByText("Save or resolve your unsaved note before leaving this meeting.")).toBeVisible();
+  await expect(page).toHaveURL(meetingUrl);
+
+  const before = await readPiMeeting(page);
+  expect(before.jobs).toHaveLength(1);
+  const [intent] = before.jobs;
+  expect(intent.state).toBe("in_flight");
+  const downloaded = page.waitForEvent("download");
+  await exportButton.click();
+  const reader = await (await downloaded).createReadStream();
+  const chunks = [];
+  for await (const chunk of reader!) chunks.push(Buffer.from(chunk));
+  const raw = Buffer.concat(chunks).toString("utf8");
+  const receipt = JSON.parse(raw);
+  expect(receipt).toMatchObject({ format: "meeting-memo-agent-receipt", version: 1, meetingId: before.id,
+    job: { id: intent.id, provider: intent.provider, model: intent.model, state: "outcome_unknown", billing: "possibly_charged", usage: null } });
+  expect(receipt).not.toHaveProperty("wireResponse");
+  expect(receipt.job).not.toHaveProperty("assistantRecord");
+  expect(raw).not.toContain(marker);
+  expect(await unloadAllowed()).toBe(false);
+
+  await release.click();
+  await expect(recovery).toHaveCount(0);
+  await expect(interruption).toBeEnabled();
+  expect(await unloadAllowed()).toBe(true);
+  expect((await readPiMeeting(page)).jobs).toEqual(before.jobs);
+  expect((await readPiMeeting(page)).memoAgents![0].jobIds).toEqual([intent.id]);
+  await page.getByRole("link", { name: "All meetings", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Your meetings." })).toBeVisible();
+
+  await page.evaluate(url => { location.hash = new URL(url).hash; }, meetingUrl);
+  page.once("dialog", dialog => dialog.accept());
+  await interruption.click();
+  await expect.poll(async () => (await readPiMeeting(page)).jobs[0].state).toBe("outcome_unknown");
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page.getByRole("button", { name: "Review generation plan", exact: true }).click();
+  const confirmation = page.getByRole("dialog");
+  await confirmation.getByRole("checkbox", { name: /I understand the selected data/ }).check();
+  await expect(confirmation.getByRole("checkbox", { name: /I reviewed the previous request outcome and billing/ })).not.toBeChecked();
+  await expect(confirmation.getByRole("button", { name: "Generate new notes", exact: true })).toBeDisabled();
+  expect(attempts).toEqual([1]);
+  expect(unexpected).toEqual([]);
+});
+
 test("a late Pi response remains exportable while navigating without its deleted meeting", async ({ page, context }) => {
   let held: Route | undefined;
   const { attempts, unexpected } = await startReview(page, async route => { held = route; });

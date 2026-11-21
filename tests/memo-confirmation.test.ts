@@ -2,6 +2,7 @@ import { Children, createElement, isValidElement, type ComponentProps, type Reac
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, test, vi } from "vitest";
 import { agentLocalFinalFixture } from "./fixtures/agent-local-final";
+import { AgentResponseRecovery } from "../src/features/AgentResponseRecovery";
 import { MemoGenerationConfirmation } from "../src/features/MemoGenerationConfirmation";
 import { MeetingWorkspace } from "../src/features/MeetingWorkspace";
 import { planAgentMemo } from "../src/providers/memo-agent-plan";
@@ -92,6 +93,26 @@ test("an unsaved receipt blocks overwriting a known outcome and opening saved-pl
     expect(buttonAttributes(html, "Retry local save only")).toBeDefined();
     expect(buttonAttributes(html, "Review generation plan")).toContain("disabled");
     expect(buttonAttributes(html, "Review interruption")).toContain("disabled");
+  } finally {
+    acknowledgeAgentExport(meeting.id);
+  }
+});
+
+test.each([true, false])("a receipt-only outcome offers metadata export and gates export acknowledgement (meeting available: %s)", available => {
+  const meeting = agentLocalFinalFixture({ attempts: 3 });
+  const plan = meeting.memoAgents![0];
+  vi.stubGlobal("window", new EventTarget());
+  retainAgentReceipt({ meetingId: meeting.id, agentId: plan.id, job: meeting.jobs[0], receiptOnly: true });
+  try {
+    const html = renderToStaticMarkup(createElement(AgentResponseRecovery, {
+      meetingId: meeting.id, t: en => en,
+      localSave: available ? { title: meeting.title, onUpdate: vi.fn(), onError: vi.fn() } : undefined,
+    }));
+    expect(buttonAttributes(html, "Export unsaved response")).toBeDefined();
+    expect(buttonAttributes(html, "Export unsaved response")).not.toContain("disabled");
+    expect(buttonAttributes(html, "I saved the export; release this page copy")).toBeUndefined();
+    expect(html.includes("Retry local save only")).toBe(available);
+    expect(html.includes("Dismiss receipt")).toBe(!available);
   } finally {
     acknowledgeAgentExport(meeting.id);
   }
