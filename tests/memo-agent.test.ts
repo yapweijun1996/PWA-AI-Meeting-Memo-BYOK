@@ -18,6 +18,8 @@ import {
 } from "../src/jobs/agent-recovery";
 import * as repository from "../src/storage/repository";
 import { backupMeeting, readBackup } from "../src/storage/backup";
+import * as agentTransport from "../src/providers/memo-agent-transport";
+import { MEMO_AGENT_REQUEST_BYTES } from "../src/domain/memo-agent-contract";
 
 const selection = { provider: "openai" as const, model: "gpt-6-luna" };
 const key = "sk-synthetic-agent-unit-key";
@@ -104,6 +106,105 @@ const final = (source: string) => ({
       }),
     },
   ],
+});
+
+test.each([17, 22])("Pi reports its request input limit after %i completed tool rounds on a word-level transcript", async rounds => {
+  const { meeting: base, signal } = await setup();
+  const speakers = Array.from({ length: 14 }, (_, index) => ({
+    ...base.speakers[0], id: crypto.randomUUID(), name: `Speaker ${index + 1}`,
+  }));
+  const segments = Array.from({ length: 11865 }, (_, index) => {
+    const word = ["meeting", "agenda", "review"][index % 3];
+    return {
+      ...base.segments[0], id: `part-${Math.floor(index / 3955)}:${crypto.randomUUID()}`,
+      text: word, originalText: word, start: index / 4, end: (index + 1) / 4,
+      speakerIds: [speakers[index % speakers.length].id],
+    };
+  });
+  const speechJobs = Array.from({ length: 3 }, (_, index) => ({
+    id: crypto.randomUUID(), stage: "speech" as const, state: "completed" as const,
+    billing: "possibly_charged" as const, createdAt: base.createdAt, updatedAt: base.updatedAt,
+    requestId: null, message: "Synthetic transcription", inputRevision: base.revision, chunk: { index, total: 3 },
+  }));
+  const meeting = await saveMeeting({
+    ...base, speakers, segments, jobs: speechJobs, runs: [{
+      id: crypto.randomUUID(), provider: "openai", model: "synthetic", createdAt: base.createdAt,
+      speakers, originalSegments: segments,
+    }],
+  });
+  const plan = planAgentMemo(meeting, selection, "en");
+  const guard = vi.spyOn(agentTransport, "assertAgentTransport");
+  let nextPassage = 0;
+  let submitted = 0;
+  const request = vi.fn(async (_url, init: RequestInit) => {
+    const round = ++submitted;
+    if (round > rounds) throw new Error("Unexpected additional provider request");
+    const count = rounds === 22 ? 16 : round === 17 ? 32 : 20;
+    const calls = [0, 1].map(index => {
+      const startIndex = nextPassage;
+      nextPassage += count;
+      return call({ startIndex, count }, `read-${round}-${index}`);
+    });
+    // Keep the precise crossing reproducible as the SDK's request framing evolves.
+    const previousBytes = new TextEncoder().encode(String(init.body)).length;
+    const reasoningBytes = round === rounds ? MEMO_AGENT_REQUEST_BYTES - previousBytes : 2000;
+    return agentSse([{
+      type: "reasoning", id: `rs_${round}`, summary: [], encrypted_content: "x".repeat(reasoningBytes),
+    }, ...calls]);
+  });
+  vi.stubGlobal("fetch", request);
+  const run = runAgentMemo(meeting, plan, key, signal);
+  const message = "The next request exceeds the 256 KiB input budget. No new request was sent.";
+  const failure = await run.catch((error: Error) => error.message);
+  const saved = (await getMeeting(meeting.id))!;
+  expect(request).toHaveBeenCalledTimes(rounds);
+  expect(guard).toHaveBeenCalledTimes(rounds + 1);
+  const rejectedBody = guard.mock.calls.at(-1)![2]!.body as string;
+  expect(new TextEncoder().encode(rejectedBody).length).toBeGreaterThan(MEMO_AGENT_REQUEST_BYTES);
+  expect(new TextEncoder().encode(JSON.stringify(saved)).length).toBeLessThan(10 * 1024 * 1024);
+  expect(saved.jobs.slice(0, 3)).toEqual(speechJobs);
+  expect(saved.jobs.slice(3)).toHaveLength(rounds);
+  expect(saved.jobs.slice(3).every(job => job.state === "completed" && job.assistantRecord)).toBe(true);
+  expect(saved.memoAgents![0].jobIds).toEqual(saved.jobs.slice(3).map(job => job.id));
+  expect(saved.memoAgents![0].consulted).toHaveLength(704);
+  expect(failure).toBe(message);
+  expect(saved.memoAgents![0]).toMatchObject({ state: "blocked", failure: { message } });
+}, 120000);
+
+test("an SDK failure before the fetch hook reports request preparation and leaves the ledger empty", async () => {
+  const { meeting, plan, signal } = await setup();
+  vi.spyOn(agentTransport, "streamAgentRoute").mockResolvedValue({
+    role: "assistant", api: "openai-responses", provider: "openai", model: selection.model,
+    timestamp: 0, content: [], stopReason: "error", errorMessage: "Synthetic request preparation error.",
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+  });
+  const request = vi.fn();
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow("could not prepare the next provider request");
+  expect(request).not.toHaveBeenCalled();
+  expect((await getMeeting(meeting.id))!.jobs).toEqual([]);
+});
+
+test("a competing meeting version at the intent write preserves the edit and reports the version conflict", async () => {
+  const { meeting, plan, signal } = await setup();
+  const save = repository.saveMeeting;
+  vi.spyOn(repository, "saveMeeting").mockImplementation(async value => {
+    if (value.jobs.at(-1)?.state === "in_flight") {
+      const latest = (await getMeeting(meeting.id))!;
+      await save({ ...latest, title: "Concurrent human edit" });
+    }
+    return save(value);
+  });
+  const request = vi.fn();
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow("changed in another tab");
+  const saved = (await getMeeting(meeting.id))!;
+  expect(saved.title).toBe("Concurrent human edit");
+  expect(saved.jobs).toEqual([]);
+  expect(saved.memoAgents![0].jobIds).toEqual([]);
+  expect(saved.memoAgents![0].failure?.message).toBe(new repository.ConflictError().message);
+  expect(request).not.toHaveBeenCalled();
 });
 
 async function largeMeeting(historyEntries: number, useUndo = false) {

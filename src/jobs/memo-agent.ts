@@ -559,7 +559,7 @@ export async function runAgentMemo(
         let reportedUsage: Job["usage"] = null;
         let upstreamProvider: string | undefined;
         let boundedWireResponse: string | undefined;
-        let intentError: unknown;
+        let preSubmissionError: unknown;
         let receivedSuccessfulHttp = false;
         const finishedOutputIndexes = new Set<number>();
         let terminalOutputCount = 0;
@@ -637,32 +637,32 @@ export async function runAgentMemo(
             fetch: async (input, init) => {
               if (++fetchCalls !== 1)
                 throw new Error("Automatic provider retries are disabled.");
-              assertAgentTransport(route, input, init);
-              if (requestSignal.aborted)
-                throw new Error("Selective review paused before submission.");
-              // Recheck immediately before creating the durable attempt receipt.
-              assertRequestAvailable();
-              job = {
-                id: id(),
-                stage: "memo",
-                agentId: plan.id,
-                stepIndex: plan.jobIds.length,
-                state: "in_flight",
-                billing: "possibly_charged",
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                requestId: null,
-                inputRevision: plan.sourceRevision,
-                provider: plan.provider,
-                model: plan.model,
-                outputLanguage: plan.outputLanguage,
-                estimateUsd: null,
-                reportedCostUsd: null,
-                message:
-                  "Selective review request recorded. Keep this page open; provider charge is unknown.",
-              };
-              plan.jobIds.push(job.id);
               try {
+                assertAgentTransport(route, input, init);
+                if (requestSignal.aborted)
+                  throw new Error("Selective review paused before submission.");
+                // Recheck immediately before creating the durable attempt receipt.
+                assertRequestAvailable();
+                job = {
+                  id: id(),
+                  stage: "memo",
+                  agentId: plan.id,
+                  stepIndex: plan.jobIds.length,
+                  state: "in_flight",
+                  billing: "possibly_charged",
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  requestId: null,
+                  inputRevision: plan.sourceRevision,
+                  provider: plan.provider,
+                  model: plan.model,
+                  outputLanguage: plan.outputLanguage,
+                  estimateUsd: null,
+                  reportedCostUsd: null,
+                  message:
+                    "Selective review request recorded. Keep this page open; provider charge is unknown.",
+                };
+                plan.jobIds.push(job.id);
                 await persist((latest) => {
                   if (latest.jobs.some((job) => job.state === "in_flight"))
                     throw new Error("Another tab is processing this meeting.");
@@ -673,7 +673,8 @@ export async function runAgentMemo(
                   return checkpoint({ ...latest, jobs: [...latest.jobs, job!] });
                 }, true);
               } catch (error) {
-                intentError = error;
+                // Pi converts fetch-hook exceptions into assistant error results.
+                preSubmissionError = error;
                 throw error;
               }
               if (requestSignal.aborted)
@@ -717,8 +718,12 @@ export async function runAgentMemo(
               });
             },
           });
-          if (intentError) throw intentError;
-          if (!job || !current!.jobs.some((value) => value.id === job!.id))
+          if (preSubmissionError) throw preSubmissionError;
+          if (!job)
+            throw new Error(requestSignal.aborted
+              ? "Selective review paused before submission."
+              : "Pi could not prepare the next provider request. No new request was sent.");
+          if (!current!.jobs.some((value) => value.id === job!.id))
             throw new Error(
               "No provider request was submitted. Its durable local receipt could not be recorded.",
             );
