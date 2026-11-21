@@ -1,5 +1,6 @@
 import { blueprints, orderIncidentEvents, templateInstruction, type MemoTemplate } from "../domain/memo-templates";
 import { memoLanguageInstruction, type MemoOutputLanguage } from "../domain/memo-language";
+import { redactAgentSecret } from "../domain/memo-agent-contract";
 import { z } from "zod";
 import { redactMemoResponse } from "./memo-response-redaction";
 import {
@@ -634,11 +635,12 @@ export async function generateMemo(
   );
   const account = accounting(value, selection.provider);
   onUsage?.(account.usage, account.requestId, account.cost);
-  return parseStandardMemoResponse(value, m, memoInput, template, outputLanguage);
+  return parseStandardMemoResponse(value, m, memoInput, template, outputLanguage, key.trim());
 }
 
 export function parseStandardMemoResponse(
   value: unknown, m: Meeting, memoInput: MemoInput, template?: MemoTemplate, outputLanguage?: MemoOutputLanguage,
+  activeCredential = "",
 ) {
   const response = z
     .object({
@@ -669,13 +671,9 @@ export function parseStandardMemoResponse(
       true,
     );
   try {
+    const output = content.filter(c => c.type === "output_text").map(c => c.text || "").join("");
     const items = normalizeMemo(
-      JSON.parse(
-        content
-          .filter((c) => c.type === "output_text")
-          .map((c) => c.text || "")
-          .join(""),
-      ),
+      JSON.parse(redactAgentSecret(output, activeCredential)),
       m,
       memoInput.compact ? memoInput.aliases : undefined, template, outputLanguage,
     );

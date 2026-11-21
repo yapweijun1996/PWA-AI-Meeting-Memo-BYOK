@@ -11,8 +11,17 @@ type Field = { path: PathPart[]; start: number; end: number; raw: string; text: 
 type Container = { path?: PathPart[]; member: PathPart | undefined };
 type Fields = Map<string, Field>;
 type MatchSecret = ReturnType<typeof agentSecretMatcher>;
-const indexFields = new Set(["output_index", "content_index", "index"]);
-const relevantFields = new Set(["type", "text", "refusal", "delta", "content", "item_id", ...indexFields]);
+const MAX_RESPONSE_PATH_DEPTH = 6;
+const indexFields = new Set(["output_index", "content_index", "summary_index", "index"]);
+const chatDeltaFields = new Set(["content", "reasoning", "reasoning_content", "reasoning_text"]);
+const relevantFields = new Set(["type", "text", "delta", "item_id", "arguments", ...indexFields, ...chatDeltaFields]);
+const responsePartIndexes = new Map([
+  ["response.output_text.delta", "content_index"],
+  ["response.refusal.delta", "content_index"],
+  ["response.reasoning_text.delta", "content_index"],
+  ["response.reasoning_summary_text.delta", "summary_index"],
+  ["response.function_call_arguments.delta", null],
+]);
 const jsonDelimiters = /[\s{}[\],:"]/;
 
 /** Locate response fields even when the last frame or JSON string is incomplete. */
@@ -20,16 +29,23 @@ function responseFields(json: string, offset: (index: number) => number): Field[
   const fields: Field[] = [];
   const stack: Container[] = [];
   const quoteOrEscape = /["\\]/g;
+  let skippedDepth = 0;
   for (let cursor = 0; cursor < json.length;) {
     const char = json[cursor++];
     const container = stack.at(-1);
     if (char === "{" || char === "[") {
-      const path = !container ? [] : container.path && container.path.length < 6 && container.member !== undefined
+      if (skippedDepth || stack.length > MAX_RESPONSE_PATH_DEPTH) {
+        // The literal matcher still scans this fragment without keeping a container per bracket.
+        skippedDepth++;
+        continue;
+      }
+      const path = !container ? [] : container.path && container.member !== undefined
         ? [...container.path, container.member] : undefined;
       stack.push({ path, member: char === "[" ? 0 : undefined });
     } else if (char === "}" || char === "]") {
-      stack.pop();
-    } else if (char === "," && container) {
+      if (skippedDepth) skippedDepth--;
+      else stack.pop();
+    } else if (!skippedDepth && char === "," && container) {
       container.member = typeof container.member === "number" ? container.member + 1 : undefined;
     } else if (char === '"') {
       const start = cursor;
@@ -43,7 +59,7 @@ function responseFields(json: string, offset: (index: number) => number): Field[
         quoteOrEscape.lastIndex++;
       }
       cursor = end + 1;
-      if (!container?.path) continue;
+      if (skippedDepth || !container?.path) continue;
       if (container.member === undefined) {
         container.member = decodeAgentJsonEscapes(json.slice(start, end));
       } else if (typeof container.member === "string" && relevantFields.has(container.member)) {
@@ -51,7 +67,7 @@ function responseFields(json: string, offset: (index: number) => number): Field[
         fields.push({ path: [...container.path, container.member], start: offset(start), end: offset(end),
           raw, text: decodeAgentJsonEscapes(raw) });
       }
-    } else if (!jsonDelimiters.test(char)) {
+    } else if (!skippedDepth && !jsonDelimiters.test(char)) {
       const start = cursor - 1;
       while (cursor < json.length && !jsonDelimiters.test(json[cursor])) cursor++;
       if (container?.path && typeof container.member === "string" && indexFields.has(container.member)) {
@@ -113,31 +129,21 @@ function redactParts(parts: Field[], match: MatchSecret) {
   }
 }
 
-function redactOutput(fields: Field[], match: MatchSecret, streamed: boolean) {
+function redactOutput(fields: Field[], match: MatchSecret) {
   const objects = new Map<string, Fields>();
-  const groups = new Map<string, Field[]>();
   for (const field of fields) {
     const path = field.path;
-    const [root, first, second, third, fourth, fifth] = path;
-    const standard = root === "output" && typeof first === "number" && second === "content" &&
-      typeof third === "number" && typeof fourth === "string" && path.length === 5;
-    const item = root === "item" && first === "content" && typeof second === "number" &&
-      typeof third === "string" && path.length === 4;
-    const terminal = root === "response" && first === "output" && typeof second === "number" && third === "content" &&
-      typeof fourth === "number" && typeof fifth === "string" && path.length === 6;
-    if (standard && !streamed) rememberField(objects, `output/${first}/${third}`, fourth, field);
-    if (item && streamed) rememberField(objects, `item/${second}`, third, field);
-    if (terminal && streamed) rememberField(objects, `response/${second}/${fourth}`, fifth, field);
+    const [root, item, content, part, name] = path;
+    if (root === "output" && typeof item === "number" && content === "content" &&
+        typeof part === "number" && typeof name === "string" && path.length === 5)
+      rememberField(objects, `${item}/${part}`, name, field);
   }
-  for (const [path, object] of objects) {
-    const type = object.get("type")?.text;
-    const field = type === "output_text" ? object.get("text")
-      : streamed && type === "refusal" ? object.get("refusal") : undefined;
-    if (field) addPart(groups, path.slice(0, path.lastIndexOf("/")), field);
+  const output: Field[] = [];
+  for (const object of objects.values()) {
+    const field = object.get("text");
+    if (field && object.get("type")?.text === "output_text") output.push(field);
   }
-  if (streamed) {
-    for (const group of groups.values()) redactParts(group, match);
-  } else redactParts([...groups.values()].flat(), match);
+  redactParts(output, match);
 }
 
 function applyRedactions(wire: string, fields: Field[], key: string) {
@@ -155,8 +161,52 @@ function applyRedactions(wire: string, fields: Field[], key: string) {
 export function redactMemoResponse(body: string, key: string): string {
   if (!key) return body;
   const fields = responseFields(body, index => index);
-  redactOutput(fields, agentSecretMatcher(key), false);
+  redactOutput(fields, agentSecretMatcher(key));
   return applyRedactions(body, fields, key);
+}
+
+function trackFrameDeltas(fields: Field[], event: string, deltas: Map<string, Field[]>, edits: Field[]) {
+  const rootFields = new Map<PathPart, Field>();
+  const choiceIndexes = new Map<number, string>();
+  const toolIndexes = new Map<string, string>();
+  for (const field of fields) {
+    const [root, choice, member, leaf, tool, name] = field.path;
+    if (field.path.length === 1) rootFields.set(root, field);
+    if (root !== "choices" || typeof choice !== "number") continue;
+    if (member === "index" && field.path.length === 3) choiceIndexes.set(choice, field.text);
+    if (member === "delta" && leaf === "tool_calls" && typeof tool === "number" &&
+        name === "index" && field.path.length === 6) toolIndexes.set(`${choice}/${tool}`, field.text);
+  }
+
+  const type = rootFields.get("type")?.text ?? event;
+  const delta = rootFields.get("delta");
+  const partIndex = responsePartIndexes.get(type);
+  let responseGroup: string | undefined;
+  if (delta && partIndex !== undefined) {
+    const item = rootFields.get("item_id")?.text;
+    const output = rootFields.get("output_index")?.text ?? "0";
+    const part = partIndex === null ? null : rootFields.get(partIndex)?.text ?? "0";
+    responseGroup = JSON.stringify([type, item, output, part]);
+  }
+
+  for (const field of fields) {
+    const [root, choice, member, leaf, tool, fn, args] = field.path;
+    if (field === delta && responseGroup !== undefined) {
+      addPart(deltas, responseGroup, field);
+      edits.push(field);
+      continue;
+    }
+    if (root !== "choices" || typeof choice !== "number" || member !== "delta") continue;
+    const index = choiceIndexes.get(choice) ?? String(choice);
+    if (typeof leaf === "string" && chatDeltaFields.has(leaf) && field.path.length === 4) {
+      addPart(deltas, JSON.stringify(["chat", index, leaf]), field);
+    } else if (leaf === "tool_calls" && typeof tool === "number" && fn === "function" &&
+        args === "arguments" && field.path.length === 7) {
+      const toolIndex = toolIndexes.get(`${choice}/${tool}`) ?? String(tool);
+      addPart(deltas, JSON.stringify(["chat", index, leaf, toolIndex]), field);
+    } else continue;
+    edits.push(field);
+  }
 }
 
 /** Preserve SSE framing and non-text fields while masking complete logical output strings. */
@@ -166,7 +216,6 @@ export function redactMemoSse(wire: string, key: string): string {
   const match = agentSecretMatcher(key);
   const edits: Field[] = [];
   const deltas = new Map<string, Field[]>();
-  const contentParts = new Map<string, Field[]>();
   let data: { text: string; start: number; offset: number }[] = [];
   let dataLength = 0;
   let event = "";
@@ -177,31 +226,7 @@ export function redactMemoSse(wire: string, key: string): string {
         while (line + 1 < data.length && index >= data[line + 1].offset) line++;
         return data[line].start + index - data[line].offset;
       });
-      const root = new Map(fields.filter(field => field.path.length === 1)
-        .map(field => [field.path[0], field]));
-      const type = root.get("type")?.text ?? event;
-      const delta = root.get("delta");
-      if (delta && (type === "response.output_text.delta" || type === "response.refusal.delta")) {
-        const output = root.get("output_index")?.text ?? root.get("item_id")?.text ?? "0";
-        addPart(deltas, `responses/${output}`, delta);
-        addPart(contentParts, `${output}/${root.get("content_index")?.text ?? "0"}`, delta);
-      }
-      const choices = new Map<number, Fields>();
-      for (const field of fields) {
-        const [key, choice, member, leaf] = field.path;
-        if (key !== "choices" || typeof choice !== "number") continue;
-        if (member === "index" && field.path.length === 3)
-          rememberField(choices, choice, member, field);
-        else if (member === "delta" && leaf === "content" && field.path.length === 4)
-          rememberField(choices, choice, leaf, field);
-      }
-      for (const [choice, value] of choices) {
-        const field = value.get("content");
-        if (field) addPart(deltas, `chat/${value.get("index")?.text ?? choice}`, field);
-      }
-      redactOutput(fields, match, true);
-      for (const field of fields)
-        if (field.changed || field === delta || (field.path[0] === "choices" && field.path.at(-1) === "content")) edits.push(field);
+      trackFrameDeltas(fields, event, deltas, edits);
     }
     data = [];
     dataLength = 0;
@@ -219,8 +244,6 @@ export function redactMemoSse(wire: string, key: string): string {
     }
   }
   finishFrame();
-  // Native SSE consumers track content indexes. Pi also concatenates by output index.
-  for (const group of contentParts.values()) redactParts(group, match);
   for (const group of deltas.values()) redactParts(group, match);
   return applyRedactions(wire, edits, key);
 }

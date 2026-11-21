@@ -109,6 +109,7 @@ export function recordAgentAssistant(
   key: string,
 ): string {
   const { cost: _catalogueCost, ...usage } = message.usage;
+  // The Responses adapter can concatenate independent wire parts into one decoded text block.
   const record = redactAgentSecret(
     JSON.stringify({
       role: message.role,

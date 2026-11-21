@@ -30,7 +30,9 @@ export function applyStandardMemoResult(
         plan.id === value.agentId && plan.state === "completed" && plan.jobIds.at(-1) === value.id);
       return true;
     });
-    if (newerMemo)
+    const originalVersions = new Set(source.memos.map(memo => memo.id));
+    const newerVersion = latest.memos.some(memo => !originalVersions.has(memo.id));
+    if (newerMemo || newerVersion)
       throw new Error("A newer memo result is already saved. Export this response for review.");
   }
 

@@ -1335,6 +1335,45 @@ test("terminal SSE export removes escaped credentials from decoded fields and ma
   expect(exported).toContain("Synthetic evidence for human review.");
 });
 
+test.each(["Responses tool arguments", "Responses reasoning", "Chat tool arguments", "Chat reasoning"])(
+  "interrupted Pi recovery masks fragmented %s before retention and download", async stream => {
+    const { meeting, plan: responsesPlan, signal } = await setup();
+    const chat = stream.startsWith("Chat");
+    const plan = chat ? planAgentMemo(meeting, routerSelection, "en") : responsesPlan;
+    const frame = (delta: string, index: number) => {
+      if (chat) {
+        const tools = stream === "Chat tool arguments";
+        return `data: ${JSON.stringify({ choices: [{ index: 0, delta: tools
+          ? { tool_calls: [{ index: 0, ...(index === 0 ? { id: "call-synthetic", type: "function" } : {}),
+            function: { arguments: delta } }] }
+          : { reasoning: delta } }] })}\n\n`;
+      }
+      const summary = stream === "Responses reasoning";
+      const type = summary ? "response.reasoning_summary_text.delta" : "response.function_call_arguments.delta";
+      return `event: ${type}\ndata: ${JSON.stringify({ type, item_id: "synthetic-item", output_index: 0,
+        ...(summary ? { summary_index: 0 } : {}), delta })}\n\n`;
+    };
+    const truncatedFrame = (delta: string) => {
+      const complete = frame(delta, 2);
+      return complete.slice(0, complete.lastIndexOf('"'));
+    };
+    const wire = frame("before " + key.slice(0, 9), 0) + frame(key.slice(9, 18), 1) +
+      truncatedFrame(key.slice(18) + " after");
+    const expected = frame("before [redacted provider key]", 0) + frame("", 1) + truncatedFrame(" after");
+    const request = vi.fn(async () => {
+      expect((await getMeeting(meeting.id))!.jobs.at(-1)?.state).toBe("in_flight");
+      return new Response(wire, { headers: { "content-type": "text/event-stream" } });
+    });
+    vi.stubGlobal("fetch", request);
+    await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
+    const pending = pendingAgentReceipt(meeting.id)!;
+    expect(pending.wireResponse).toBe(expected);
+    expect(receiptExport(pending).wireResponse).toBe(expected);
+    expect((await getMeeting(meeting.id))!.jobs.at(-1)?.state).toBe("outcome_unknown");
+    expect(request).toHaveBeenCalledTimes(1);
+  },
+);
+
 test.each([
   { name: "frame boundary", fixture: key, fragments: [key.slice(0, 12), key.slice(12)] },
   { name: "JSON escape boundary", fixture: key, fragments: ["\\u00", "73" + key.slice(1)] },

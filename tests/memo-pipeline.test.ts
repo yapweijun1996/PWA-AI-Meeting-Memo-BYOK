@@ -3,6 +3,9 @@ import { expect, test, vi, afterEach, onTestFinished } from "vitest";
 import { strToU8, zipSync } from "fflate";
 import { createMeeting, segment, validateMeeting, MAX_MEETING_JSON_BYTES, type Job, type Meeting } from "../src/domain/model";
 import { reviewSegments } from "../src/domain/operations";
+import { editMemoItem, restoreMemoVersion } from "../src/domain/memo-review";
+import { parseStandardMemoResponse } from "../src/providers/api";
+import { buildMemoInput } from "../src/providers/memo-input";
 import {
   planMemo,
   extractionInput,
@@ -596,6 +599,19 @@ test.each([
   expect(request).toHaveBeenCalledTimes(1);
 });
 
+test("standard parser masks the credential at the concatenated output boundary", async () => {
+  const meeting = await receiptFixture();
+  const input = buildMemoInput(meeting);
+  const reply = await response(JSON.stringify({ input: input.input }), "before synthetic-test after").json();
+  const [head, tail] = reply.output[0].content[0].text.split("synthetic-test");
+  reply.output[0].content = [
+    { type: "output_text", text: head + "synthe" },
+    { type: "output_text", text: "tic-test" + tail },
+  ];
+  const items = parseStandardMemoResponse(reply, meeting, input, undefined, undefined, "synthetic-test");
+  expect(items[0].dueOriginal).toBe("before [redacted provider key] after");
+});
+
 test.each(["single", "extraction", "synthesis"])("standard %s receipt survives failed body writes and can be saved locally", async mode => {
   const saved = await receiptFixture(mode !== "single");
   const plan = planMemo(saved, selection.provider, selection.model);
@@ -853,6 +869,37 @@ test("recovering an older standalone attempt retains its body and leaves the new
   const recovered = await recoverAgentReceipt(saved.id);
   expect(recovered.jobs[0].memoResponse).toContain("Older response");
   expect(recovered.memos.map(memo => memo.id)).toEqual(newer.memos.map(memo => memo.id));
+  expect(request).toHaveBeenCalledTimes(2);
+});
+
+test("recovering an older standalone receipt preserves the restored and edited default memo without a newer job", async () => {
+  const initial = await receiptFixture();
+  const request = vi.fn(async (_url: unknown, init: { body: string }) => response(init.body, "Older receipt evidence"));
+  vi.stubGlobal("fetch", request);
+  const saved = await runJob(initial, "memo", { selection });
+  const put = IDBObjectStore.prototype.put;
+  const quota = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function(this: IDBObjectStore, value, index) {
+    if (value.jobs?.at(-1)?.memoResponse !== undefined)
+      throw new DOMException("Synthetic receipt quota", "QuotaExceededError");
+    return put.call(this, value, index);
+  });
+  onTestFinished(() => quota.mockRestore());
+  await expect(runJob(saved, "memo", { selection })).rejects.toThrow(/export/);
+  const pending = pendingAgentReceipt(saved.id)!;
+  quota.mockRestore();
+  const latest = (await getMeeting(saved.id))!;
+  const restored = restoreMemoVersion(latest, saved.memos[0].id, pending.job.createdAt);
+  const copy = restored.memos.at(-1)!;
+  const edited = await saveMeeting(editMemoItem(restored, copy.id, copy.items[0].id, { text: "Human-edited restored text" }));
+  expect(edited.jobs.map(job => job.id)).toEqual([saved.jobs[0].id, pending.job.id]);
+
+  const recovered = await recoverAgentReceipt(saved.id);
+  const persisted = (await getMeeting(saved.id))!;
+  expect(recovered.jobs.at(-1)?.memoResponse).toBe(pending.job.memoResponse);
+  expect(persisted.jobs.at(-1)?.id).toBe(pending.job.id);
+  expect(persisted.memos).toEqual(edited.memos);
+  expect(persisted.memos.at(-1)?.items[0].text).toBe("Human-edited restored text");
+  expect(pendingAgentReceipt(saved.id)).toBeUndefined();
   expect(request).toHaveBeenCalledTimes(2);
 });
 
