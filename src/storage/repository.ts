@@ -121,12 +121,18 @@ export function trackMeetingWrite(id: string, pendingWrite: Promise<Meeting>): P
   void write.then(settled, settled);
   return write;
 }
-export async function flushWrites() {
-  await Promise.all([...writes]);
+export async function flushWrites(onFlushed?: () => void) {
+  while (writes.size) await Promise.all([...writes]);
   if (failedMeetings.size)
     throw new Error(
       "Resolve the local save error before updating. Your unsaved changes are still in this page.",
     );
+  // Run the final update action without yielding after the write check.
+  onFlushed?.();
+}
+export async function clearDeletedMeetingWriteFailure(id: string) {
+  if (failedMeetings.has(id) && (await (await db()).getKey("meetings", id)) === undefined)
+    failedMeetings.delete(id);
 }
 export function nextMeetingVersion(m: Meeting): Meeting {
   return validateMeeting({

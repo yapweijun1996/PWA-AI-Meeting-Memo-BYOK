@@ -9,6 +9,7 @@ import {
   subscribeAgentRecovery,
 } from "../jobs/agent-recovery";
 import { download, safeFilename } from "../storage/backup";
+import { clearDeletedMeetingWriteFailure } from "../storage/repository";
 
 export function AgentResponseRecovery({
   meetingId,
@@ -101,7 +102,15 @@ export function AgentResponseRecovery({
       {exported && (
         <Button
           className="button secondary"
-          onClick={() => {
+          pending={busy}
+          onClick={async () => {
+            if (pendingAgentReceipt(meetingId) !== pending) return;
+            if (!localSave) {
+              setBusy(true);
+              try { await clearDeletedMeetingWriteFailure(meetingId); }
+              catch { /* Keep the write guard if deletion cannot be verified. */ }
+              finally { setBusy(false); }
+            }
             if (pendingAgentReceipt(meetingId) === pending) acknowledgeAgentExport(meetingId);
           }}
         >
