@@ -34,7 +34,10 @@ export function PwaStatus() {
     const on = () => setOffline(!navigator.onLine);
     let controlled = !!navigator.serviceWorker?.controller;
     const controlChanged = () => {
-      if (controlled) setRefreshReady(true);
+      if (controlled) {
+        setWaiting(undefined);
+        setRefreshReady(true);
+      }
       controlled = true;
     };
     navigator.serviceWorker?.addEventListener(
@@ -201,11 +204,12 @@ export function PwaStatus() {
     };
     function activateLatest() {
       if (!registration) return;
-      if (hasPendingAgentReceipt()) {
+      const reason = blocker();
+      if (reason) {
         clearTimeout(timer);
         cleanup();
         setUpdating(false);
-        setError(blocker());
+        setError(reason);
         return;
       }
       watch(registration.installing);
@@ -228,9 +232,11 @@ export function PwaStatus() {
     function activated() {
       clearTimeout(timer);
       cleanup();
-      if (hasPendingAgentReceipt()) {
+      const reason = blocker();
+      if (reason) {
+        setRefreshReady(true);
         setUpdating(false);
-        setError(blocker());
+        setError(reason);
         return;
       }
       location.reload();
@@ -249,7 +255,8 @@ export function PwaStatus() {
     "Update did not activate. Try again when connected.": "更新未能激活。请联网后重试。",
   } as Record<string, string>)[error] ?? translateMessage(error, language) : error;
   const sidebarError = confirmation.origin === "sidebar" && !!error;
-  const sidebarUpdateText = updating ? t("Updating...", "\u6b63\u5728\u66f4\u65b0...") : t("Update now", "\u7acb\u5373\u66f4\u65b0");
+  const updateAction = refreshReady && !waiting ? t("Refresh page", "\u5237\u65b0\u9875\u9762") : t("Update now", "\u7acb\u5373\u66f4\u65b0");
+  const sidebarUpdateText = updating ? t("Updating...", "\u6b63\u5728\u66f4\u65b0...") : updateAction;
   const sidebarCheckText = checking ? t("Checking...", "\u6b63\u5728\u68c0\u67e5...") : t("Check for updates", "\u68c0\u67e5\u66f4\u65b0");
   function dismissSidebarFeedback() {
     setCheckMessage("");
@@ -302,7 +309,7 @@ export function PwaStatus() {
               onClick={() => requestUpdate("banner")}
               disabled={updating}
             >
-              {updating ? t("Updating…", "正在更新…") : t("Update now", "立即更新")}
+              {updating ? t("Updating…", "正在更新…") : updateAction}
             </Button>
           )}
         </div>

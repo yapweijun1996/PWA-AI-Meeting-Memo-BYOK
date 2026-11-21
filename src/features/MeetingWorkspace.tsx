@@ -11,8 +11,8 @@ import { markInterruptedRequests } from "../jobs/memo-interruption";
 import { resumablePipeline } from "../jobs/memo-pipeline";
 import { remainingAgentRequests } from "../domain/memo-agent-requests";
 import {hasSavedAgentFinal, planAgentMemo, resumableAgentMemo, supportsAgentMemo} from "../providers/memo-agent-plan";
-import {AgentResponseRecovery} from "./AgentResponseRecovery";
 import {pendingAgentReceipt} from "../jobs/agent-recovery";
+import { AgentResponseRecovery } from "./AgentResponseRecovery";
 import { speakerBackground } from "../components/speaker-appearance";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import {
@@ -93,11 +93,13 @@ import { translateMessage } from "../ui-messages";
 import { SpeakerModelNotice } from "./SpeakerModelNotice";
 export function MeetingWorkspace({
   meeting: m,
+  recoveryAtAppLevel = false,
   onUpdate,
   onDelete,
   onError,
 }: {
   meeting: Meeting;
+  recoveryAtAppLevel?: boolean;
   onUpdate: (m: Meeting) => void;
   onDelete: () => Promise<void>;
   onError: (s: string) => void;
@@ -939,7 +941,7 @@ export function MeetingWorkspace({
   const { workspaceRef, playerBarRef } = usePlayerClearance(canPlay);
   return (
     <div ref={workspaceRef} className={`${canPlay ? "workspace has-player" : "workspace"}${tab === "memo" && miniPlayer ? " memo-mini-active" : ""}`}>
-      <AgentResponseRecovery meeting={m} onUpdate={onUpdate} t={t} onError={onError} />
+      {!recoveryAtAppLevel && <AgentResponseRecovery meetingId={m.id} localSave={{ title: m.title, onUpdate, onError }} t={t} />}
       <a href="#/" className="back-link">
         <Icon glyph={ArrowLeft} size="compact" />
         {t("All meetings", "所有会议")}
@@ -2387,6 +2389,7 @@ export function MeetingWorkspace({
         <Modal title={t("Add a transcript", "添加转录")} onClose={() => setAddText(false)}>
           <form
             className="modal-body"
+            data-unsaved-edit={newText.length > 0 || undefined}
             onSubmit={async (e) => {
               e.preventDefault();
               try {
@@ -2439,6 +2442,7 @@ export function MeetingWorkspace({
         <Modal title={t("Edit this passage", "编辑此段落")} onClose={() => setEditing(undefined)}>
           <form
             className="modal-body"
+            onChange={event => { event.currentTarget.dataset.unsavedEdit = "true"; }}
             onSubmit={async (e) => {
               e.preventDefault();
               const f = new FormData(e.currentTarget);

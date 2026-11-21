@@ -5,46 +5,50 @@ import {
   acknowledgeAgentExport,
   pendingAgentReceipt,
   recoverAgentReceipt,
+  subscribeAgentRecovery,
 } from "../jobs/agent-recovery";
 import { download, safeFilename } from "../storage/backup";
 
 export function AgentResponseRecovery({
-  meeting,
-  onUpdate,
+  meetingId,
+  localSave,
   t,
-  onError,
 }: {
-  meeting: Meeting;
-  onUpdate: (meeting: Meeting) => void;
+  meetingId: string;
+  localSave?: {
+    title: string;
+    onUpdate: (meeting: Meeting) => void;
+    onError: (message: string) => void;
+  };
   t: (en: string, zh: string) => string;
-  onError: (message: string) => void;
 }) {
-  const [pending, setPending] = useState(() => pendingAgentReceipt(meeting.id));
+  const [pending, setPending] = useState(() => pendingAgentReceipt(meetingId));
   const [busy, setBusy] = useState(false);
   const [exported, setExported] = useState(false);
   useEffect(() => {
     const changed = () => {
-      setPending(pendingAgentReceipt(meeting.id));
+      setPending(pendingAgentReceipt(meetingId));
       setExported(false);
     };
     changed();
-    window.addEventListener("memo-agent-recovery-changed", changed);
-    return () =>
-      window.removeEventListener("memo-agent-recovery-changed", changed);
-  }, [meeting.id]);
+    return subscribeAgentRecovery(changed);
+  }, [meetingId]);
   if (!pending) return null;
   return (
     <section
       className="notice sand"
       role="alert"
-      data-unsaved-edit="true"
+      data-unsaved-edit={localSave ? true : undefined}
       aria-label={t("Unsaved review response", "尚未保存的复核回应")}
     >
       <strong>
         {t("A request outcome could not be saved", "请求结果无法保存")}
       </strong>
       <p>
-        {t(
+        {!localSave ? t(
+          "This meeting is unavailable. Keep this page open until you have saved the response export.",
+          "\u65e0\u6cd5\u6253\u5f00\u6b64\u4f1a\u8bae\u3002\u8bf7\u4fdd\u6301\u9875\u9762\u6253\u5f00\uff0c\u76f4\u5230\u4fdd\u5b58\u5bfc\u51fa\u7684\u56de\u5e94\u3002",
+        ) : t(
           "This page still holds its sanitized receipt and any bounded response. Keep it open. Retry local saving or export this response before leaving; no request will be repeated. The provider charge is unknown.",
           "此页面仍保留已移除密钥的请求记录及限制内的回应。请保持页面开启，重试本地保存或先导出回应；不会重复发送请求。服务商收费仍未知。",
         )}
@@ -57,15 +61,15 @@ export function AgentResponseRecovery({
           )}
         </p>
       )}
-      <Button
+      {localSave && <Button
         className="button secondary"
         pending={busy}
         onClick={async () => {
           setBusy(true);
           try {
-            onUpdate(await recoverAgentReceipt(meeting.id));
+            localSave.onUpdate(await recoverAgentReceipt(meetingId));
           } catch (error) {
-            onError(
+            localSave.onError(
               error instanceof Error ? error.message : "Local recovery failed.",
             );
           } finally {
@@ -74,7 +78,7 @@ export function AgentResponseRecovery({
         }}
       >
         {t("Retry local save only", "仅重试本地保存")}
-      </Button>
+      </Button>}
       <Button
         className="button secondary"
         disabled={busy}
@@ -90,7 +94,7 @@ export function AgentResponseRecovery({
               ],
               { type: "application/json" },
             ),
-            `${safeFilename(meeting.title)}-unsaved-review-response.json`,
+            `${safeFilename(localSave?.title ?? meetingId)}-unsaved-review-response.json`,
           );
           setExported(true);
         }}
@@ -100,7 +104,9 @@ export function AgentResponseRecovery({
       {exported && (
         <Button
           className="button secondary"
-          onClick={() => acknowledgeAgentExport(meeting.id)}
+          onClick={() => {
+            if (pendingAgentReceipt(meetingId) === pending) acknowledgeAgentExport(meetingId);
+          }}
         >
           {t(
             "I saved the export; release this page copy",
