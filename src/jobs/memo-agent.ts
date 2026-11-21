@@ -38,7 +38,7 @@ import {
   readAgentReportedUsage,
 } from "../providers/agent-record";
 import { normalizeMemo } from "../providers/api";
-import { redactMemoSse } from "../providers/memo-response-redaction";
+import { redactMemoRecoveryWire, redactMemoSse } from "../providers/memo-response-redaction";
 import { getMeeting, saveMeeting } from "../storage/repository";
 import { hasPendingAgentReceipt, retainAgentReceipt } from "./agent-recovery";
 
@@ -568,14 +568,15 @@ export async function runAgentMemo(
           responseId: string | null = null;
         let reportedUsage: Job["usage"] = null;
         let upstreamProvider: string | undefined;
-        let boundedWireResponse: string | undefined;
+        let capturedWire: string | undefined;
         let preSubmissionError: unknown;
         let receivedSuccessfulHttp = false;
         const finishedOutputIndexes = new Set<number>();
         let terminalOutputCount = 0;
         let unfinishedOutput = false;
         const requestSignal = AbortSignal.any([signal, ...(options?.signal ? [options.signal] : []), AbortSignal.timeout(9 * 60 * 1000)]);
-        const finishReceipt = async (updated: Job, wireResponse?: string) => {
+        const finishReceipt = async (updated: Job, recoveryWire?: string) => {
+          const wireResponse = recoveryWire === undefined ? undefined : redactMemoRecoveryWire(recoveryWire, key);
           const recovery = { meetingId: meeting.id, agentId: plan.id, job: updated, wireResponse };
           try {
             await persist((latest) =>
@@ -719,9 +720,9 @@ export async function runAgentMemo(
               } finally {
                 reader?.releaseLock();
                 pieces.push(decoder.decode());
-                boundedWireResponse = redactMemoSse(pieces.join(""), key);
+                capturedWire = pieces.join("");
               }
-              return new Response(boundedWireResponse, {
+              return new Response(redactMemoSse(capturedWire, key), {
                 status: response.status,
                 statusText: response.statusText,
                 headers: response.headers,
@@ -765,7 +766,7 @@ export async function runAgentMemo(
             plan.state = signal.aborted ? "paused" : "blocked";
             plan.failure = { kind: "request", message: updated.message };
           }
-          await finishReceipt(updated, !successful && receivedSuccessfulHttp ? boundedWireResponse : undefined);
+          await finishReceipt(updated, !successful && receivedSuccessfulHttp ? capturedWire : undefined);
           if (!successful) throw new Error(updated.message);
           validateToolBurst(decoded);
           if (result.stopReason !== "stop" && result.stopReason !== "toolUse")
@@ -796,7 +797,7 @@ export async function runAgentMemo(
                 ...job, state: "outcome_unknown", billing: "possibly_charged",
                 updatedAt: new Date().toISOString(), requestId: responseId, usage: reportedUsage,
                 upstreamProvider, message: stopped.message,
-              }, boundedWireResponse).catch(() => undefined);
+              }, capturedWire).catch(() => undefined);
             } else {
               // Only this live runner can prove that fetch was never invoked.
               const unsentId = job.id;

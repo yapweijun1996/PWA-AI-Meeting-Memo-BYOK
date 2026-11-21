@@ -1374,6 +1374,72 @@ test.each(["Responses tool arguments", "Responses reasoning", "Chat tool argumen
   },
 );
 
+async function exportInterruptedPiWire(wire: string, useChat = false) {
+  const { meeting, plan, signal } = await setup();
+  const request = vi.fn(async () => {
+    const saved = (await getMeeting(meeting.id))!;
+    expect(saved.jobs.at(-1)?.state).toBe("in_flight");
+    return new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new TextEncoder().encode(wire)); },
+      pull(controller) { controller.error(new Error("Synthetic reader disconnect")); },
+    }), { headers: { "content-type": "text/event-stream" } });
+  });
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, useChat ? planAgentMemo(meeting, routerSelection, "en") : plan, key, signal))
+    .rejects.toThrow();
+  expect(request).toHaveBeenCalledTimes(1);
+  const saved = (await getMeeting(meeting.id))!;
+  expect(saved.jobs).toHaveLength(1);
+  expect(saved.jobs[0].state).toBe("outcome_unknown");
+  const pending = pendingAgentReceipt(meeting.id)!;
+  const exported = receiptExport(pending).wireResponse;
+  expect(exported).toBe(pending.wireResponse);
+  return exported;
+}
+
+test("interrupted Pi export masks consecutive Chat reasoning summaries and text with unrelated entries intact", async () => {
+  const summary = (summary: string) => ({ type: "reasoning.summary", summary, index: 0 });
+  const text = (text: string) => ({ type: "reasoning.text", text, index: 1 });
+  const frame = (...reasoning_details: object[]) =>
+    `data: ${JSON.stringify({ choices: [{ index: 0, delta: { reasoning_details } }] })}\n\n`;
+  const encrypted = { type: "reasoning.encrypted", data: "unrelated opaque entry", index: 2 };
+  const [first, middle, last] = [key.slice(0, 9), key.slice(9, 18), key.slice(18)];
+  const wire = frame(summary("before " + first)) + frame(summary(middle), summary(last + " after"), encrypted,
+    text("before " + first)) + frame(text(middle)) + frame(text(last + " after")) +
+    frame(summary(first), encrypted, summary(middle + last));
+  const expected = frame(summary("before [redacted provider key]")) + frame(summary(""), summary(" after"), encrypted,
+    text("before [redacted provider key]")) + frame(text("")) + frame(text(" after")) +
+    frame(summary(first), encrypted, summary(middle + last));
+  expect(await exportInterruptedPiWire(wire, true)).toBe(expected);
+});
+
+test.each(["function_call_arguments", "output_text"])(
+  "interrupted Pi export masks a Responses %s tail preceding its item identity", async family => {
+    const type = `response.${family}.delta`;
+    const frame = (delta: string, item_id: string, output_index: number) =>
+      `event: ${type}\ndata: ${JSON.stringify({ type, delta, item_id, output_index, content_index: 1 })}\n\n`;
+    const tail = (delta: string) => frame(delta, "synthetic-first-item", 2).split(',"item_id"')[0] + ",";
+    const first = (delta: string) => frame(delta, "synthetic-first-item", 2);
+    const other = frame("independent prefix " + key.slice(0, 17), "synthetic-other-item", 4);
+    const wire = first("before " + key.slice(0, 9)) + other + first(key.slice(9, 18)) + tail(key.slice(18) + " after");
+    const expected = first("before [redacted provider key]") + other + first("") + tail(" after");
+    expect(await exportInterruptedPiWire(wire)).toBe(expected);
+  },
+);
+
+test("interrupted Pi export uses stream order when the Responses tail has no open group", async () => {
+  const type = "response.output_text.delta";
+  const wire = `event: ${type}\ndata: {"metadata":{"unlisted":["before ${key.slice(0, 18)}"]},"delta"\ndata: :"${key.slice(18)} after",`;
+  const expected = `event: ${type}\ndata: {"metadata":{"unlisted":["before [redacted provider key]"]},"delta"\ndata: :" after",`;
+  expect(await exportInterruptedPiWire(wire)).toBe(expected);
+});
+
+test("interrupted Pi export preserves a Responses tail with no matching continuation", async () => {
+  const type = "response.output_text.delta";
+  const wire = `event: ${type}\ndata: {"delta":"unrelated tail",`;
+  expect(await exportInterruptedPiWire(wire)).toBe(wire);
+});
+
 test.each([
   { name: "frame boundary", fixture: key, fragments: [key.slice(0, 12), key.slice(12)] },
   { name: "JSON escape boundary", fixture: key, fragments: ["\\u00", "73" + key.slice(1)] },

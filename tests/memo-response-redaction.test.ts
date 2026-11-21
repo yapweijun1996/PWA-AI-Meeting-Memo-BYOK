@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { expect, test } from "vitest";
 import { MEMO_AGENT_RESPONSE_BYTES } from "../src/domain/memo-agent-contract";
-import { redactMemoResponse, redactMemoSse } from "../src/providers/memo-response-redaction";
+import { redactMemoRecoveryWire, redactMemoResponse, redactMemoSse } from "../src/providers/memo-response-redaction";
 
 const marker = "[redacted provider key]";
 const fixture = "sk-synthetic-fragments";
@@ -49,6 +49,7 @@ test.each([
     `data: ${JSON.stringify({ type, item_id: "message-first", output_index: 0, content_index: 0, ...fields, delta })}\n\n`;
   const wire = frame("response.output_text.delta", "before sk-synthetic-") + frame(type, "fragments after", fields);
   expect(redactMemoSse(wire, fixture)).toBe(wire);
+  expect(redactMemoRecoveryWire(wire, fixture)).toBe(wire);
 });
 
 test("Responses item and terminal snapshots preserve distinct content parts", () => {
@@ -83,15 +84,15 @@ test("Chat tool fragments follow choice and tool indexes when arrays change orde
   expect(redactMemoSse(first + other, fixture)).toBe(first + other);
 });
 
-test.each(["JSON", "SSE"])("4 MiB of malformed %s nesting is handled under a 128 MiB heap", kind => {
+test.each(["JSON", "SSE", "SSE recovery"])("4 MiB of malformed %s nesting is handled under a 128 MiB heap", kind => {
   const script = `
     import { registerHooks } from "node:module";
     registerHooks({ resolve(specifier, context, next) {
       return next(specifier === "../domain/memo-agent-contract" ? specifier + ".ts" : specifier, context);
     } });
-    const { redactMemoResponse, redactMemoSse } = await import(${JSON.stringify(new URL("../src/providers/memo-response-redaction.ts", import.meta.url).href)});
+    const { redactMemoRecoveryWire, redactMemoResponse, redactMemoSse } = await import(${JSON.stringify(new URL("../src/providers/memo-response-redaction.ts", import.meta.url).href)});
     const kind = process.argv[1];
-    const redact = kind === "JSON" ? redactMemoResponse : redactMemoSse;
+    const redact = kind === "JSON" ? redactMemoResponse : kind === "SSE" ? redactMemoSse : redactMemoRecoveryWire;
     const prefix = kind === "JSON" ? "" : "data: ";
     const fixture = ${JSON.stringify(fixture)};
     const malformed = prefix + "[".repeat(4 * 1024 * 1024 - prefix.length);
@@ -99,6 +100,15 @@ test.each(["JSON", "SSE"])("4 MiB of malformed %s nesting is handled under a 128
     const reflected = malformed.slice(0, -fixture.length - 1) + '"' + fixture;
     if (redact(reflected, fixture) !== reflected.replace(fixture, ${JSON.stringify(marker)})) {
       throw new Error("Failed to mask the credential in the deeply nested fragment");
+    }
+    if (kind === "SSE recovery") {
+      const head = 'data: ["before sk-synthetic-",';
+      const tail = '"fragments after",';
+      const budget = 4 * 1024 * 1024 - head.length - tail.length;
+      const padding = '"x",'.repeat(Math.floor(budget / 4)) + ' '.repeat(budget % 4);
+      const dense = 'data: [' + padding + head.slice(7) + tail;
+      const expected = dense.replace("sk-synthetic-", ${JSON.stringify(marker)}).replace("fragments after", " after");
+      if (redact(dense, fixture) !== expected) throw new Error("Failed to mask split strings in the dense truncated frame");
     }
   `;
   const result = spawnSync(process.execPath, ["--max-old-space-size=128", "--input-type=module", "--eval", script, kind], {
