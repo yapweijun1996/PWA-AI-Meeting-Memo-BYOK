@@ -288,6 +288,11 @@ test.each([400, 408, 429, 500, "disconnect", "truncated"])(
     expect(latest.memos).toHaveLength(0);
     expect(latest.jobs[0].usage).toBeNull();
     expect(JSON.stringify(latest)).not.toContain(key);
+    if (status === "truncated") {
+      expect(pendingAgentReceipt(meeting.id)?.wireResponse).toContain("response.created");
+      await expect(runAgentMemo(latest, latest.memoAgents![0], key, signal, true)).rejects.toThrow("unsaved");
+      acknowledgeAgentExport(meeting.id);
+    }
     await expect(
       runAgentMemo(latest, latest.memoAgents![0], key, signal),
     ).rejects.toThrow("previous paid outcome");
@@ -573,7 +578,11 @@ test("an unsupported decoded response retains its bounded wire text for explicit
     cursor.next = next;
     cursor = next;
   }
-  const request = vi.fn(async () => agentSse([call(args)]));
+  const request = vi.fn(async () => {
+    const response = agentSse([call(args)]);
+    response.headers.delete("x-request-id");
+    return response;
+  });
   vi.stubGlobal("fetch", request);
   await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
   expect(pendingAgentReceipt(meeting.id)?.wireResponse).toContain(
@@ -581,7 +590,9 @@ test("an unsupported decoded response retains its bounded wire text for explicit
   );
   expect(JSON.stringify(pendingAgentReceipt(meeting.id))).not.toContain(key);
   const saved = await recoverAgentReceipt(meeting.id);
-  expect(saved.jobs[0].state).toBe("outcome_unknown");
+  expect(saved.jobs[0]).toMatchObject({
+    state: "outcome_unknown", requestId: "synthetic-response", usage: { inputTokens: 100, outputTokens: 20 },
+  });
   expect(pendingAgentReceipt(meeting.id)).toBeDefined();
   expect(request).toHaveBeenCalledTimes(1);
   acknowledgeAgentExport(meeting.id);
@@ -980,4 +991,223 @@ test("canceling after receipt persistence consumes an attempt without sending an
   expect(_agentId).toBe(plan.id);
   expect(_record).toBeDefined();
   expect(() => validateMeeting({ ...meeting, jobs: [{ ...ordinary, stepIndex: 9 }] })).toThrow();
+});
+
+test("the next POST uses the checkpointed bounded result for an SDK argument error", async () => {
+  const { meeting, plan, signal } = await setup();
+  let sentOutput = "";
+  const request = vi.fn(async (_url, init) => {
+    const output = JSON.parse(init.body).input.find((part: { type: string }) => part.type === "function_call_output");
+    if (!output) return agentSse([call({ startIndex: "x".repeat(12000) })]);
+    sentOutput = output.output;
+    return agentSse([final(meeting.segments[0].id)]);
+  });
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow("did not read");
+  const savedPlan = (await getMeeting(meeting.id))!.memoAgents![0];
+  const result = savedPlan.context.find(item => item.kind === "tool");
+  expect(result?.isError).toBe(true);
+  expect(new TextEncoder().encode(sentOutput).byteLength).toBeLessThanOrEqual(8192);
+  expect(sentOutput).toBe(result?.text);
+  expect(savedPlan.consulted).toEqual([]);
+  expect(request).toHaveBeenCalledTimes(2);
+});
+
+test("duplicate provider call IDs stop live execution even with distinct Responses item IDs", async () => {
+  const { meeting, plan, signal } = await setup();
+  const first = call({ startIndex: 0, count: 1 });
+  const second = { ...call({ startIndex: 1, count: 1 }), id: "fc_second_item" };
+  const request = vi.fn().mockResolvedValueOnce(agentSse([first, second]))
+    .mockResolvedValueOnce(agentSse([final(meeting.segments[1].id)]));
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow("tool call ID");
+  expect(request).toHaveBeenCalledTimes(1);
+  const saved = (await getMeeting(meeting.id))!;
+  expect(saved.memoAgents![0].consulted).toEqual([]);
+  expect(saved.jobs[0].assistantRecord).toContain(second.id);
+});
+
+test("continuation cannot replay a previously rejected duplicate tool burst", async () => {
+  const { meeting, plan, signal } = await setup();
+  const request = vi.fn().mockResolvedValueOnce(agentSse([call(), call()]))
+    .mockResolvedValueOnce(agentSse([final(meeting.segments[0].id)]));
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow("tool call ID");
+  const saved = (await getMeeting(meeting.id))!;
+  await expect(runAgentMemo(saved, saved.memoAgents![0], key, signal)).rejects.toThrow("tool call ID");
+  expect(request).toHaveBeenCalledTimes(1);
+  expect((await getMeeting(meeting.id))!.jobs).toEqual(saved.jobs);
+});
+
+test("a reflected credential in the request ID is redacted before persistence and backup", async () => {
+  const { meeting, plan, signal } = await setup();
+  const response = agentSse([final(meeting.segments[0].id)]);
+  response.headers.set("x-request-id", "receipt-" + key);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow("did not read");
+  const saved = (await getMeeting(meeting.id))!;
+  expect(saved.jobs[0].requestId).toBe("receipt-[redacted provider key]");
+  const restored = await readBackup(new File([await backupMeeting(saved)], "receipt.zip"));
+  expect(JSON.stringify(restored.meeting)).not.toContain(key);
+});
+
+test.each(["malformed SSE", "body disconnect"])("bounded paid output survives %s for local export", async mode => {
+  const { meeting, plan, signal } = await setup();
+  const marker = "Synthetic paid output before interruption.";
+  const chunk = 'event: unsupported\ndata: ' + marker + ' ' + key + '\n\n';
+  let wrote = false;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (!wrote) {
+        wrote = true;
+        controller.enqueue(new TextEncoder().encode(chunk));
+      } else if (mode === "body disconnect") controller.error(new Error("Synthetic disconnect"));
+      else controller.close();
+    },
+  });
+  const request = vi.fn().mockResolvedValue(new Response(body, { headers: { "content-type": "text/event-stream" } }));
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
+  const saved = (await getMeeting(meeting.id))!;
+  expect(saved.jobs[0].state).toBe("outcome_unknown");
+  const recovery = pendingAgentReceipt(meeting.id);
+  expect(recovery?.wireResponse).toContain(marker);
+  expect(JSON.stringify(recovery)).not.toContain(key);
+  await expect(runAgentMemo(saved, saved.memoAgents![0], key, signal, true)).rejects.toThrow("unsaved");
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
+test("an explicitly confirmed correction can replace a locally unrepresentable saved final", async () => {
+  const { meeting, plan, signal } = await setup();
+  const invalid = final(meeting.segments[0].id);
+  const json = JSON.parse(invalid.content[0].text);
+  json.items[0].due_original = "x".repeat(201);
+  invalid.content[0].text = JSON.stringify(json);
+  const request = vi.fn().mockResolvedValueOnce(agentSse([call()]))
+    .mockResolvedValueOnce(agentSse([invalid]))
+    .mockResolvedValueOnce(agentSse([final(meeting.segments[0].id)]));
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
+  const saved = (await getMeeting(meeting.id))!;
+  expect(request).toHaveBeenCalledTimes(2);
+  const corrected = await runAgentMemo(saved, saved.memoAgents![0], key, signal);
+  expect(request).toHaveBeenCalledTimes(3);
+  expect(corrected.jobs.slice(0, 2)).toEqual(saved.jobs);
+  expect(corrected.memoAgents![0].state).toBe("completed");
+});
+
+test("a credential in a range stays out of provider tool results and cannot authorize its citation", async () => {
+  const setupValue = await setup();
+  const source = { ...setupValue.meeting.segments[0], text: "Echo " + key };
+  const meeting = await saveMeeting({ ...setupValue.meeting, segments: [source] });
+  const plan = planAgentMemo(meeting, selection, "en");
+  let sentOutput = "";
+  const request = vi.fn(async (_url, init) => {
+    const output = JSON.parse(init.body).input.find((part: { type: string }) => part.type === "function_call_output");
+    if (!output) return agentSse([call({ startIndex: 0 })]);
+    sentOutput = output.output;
+    return agentSse([final(source.id)]);
+  });
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, setupValue.signal)).rejects.toThrow("did not read");
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(sentOutput).not.toContain(key);
+  const saved = (await getMeeting(meeting.id))!;
+  expect(saved.memoAgents![0].consulted).toEqual([]);
+  expect(saved.segments[0].text).toBe(source.text);
+});
+
+test.each(["no items", "unfinished item"])("a terminal response containing paid output missing from the SDK record is available for export (%s)", async mode => {
+  const { meeting, plan, signal } = await setup();
+  const output = final(meeting.segments[0].id);
+  const terminal = { type: "response.completed", response: { id: "terminal-only", status: "completed", output: [output] } };
+  const added = { type: "response.output_item.added", output_index: 0, item: { ...output, content: [] } };
+  const prefix = mode === "unfinished item" ? "event: response.output_item.added\ndata: " + JSON.stringify(added) + "\n\n" : "";
+  const request = vi.fn().mockResolvedValue(new Response(
+    prefix + "event: response.completed\ndata: " + JSON.stringify(terminal) + "\n\n",
+    { headers: { "content-type": "text/event-stream" } },
+  ));
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
+  expect(request).toHaveBeenCalledTimes(1);
+  expect(pendingAgentReceipt(meeting.id)?.wireResponse).toContain("Synthetic evidence for human review.");
+  expect((await getMeeting(meeting.id))!.memos).toEqual(meeting.memos);
+});
+
+test.each([6, null])("confirmed continuation upgrades legacy limit %s when recovering a final without another POST", async requestLimit => {
+  const { meeting, plan, signal } = await setup();
+  const request = vi.fn().mockResolvedValueOnce(agentSse([call()]))
+    .mockResolvedValueOnce(agentSse([final(meeting.segments[0].id)]));
+  vi.stubGlobal("fetch", request);
+  const finished = await runAgentMemo(meeting, plan, key, signal);
+  const paused = await saveMeeting({ ...finished, memos: [], memoAgents: [{
+    ...finished.memoAgents![0], state: "paused", memoId: null, requestLimit: requestLimit as 6 | null,
+  }] });
+  const recovered = await runAgentMemo(paused, paused.memoAgents![0], key, signal);
+  expect(recovered.jobs).toEqual(paused.jobs);
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(recovered.memoAgents![0].requestLimit).toBe(100);
+});
+
+test("an expired per-request deadline stops the current attempt and requires billing review", async () => {
+  const { meeting, plan, signal } = await setup();
+  const deadlines: AbortController[] = [];
+  let transportTimedOut = false;
+  vi.spyOn(AbortSignal, "timeout").mockImplementation(delay => {
+    expect(delay).toBe(9 * 60 * 1000);
+    const deadline = new AbortController();
+    deadlines.push(deadline);
+    return deadline.signal;
+  });
+  const request = vi.fn(async (_url, init) => {
+    if (deadlines.length === 1) return agentSse([call()]);
+    deadlines[1].abort(new DOMException("Synthetic deadline", "TimeoutError"));
+    transportTimedOut = init.signal.aborted;
+    init.signal.throwIfAborted();
+    throw new Error("The timeout was not propagated");
+  });
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
+  expect(deadlines).toHaveLength(2);
+  expect(transportTimedOut).toBe(true);
+  expect(deadlines[0].signal.aborted).toBe(false);
+  const saved = (await getMeeting(meeting.id))!;
+  expect(saved.jobs.map(job => job.state)).toEqual(["completed", "outcome_unknown"]);
+  await expect(runAgentMemo(saved, saved.memoAgents![0], key, signal)).rejects.toThrow("previous paid outcome");
+  expect(request).toHaveBeenCalledTimes(2);
+});
+
+test.each(["memo slots", "response reserve"])("durable intent checks the latest %s before sending", async capacity => {
+  const { meeting, plan, signal } = await setup();
+  const save = repository.saveMeeting;
+  let runningCheckpoints = 0;
+  vi.spyOn(repository, "saveMeeting").mockImplementation(async value => {
+    const saved = await save(value);
+    if (saved.memoAgents?.[0].state === "running" && !saved.jobs.length && ++runningCheckpoints === 2) {
+      // A concurrent local save wins after the last tool checkpoint and before request intent.
+      if (capacity === "response reserve") {
+        const text = "x".repeat(20000);
+        const history = Array.from({ length: 1200 }, () => ({
+          ...meeting.segments[0], id: crypto.randomUUID(), text, originalText: text,
+        }));
+        await save({ ...saved, history });
+      } else {
+        const memos = Array.from({ length: 30 }, () => ({
+          id: crypto.randomUUID(), createdAt: saved.createdAt, sourceRevision: saved.revision,
+          model: "synthetic", items: [],
+        }));
+        await save({ ...saved, memos });
+      }
+    }
+    return saved;
+  });
+  const request = vi.fn().mockResolvedValueOnce(agentSse([final(meeting.segments[0].id)]));
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
+  expect(request).not.toHaveBeenCalled();
+  const saved = (await getMeeting(meeting.id))!;
+  expect(capacity === "response reserve" ? saved.history.length : saved.memos.length)
+    .toBe(capacity === "response reserve" ? 1200 : 30);
+  expect(saved.jobs).toHaveLength(0);
+  expect(saved.memoAgents![0].jobIds).toHaveLength(0);
 });

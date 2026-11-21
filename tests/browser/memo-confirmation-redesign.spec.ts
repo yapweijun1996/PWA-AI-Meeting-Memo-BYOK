@@ -127,3 +127,29 @@ for (const action of ["Review transcript", "Review fields"] as const) {
     else await expect(pendingOnly).not.toBeChecked();
   });
 }
+
+test("an open confirmation follows credential availability changed by another tab", async ({ page, context }) => {
+  let providerPosts = 0;
+  context.on("request", request => {
+    if (request.method() === "POST" && request.url().startsWith("https:")) providerPosts++;
+  });
+  await prepare(page, "en", false);
+  const dialog = page.getByRole("dialog", { name: "Generate new meeting notes" });
+  await dialog.getByRole("checkbox", { name: /I understand the selected data/ }).check();
+  const generate = dialog.getByRole("button", { name: "Generate new notes", exact: true });
+  await expect(generate).toBeDisabled();
+  const settings = await context.newPage();
+  await settings.goto("./#/settings");
+  const field = settings.getByLabel("OpenAI API key", { exact: true });
+  async function saveFixture(value: string) {
+    await field.fill(value);
+    await settings.getByRole("button", { name: "Save settings", exact: true }).click();
+    await expect(settings.getByRole("button", { name: "Saved on this device", exact: true })).toBeVisible();
+  }
+  await saveFixture("synthetic-confirmation-only");
+  await expect(generate).toBeEnabled();
+  await saveFixture("");
+  await expect(generate).toBeDisabled();
+  await expect(dialog).toContainText("Add your key in Settings first");
+  expect(providerPosts).toBe(0);
+});

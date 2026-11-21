@@ -1,11 +1,6 @@
 import { useSyncExternalStore } from "react";
-import { getUiLanguage } from "./providers/credentials";
-
-function subscribe(listener: () => void) {
-  window.addEventListener("memo-keys-changed", listener);
-  return () => window.removeEventListener("memo-keys-changed", listener);
-}
+import { getUiLanguage, subscribeSettingsChanges } from "./providers/credentials";
 
 export function useUiLanguage() {
-  return useSyncExternalStore(subscribe, getUiLanguage, () => "en");
+  return useSyncExternalStore(subscribeSettingsChanges, getUiLanguage, () => "en" as const);
 }

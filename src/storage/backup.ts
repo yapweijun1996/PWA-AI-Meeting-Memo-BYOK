@@ -1,6 +1,6 @@
 import { zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
 import { z } from "zod";
-import { validateMeeting, MAX_JOBS, MAX_MEETING_JSON_BYTES, SegmentSchema, SpeakerSchema, type Meeting, id } from "../domain/model";
+import { agentContextOrderWarning, validateMeeting, MAX_JOBS, MAX_MEETING_JSON_BYTES, SegmentSchema, SpeakerSchema, type Meeting, id } from "../domain/model";
 import { getAudio, prepareRestoredChunkSpeech } from "./repository";
 import { getChunkSpeech } from "./chunk-speech-store";
 import { contentIdentity, getLongAudioManifest, verifyManifestIdentity } from "./long-audio-store";
@@ -117,7 +117,7 @@ export async function backupMeeting(m: Meeting): Promise<Blob> {
 }
 export async function readBackup(
   file: File,
-): Promise<{ meeting: Meeting; audio?: Blob; avatars?: Record<string, string> }> {
+): Promise<{ meeting: Meeting; audio?: Blob; avatars?: Record<string, string>; warning?: string }> {
   if (file.size > MAX_BACKUP)
     throw new Error("Backup exceeds the 120 MB import limit.");
   let m: Meeting, audio: Blob | undefined, avatars: Record<string, string> | undefined;
@@ -180,7 +180,8 @@ export async function readBackup(
     ),
   };
   if (chunkSpeech) prepareRestoredChunkSpeech(meeting, chunkSpeech);
-  return { meeting, audio, avatars };
+  const warning = meeting.memoAgents?.map(agentContextOrderWarning).find(Boolean);
+  return { meeting, audio, avatars, ...(warning && { warning }) };
 }
 export const hex = (bytes: ArrayBuffer) =>
   [...new Uint8Array(bytes)]

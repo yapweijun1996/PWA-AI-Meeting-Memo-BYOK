@@ -1,113 +1,10 @@
+import { confirm, key, memo, readPiMeeting as backup, setup, stream, tool } from "./helpers/memo-pi";
 import {changeTopbarLanguage} from "./helpers/language";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { createMeeting, segment } from "../../src/domain/model";
 
 test.use({ serviceWorkers: "block", viewport: { width: 390, height: 844 } });
-const key = "sk-synthetic-browser-agent-key";
-const tool = (id = "call-read") => ({
-  type: "function_call",
-  id: `fc-${id}`,
-  call_id: id,
-  name: "read_transcript_range",
-  arguments: JSON.stringify({ startIndex: 0, count: 2 }),
-  status: "completed",
-});
-const memo = (source: string) => ({
-  type: "message",
-  id: "message-final",
-  role: "assistant",
-  status: "completed",
-  content: [
-    {
-      type: "output_text",
-      text: JSON.stringify({
-        items: [
-          {
-            type: "summary",
-            text: "Synthetic selective review result",
-            owner_speaker_id: null,
-            due_date: null,
-            due_original: null,
-            source_segment_ids: [source],
-          },
-        ],
-      }),
-    },
-  ],
-});
-const sse = (items: Record<string, unknown>[]) => {
-  const event = (type: string, values: object) =>
-    `event: ${type}\ndata: ${JSON.stringify({ type, ...values })}\n\n`;
-  return (
-    event("response.created", {
-      response: { id: "synthetic-response", status: "in_progress" },
-    }) +
-    items
-      .map((item, index) =>
-        event("response.output_item.done", { output_index: index, item }),
-      )
-      .join("") +
-    event("response.completed", {
-      response: {
-        id: "synthetic-response",
-        status: "completed",
-        output: items,
-        usage: {
-          input_tokens: 100,
-          output_tokens: 20,
-          total_tokens: 120,
-          input_tokens_details: { cached_tokens: 10 },
-        },
-      },
-    })
-  );
-};
-async function stream(route: Route, items: Record<string, unknown>[]) {
-  await route.fulfill({
-    contentType: "text/event-stream",
-    headers: { "Access-Control-Allow-Origin": "*" },
-    body: sse(items),
-  });
-}
-async function setup(page: Page, passageCount = 2, provider: "openai" | "openrouter" = "openai") {
-  await page.context().route("https://**/*", (route) => route.abort());
-  await page.goto("./#/settings");
-  await page.getByLabel(provider === "openai" ? "OpenAI API key" : "OpenRouter API key", { exact: true }).fill(key);
-  await page.getByLabel("Memo provider", { exact: true }).selectOption(provider);
-  await page
-    .getByRole("button", { name: "Save settings", exact: true })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "Saved on this device", exact: true }),
-  ).toBeVisible();
-  await page.goto("./#/");
-  const fixture = {
-    ...createMeeting({ title: "Selective review fixture" }),
-    segments: passageCount === 2 ? [
-      segment("Review the evidence before approving the budget."),
-      segment("Keep unresolved conditions visible."),
-    ] : Array.from({ length: passageCount }, (_, index) => segment(`Source ${index}: retain this independently reviewed condition.`)),
-  };
-  await page
-    .getByRole("button", { name: "Create your first meeting", exact: true })
-    .click();
-  const create = page.getByRole("dialog");
-  await create.getByLabel("Meeting title").fill(fixture.title);
-  await create.getByText("Start from a transcript instead").click();
-  await create
-    .getByLabel("Transcript", { exact: true })
-    .fill(JSON.stringify(fixture));
-  await create
-    .getByRole("button", { name: "Create meeting", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: fixture.title, exact: true }),
-  ).toBeVisible();
-  await page.getByRole("tab", { name: /Meeting notes/ }).click();
-  return fixture;
-}
-
 test("review completes request 100 and preserves every response beyond the old step-index boundary", async ({ page }) => {
   test.setTimeout(120000);
   const fixture = await setup(page, 100);
@@ -126,62 +23,12 @@ test("review completes request 100 and preserves every response beyond the old s
   expect(calls).toBe(100);
   expect(saved.jobs).toHaveLength(100);
   expect(saved.jobs.every(job => job.assistantRecord && job.state === "completed")).toBe(true);
-  expect(saved.memoAgents[0].consulted).toHaveLength(99);
+  expect(saved.memoAgents![0].consulted).toHaveLength(99);
   await page.reload();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
   await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic selective review result");
   expect(calls).toBe(100);
 });
-async function confirm(page: Page) {
-  await page
-    .getByRole("button", { name: /^(Generate meeting notes|Regenerate)$/ })
-    .first()
-    .click();
-  const dialog = page.getByRole("dialog");
-  await expect(
-    dialog.getByRole("checkbox", {
-      name: "Use selective transcript review (Pi, optional)",
-      exact: true,
-    }),
-  ).not.toBeChecked();
-  await dialog
-    .getByRole("checkbox", {
-      name: "Use selective transcript review (Pi, optional)",
-      exact: true,
-    })
-    .check();
-  await expect(dialog).toContainText("total cost is unknown");
-  await dialog.getByRole("checkbox", { name: "I understand the selected data will be sent and may incur API charges.", exact: true }).check();
-  return dialog;
-}
-async function backup(page: Page) {
-  return page.evaluate(async () => {
-    const name = "meeting-memo-byok-v1";
-    return new Promise<{
-      jobs: {
-        assistantRecord?: string;
-        state: string;
-        reportedCostUsd?: number | null;
-      }[];
-      memoAgents: { state: string; consulted: unknown[]; context: unknown[] }[];
-      memos: unknown[];
-    }>((resolve) => {
-      const open = indexedDB.open(name);
-      open.onsuccess = () => {
-        const database = open.result;
-        const request = database
-          .transaction("meetings")
-          .objectStore("meetings")
-          .getAll();
-        request.onsuccess = () => {
-          resolve(request.result[0]);
-          database.close();
-        };
-      };
-    });
-  });
-}
-
 test("a large meeting can complete selective review without losing source evidence", async ({ page }) => {
   test.setTimeout(120000);
   await page.context().route("https://**/*", route => route.abort());
@@ -284,7 +131,7 @@ test("opt-in review uses real Pi tools under CSP, preserves receipts and does no
       (job) => job.assistantRecord && job.reportedCostUsd === null,
     ),
   ).toBe(true);
-  expect(saved.memoAgents[0].consulted).toHaveLength(2);
+  expect(saved.memoAgents![0].consulted).toHaveLength(2);
   expect(JSON.stringify(saved)).not.toContain(key);
   await page.reload();
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
@@ -648,7 +495,7 @@ for (const width of [390, 1440]) {
     await dialog.getByRole("button", { name: "Generate new notes", exact: true }).click();
     await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic selective review result");
     expect(calls).toBe(2);
-    expect((await backup(page)).memoAgents[0]).toMatchObject({ state: "completed", route: { version: 1, profile: "openrouter-luna-v1", reasoning: "medium", maxOutputTokens: 16384 } });
+    expect((await backup(page)).memoAgents![0]).toMatchObject({ state: "completed", route: { version: 1, profile: "openrouter-luna-v1", reasoning: "medium", maxOutputTokens: 16384 } });
     await page.reload();
     await page.getByRole("tab", { name: /Meeting notes/ }).click();
     await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic selective review result");
@@ -703,4 +550,43 @@ test("an exhausted Pi review blocks generating request 101 after reload while or
   await expect(dialog.getByRole("button", { name: "Generate new notes", exact: true })).toBeEnabled();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   expect(calls).toBe(100);
+});
+
+test("a response retained after leaving a meeting can be recovered from the library", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await rejectFirstResponseSave(page);
+  await setup(page);
+  const meetingUrl = page.url();
+  let held: Route | undefined;
+  let calls = 0;
+  await page.route("https://api.openai.com/v1/responses", route => {
+    calls++;
+    held = route;
+  });
+  const dialog = await confirm(page);
+  await dialog.getByRole("button", { name: "Generate new notes", exact: true }).click();
+  await expect.poll(() => calls).toBe(1);
+  await page.locator("a.back-link").click();
+  await expect(page.getByRole("heading", { name: "Your meetings." })).toBeVisible();
+  await stream(held!, [tool()]);
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("synthetic-agent-quota-fired"))).toBe("true");
+
+  const returnToReceipt = page.getByRole("link", { name: "Unsaved review response", exact: true });
+  await expect(returnToReceipt).toBeVisible();
+  // Signal an available refresh without installing or activating a worker in the fixture.
+  await page.evaluate(() => {
+    navigator.serviceWorker.dispatchEvent(new Event("controllerchange"));
+    navigator.serviceWorker.dispatchEvent(new Event("controllerchange"));
+  });
+  await page.getByRole("button", { name: "Open update confirmation", exact: true }).click();
+  await expect(page.getByText("Save or export the unsaved review response before updating.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Confirm update", exact: true })).toHaveCount(0);
+  await returnToReceipt.click();
+  const recovery = page.getByRole("alert", { name: "Unsaved review response" });
+  await expect(recovery).toBeVisible();
+  await expect(page).toHaveURL(meetingUrl);
+  await recovery.getByRole("button", { name: "Retry local save only" }).click();
+  await expect(recovery).toHaveCount(0);
+  expect((await backup(page)).jobs[0].state).toBe("completed");
+  expect(calls).toBe(1);
 });

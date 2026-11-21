@@ -7,6 +7,7 @@ import { ReferenceVideoSchema, type ReferenceVideo } from "./reference-video";
 // A synthesis can cite up to five extraction facts, each with up to 100 sources.
 export const MAX_MEMO_ITEM_SOURCES = 500;
 export const MAX_JOBS = 400;
+export const MAX_MEMO_DUE_QUOTE_CHARS = 200;
 export const id = () => crypto.randomUUID();
 export const localDate = (now = new Date()) =>
   `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -57,7 +58,7 @@ export const MemoItemSchema = z
     factStatus: z.enum(["proposed","confirmed","pending"]).optional(),
     ownerId: transcriptId.nullable(),
     dueDate: z.string().max(80).nullable(),
-    dueOriginal: z.string().max(200).nullable(),
+    dueOriginal: z.string().max(MAX_MEMO_DUE_QUOTE_CHARS).nullable(),
     sources: z
       .array(
         z.object({ id: transcriptId, revision: z.number().int().positive() }).strict(),
@@ -157,6 +158,7 @@ export const JobSchema = z
     outputLanguage: z.enum(MEMO_OUTPUT_LANGUAGES).optional(),
     pipelineId: key.optional(),
     agentId: key.optional(),
+    memoResponse: z.string().optional(),
     assistantRecord: z.string().max(MEMO_AGENT_RECORD_BYTES).optional(),
     stepIndex: z.number().int().min(0).max(MAX_JOBS - 1).optional(),
     contextual: z.object({
@@ -357,6 +359,19 @@ export function memoSnapshotSegments(m: Meeting, snapshot: z.infer<typeof Pipeli
     if (!segment) throw new Error("Pipeline sources do not match meeting evidence.");
     return segment;
   });
+}
+
+/** Out-of-order history remains restorable for inspection, but cannot authorize replay. */
+export function agentContextOrderWarning(plan: MemoAgentPlan): string | undefined {
+  const steps = new Map(plan.jobIds.map((jobId, index) => [jobId, index]));
+  let previous = -1;
+  for (const item of plan.context) {
+    if (item.kind !== "assistant") continue;
+    const step = steps.get(item.jobId);
+    if (step === undefined || step <= previous)
+      return "The saved assistant history conflicts with the recorded provider attempt order. Its responses can still be exported.";
+    previous = step;
+  }
 }
 
 export function validateMeeting(value: unknown): Meeting {

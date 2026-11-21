@@ -13,6 +13,11 @@ const changed = () =>
   window.dispatchEvent(new Event("memo-agent-recovery-changed"));
 export const pendingAgentReceipt = (meetingId: string) =>
   pending.get(meetingId);
+export const pendingAgentMeetingId = () => pending.keys().next().value;
+export function subscribeAgentRecovery(listener: () => void) {
+  window.addEventListener("memo-agent-recovery-changed", listener);
+  return () => window.removeEventListener("memo-agent-recovery-changed", listener);
+}
 export const hasPendingAgentReceipt = () => pending.size > 0;
 export function retainAgentReceipt(receipt: PendingAgentReceipt) {
   pending.set(receipt.meetingId, structuredClone(receipt));

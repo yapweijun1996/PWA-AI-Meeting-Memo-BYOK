@@ -43,6 +43,9 @@ export function searchAgentTranscript(
   let index = startIndex,
     characters = 0;
   const needle = fold(query);
+  // Later nonmatches can grow both counters, and the terminal null uses four bytes.
+  const endIndex = Math.min(sources.length, startIndex + SEARCH_SEGMENTS);
+  const largestCursor = endIndex === sources.length && endIndex < 1000 ? null : endIndex;
   while (
     index < sources.length &&
     index - startIndex < SEARCH_SEGMENTS &&
@@ -64,8 +67,8 @@ export function searchAgentTranscript(
       if (
         bytes({
           matches: [...matches, candidate],
-          nextIndex: index + 1,
-          scanned: index + 1 - startIndex,
+          nextIndex: largestCursor,
+          scanned: endIndex - startIndex,
         }) > MEMO_AGENT_TOOL_BYTES
       )
         break;

@@ -34,7 +34,7 @@ export function agentModel(
     ...(profile.provider === "openrouter"
       ? {
           compat: {
-            supportsStore: false,
+            supportsStore: true,
             supportsDeveloperRole: true,
             supportsReasoningEffort: true,
             supportsUsageInStreaming: true,
@@ -121,7 +121,7 @@ export function assertAgentTransport(
       ? body.store === false &&
         body.reasoning?.effort === route.reasoning &&
         body.max_output_tokens === route.maxOutputTokens
-      : body.store !== true &&
+      : body.store === false &&
         body.reasoning?.effort === route.reasoning &&
         body.max_tokens === route.maxOutputTokens &&
         body.provider?.allow_fallbacks === false &&

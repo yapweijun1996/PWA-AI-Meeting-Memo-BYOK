@@ -241,3 +241,11 @@ test("request policy accepts only the current ceiling and explicit legacy values
     expect(() => validateMeeting({ ...meeting, memoAgents: [{ ...meeting.memoAgents![0], requestLimit }] })).toThrow();
   }
 });
+
+test("OpenRouter usage is recorded only on a finish chunk or a trailing usage summary", () => {
+  const usage = { prompt_tokens: 4, completion_tokens: 6, total_tokens: 10 };
+  const chunk = (finish_reason: string | null) => ({ choices: [{ index: 0, finish_reason }], usage });
+  expect(readAgentReportedUsage(chunk(null), "openrouter")).toBeUndefined();
+  expect(readAgentReportedUsage(chunk("stop"), "openrouter")?.totalTokens).toBe(10);
+  expect(readAgentReportedUsage({ choices: [], usage }, "openrouter")?.totalTokens).toBe(10);
+});

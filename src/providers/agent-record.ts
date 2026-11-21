@@ -162,7 +162,7 @@ export function readAgentReportedUsage(
   provider: "openai" | "openrouter" = "openai",
 ): Job["usage"] | undefined {
   if (provider === "openrouter") {
-    const parsed = z.object({ usage: z.object({
+    const parsed = z.object({ choices: z.array(z.object({ finish_reason: z.string().min(1) })), usage: z.object({
       prompt_tokens: count, completion_tokens: count, total_tokens: count.optional(),
       prompt_tokens_details: z.object({ cached_tokens: count.optional() }).optional(),
     }) }).safeParse(event);

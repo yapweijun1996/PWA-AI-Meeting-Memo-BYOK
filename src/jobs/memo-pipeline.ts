@@ -1,6 +1,6 @@
 import { clientDraft, type MemoTemplate } from "../domain/memo-templates";
 import { id, type Meeting, type Job, type MemoItem } from "../domain/model";
-import { getMeeting, saveMeeting } from "../storage/repository";
+import { getMeeting, saveMemoResponse, saveMeeting } from "../storage/repository";
 import { generateMemo, ProviderError } from "../providers/api";
 import { getKey, type Selection } from "../providers/credentials";
 import {
@@ -63,6 +63,7 @@ export async function runMemoPipeline(
       );
     let p = structuredClone(proposed);
     const existing = current.memoPipelines?.find((v) => v.id === p.id);
+    if (existing?.state === "completed") return current;
     if (existing) p = structuredClone(existing);
     else
       current = await saveMeeting({
@@ -144,6 +145,10 @@ export async function runMemoPipeline(
             : extractionInstructions(p),
           p.outputLanguage ?? "meeting",
           p.template,
+          body => {
+            job.memoResponse = body;
+            return saveMemoResponse(m.id, job.id, body);
+          },
         );
         if (prepared) {
           p.memoId = id();
@@ -157,6 +162,7 @@ export async function runMemoPipeline(
               j.id === job.id
                 ? {
                     ...j,
+                    memoResponse: job.memoResponse,
                     state: "completed",
                     billing:
                       cost === null ? "possibly_charged" : "provider_reported",
@@ -212,6 +218,7 @@ export async function runMemoPipeline(
               j.id === job.id
                 ? {
                     ...j,
+                    memoResponse: job.memoResponse,
                     state: uncertain ? "outcome_unknown" : "failed",
                     billing:
                       cost === null ? "possibly_charged" : "provider_reported",

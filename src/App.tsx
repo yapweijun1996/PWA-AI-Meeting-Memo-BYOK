@@ -5,7 +5,7 @@ import { Masonry } from "./components/Masonry";
 import { Icon } from "./components/Icon";
 import { translateUi } from "./i18n";
 import { isMeetingCompleted, doesMeetingNeedReview, getMeetingWorkflow } from "./domain/workflow";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ArrowUpRight,
   ArrowUp,
@@ -47,7 +47,7 @@ import { NewMeeting } from "./features/NewMeeting";
 import { MeetingWorkspace } from "./features/MeetingWorkspace";
 import { Settings } from "./features/Settings";
 import { isProcessing } from "./jobs/runner";
-import {hasPendingAgentReceipt} from "./jobs/agent-recovery";
+import { hasPendingAgentReceipt, pendingAgentMeetingId, subscribeAgentRecovery } from "./jobs/agent-recovery";
 import {
   getSettingsStorageError,
   saveUiLanguagePreference,
@@ -72,6 +72,7 @@ export default function App() {
     [meetings, setMeetings] = useState<Meeting[]>([]),
     [current, setCurrent] = useState<Meeting>(),
     [loading, setLoading] = useState(true);
+  const recoveryMeetingId = useSyncExternalStore(subscribeAgentRecovery, pendingAgentMeetingId, () => undefined);
   const currentRoute = useRef(route);
   currentRoute.current = route;
   const meetingRouteId = route.match(/^\/meetings\/([^/]+)/)?.[1];
@@ -113,12 +114,14 @@ export default function App() {
   }, []);
   useEffect(() => {
     const fn = () => {
-      if (hasPendingAgentReceipt() || document.querySelector('[data-unsaved-edit="true"]')) {
+      const nextRoute = location.hash.slice(1) || "/";
+      const pendingId = pendingAgentMeetingId();
+      if ((pendingId && nextRoute !== `/meetings/${pendingId}`) || document.querySelector('[data-unsaved-edit="true"]')) {
         history.pushState(null, "", `${location.pathname}${location.search}#${currentRoute.current}`);
         setError(uiLanguage === "zh-CN" ? "离开会议前请保存或处理未保存的笔记。" : "Save or resolve your unsaved note before leaving this meeting.");
         return;
       }
-      setRoute(location.hash.slice(1) || "/");
+      setRoute(nextRoute);
       setMobileNav(false);
     };
     addEventListener("hashchange", fn);
@@ -219,6 +222,7 @@ export default function App() {
         catch { setError(t("Meeting restored, but some profile images could not be restored.", "\u4f1a\u8bae\u5df2\u6062\u590d\uff0c\u4f46\u90e8\u5206\u5934\u50cf\u672a\u80fd\u6062\u590d\u3002")); }
       }
       await created(restored);
+      if (result.warning) reportError(result.warning);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not restore this file.");
     }
@@ -451,6 +455,13 @@ export default function App() {
               >
                 <Icon glyph={X} size="status" />
               </Button>
+            </div>
+          )}
+          {recoveryMeetingId && meetingRouteId !== recoveryMeetingId && (
+            <div className="notice sand" role="alert">
+              <a href={`#/meetings/${recoveryMeetingId}`}>
+                {t("Unsaved review response", "\u5c1a\u672a\u4fdd\u5b58\u7684\u590d\u6838\u56de\u5e94")}
+              </a>
             </div>
           )}
           <PwaStatus />

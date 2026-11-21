@@ -1,10 +1,12 @@
 import { blueprints, orderIncidentEvents, templateInstruction, type MemoTemplate } from "../domain/memo-templates";
 import { memoLanguageInstruction, type MemoOutputLanguage } from "../domain/memo-language";
 import { z } from "zod";
+import { redactAgentSecret } from "../domain/memo-agent-contract";
 import {
   id,
   segment,
   MAX_MEMO_ITEM_SOURCES,
+  MAX_MEMO_DUE_QUOTE_CHARS,
   type Meeting,
   type Job,
   type MemoItem,
@@ -97,6 +99,7 @@ async function post(
   body: BodyInit,
   headers: Record<string, string>,
   signal: AbortSignal,
+  onResponseText?: (body: string) => Promise<string>,
 ): Promise<unknown> {
   let response: Response;
   try {
@@ -137,15 +140,14 @@ async function post(
       true,
     );
   }
-  try {
-    return await response.json();
-  } catch {
-    throw new ProviderError(
-      "The response was incomplete or unreadable. Processing may have been charged.",
-      true,
-      true,
-    );
-  }
+  const unreadable = () => new ProviderError(
+    "The response was incomplete or unreadable. Processing may have been charged.", true, true,
+  );
+  if (!onResponseText) return response.json().catch(() => { throw unreadable(); });
+  const bodyText = await response.text().catch(() => { throw unreadable(); });
+  const received = await onResponseText(bodyText);
+  try { return JSON.parse(received); }
+  catch { throw unreadable(); }
 }
 const TimedSpeech = z.object({
   text: z.string().optional(),
@@ -577,6 +579,7 @@ export async function generateMemo(
   extraInstructions = "",
   outputLanguage: MemoOutputLanguage = getMemoOutputLanguage(),
   template?: MemoTemplate,
+  onResponse?: (body: string) => Promise<void>,
 ) {
   if (!key.trim())
     throw new ProviderError(
@@ -623,6 +626,11 @@ export async function generateMemo(
     }),
     { "Content-Type": "application/json" },
     signal,
+    async raw => {
+      const sanitized = redactAgentSecret(raw, key.trim());
+      await onResponse?.(sanitized);
+      return sanitized;
+    },
   );
   const account = accounting(value, selection.provider);
   onUsage?.(account.usage, account.requestId, account.cost);
@@ -655,7 +663,7 @@ export async function generateMemo(
       true,
     );
   try {
-    return normalizeMemo(
+    const items = normalizeMemo(
       JSON.parse(
         content
           .filter((c) => c.type === "output_text")
@@ -665,6 +673,9 @@ export async function generateMemo(
       m,
       memoInput.compact ? memoInput.aliases : undefined, template, outputLanguage,
     );
+    // A clipped quote can reverse a deadline's meaning. The original is in the job receipt.
+    return items.map(item => item.dueOriginal && item.dueOriginal.length > MAX_MEMO_DUE_QUOTE_CHARS
+      ? { ...item, dueOriginal: null } : item);
   } catch (e) {
     if (e instanceof ProviderError) throw e;
     throw new ProviderError(

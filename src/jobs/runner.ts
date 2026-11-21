@@ -9,7 +9,7 @@ import type { MemoPipeline } from "../providers/memo-plan";
 import type { Selection } from "../providers/credentials";
 import { MAX_JOBS, id, type Meeting, type Job } from "../domain/model";
 import { replaceTranscript } from "../domain/operations";
-import { getMeeting, saveMeeting, getAudio } from "../storage/repository";
+import { getMeeting, saveMemoResponse, saveMeeting, getAudio } from "../storage/repository";
 import { generateMemo, transcribe, ProviderError } from "../providers/api";
 import {
   getKey,
@@ -163,6 +163,10 @@ export async function runJob(
               "",
               outputLanguage,
               confirmed?.template,
+              body => {
+                job.memoResponse = body;
+                return saveMemoResponse(m.id, job.id, body);
+              },
             );
       let latest = await getMeeting(m.id);
       if (!latest) throw new Error("The meeting was removed while processing.");
@@ -215,6 +219,7 @@ export async function runJob(
         j.id === job.id
           ? {
               ...j,
+              ...(job.memoResponse !== undefined && { memoResponse: job.memoResponse }),
               state: "completed",
               billing:
                 reportedCostUsd === null
@@ -248,6 +253,7 @@ export async function runJob(
             j.id === job.id
               ? {
                   ...j,
+                  ...(job.memoResponse !== undefined && { memoResponse: job.memoResponse }),
                   usage: reportedUsage,
                   reportedCostUsd,
                   requestId: memoRequestId,

@@ -77,6 +77,14 @@ export function prepareRestoredChunkSpeech(m: Meeting, checkpoint: RestoredChunk
   pendingChunkSpeech.set(m, { ...checkpoint, meetingId: m.id, chunkCount });
 }
 
+/** Preserve a received standard memo on its existing job before parsing or validating it. */
+export async function saveMemoResponse(meetingId: string, jobId: string, body: string) {
+  const latest = await getMeeting(meetingId);
+  if (!latest || !latest.jobs.some(job => job.id === jobId))
+    throw new Error("The meeting no longer contains this memo request.");
+  await saveMeeting({ ...latest, jobs: latest.jobs.map(job => job.id === jobId ? { ...job, memoResponse: body } : job) });
+}
+
 export function saveMeeting(m: Meeting, audio?: Blob | null): Promise<Meeting> {
   return trackMeetingWrite(m.id, writeMeeting(m, audio).catch(error => {
     failedMeetings.add(m.id);

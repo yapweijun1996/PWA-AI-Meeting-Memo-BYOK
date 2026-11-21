@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { setup } from "./helpers/memo-pi";
 import { test, expect } from "@playwright/test";
 import { createMeeting, segment } from "../../src/domain/model";
 
@@ -243,3 +245,29 @@ for (const {failOnce, wordLevel} of [{failOnce: false, wordLevel: true}, {failOn
       fixture.segments[0].text,
     );
   });
+
+test("standard notes export the complete paid date quote from history after reload", async ({ page }) => {
+  await setup(page);
+  const quote = "after both teams approve ".repeat(9) + "in writing";
+  let posts = 0;
+  await page.route("https://api.openai.com/v1/responses", async route => {
+    posts++;
+    const source = JSON.parse(route.request().postDataJSON().input).segments[0].id;
+    const item = { type: "action", text: "Request approval.", owner_speaker_id: null,
+      due_date: null, due_original: quote, source_segment_ids: [source] };
+    await route.fulfill({ json: { status: "completed",
+      output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ items: [item] }) }] }] } });
+  });
+  await page.getByRole("button", { name: "Generate meeting notes", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("checkbox", { name: /I understand the selected data/ }).check();
+  await dialog.getByRole("button", { name: "Generate new notes", exact: true }).click();
+  await expect(page.locator(".memo-reading-text")).toContainText("Request approval.");
+  await page.reload();
+  await page.locator("summary").filter({ hasText: "Processing history" }).click();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export recorded response", exact: true }).click();
+  const body = JSON.parse(await readFile((await (await download).path())!, "utf8"));
+  expect(JSON.parse(body.output[0].content[0].text).items[0].due_original).toBe(quote);
+  expect(posts).toBe(1);
+});

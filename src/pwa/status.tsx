@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { version as appVersion } from "../../package.json";
 import { AlertTriangle, Check, RefreshCw, WifiOff, X } from "lucide-react";
+import { hasPendingAgentReceipt } from "../jobs/agent-recovery";
 import { isProcessing } from "../jobs/runner";
 import { flushWrites } from "../storage/repository";
 import { avatarWritesPending, flushAvatarWrites } from "../storage/speaker-avatars";
@@ -120,6 +121,7 @@ export function PwaStatus() {
   }, [confirmation]);
   function blocker(): string {
     if (document.querySelector("dialog[open]")) return "Save or close the open editor before updating.";
+    if (hasPendingAgentReceipt()) return "Save or export the unsaved review response before updating.";
     if (isSettingsDirty()) return "Save your settings before updating.";
     if (isProcessing()) return "Finish the active provider request before updating.";
     if (avatarWritesPending()) return "Wait for the profile image to finish saving before updating.";
@@ -174,6 +176,13 @@ export function PwaStatus() {
       setError("Update did not activate. Try again when connected.");
       return;
     }
+    // Local saves and the registration lookup can yield while a receipt arrives.
+    const lateBlocker = blocker();
+    if (lateBlocker) {
+      setUpdating(false);
+      setError(lateBlocker);
+      return;
+    }
     if (!registration?.waiting && !registration?.installing && refreshReady) {
       location.reload();
       return;
@@ -192,6 +201,13 @@ export function PwaStatus() {
     };
     function activateLatest() {
       if (!registration) return;
+      if (hasPendingAgentReceipt()) {
+        clearTimeout(timer);
+        cleanup();
+        setUpdating(false);
+        setError(blocker());
+        return;
+      }
       watch(registration.installing);
       const worker = registration.waiting;
       if (!worker || attempted.has(worker)) return;
@@ -212,6 +228,11 @@ export function PwaStatus() {
     function activated() {
       clearTimeout(timer);
       cleanup();
+      if (hasPendingAgentReceipt()) {
+        setUpdating(false);
+        setError(blocker());
+        return;
+      }
       location.reload();
     }
     navigator.serviceWorker.addEventListener("controllerchange", activated, { once: true });

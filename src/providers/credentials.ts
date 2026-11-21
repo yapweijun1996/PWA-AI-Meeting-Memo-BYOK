@@ -42,6 +42,10 @@ channel?.addEventListener("message", () => {
   });
 });
 export const getSettingsStorageError = () => storageError;
+export function subscribeSettingsChanges(listener: () => void) {
+  window.addEventListener("memo-keys-changed", listener);
+  return () => window.removeEventListener("memo-keys-changed", listener);
+}
 export const getSettingsRevision = () => settings.revision;
 export const defaultModel = (provider: Provider, stage: Stage) =>
   defaults[provider][stage];

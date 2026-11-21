@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { expect, test, vi, afterEach } from "vitest";
+import { expect, test, vi, afterEach, onTestFinished } from "vitest";
 import { createMeeting, segment, validateMeeting } from "../src/domain/model";
 import { reviewSegments } from "../src/domain/operations";
 import {
@@ -15,6 +15,7 @@ import {
   pipelineActive,
   cancelPipeline,
 } from "../src/jobs/memo-pipeline";
+import { runJob } from "../src/jobs/runner";
 import { saveMeeting, getMeeting } from "../src/storage/repository";
 import { summarizeMeetingAccounting } from "../src/domain/accounting";
 import { readBackup } from "../src/storage/backup";
@@ -32,7 +33,7 @@ function longMeeting() {
   );
   return m;
 }
-function response(body: string) {
+function response(body: string, dueOriginal: string | null = null) {
   const input = JSON.parse(JSON.parse(body).input);
   const source = input.facts
     ? input.facts[0].items[0].id
@@ -55,7 +56,7 @@ function response(body: string) {
                     text: "A candidate for review.",
                     owner_speaker_id: null,
                     due_date: null,
-                    due_original: null,
+                    due_original: dueOriginal,
                     source_segment_ids: [source],
                   },
                 ],
@@ -450,4 +451,80 @@ test("rejects text changes in a legacy backup snapshot at the same revision", as
   expect(() => validateMeeting(m)).toThrow("Pipeline sources do not match meeting evidence.");
   await expect(readBackup(new File([JSON.stringify(m)], "invalid-legacy-plan.json")))
     .rejects.toThrow("Pipeline sources do not match meeting evidence.");
+});
+
+test("a stale confirmation cannot submit synthesis again after another caller completed its plan", async () => {
+  vi.stubGlobal("window", new EventTarget());
+  vi.stubGlobal("navigator", {});
+  const request = vi.fn(async (_url: unknown, init: { body: string }) => response(init.body));
+  vi.stubGlobal("fetch", request);
+  const meeting = await saveMeeting(longMeeting());
+  const proposed = planMemo(meeting, selection.provider, selection.model)!;
+  const completed = await runMemoPipeline(meeting, selection, proposed);
+  const recovered = await runMemoPipeline(completed, selection, proposed);
+  expect(request).toHaveBeenCalledTimes(proposed.chunks.length + 1);
+  expect(recovered).toEqual(completed);
+});
+
+test.each(["single", "pipeline"])("standard %s memo retains the full paid date quote beyond the editable limit", async mode => {
+  vi.stubGlobal("window", new EventTarget());
+  vi.stubGlobal("navigator", {});
+  const quote = "on the first working day ".repeat(9) + "after final approval";
+  const meeting = longMeeting();
+  if (mode === "single") meeting.segments = meeting.segments.slice(0, 2);
+  const saved = await saveMeeting(meeting);
+  const plan = planMemo(saved, selection.provider, selection.model);
+  const request = vi.fn(async (_url: unknown, init: { body: string }) => response(init.body, quote));
+  vi.stubGlobal("fetch", request);
+  const writes = vi.spyOn(IDBObjectStore.prototype, "put");
+  onTestFinished(() => writes.mockRestore());
+  const generated = await runJob(saved, "memo", { selection, plan });
+  expect(request).toHaveBeenCalledTimes(plan ? plan.chunks.length + 1 : 1);
+  const restored = await readBackup(new File([JSON.stringify(generated)], "date-quote.json"));
+  const [item] = restored.meeting.memos[0].items;
+  expect(item.text).toBe("A candidate for review.");
+  expect(item.sources.length).toBeGreaterThan(0);
+  expect(item.dueOriginal).toBeNull();
+  for (const job of restored.meeting.jobs) {
+    expect(job.state).toBe("completed");
+    expect(job.memoResponse).toContain(quote);
+    const received = writes.mock.calls.some(([value]) => value?.jobs?.some(
+      (entry: typeof job) => entry.id === job.id && entry.state === "in_flight" && entry.memoResponse === job.memoResponse,
+    ));
+    expect(received, "the received body must be checkpointed before finalizing the job").toBe(true);
+  }
+});
+
+test("standard memo keeps a paid response with unusable citations without creating a draft", async () => {
+  vi.stubGlobal("window", new EventTarget());
+  vi.stubGlobal("navigator", {});
+  const meeting = createMeeting();
+  meeting.segments = [segment("Synthetic evidence")];
+  const saved = await saveMeeting(meeting);
+  const request = vi.fn(async () => response(JSON.stringify({input: JSON.stringify({segments: [{id: "absent"}]})})));
+  vi.stubGlobal("fetch", request);
+  await expect(runJob(saved, "memo", { selection })).rejects.toThrow("unknown passage");
+  const result = (await getMeeting(saved.id))!;
+  expect(result.memos).toHaveLength(0);
+  expect(result.jobs).toHaveLength(1);
+  expect(JSON.stringify(result.jobs[0])).toContain("A candidate for review.");
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
+test("an unreadable paid standard response retains its redacted text and never resubmits", async () => {
+  vi.stubGlobal("window", new EventTarget());
+  vi.stubGlobal("navigator", {});
+  const meeting = createMeeting();
+  meeting.segments = [segment("Synthetic evidence")];
+  const saved = await saveMeeting(meeting);
+  const request = vi.fn(async () => new Response("incomplete { synthetic-test"));
+  vi.stubGlobal("fetch", request);
+  await expect(runJob(saved, "memo", { selection })).rejects.toThrow("unreadable");
+  const restored = await readBackup(new File([JSON.stringify(await getMeeting(saved.id))], "unreadable.json"));
+  expect(restored.meeting.jobs).toHaveLength(1);
+  expect(restored.meeting.jobs[0]).toMatchObject({
+    state: "outcome_unknown", billing: "possibly_charged", memoResponse: "incomplete { [redacted provider key]",
+  });
+  expect(restored.meeting.memos).toHaveLength(0);
+  expect(request).toHaveBeenCalledTimes(1);
 });
