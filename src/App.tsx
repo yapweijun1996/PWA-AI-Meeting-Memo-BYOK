@@ -468,7 +468,6 @@ export default function App() {
               </Button>
             </div>
           )}
-          {/* Item 3 integration point: mount standard memo page recovery here when its store is available. */}
           {unavailableRecoveryId && (
             <AgentResponseRecovery key={unavailableRecoveryId} meetingId={unavailableRecoveryId} t={t} />
           )}

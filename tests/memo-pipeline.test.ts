@@ -703,7 +703,8 @@ test("local recovery fills in known accounting after an interruption was marked 
   const latest = (await getMeeting(saved.id))!;
   await saveMeeting({ ...latest, jobs: latest.jobs.map(job => ({...job, state: "outcome_unknown"})) });
   const recovered = await recoverAgentReceipt(saved.id);
-  expect(recovered.jobs[0]).toMatchObject({ state: "failed", requestId: "synthetic-response", usage: {inputTokens: 10} });
+  expect(recovered.jobs[0]).toMatchObject({ state: "completed", requestId: "synthetic-response", usage: {inputTokens: 10} });
+  expect(recovered.memos[0].items[0].text).toBe("A candidate for review.");
   expect(recovered.jobs[0].memoResponse).toContain("A candidate for review.");
   expect(request).toHaveBeenCalledTimes(1);
 });

@@ -1,7 +1,9 @@
 import type { Job, Meeting } from "../domain/model";
 import { checkMemoBackupBudget, getMeeting, saveMeeting, saveMemoResponse } from "../storage/repository";
 import { assertAgentStorageBudget } from "../providers/memo-agent-plan";
-import { accounting } from "../providers/api";
+import { applyStandardMemoResult, type StandardMemoContext } from "./standard-memo-result";
+import { buildMemoInput } from "../providers/memo-input";
+import { accounting, parseStandardMemoResponse } from "../providers/api";
 
 export type PendingAgentReceipt = {
   meetingId: string;
@@ -17,7 +19,8 @@ export type PendingStandardReceipt = {
   wireResponse?: never;
 };
 export type PendingMemoReceipt = PendingAgentReceipt | PendingStandardReceipt;
-const pending = new Map<string, PendingMemoReceipt>();
+// Only the live page needs the frozen input. It must never enter the receipt download.
+const pending = new Map<string, { receipt: PendingMemoReceipt; context?: StandardMemoContext }>();
 
 /** Pure export payload for recovery controls, including when the meeting was removed. */
 export function receiptExport(receipt: PendingMemoReceipt) {
@@ -26,15 +29,15 @@ export function receiptExport(receipt: PendingMemoReceipt) {
 const changed = () =>
   window.dispatchEvent(new Event("memo-agent-recovery-changed"));
 export const pendingAgentReceipt = (meetingId: string) =>
-  pending.get(meetingId);
+  pending.get(meetingId)?.receipt;
 export const pendingAgentMeetingId = () => pending.keys().next().value;
 export function subscribeAgentRecovery(listener: () => void) {
   window.addEventListener("memo-agent-recovery-changed", listener);
   return () => window.removeEventListener("memo-agent-recovery-changed", listener);
 }
 export const hasPendingAgentReceipt = () => pending.size > 0;
-export function retainAgentReceipt(receipt: PendingMemoReceipt) {
-  pending.set(receipt.meetingId, structuredClone(receipt));
+export function retainAgentReceipt(receipt: PendingMemoReceipt, context?: StandardMemoContext) {
+  pending.set(receipt.meetingId, { receipt: structuredClone(receipt), context });
   changed();
 }
 export function acknowledgeAgentExport(meetingId: string) {
@@ -49,7 +52,7 @@ export class StandardReceiptSaveError extends Error {
 }
 
 /** Record the body first. If storage fails, publish the page copy before any further I/O. */
-export async function checkpointStandardReceipt(meetingId: string, job: Job, body: string) {
+export async function checkpointStandardReceipt(meetingId: string, job: Job, body: string, context: StandardMemoContext) {
   try {
     await saveMemoResponse(meetingId, job.id, body);
   } catch {
@@ -68,7 +71,7 @@ export async function checkpointStandardReceipt(meetingId: string, job: Job, bod
       }
     } catch { /* A malformed body remains exportable in full. */ }
     const receipt: PendingStandardReceipt = { kind: "standard", meetingId, job: failed };
-    retainAgentReceipt(receipt);
+    retainAgentReceipt(receipt, context);
     try {
       await saveStandardReceipt(receipt, false);
     } catch { /* Even a metadata-only write may fail. Keep the page receipt. */ }
@@ -76,7 +79,7 @@ export async function checkpointStandardReceipt(meetingId: string, job: Job, bod
   }
 }
 
-async function saveStandardReceipt(receipt: PendingStandardReceipt, includeBody: boolean): Promise<Meeting> {
+async function saveStandardReceipt(receipt: PendingStandardReceipt, includeBody: boolean, context?: StandardMemoContext): Promise<Meeting> {
   const latest = await getMeeting(receipt.meetingId);
   const existing = latest?.jobs.find(job => job.id === receipt.job.id);
   if (!latest || !existing)
@@ -102,13 +105,25 @@ async function saveStandardReceipt(receipt: PendingStandardReceipt, includeBody:
   if (updated.memoResponse !== undefined && updated.message === outcome.message)
     updated.message = "Memo response saved locally. Review the recorded response.";
 
-  const value = { ...latest, jobs: latest.jobs.map(job => job.id === existing.id ? updated : job) };
+  let value = { ...latest, jobs: latest.jobs.map(job => job.id === existing.id ? updated : job) };
   // An older receipt cannot rewind a pipeline that another tab has since continued.
   if (existing.pipelineId && unresolved) {
     const lastAttempt = latest.jobs.filter(job => job.pipelineId === existing.pipelineId).at(-1);
     if (lastAttempt?.id === existing.id)
       value.memoPipelines = latest.memoPipelines?.map(plan => plan.id === existing.pipelineId && plan.state === "running"
         ? { ...plan, state: "blocked" } : plan);
+  }
+  if (includeBody && context && updated.state !== "completed") {
+    try {
+      const input = context.prepared ?? buildMemoInput(context.source);
+      const items = parseStandardMemoResponse(JSON.parse(memoResponse), context.source, input, context.template, updated.outputLanguage);
+      value = applyStandardMemoResult(value, updated, context, items, true);
+      updated.state = "completed";
+      updated.message = "Result recovered locally. Review the generated result.";
+    } catch {
+      // Even invalid output or a superseded plan must retain the complete paid receipt.
+      updated.message = "Response saved locally. Its result could not be applied. Review the recorded response.";
+    }
   }
   return saveMeeting(checkMemoBackupBudget(value));
 }
@@ -128,11 +143,12 @@ export async function recoverAgentReceipt(meetingId: string): Promise<Meeting> {
 }
 
 async function saveAgentReceipt(meetingId: string): Promise<Meeting> {
-  const recovery = pending.get(meetingId);
+  const entry = pending.get(meetingId);
+  const recovery = entry?.receipt;
   if (!recovery)
     throw new Error("No unsaved review response remains in this page.");
   if ("kind" in recovery) {
-    const saved = await saveStandardReceipt(recovery, true);
+    const saved = await saveStandardReceipt(recovery, true, entry.context);
     pending.delete(meetingId);
     changed();
     return saved;

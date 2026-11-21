@@ -634,6 +634,12 @@ export async function generateMemo(
   );
   const account = accounting(value, selection.provider);
   onUsage?.(account.usage, account.requestId, account.cost);
+  return parseStandardMemoResponse(value, m, memoInput, template, outputLanguage);
+}
+
+export function parseStandardMemoResponse(
+  value: unknown, m: Meeting, memoInput: MemoInput, template?: MemoTemplate, outputLanguage?: MemoOutputLanguage,
+) {
   const response = z
     .object({
       status: z.string(),

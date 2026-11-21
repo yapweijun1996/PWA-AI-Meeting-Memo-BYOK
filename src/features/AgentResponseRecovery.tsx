@@ -4,6 +4,7 @@ import type { Meeting } from "../domain/model";
 import {
   acknowledgeAgentExport,
   pendingAgentReceipt,
+  receiptExport,
   recoverAgentReceipt,
   subscribeAgentRecovery,
 } from "../jobs/agent-recovery";
@@ -86,11 +87,7 @@ export function AgentResponseRecovery({
           download(
             new Blob(
               [
-                JSON.stringify({
-                  format: "meeting-memo-agent-receipt",
-                  version: 1,
-                  ...pending,
-                }),
+                JSON.stringify(receiptExport(pending)),
               ],
               { type: "application/json" },
             ),

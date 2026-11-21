@@ -1,10 +1,10 @@
-import { clientDraft, type MemoTemplate } from "../domain/memo-templates";
+import { applyStandardMemoResult } from "./standard-memo-result";
+import type { MemoTemplate } from "../domain/memo-templates";
 import { id, type Meeting, type Job, type MemoItem } from "../domain/model";
 import { checkMemoBackupBudget, getMeeting, saveMeeting } from "../storage/repository";
 import { generateMemo, ProviderError } from "../providers/api";
 import { getKey, type Selection } from "../providers/credentials";
 import {
-  captureExtraction,
   extractionInput,
   extractionInstructions,
   pipelineMeeting,
@@ -130,6 +130,7 @@ export async function runMemoPipeline(
         cost: number | null = null;
       const timer = setTimeout(() => controller?.abort(), 9 * 60 * 1000);
       try {
+        const memoContext = { source: leaf, template: p.template, prepared };
         const items = await generateMemo(
           leaf,
           key,
@@ -146,16 +147,13 @@ export async function runMemoPipeline(
             : extractionInstructions(p),
           p.outputLanguage ?? "meeting",
           p.template,
-          body => checkpointStandardReceipt(m.id, job, body),
+          body => checkpointStandardReceipt(m.id, job, body, memoContext),
         );
-        if (prepared) {
-          p.memoId = id();
-          p.state = "completed";
-        } else p.results[index] = captureExtraction(leaf, items);
-        const memoId = p.memoId;
         await persist((value) => {
-          const result = checkpoint({
-            ...value,
+          const result = applyStandardMemoResult(value, job, memoContext, items);
+          p = result.memoPipelines!.find(plan => plan.id === p.id)!;
+          return {
+            ...result,
             jobs: value.jobs.map((j) =>
               j.id === job.id
                 ? {
@@ -171,35 +169,7 @@ export async function runMemoPipeline(
                   }
                 : j,
             ),
-          });
-          if (prepared && memoId) {
-            const known = new Set(
-              [...value.segments, ...value.history].map(
-                (s) => `${s.id}:${s.revision}`,
-              ),
-            );
-            const old = frozen.segments.filter(
-              (s) => !known.has(`${s.id}:${s.revision}`),
-            );
-            return {
-              ...result,
-              history: [...value.history, ...old],
-              memos: [
-                ...value.memos,
-                {
-                  id: memoId,
-                  createdAt: new Date().toISOString(),
-                  sourceRevision: p.sourceRevision,
-                  model: `${p.provider}: ${p.model}`.slice(0, 100),
-                  items,
-                  template: p.template,
-                  externalCopy: clientDraft(p.template, items),
-                  originalItems: structuredClone(items),
-                },
-              ],
-            };
-          }
-          return result;
+          };
         });
       } catch (error) {
         if (error instanceof StandardReceiptSaveError) throw error;

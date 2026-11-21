@@ -1,4 +1,5 @@
-import { clientDraft, type MemoTemplate } from "../domain/memo-templates";
+import { applyStandardMemoResult } from "./standard-memo-result";
+import type { MemoTemplate } from "../domain/memo-templates";
 import type { MemoOutputLanguage } from "../domain/memo-language";
 import {
   runMemoPipeline,
@@ -134,6 +135,7 @@ export async function runJob(
     activeMeetingId = m.id;
     window.dispatchEvent(new Event("memo-processing-changed"));
     const timer = setTimeout(() => controller?.abort(), 9 * 60 * 1000);
+    const memoContext = { source: m, template: confirmed?.template };
     let reportedUsage: Job["usage"] = null;
     let memoRequestId: string | null = null;
     let reportedCostUsd: number | null = null;
@@ -166,7 +168,7 @@ export async function runJob(
               "",
               outputLanguage,
               confirmed?.template,
-              body => checkpointStandardReceipt(m.id, job, body),
+              body => checkpointStandardReceipt(m.id, job, body, memoContext),
             );
       let latest = await getMeeting(m.id);
       if (!latest) throw new Error("The meeting was removed while processing.");
@@ -199,22 +201,7 @@ export async function runJob(
         if (latest.audio && result.duration !== null)
           latest.audio = { ...latest.audio, duration: result.duration };
       } else if (Array.isArray(result))
-        latest = {
-          ...latest,
-          memos: [
-            ...latest.memos,
-            {
-              id: id(),
-              model: `${provider}: ${selection.model}`.slice(0, 100),
-              createdAt: new Date().toISOString(),
-              sourceRevision: m.revision,
-              items: result,
-              template: confirmed?.template,
-              externalCopy: clientDraft(confirmed?.template, result),
-              originalItems: structuredClone(result),
-            },
-          ],
-        };
+        latest = applyStandardMemoResult(latest, job, memoContext, result);
       latest.jobs = latest.jobs.map((j) =>
         j.id === job.id
           ? {
