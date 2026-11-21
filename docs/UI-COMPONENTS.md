@@ -64,3 +64,11 @@ The queue, evidence comparison and identity inspector are one linked workflow, n
 `LanguageMenu` adapts the shared `ChoiceMenu` to the canonical UI-language inventory. It does not store provider settings or clear drafts. `AppearanceSettings` uses the same language inventory for its explicit-save native field, while theme/palette/font preferences retain immediate local saving. Native form selects remain native and have explicit target heights for WebKit. Do not introduce a second language/palette list in another view.
 
 The brand-mark background/text roles also color the runtime favicon. Keep SVG artwork in `public/favicon.svg` and palette values in `theme.css`; the browser-chrome renderer is an adapter, not another icon or color registry. The catalogue imports the actual menu implementation and tests keyboard, focus and busy behavior.
+
+### Released topbar and offline-installation notice
+
+As of `be16b1c` (2026-11-22), `LanguageMenu` uses the shared `ChoiceMenu` with the selected language in the title and in the localized accessible name. The visible value is hidden at widths up to 600 px and from 761 px up. Preserve the existing keyboard and focus contract. The sidebar shares `--topbar-height` with the topbar for brand alignment at the verified 1440, 1024 and 768 px widths. The mobile drawer retains its own brand row.
+
+`ThemeToggle` is a named `IconButton` for switching directly between light and dark. It uses the shared appearance preference and an inset focus outline inside the 44 px target. A denied write applies the change for the current tab and shows a toast. A font-only storage event updates the font while preserving the active theme. Palette selection remains in Appearance Settings.
+
+`DismissibleNotice` wraps the service-worker registration failure in a status region with a localized close name and title, including Malay. Dismissal moves focus to the main heading or next available control, with the main region as fallback. The notice's reminder owner stores only its dismissal timestamp at `meeting-memo-byok:notice:offline-installation:dismissed-at`. It can appear again after seven days if the error still applies. Storage failure uses a page-local dismissal. The reminder applies to this single notice.

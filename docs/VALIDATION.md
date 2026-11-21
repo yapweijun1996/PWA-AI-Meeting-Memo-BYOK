@@ -977,3 +977,74 @@ the exact served build confirmed before and after. The earlier native-probe
 failures remain historical evidence; the final integrated run has no failures.
 Physical-device, recognition-quality and broader roadmap claims remain outside
 this scoped UI acceptance.
+
+## 2026-11-22 live baseline, audit and releases
+
+### Live baseline on `9da7bcf` — 2026-11-21
+
+- **PASS for this transcription run.** OpenRouter `elevenlabs/scribe-v2` processed one owner recording of 80:39 in three parts. It returned 11,865 passages and 14 speaker labels. The automatic voice check used 88 samples. Across 15 per-part labels, the report showed three grouped voices and the label states 2 matched, 3 new, 2 uncertain and 8 contradictory. Eight labels were flagged as possibly containing two people. The owner later merged to nine labels on production and confirmed four names. Speaker-matching accuracy is **NOT_RUN**. [Original session record](LIVE-TEST-FINDINGS-2026-11-21.md)
+- **FAIL for the live Pi completion.** OpenAI `gpt-6-luna` with high reasoning and a 32,768-token output cap stopped after 17 attempts and 704/11,865 passages read. The old banner attributed the stop to a durable receipt save. The original serialized POST, exception and charge at that transition were unavailable. The meeting JSON size and browser quota describe separate limits. [Pi readiness](PI-MEMO-READINESS.md#2026-11-22-released-behavior-and-open-gates)
+- **PASS for offline input-limit reproduction.** The 17- and 22-round tests crossed the 256 KiB serialized request limit, kept prior receipts and showed zero further attempts or POSTs. The fix reports the actual input limit. The live trigger remains unconfirmed. [Regression](../tests/memo-agent.test.ts#L122)
+
+### Audit and independent review
+
+The manager reported approximately 40 defects across the Pi/workspace audit and follow-up. Review counts by scope were 13 completed Pi-focused rounds (R1–R8 for the fix release and R9–R13 for compaction), plus RUI and RUI2 for the UI release. The read-only reviewer was Codex `gpt-6.2-sol` at xhigh. [Defect register](../BUGS.md#2026-11-22-pi-memo-audit-and-release-review)
+
+| Review | Status | Evidence and disposition |
+| --- | --- | --- |
+| R1 on `3e4f71b` | FAIL | Ten offline assertions reproduced seven findings covering escaped credentials, late PWA editor saves, receipt and backup loss, legacy evidence and billing, and orphaned recovery. A separate focused run passed 118 tests across seven files. |
+| R2–R3 | FAIL | Split reflected credentials, independent content redaction, late writes and confirmed operations, legacy billing, near-limit ZIPs, stale recovery selection and deletion guards. Fixes are in the released tree. Inherited Pi ZIP headroom and failed retraction remain open. |
+| R4–R6 | FAIL | Successive probes found new interrupted-body masking and over-redaction cases, and 4 MiB recovery heap or runtime failures. The release removed interrupted-body export, kept a linear full-body matcher at clean EOF and capped the adapter's field tracking. |
+| R7 on `fe03f6a` | FAIL | Persistent write failure left an interrupted metadata-only receipt trapped behind update and unload guards. |
+| R8 on `7bedb94` | PASS | Approved the fix release. Metadata-only export plus explicit acknowledgement released the page without changing the durable attempt or making another POST. |
+| RUI on `f76fbd2`, RUI2 on `be16b1c` | FAIL, then PASS | Follow-up approved after the Malay notice and language names, theme focus ring and font-event fixes. The three documented UI limits stayed within baseline behavior. |
+| R9–R13 on `task/b2-c2` | FAIL | Review found cancellation/restore, request-size and replay edge cases across successive candidates. Each received a branch correction. The local dependency symlink was removed from the committed candidate tree. |
+| R14 | BLOCKED | The review provider's safety filter aborted the run. A review verdict on `cf38e8a` is **NOT_RUN**. |
+
+The review process records **Worse than origin/main? YES/NO** per finding and uses only YES as a release blocker. Six review rounds exercised variants of interrupted-body capture or its removal and receipt fallout, leading to the removal of candidate interrupted-text export. Review and mock results establish behavior only within their checked paths.
+
+### Published artifacts
+
+The supplied Actions results report successful Verify and Publish jobs under Node **22.23.3**, matching the project pin. Each production build ID matched the corresponding CI log ID.
+
+| Release | Status | Main transition | GitHub Actions run | Test files in CI | Live build ID |
+| --- | --- | --- | --- | --- | --- |
+| Pi memo and recovery fixes | PASS | `9da7bcf` → `7bedb94` | [44912511932](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/44912511932) | 72 | `3ed33be58ef5256d` |
+| Topbar and notice follow-up | PASS | `7bedb94` → `be16b1c` | [44946603638](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/44946603638) | 75 | `24a6a6ae6d249583` |
+
+Pages publication checks and local browser checks are separate. The workflow runs full browser, catalogue and PWA steps only for pull requests or the full manual-check mode. [Workflow](../.github/workflows/pages.yml#L30)
+
+### Manager's released-main reruns on `be16b1c`
+
+All local run counts for this checkpoint were reported on host Node **25.5.0**. The project and CI use **22.23.3**. The commands below identify the corresponding repository checks. Exact manager flags were not supplied for every invocation.
+
+| Check | Status | Result |
+| --- | --- | --- |
+| `tsc -b` | PASS | Zero diagnostics |
+| `npm run test:unit` | PASS | 681 passed, 0 failed |
+| `npm run lint` | PASS | Clean |
+| `npm run check:ssot` | PASS | Debt counts unchanged: color 14, font-size 7, radius 20, shadow 3, z-index 5 |
+| `npm run build` and `npm run check:artifact` | PASS | Static build and artifact checks passed |
+| `npm run test:pwa` | PASS | Offline and N-to-N+1 update checks passed in Chromium and WebKit |
+| `npm run test:e2e` | FAIL | 819 passed, 7 failed, 5 skipped |
+
+The manager reproduced the same seven failures on the original `9da7bcf` baseline on this Mac. Causes remain uninvestigated.
+
+| Browser spec | Failed projects |
+| --- | --- |
+| [Memo confirmation and stale evidence](../tests/browser/providers.spec.ts#L129) | WebKit |
+| [Collapsed sidebar controls](../tests/browser/sidebar-confirmation.spec.ts#L69) | WebKit |
+| [Sidebar anchored initiator](../tests/browser/sidebar-confirmation.spec.ts#L133) | WebKit |
+| [Playback palette colors](../tests/browser/speaker-review.spec.ts#L744) | WebKit |
+| [Theme token roles](../tests/browser/theme-token-roles.spec.ts#L4) | WebKit |
+| [Immersive theme matrix at 390 px](../tests/browser/theme-matrix.spec.ts#L71) | Chromium and WebKit |
+
+The separate [reload/zero-width speech case](../tests/browser/providers.spec.ts#L871) has timed out at 45 seconds under full-run load and passed 3/3 in isolation. It is separate from the listed seven persistent failures.
+
+Responsive browser scope covers desktop, WebKit at 390×844 for iPhone Safari, and Chromium at 412×915 for Android Chrome. Physical iPhone and Android (including installed mode), screen readers, actual device quota and suspension, broader live-provider quality/billing, and released-build Pi on the owner's long meeting remain **NOT_RUN**. Publication identity and mocked browser exercise support separate conclusions from functional live acceptance.
+
+### Unreleased verification
+
+- **PASS for the supplied synthetic compaction checks.** `task/b2-c2` at `cf38e8a` passed 710 unit tests and the mocked 12,000-passage, 60-round browser case in Chromium and WebKit. Its full-suite run had no new failures relative to its baseline. An integrated rerun on released main and model quality with compacted context are **NOT_RUN**.
+- **PASS for the original synthetic introduction detector.** The S2 spike passed 17 tests. The unreleased `task/v2-intro-ui` follow-up has a partial panel. Portable rejection metadata still requires a schema change.
+- **PASS for the supplied voice branch unit check.** `task/b3-voice` at `41ab4f0` passed 702 unit tests. It includes the BUG-008 order-independence fix, precision safeguards for BUG-009 and separate reporting of wrong merges. Independent review and measured real-recording accuracy are **NOT_RUN**.

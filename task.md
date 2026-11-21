@@ -471,3 +471,27 @@ Visual direction only; no business logic, storage schema, provider or pricing ch
 ## Screenshot UI batch — 2026-11-17
 
 The sidebar footer, provider confirmation alignment and Chinese labels, four Settings tabs, global error dismiss alignment and Evidence Review layout are implemented and automatically verified. Final local regression: 472 unit tests; 497 browser passes, three existing skips, zero failures; both real-worker PWA lifecycle checks pass. See [the scoped report](docs/UI-FOLLOWUP-2026-11-17.md). This adds no checklist completion: the 146/182 denominator and 36 unchecked acceptance/implementation items remain unchanged. Owner visual acceptance and physical-device/provider/voice/manual-contrast gates remain open.
+
+## 2026-11-22 release and follow-up
+
+This record tracks release evidence and remaining work. The earlier checklist and its historical denominator remain intact. No aggregate percentage is assigned to this set of implementation, validation and follow-up rows.
+
+| Work item | Status | Evidence or dependency |
+| --- | --- | --- |
+| Real baseline transcription | PASS | One 80:39 recording, 11,865 passages, 14 labels, `9da7bcf`. Speaker accuracy is NOT_RUN. |
+| Real baseline Pi completion | FAIL | Stopped at 17 attempts and 704/11,865 passages. The next-request 256 KiB failure was reproduced offline. The original live trigger remains unconfirmed. |
+| Pi memo fixes release | PASS | `7bedb94`, Actions `44912511932`, build `3ed33be58ef5256d`. R8 approved receipt, recovery and update changes. |
+| Topbar and weekly notice release | PASS | `be16b1c`, Actions `44946603638`, build `24a6a6ae6d249583`. RUI2 approved; the palette button is separate. |
+| Released-main local compile, unit, lint, SSOT, build, artifacts and PWA | PASS | 681 unit passes and Chromium/WebKit PWA pass on Node 25.5.0. Project and CI use 22.23.3. |
+| Released-main full browser suite | FAIL | 819 passed, 7 failed, 5 skipped. Same seven failures as the original baseline on this Mac. |
+| Compaction branch verification | PASS | `task/b2-c2` at `cf38e8a`, 710 unit passes and 12,000-passage/60-round mocked browser pass in both engines on host Node 25.5.0. Full suite reported no new failures. |
+| Compaction final review and merge | BLOCKED | R9–R13 findings were addressed on the branch. R14 aborted without a verdict. Obtain a completed independent review, integrate on `be16b1c` or newer main, and verify the integrated diff before publication. |
+| Pi default-on | BLOCKED | Owner wants it with the compaction release and updated readiness text. Pi remains optional and unchecked. Keep explicit BYOK, data and charge confirmation. |
+| Pi on the owner's long meeting with the released build and future compacted context | NOT_RUN | Separate the released-build regression retest from measuring completion and output quality with compaction. |
+| Voice precision branch unit verification | PASS | `task/b3-voice` at `41ab4f0`, 702 unit passes on host Node 25.5.0. BUG-008 fixed on branch; BUG-009 partially addressed. |
+| Voice precision independent review and real-recording evaluation | BLOCKED | Review the branch and use the owner-confirmed production meeting JSON as a local reference outside the repository. Prioritize fewer wrong merges and score missed/unresolved pairs separately. |
+| Cited speaker-name suggestions | BLOCKED | `task/v2-intro-ui` has a partial panel based on the detector spike with 17 synthetic test passes. Portable rejection metadata requires a schema change and compatibility checks. |
+| Topbar palette button acceptance | NOT_RUN | `task/b3-palette` is in progress. Existing palette controls remain in Settings. |
+| Physical phone and screen-reader acceptance | NOT_RUN | Browser responsive scope is desktop, WebKit 390×844 and Chromium 412×915. Device installation, suspension, safe areas and assistive technology need physical/manual evidence. |
+
+See [the validation record](docs/VALIDATION.md#2026-11-22-live-baseline-audit-and-releases) and [production checklist](docs/PRODUCTION-CHECKLIST.md) for release evidence and open gates.
