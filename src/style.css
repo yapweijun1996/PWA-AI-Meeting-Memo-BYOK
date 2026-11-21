@@ -510,13 +510,14 @@ small {
   margin-left: 246px;
 }
 .topbar {
+  --topbar-border-width: 1px;
   position: sticky;
   top: 0;
   z-index: var(--layer-topbar);
   height: var(--topbar-height);
   padding: 0 max(var(--workspace-gutter), calc((100% - var(--workspace-max-width)) / 2 + var(--workspace-gutter)));
   column-gap: 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--topbar-border-width) solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -4359,7 +4360,11 @@ details[open] > summary {
   border: 1px solid var(--border-default);
 }
 @media (min-width: 761px) and (max-width: 1200px) {
-  .topbar { height: auto; min-height: 52px; flex-wrap: wrap; }
+  .topbar { height: auto; min-height: var(--topbar-height); flex-wrap: wrap; }
+  .topbar .breadcrumb {
+    /* Keep the first row aligned with the brand when other controls wrap. */
+    min-height: calc(var(--topbar-height) - var(--topbar-border-width) - env(safe-area-inset-top, 0px));
+  }
 }
 
 .panel-toolbar .toolbar-actions { align-items: center; flex-wrap: wrap; }

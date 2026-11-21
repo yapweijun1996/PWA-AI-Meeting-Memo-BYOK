@@ -66,6 +66,7 @@ for (const mobile of [false, true]) {
       await expect(notice(page, chinese)).toHaveCount(1);
       await close.click();
       await expect(notice(page, chinese)).toHaveCount(0);
+      await expect(page.locator("main h1")).toBeFocused();
       await page.clock.fastForward(week);
       await expect(close).toBeVisible();
     });
@@ -123,11 +124,12 @@ for (const mobile of [false, true]) {
         expect(geometry.height).toBeGreaterThanOrEqual(44);
       }
       await page.setViewportSize(initial);
-      await close.focus();
-      await page.keyboard.press("Shift+Tab");
+      // Enter keyboard modality without relying on the browser's native Tab order.
       await page.keyboard.press("Tab");
+      await close.focus();
       await expect(close).toBeFocused();
       await expect(close).toHaveCSS("outline-style", "solid");
+      await expect(close).toHaveCSS("outline-width", "2px");
       const audit = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag22aa"]).analyze();
       expect(audit.violations.filter(v => v.impact === "serious" || v.impact === "critical")).toEqual([]);
     });

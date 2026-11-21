@@ -74,13 +74,15 @@ for (const [width, height] of [[1440, 900], [390, 844], [412, 915]]) {
     await expectAction(button, switchToLight, "sun");
     await other.close();
     await expectHeaderFits(page);
-    await button.focus();
+    // Enter keyboard modality without relying on the browser's native Tab order.
     await page.keyboard.press("Tab");
-    await page.keyboard.press("Shift+Tab");
+    await button.focus();
     await expect(button).toBeFocused();
     await expect(button).toHaveCSS("outline-style", "solid");
+    await expect(button).toHaveCSS("outline-width", "2px");
     await page.keyboard.press("Enter");
     await expectAction(button, switchToDark, "moon");
+    await expect(button).toBeFocused();
     const audit = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
     expect(audit.violations.filter(({ impact }) => impact === "serious" || impact === "critical")).toEqual([]);
   });
