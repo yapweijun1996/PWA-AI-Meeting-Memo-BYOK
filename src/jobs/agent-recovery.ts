@@ -1,5 +1,6 @@
 import type { Job, Meeting } from "../domain/model";
-import { checkMemoBackupBudget, getMeeting, saveMeeting, saveMemoResponse } from "../storage/repository";
+import { getMeeting, saveMeeting } from "../storage/repository";
+import { checkMemoBackupBudget } from "../storage/backup";
 import { assertAgentStorageBudget } from "../providers/memo-agent-plan";
 import { applyStandardMemoResult, type StandardMemoContext } from "./standard-memo-result";
 import { buildMemoInput } from "../providers/memo-input";
@@ -49,6 +50,19 @@ export class StandardReceiptSaveError extends Error {
   constructor() {
     super("The memo response was received. Retry local saving or export the unsaved response before leaving this page.");
   }
+}
+
+async function saveMemoResponse(meetingId: string, jobId: string, body: string) {
+  const latest = await getMeeting(meetingId);
+  const job = latest?.jobs.find(job => job.id === jobId);
+  if (!latest || !job)
+    throw new Error("The meeting no longer contains this memo request.");
+  if (job.memoResponse === body) return;
+  if (job.memoResponse !== undefined)
+    throw new Error("A different response is already saved for this request.");
+  const value = await checkMemoBackupBudget({ ...latest, jobs: latest.jobs.map(value =>
+    value.id === jobId ? { ...value, memoResponse: body } : value) });
+  await saveMeeting(value, undefined, true);
 }
 
 /** Record the body first. If storage fails, publish the page copy before any further I/O. */
@@ -125,7 +139,7 @@ async function saveStandardReceipt(receipt: PendingStandardReceipt, includeBody:
       updated.message = "Response saved locally. Its result could not be applied. Review the recorded response.";
     }
   }
-  return saveMeeting(checkMemoBackupBudget(value));
+  return saveMeeting(await checkMemoBackupBudget(value), undefined, true);
 }
 
 /** Save a known response locally; never repeat the provider request or overwrite a newer plan. */
@@ -215,7 +229,7 @@ async function saveAgentReceipt(meetingId: string): Promise<Meeting> {
     ),
   };
   assertAgentStorageBudget(value, false);
-  const saved = await saveMeeting(value);
+  const saved = await saveMeeting(value, undefined, true);
   if (!recovery.wireResponse) pending.delete(meetingId);
   changed();
   return saved;

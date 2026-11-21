@@ -1,6 +1,6 @@
 import { removeMeetingAvatars, trackAvatarWrite } from "./speaker-avatars";
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import { validateMeeting, MAX_MEETING_JSON_BYTES, type Meeting } from "../domain/model";
+import { validateMeeting, type Meeting } from "../domain/model";
 import type { ChunkSpeech } from "./chunk-speech-store";
 interface Store extends DBSchema {
   meetings: { key: string; value: Meeting };
@@ -77,43 +77,17 @@ export function prepareRestoredChunkSpeech(m: Meeting, checkpoint: RestoredChunk
   pendingChunkSpeech.set(m, { ...checkpoint, meetingId: m.id, chunkCount });
 }
 
-// Includes JSON quoting of the receipt. Larger responses can still fit after measuring the actual record.
-const STANDARD_RECEIPT_RESERVE_BYTES = 64 * 1024;
-const BACKUP_METADATA_BYTES = 4096;
-
-export function checkMemoBackupBudget(meeting: Meeting, reserveReceipt = false): Meeting {
-  // The user-facing JSON export is pretty printed. ZIP stores a smaller compact document.
-  const bytes = new Blob([JSON.stringify(meeting, null, 2)]).size;
-  if (bytes + BACKUP_METADATA_BYTES + (reserveReceipt ? STANDARD_RECEIPT_RESERVE_BYTES : 0) > MAX_MEETING_JSON_BYTES)
-    throw new Error(reserveReceipt
-      ? "Insufficient meeting backup space for the next memo response. No request was sent."
-      : "The response cannot fit in the portable meeting backup.");
-  return meeting;
-}
-
-/** Preserve a received standard memo on its existing job before parsing or validating it. */
-export async function saveMemoResponse(meetingId: string, jobId: string, body: string) {
-  const latest = await getMeeting(meetingId);
-  const job = latest?.jobs.find(job => job.id === jobId);
-  if (!latest || !job)
-    throw new Error("The meeting no longer contains this memo request.");
-  if (job.memoResponse === body) return;
-  if (job.memoResponse !== undefined)
-    throw new Error("A different response is already saved for this request.");
-  await saveMeeting(checkMemoBackupBudget({ ...latest, jobs: latest.jobs.map(value =>
-    value.id === jobId ? { ...value, memoResponse: body } : value) }));
-}
-
-export function saveMeeting(m: Meeting, audio?: Blob | null): Promise<Meeting> {
+export function saveMeeting(m: Meeting, audio?: Blob | null, receiptWrite = false): Promise<Meeting> {
   return trackMeetingWrite(m.id, writeMeeting(m, audio).catch(error => {
-    failedMeetings.add(m.id);
+    // Receipt recovery owns its update guard through local save or export acknowledgement.
+    if (!receiptWrite) failedMeetings.add(m.id);
     throw error;
-  }));
+  }), receiptWrite);
 }
-export function trackMeetingWrite(id: string, pendingWrite: Promise<Meeting>): Promise<Meeting> {
+export function trackMeetingWrite(id: string, pendingWrite: Promise<Meeting>, receiptWrite = false): Promise<Meeting> {
   const write = pendingWrite.then(saved => {
     channel?.postMessage(id);
-    failedMeetings.delete(id);
+    if (!receiptWrite) failedMeetings.delete(id);
     return saved;
   });
   writes.add(write);

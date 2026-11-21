@@ -1,7 +1,8 @@
 import { applyStandardMemoResult } from "./standard-memo-result";
 import type { MemoTemplate } from "../domain/memo-templates";
 import { id, type Meeting, type Job, type MemoItem } from "../domain/model";
-import { checkMemoBackupBudget, getMeeting, saveMeeting } from "../storage/repository";
+import { getMeeting, saveMeeting } from "../storage/repository";
+import { checkMemoBackupBudget } from "../storage/backup";
 import { generateMemo, ProviderError } from "../providers/api";
 import { getKey, type Selection } from "../providers/credentials";
 import {
@@ -67,7 +68,7 @@ export async function runMemoPipeline(
     if (existing?.state === "completed") return current;
     if (existing) p = structuredClone(existing);
     else
-      current = await saveMeeting(checkMemoBackupBudget({
+      current = await saveMeeting(await checkMemoBackupBudget({
         ...current,
         schemaVersion: 2,
         memoPipelines: [...(current.memoPipelines ?? []), p],
@@ -75,7 +76,7 @@ export async function runMemoPipeline(
     const persist = async (update: (value: Meeting) => Meeting, reserveReceipt = false) => {
       const latest = await getMeeting(m.id);
       if (!latest) throw new Error("The meeting was removed while processing.");
-      current = await saveMeeting(checkMemoBackupBudget(update(latest), reserveReceipt));
+      current = await saveMeeting(await checkMemoBackupBudget(update(latest), reserveReceipt));
       onCheckpoint?.(current);
       window.dispatchEvent(new Event("memo-storage-changed"));
     };

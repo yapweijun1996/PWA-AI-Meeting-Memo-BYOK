@@ -1,5 +1,6 @@
 import "fake-indexeddb/auto";
 import { expect, test, vi, afterEach, onTestFinished } from "vitest";
+import { strToU8, zipSync } from "fflate";
 import { createMeeting, segment, validateMeeting, MAX_MEETING_JSON_BYTES, type Job, type Meeting } from "../src/domain/model";
 import { reviewSegments } from "../src/domain/operations";
 import {
@@ -16,10 +17,10 @@ import {
   cancelPipeline,
 } from "../src/jobs/memo-pipeline";
 import { runJob } from "../src/jobs/runner";
-import { deleteMeeting, saveMeeting, getMeeting } from "../src/storage/repository";
+import { deleteMeeting, flushWrites, saveMeeting, getMeeting } from "../src/storage/repository";
 import { summarizeMeetingAccounting } from "../src/domain/accounting";
-import { acknowledgeAgentExport, pendingAgentReceipt, receiptExport, recoverAgentReceipt } from "../src/jobs/agent-recovery";
-import { backupMeeting, readBackup } from "../src/storage/backup";
+import { acknowledgeAgentExport, pendingAgentReceipt, receiptExport, recoverAgentReceipt, retainAgentReceipt } from "../src/jobs/agent-recovery";
+import { backupMeeting, checkMemoBackupBudget, readBackup } from "../src/storage/backup";
 
 vi.mock("../src/providers/credentials", async (original) => ({
   ...(await original<typeof import("../src/providers/credentials")>()),
@@ -564,6 +565,37 @@ test("standard JSON receipts redact escaped credentials through persistence, par
   }
 });
 
+test.each([
+  ["entry boundary", ["synthe", "tic-test"]],
+  ["inside a JSON escape", ["\\u00", "73ynthetic-test"]],
+])("standard split output text stays redacted through receipt, memo and backups (%s)", async (_label, parts) => {
+  const saved = await receiptFixture();
+  const request = vi.fn(async (_url: unknown, init: { body: string }) => {
+    const reply = await response(init.body, "before synthetic-test after synthetic-tesX").json();
+    const original: string = reply.output[0].content[0].text;
+    const [before, after] = original.split("synthetic-test");
+    reply.output[0].content = [
+      { type: "output_text", text: before + parts[0], annotations: [{ note: "keep" }] },
+      { type: "output_text", text: parts[1] + after, metadata: { keep: true } },
+    ];
+    return new Response(JSON.stringify(reply));
+  });
+  vi.stubGlobal("fetch", request);
+  const generated = await runJob(saved, "memo", { selection });
+  const zip = await readBackup(new File([await backupMeeting(generated)], "split.zip"));
+  const json = await readBackup(new File([JSON.stringify(generated, null, 2)], "split.json"));
+  for (const meeting of [generated, zip.meeting, json.meeting]) {
+    const content = JSON.parse(meeting.jobs[0].memoResponse!).output[0].content;
+    expect(content[0].annotations).toEqual([{ note: "keep" }]);
+    expect(content[1].metadata).toEqual({ keep: true });
+    expect(content[1].text).toContain(" after synthetic-tesX");
+    const expected = "before [redacted provider key] after synthetic-tesX";
+    expect(JSON.parse(content.map((part: { text: string }) => part.text).join("")).items[0].due_original).toBe(expected);
+    expect(meeting.memos[0].items[0].dueOriginal).toBe(expected);
+  }
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
 test.each(["single", "extraction", "synthesis"])("standard %s receipt survives failed body writes and can be saved locally", async mode => {
   const saved = await receiptFixture(mode !== "single");
   const plan = planMemo(saved, selection.provider, selection.model);
@@ -614,6 +646,29 @@ test("standalone runner blocks a repeat unknown outcome until the matching billi
   expect(request).toHaveBeenCalledTimes(2);
 });
 
+test.each(["in_flight", "outcome_unknown"] as const)(
+  "standalone runner requires billing review after restoring a legacy %s attempt",
+  async state => {
+    const meeting = await receiptFixture();
+    const legacy: Job = {
+      id: crypto.randomUUID(), stage: "memo", state, billing: "possibly_charged",
+      inputRevision: meeting.revision, requestId: null, message: "Legacy attempt",
+      createdAt: meeting.createdAt, updatedAt: meeting.updatedAt,
+    };
+    const restored = await readBackup(new File([
+      JSON.stringify({ ...meeting, schemaVersion: 1, jobs: [legacy] }),
+    ], "legacy.json"));
+    const saved = await saveMeeting(restored.meeting);
+    expect(saved.jobs[0]).toMatchObject({ state: "outcome_unknown" });
+    const request = vi.fn(async (_url: unknown, init: { body: string }) => response(init.body));
+    vi.stubGlobal("fetch", request);
+    await expect(runJob(saved, "memo", { selection, plan: null, reviewedRetry: false })).rejects.toThrow(/review/i);
+    expect(request).not.toHaveBeenCalled();
+    await runJob(saved, "memo", { selection, plan: null, reviewedRetry: true });
+    expect(request).toHaveBeenCalledTimes(1);
+  },
+);
+
 function fillReceiptHistory(meeting: Meeting) {
   const historical: Job = {
     id: crypto.randomUUID(), stage: "memo", state: "completed", billing: "possibly_charged", inputRevision: meeting.revision,
@@ -631,6 +686,16 @@ test("standard receipt headroom is checked before a standalone attempt is alloca
   await expect(runJob(meeting, "memo", {selection})).rejects.toThrow();
   expect(request).not.toHaveBeenCalled();
   expect((await getMeeting(meeting.id))!.jobs).toHaveLength(1);
+}, 30000);
+
+test("actual receipt budget keeps the JSON reserve at the exact UTF-8 boundary", async () => {
+  const value = fillReceiptHistory(await receiptFixture());
+  const job = value.jobs[0];
+  job.memoResponse = job.memoResponse!.slice(0, -1) + "x".repeat(901) + "😀";
+  expect(new Blob([JSON.stringify(value, null, 2)]).size).toBe(MAX_MEETING_JSON_BYTES - 4096);
+  await expect(checkMemoBackupBudget(value)).resolves.toBe(value);
+  job.memoResponse += "x";
+  await expect(checkMemoBackupBudget(value)).rejects.toThrow(/portable meeting backup/);
 }, 30000);
 
 test("concurrent meeting growth routes the standard body to page export and keeps the ZIP restorable", async () => {
@@ -653,6 +718,58 @@ test("concurrent meeting growth routes the standard body to page export and keep
   expect(restored.meeting.jobs).toEqual(latest.jobs);
   const json = await readBackup(new File([JSON.stringify(latest, null, 2)], "bounded.json"));
   expect(json.meeting.jobs).toEqual(latest.jobs);
+  expect(request).toHaveBeenCalledTimes(1);
+}, 30000);
+
+test("a standard receipt that exceeds the ZIP total stays in page recovery and the prior backup still restores", async () => {
+  const base = await receiptFixture();
+  const hash = "a".repeat(64);
+  const meeting: Meeting = {
+    ...base,
+    audio: {
+      name: "synthetic.mp3", type: "audio/mpeg", size: 50_000_000, duration: 1200, hash, present: false,
+      chunked: { format: "mp3", chunkCount: 2, totalSeconds: 1200, manifestSha256: hash },
+    },
+    jobs: [{
+      id: crypto.randomUUID(), stage: "speech", state: "completed", billing: "possibly_charged",
+      inputRevision: base.revision, chunk: { index: 0, total: 2 }, requestId: null, message: "Saved checkpoint",
+      createdAt: base.createdAt, updatedAt: base.updatedAt,
+    }, {
+      id: crypto.randomUUID(), stage: "memo", state: "completed", billing: "possibly_charged",
+      inputRevision: base.revision, requestId: null, message: "Prior receipt", memoResponse: "x".repeat(60 * 1024 * 1024),
+      createdAt: base.createdAt, updatedAt: base.updatedAt,
+    }],
+  };
+  const segments = Array.from({ length: 1560 }, () => segment("z".repeat(19_950)));
+  const checkpoint = {
+    version: 1, meetingId: meeting.id, recordingHash: hash,
+    chunks: [{ index: 0, speech: { speakers: [], segments, duration: 600, requestId: null } }],
+  };
+  const checkpointBytes = strToU8(JSON.stringify(checkpoint));
+  const meetingBytes = new Blob([JSON.stringify(meeting)]).size;
+  const archiveLimit = 120 * 1024 * 1024;
+  meeting.jobs[1].memoResponse += "x".repeat(archiveLimit - meetingBytes - checkpointBytes.length - 96 * 1024);
+  const initial = new Uint8Array(zipSync({
+    "meeting.json": strToU8(JSON.stringify(meeting)), "chunk-speech.json": checkpointBytes,
+  }, { level: 0 }));
+  expect(initial.byteLength).toBeGreaterThan(archiveLimit - 96 * 1024);
+  expect(initial.byteLength).toBeLessThan(archiveLimit);
+  const restored = await readBackup(new File([initial], "near-limit.zip"));
+  const saved = await saveMeeting(restored.meeting);
+  recoveryFixtures.push(saved.id);
+  const body = "paid output ".repeat(11_000);
+  const request = vi.fn(async () => new Response(body));
+  vi.stubGlobal("fetch", request);
+  await expect(runJob(saved, "memo", { selection })).rejects.toThrow();
+  const latest = (await getMeeting(saved.id))!;
+  expect(latest.jobs.at(-1)?.memoResponse === undefined).toBe(true);
+  const pending = pendingAgentReceipt(saved.id)!;
+  expect(receiptExport(pending).job.memoResponse === body).toBe(true);
+  await expect(recoverAgentReceipt(saved.id)).rejects.toThrow(/backup/i);
+  const backup = await backupMeeting(latest);
+  expect(backup.size).toBeLessThanOrEqual(archiveLimit);
+  const roundTrip = await readBackup(new File([backup], "still-portable.zip"));
+  expect(roundTrip.meeting.jobs.at(-1)?.memoResponse).toBeUndefined();
   expect(request).toHaveBeenCalledTimes(1);
 }, 30000);
 
@@ -687,6 +804,56 @@ test("a standard receipt stays exportable if even the metadata write fails and t
   expect(request).toHaveBeenCalledTimes(1);
   acknowledgeAgentExport(saved.id);
   expect(pendingAgentReceipt(saved.id)).toBeUndefined();
+  await expect(flushWrites()).resolves.toBeUndefined();
+});
+
+test("acknowledging a standard receipt preserves an independent unsaved user edit guard", async () => {
+  const saved = await receiptFixture();
+  const put = IDBObjectStore.prototype.put;
+  const quota = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function(this: IDBObjectStore, value, index) {
+    if (value.title === "Unsaved user edit" || value.jobs?.some((job: Job) => job.memoResponse !== undefined))
+      throw new DOMException("Synthetic quota failure", "QuotaExceededError");
+    return put.call(this, value, index);
+  });
+  onTestFinished(() => quota.mockRestore());
+  const request = vi.fn(async (_url: unknown, init: { body: string }) => {
+    const latest = (await getMeeting(saved.id))!;
+    await expect(saveMeeting({ ...latest, title: "Unsaved user edit" })).rejects.toThrow();
+    return response(init.body);
+  });
+  vi.stubGlobal("fetch", request);
+  await expect(runJob(saved, "memo", { selection })).rejects.toThrow(/export/);
+  expect((await getMeeting(saved.id))!.jobs[0].state).toBe("failed");
+  acknowledgeAgentExport(saved.id);
+  await expect(flushWrites()).rejects.toThrow(/unsaved changes/);
+  quota.mockRestore();
+  await saveMeeting({ ...(await getMeeting(saved.id))!, title: "Unsaved user edit" });
+  await expect(flushWrites()).resolves.toBeUndefined();
+});
+
+test("recovering an older standalone attempt retains its body and leaves the newer memo selected", async () => {
+  const saved = await receiptFixture();
+  const put = IDBObjectStore.prototype.put;
+  const quota = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function(this: IDBObjectStore, value, index) {
+    if (value.jobs?.some((job: Job) => job.memoResponse !== undefined))
+      throw new DOMException("Synthetic receipt quota", "QuotaExceededError");
+    return put.call(this, value, index);
+  });
+  onTestFinished(() => quota.mockRestore());
+  const request = vi.fn(async (_url: unknown, init: { body: string }) => response(init.body, "Older response"));
+  vi.stubGlobal("fetch", request);
+  await expect(runJob(saved, "memo", { selection })).rejects.toThrow(/export/);
+  const pending = pendingAgentReceipt(saved.id)!;
+  quota.mockRestore();
+  // Emulate another page, which cannot see this page's pending receipt.
+  acknowledgeAgentExport(saved.id);
+  const latest = (await getMeeting(saved.id))!;
+  const newer = await runJob(latest, "memo", { selection });
+  retainAgentReceipt(pending, { source: saved });
+  const recovered = await recoverAgentReceipt(saved.id);
+  expect(recovered.jobs[0].memoResponse).toContain("Older response");
+  expect(recovered.memos.map(memo => memo.id)).toEqual(newer.memos.map(memo => memo.id));
+  expect(request).toHaveBeenCalledTimes(2);
 });
 
 test("local recovery fills in known accounting after an interruption was marked in another tab", async () => {

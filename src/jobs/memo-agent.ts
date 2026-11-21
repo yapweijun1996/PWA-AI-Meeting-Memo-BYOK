@@ -38,6 +38,7 @@ import {
   readAgentReportedUsage,
 } from "../providers/agent-record";
 import { normalizeMemo } from "../providers/api";
+import { redactMemoSse } from "../providers/memo-response-redaction";
 import { getMeeting, saveMeeting } from "../storage/repository";
 import { hasPendingAgentReceipt, retainAgentReceipt } from "./agent-recovery";
 
@@ -148,7 +149,7 @@ export async function runAgentMemo(
         memoAgents: [...(current.memoAgents ?? []), plan],
       });
     const frozen = agentMeeting(current, plan);
-    const persist = async (update: (latest: Meeting) => Meeting, reserveNextResponse = false) => {
+    const persist = async (update: (latest: Meeting) => Meeting, reserveNextResponse = false, receiptWrite = false) => {
       const latest = await getMeeting(meeting.id);
       if (!latest) throw new Error("The meeting was removed while processing.");
       const savedPlan = latest.memoAgents?.find(
@@ -166,7 +167,7 @@ export async function runAgentMemo(
         );
       const value = update(latest);
       assertAgentStorageBudget(value, reserveNextResponse);
-      current = await saveMeeting(value);
+      current = await saveMeeting(value, undefined, receiptWrite);
       onCheckpoint?.(current);
       window.dispatchEvent(new Event("memo-storage-changed"));
     };
@@ -583,7 +584,7 @@ export async function runAgentMemo(
                 jobs: latest.jobs.map((value) =>
                   value.id === updated.id ? updated : value,
                 ),
-              }),
+              }), false, true,
             );
           } catch (error) {
             retainAgentReceipt(recovery);
@@ -718,7 +719,7 @@ export async function runAgentMemo(
               } finally {
                 reader?.releaseLock();
                 pieces.push(decoder.decode());
-                boundedWireResponse = redactAgentSecret(pieces.join(""), key);
+                boundedWireResponse = redactMemoSse(pieces.join(""), key);
               }
               return new Response(boundedWireResponse, {
                 status: response.status,
@@ -736,6 +737,7 @@ export async function runAgentMemo(
             throw new Error(
               "No provider request was submitted. Its durable local receipt could not be recorded.",
             );
+          if (!sent) throw new Error("Selective review paused before submission.");
           if (responseId === null && typeof result.responseId === "string")
             responseId = redactAgentSecret(result.responseId, key).slice(0, 200);
           const record = recordAgentAssistant(result, key);
@@ -745,12 +747,8 @@ export async function runAgentMemo(
             !unfinishedOutput && decoded.content.length >= terminalOutputCount;
           const updated: Job = {
             ...job,
-            state: successful
-              ? "completed"
-              : sent
-                ? "outcome_unknown"
-                : "failed_before_send",
-            billing: sent ? "possibly_charged" : "not_submitted",
+            state: successful ? "completed" : "outcome_unknown",
+            billing: "possibly_charged",
             requestId: responseId,
             updatedAt: new Date().toISOString(),
             assistantRecord: record,
@@ -793,17 +791,22 @@ export async function runAgentMemo(
           ) {
             plan.state = "blocked";
             plan.failure = { kind: "result", message: stopped.message };
-            const failed: Job = {
-              ...job,
-              state: sent ? "outcome_unknown" : "failed_before_send",
-              billing: sent ? "possibly_charged" : "not_submitted",
-              updatedAt: new Date().toISOString(),
-              requestId: responseId,
-              usage: reportedUsage,
-              upstreamProvider,
-              message: stopped.message,
-            };
-            await finishReceipt(failed, boundedWireResponse).catch(() => undefined);
+            if (sent) {
+              await finishReceipt({
+                ...job, state: "outcome_unknown", billing: "possibly_charged",
+                updatedAt: new Date().toISOString(), requestId: responseId, usage: reportedUsage,
+                upstreamProvider, message: stopped.message,
+              }, boundedWireResponse).catch(() => undefined);
+            } else {
+              // Only this live runner can prove that fetch was never invoked.
+              const unsentId = job.id;
+              plan.jobIds = plan.jobIds.filter(jobId => jobId !== unsentId);
+              await persist(latest => {
+                if (latest.jobs.find(value => value.id === unsentId)?.state !== "in_flight")
+                  throw new Error("The recorded request changed before cancellation could be saved.");
+                return checkpoint({ ...latest, jobs: latest.jobs.filter(value => value.id !== unsentId) });
+              }).catch(() => undefined);
+            }
           }
           return completedStream(requestError(stopped.message));
         }

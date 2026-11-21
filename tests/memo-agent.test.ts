@@ -13,6 +13,7 @@ import { previewHistoryCleanup } from "../src/domain/history-cleanup";
 import {
   acknowledgeAgentExport,
   pendingAgentReceipt,
+  receiptExport,
   recoverAgentReceipt,
   retainAgentReceipt,
 } from "../src/jobs/agent-recovery";
@@ -1076,7 +1077,7 @@ test("a failed 100th request consumes its durable allowance while another plan h
 });
 
 
-test("canceling after receipt persistence consumes an attempt without sending and non-agent jobs keep their step bound", async () => {
+test("canceling a proven-unsent Pi intent leaves the allowance and billing consent available after restore", async () => {
   const { meeting, plan } = await setup();
   const controller = new AbortController();
   const request = vi.fn();
@@ -1086,11 +1087,18 @@ test("canceling after receipt persistence consumes an attempt without sending an
   })).rejects.toThrow();
   const latest = (await getMeeting(meeting.id))!;
   expect(request).not.toHaveBeenCalled();
-  expect(latest.memoAgents![0].jobIds).toHaveLength(1);
-  expect(latest.jobs[0]).toMatchObject({ state: "failed_before_send", billing: "not_submitted", stepIndex: 0 });
-  const { agentId: _agentId, assistantRecord: _record, ...ordinary } = latest.jobs[0];
-  expect(_agentId).toBe(plan.id);
-  expect(_record).toBeDefined();
+  expect(latest.memoAgents![0].jobIds).toHaveLength(0);
+  expect(latest.jobs).toHaveLength(0);
+  expect(pendingAgentReceipt(meeting.id)).toBeUndefined();
+  const restored = await readBackup(new File([await backupMeeting(latest)], "unsent.zip"));
+  const copy = await saveMeeting(restored.meeting);
+  meetingIds.push(copy.id);
+  request.mockResolvedValueOnce(agentSse([call()])).mockResolvedValueOnce(agentSse([final(copy.segments[0].id)]));
+  const completed = await runAgentMemo(copy, copy.memoAgents![0], key, new AbortController().signal);
+  expect(completed.jobs.map(job => job.stepIndex)).toEqual([0, 1]);
+  expect(completed.memos).toHaveLength(1);
+  expect(request).toHaveBeenCalledTimes(2);
+  const { agentId: _agentId, assistantRecord: _record, ...ordinary } = completed.jobs[0];
   expect(() => validateMeeting({ ...meeting, jobs: [{ ...ordinary, stepIndex: 9 }] })).toThrow();
 });
 
@@ -1325,6 +1333,79 @@ test("terminal SSE export removes escaped credentials from decoded fields and ma
   expect(JSON.parse(exported.split("\n")[0].slice(6)).response.id).toBe("[redacted provider key]");
   expect(exported).toContain(": fragment [redacted provider key]");
   expect(exported).toContain("Synthetic evidence for human review.");
+});
+
+test.each([
+  { name: "frame boundary", fixture: key, fragments: [key.slice(0, 12), key.slice(12)] },
+  { name: "JSON escape boundary", fixture: key, fragments: ["\\u00", "73" + key.slice(1)] },
+  { name: "surrogate boundary", fixture: "sk-fixture-😀-unit", fragments: ["sk-fixture-\ud83d", "\ude00-unit"] },
+  { name: "overlapping prefixes", fixture: "sk-sk-sk-", fragments: ["sk-sk-", "sk-sk-"] },
+])("Pi recovery SSE redacts overlapping or split text while preserving the rest ($name)", async ({ fixture, fragments }) => {
+  const { meeting, plan, signal } = await setup();
+  // Fetch's header format excludes Unicode; exercise the same wire reader with a valid synthetic header.
+  const stream = agentTransport.streamAgentRoute;
+  vi.spyOn(agentTransport, "streamAgentRoute").mockImplementation((route, context, options) =>
+    stream(route, context, { ...options, apiKey: key }));
+  const event = (type: string, fields: object) => `event: ${type}\r\ndata: ${JSON.stringify({ type, ...fields })}\r\n\r\n`;
+  const delta = (delta: string, output_index: number) =>
+    event("response.output_text.delta", { item_id: "synthetic-item", output_index, content_index: 0, delta, unrelated: "keep" });
+  const lookalike = fixture.slice(0, -1) + "X";
+  const wire = delta("before " + fragments[0], 0) + delta(lookalike, 1) +
+    delta(fragments[1] + " after " + lookalike, 0);
+  const request = vi.fn().mockResolvedValue(new Response(wire, { headers: { "content-type": "text/event-stream" } }));
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, fixture, signal)).rejects.toThrow();
+  const exported = receiptExport(pendingAgentReceipt(meeting.id)!).wireResponse!;
+  const frames = exported.split("\r\n").filter(line => line.startsWith("data: ")).map(line => JSON.parse(line.slice(6)));
+  expect(frames).toHaveLength(3);
+  expect(frames.map(frame => frame.unrelated)).toEqual(["keep", "keep", "keep"]);
+  expect(frames[1].delta).toBe(lookalike);
+  expect(frames[0].delta + frames[2].delta).toBe("before [redacted provider key] after " + lookalike);
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
+test("Pi recovery keeps unrelated content indexes and reconstructs a multiline truncated SSE text part", async () => {
+  const { meeting, plan, signal } = await setup();
+  const line = (text: string) => "data: " + text;
+  const wire = [
+    'event: response.output_text.delta',
+    line('{"output_index":0,'),
+    line('"content_index":0,"delta":"before ' + key.slice(0, 10) + '"}'),
+    "",
+    'event: response.output_text.delta',
+    line(JSON.stringify({ output_index: 0, content_index: 1, delta: "unrelated part" })),
+    "",
+    'event: response.output_text.delta',
+    line('{"output_index":0,"content_index":0,"delta":"' + key.slice(10) + ' after'),
+  ].join("\n");
+  const request = vi.fn().mockResolvedValue(new Response(wire, { headers: { "content-type": "text/event-stream" } }));
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
+  const saved = receiptExport(pendingAgentReceipt(meeting.id)!).wireResponse!;
+  expect(saved).toBe(wire.replace(key.slice(0, 10), "[redacted provider key]").replace(key.slice(10), ""));
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
+test("Pi masks split finished output in the assistant record, memo and restored backup", async () => {
+  const { meeting, plan, signal } = await setup();
+  const output = final(meeting.segments[0].id);
+  const original = output.content[0].text;
+  const [before, after] = original.split("Synthetic evidence for human review.");
+  output.content = [
+    { type: "output_text", text: before + "Before " + key.slice(0, 11) },
+    { type: "output_text", text: key.slice(11) + " after." + after },
+  ];
+  const request = vi.fn().mockResolvedValueOnce(agentSse([call()])).mockResolvedValueOnce(agentSse([output]));
+  vi.stubGlobal("fetch", request);
+  const completed = await runAgentMemo(meeting, plan, key, signal);
+  const restored = await readBackup(new File([await backupMeeting(completed)], "agent.zip"));
+  const expected = "Before [redacted provider key] after.";
+  for (const value of [completed, restored.meeting]) {
+    expect(value.jobs.at(-1)!.assistantRecord).not.toContain(key);
+    expect(value.memos[0].originalItems![0].text).toBe(expected);
+    expect(value.memos[0].items[0].text).toBe(expected);
+  }
+  expect(request).toHaveBeenCalledTimes(2);
 });
 
 test.each([6, null, "mismatch"] as const)("continuation verifies checkpointed search evidence (%s)", async mode => {

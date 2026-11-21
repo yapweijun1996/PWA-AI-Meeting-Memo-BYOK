@@ -7,6 +7,8 @@ import { contentIdentity, getLongAudioManifest, verifyManifestIdentity } from ".
 import { getSpeakerAvatars, validAvatar, flushAvatarWrites } from "./speaker-avatars";
 const MAX_BACKUP = 120 * 1024 * 1024;
 const CHUNK_SPEECH_ENTRY = "chunk-speech.json";
+const STANDARD_RECEIPT_RESERVE_BYTES = 64 * 1024;
+const BACKUP_METADATA_BYTES = 4096;
 const ChunkSpeechBackupSchema = z.strictObject({
   version: z.literal(1),
   meetingId: z.uuid(),
@@ -91,14 +93,14 @@ function readChunkSpeech(bytes: Uint8Array, meeting: Meeting) {
   return parsed.data;
 }
 
-export async function backupMeeting(m: Meeting): Promise<Blob> {
-  await flushAvatarWrites();
+async function backupInputs(m: Meeting) {
   const chunked = !!m.audio?.chunked;
   const audio = chunked ? undefined : await getAudio(m.id);
-  const { document, checkpointHash } = await prepareBackupDocument(m, !!audio);
-  const files: Record<string, Uint8Array> = {
-    "meeting.json": strToU8(JSON.stringify(document)),
-  };
+  return { audio, ...await prepareBackupDocument(m, !!audio) };
+}
+
+async function backupMembers(m: Meeting, { audio, document, checkpointHash }: Awaited<ReturnType<typeof backupInputs>>) {
+  const files: Record<string, Uint8Array | Blob> = { "meeting.json": strToU8(JSON.stringify(document)) };
   if (checkpointHash) {
     const data = await backupChunkSpeech(m, checkpointHash);
     if (data) files[CHUNK_SPEECH_ENTRY] = data;
@@ -109,9 +111,39 @@ export async function backupMeeting(m: Meeting): Promise<Blob> {
     if (data.byteLength > 12 * 1024 * 1024) throw new Error("Speaker profile images exceed the backup size limit.");
     files["speaker-avatars.json"] = data;
   }
-  if (audio) files["recording.bin"] = new Uint8Array(await audio.arrayBuffer());
-  if (Object.values(files).reduce((total, bytes) => total + bytes.byteLength, 0) > MAX_BACKUP) throw new Error("Backup exceeds the 120 MB import limit.");
-  const archive = new Uint8Array(zipSync(files, { level: 0 }));
+  if (audio) files["recording.bin"] = audio;
+  return files;
+}
+
+function storedZipSize(files: Record<string, Uint8Array | Blob>): number {
+  // fflate's level-0 ZIP uses local and central headers for each ASCII member name.
+  return Object.entries(files).reduce((size, [name, member]) =>
+    size + 30 + 46 + 2 * name.length + (member instanceof Blob ? member.size : member.byteLength), 22);
+}
+
+export async function checkMemoBackupBudget(meeting: Meeting, reserveReceipt = false): Promise<Meeting> {
+  const reserve = BACKUP_METADATA_BYTES + (reserveReceipt ? STANDARD_RECEIPT_RESERVE_BYTES : 0);
+  const refused = () => new Error(reserveReceipt
+    ? "Insufficient meeting backup space for the next memo response. No request was sent."
+    : "The response cannot fit in the portable meeting backup.");
+  // JSON export is pretty printed, with audio deliberately absent.
+  const inputs = await backupInputs(meeting);
+  const document = { ...inputs.document, audio: inputs.document.audio ? { ...inputs.document.audio, present: false } : null };
+  if (new Blob([JSON.stringify(document, null, 2)]).size + reserve > MAX_MEETING_JSON_BYTES)
+    throw refused();
+  const files = await backupMembers(meeting, inputs);
+  if (storedZipSize(files) + reserve > MAX_BACKUP) throw refused();
+  return meeting;
+}
+
+export async function backupMeeting(m: Meeting): Promise<Blob> {
+  await flushAvatarWrites();
+  const files = await backupMembers(m, await backupInputs(m));
+  if (storedZipSize(files) > MAX_BACKUP) throw new Error("Backup exceeds the 120 MB import limit.");
+  const entries: Record<string, Uint8Array> = {};
+  for (const [name, value] of Object.entries(files))
+    entries[name] = value instanceof Blob ? new Uint8Array(await value.arrayBuffer()) : value;
+  const archive = new Uint8Array(zipSync(entries, { level: 0 }));
   if (archive.byteLength > MAX_BACKUP) throw new Error("Backup exceeds the 120 MB import limit.");
   return new Blob([archive], { type: "application/zip" });
 }

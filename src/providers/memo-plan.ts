@@ -15,8 +15,9 @@ export function needsMemoBillingReview(
     if (agentPlan) return job.agentId === agentPlan.id && job.state !== "completed";
     if (plan) return job.pipelineId === plan.id && job.state !== "completed";
     return job.stage === "memo" && !job.agentId && !job.pipelineId && !job.contextual &&
-      job.state === "outcome_unknown" && job.inputRevision === meeting.revision &&
-      job.provider === selection.provider && job.model === selection.model;
+      (job.state === "outcome_unknown" || job.state === "in_flight") && job.inputRevision === meeting.revision &&
+      (job.provider === undefined || job.provider === selection.provider) &&
+      (job.model === undefined || job.model === selection.model);
   });
 }
 

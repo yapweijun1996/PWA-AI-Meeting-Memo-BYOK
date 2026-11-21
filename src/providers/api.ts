@@ -1,7 +1,7 @@
 import { blueprints, orderIncidentEvents, templateInstruction, type MemoTemplate } from "../domain/memo-templates";
 import { memoLanguageInstruction, type MemoOutputLanguage } from "../domain/memo-language";
 import { z } from "zod";
-import { redactAgentSecret } from "../domain/memo-agent-contract";
+import { redactMemoResponse } from "./memo-response-redaction";
 import {
   id,
   segment,
@@ -627,7 +627,7 @@ export async function generateMemo(
     { "Content-Type": "application/json" },
     signal,
     async raw => {
-      const sanitized = redactAgentSecret(raw, key.trim());
+      const sanitized = redactMemoResponse(raw, key.trim());
       await onResponse?.(sanitized);
       return sanitized;
     },

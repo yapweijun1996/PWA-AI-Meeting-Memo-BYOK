@@ -166,3 +166,22 @@ test("standalone memo confirmation requires billing review for the same unknown 
   expect(buttonAttributes(confirmation({ ...meeting, revision: meeting.revision + 1 }, props), "Generate new notes")).not.toContain("disabled");
   expect(buttonAttributes(confirmation(meeting, { ...props, confirmation: { selection: { ...selection, model: "other" } } }), "Generate new notes")).not.toContain("disabled");
 });
+
+test.each(["in_flight", "outcome_unknown"] as const)(
+  "standalone memo confirmation requires billing review for the same legacy %s attempt",
+  state => {
+    credentialAvailable.mockReturnValue(true);
+    const meeting = agentLocalFinalFixture({ attempts: 2 });
+    const selection = { provider: "openai" as const, model: "gpt-6-luna" };
+    const legacy = { ...meeting.jobs[0], id: crypto.randomUUID(), agentId: undefined, assistantRecord: undefined,
+      provider: undefined, model: undefined, inputRevision: meeting.revision, state };
+    meeting.jobs.push(legacy);
+    const props = { confirmation: { selection, plan: null }, costAcknowledged: true };
+    const consent = confirmation(meeting, props);
+    expect(consent).toContain("I reviewed the previous request outcome and billing.");
+    expect(buttonAttributes(consent, "Generate new notes")).toContain("disabled");
+    expect(buttonAttributes(confirmation({ ...meeting, revision: meeting.revision + 1 }, props), "Generate new notes")).not.toContain("disabled");
+    const otherProvider = { ...meeting, jobs: [...meeting.jobs.slice(0, -1), { ...legacy, provider: "openrouter" as const }] };
+    expect(buttonAttributes(confirmation(otherProvider, props), "Generate new notes")).not.toContain("disabled");
+  },
+);

@@ -20,6 +20,19 @@ export function applyStandardMemoResult(
   if (job.pipelineId && (!plan || plan.state === "completed" || index === undefined ||
       latest.jobs.filter(value => value.pipelineId === plan.id).at(-1)?.id !== job.id))
     throw new Error("The saved plan has moved on. Export this response for review.");
+  if (!job.pipelineId) {
+    const attemptIndex = latest.jobs.findIndex(value => value.id === job.id);
+    const newerMemo = latest.jobs.slice(attemptIndex + 1).some(value => {
+      if (value.stage !== "memo" || value.contextual || value.state !== "completed") return false;
+      if (value.pipelineId) return plans.some(plan =>
+        plan.id === value.pipelineId && plan.state === "completed" && value.stepIndex === plan.chunks.length);
+      if (value.agentId) return latest.memoAgents?.some(plan =>
+        plan.id === value.agentId && plan.state === "completed" && plan.jobIds.at(-1) === value.id);
+      return true;
+    });
+    if (newerMemo)
+      throw new Error("A newer memo result is already saved. Export this response for review.");
+  }
 
   if (plan && index !== undefined && index < plan.chunks.length) {
     if (plan.results[index]) throw new Error("This extraction already has a saved result.");

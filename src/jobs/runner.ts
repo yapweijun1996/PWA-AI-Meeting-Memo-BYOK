@@ -10,7 +10,8 @@ import { needsMemoBillingReview, type MemoPipeline } from "../providers/memo-pla
 import type { Selection } from "../providers/credentials";
 import { MAX_JOBS, id, type Meeting, type Job } from "../domain/model";
 import { replaceTranscript } from "../domain/operations";
-import { checkMemoBackupBudget, getMeeting, saveMeeting, getAudio } from "../storage/repository";
+import { getMeeting, saveMeeting, getAudio } from "../storage/repository";
+import { checkMemoBackupBudget } from "../storage/backup";
 import { generateMemo, transcribe, ProviderError } from "../providers/api";
 import {
   getKey,
@@ -130,7 +131,7 @@ export async function runJob(
         : null,
     };
     const intent = { ...current, jobs: [...current.jobs, job] };
-    await saveMeeting(stage === "memo" ? checkMemoBackupBudget(intent, true) : intent);
+    await saveMeeting(stage === "memo" ? await checkMemoBackupBudget(intent, true) : intent);
     controller = new AbortController();
     activeMeetingId = m.id;
     window.dispatchEvent(new Event("memo-processing-changed"));
@@ -222,7 +223,7 @@ export async function runJob(
             }
           : j,
       );
-      return await saveMeeting(stage === "memo" ? checkMemoBackupBudget(latest) : latest);
+      return await saveMeeting(stage === "memo" ? await checkMemoBackupBudget(latest) : latest);
     } catch (error) {
       if (error instanceof StandardReceiptSaveError) throw error;
       const failure =
@@ -258,7 +259,7 @@ export async function runJob(
               : j,
           ),
         };
-        await saveMeeting(stage === "memo" ? checkMemoBackupBudget(stopped) : stopped);
+        await saveMeeting(stage === "memo" ? await checkMemoBackupBudget(stopped) : stopped);
       }
       throw failure;
     } finally {
