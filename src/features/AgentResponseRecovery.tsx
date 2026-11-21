@@ -36,6 +36,7 @@ export function AgentResponseRecovery({
     return subscribeAgentRecovery(changed);
   }, [meetingId]);
   if (!pending) return null;
+  const canExport = !pending.receiptOnly;
   return (
     <section
       className="notice sand"
@@ -47,7 +48,10 @@ export function AgentResponseRecovery({
         {t("A request outcome could not be saved", "请求结果无法保存")}
       </strong>
       <p>
-        {!localSave ? t(
+        {pending.receiptOnly ? t(
+          "The stream ended before the response finished. The app cannot recover its text. Check the provider usage page before submitting another request.",
+          "\u56de\u5e94\u4f20\u8f93\u63d0\u524d\u4e2d\u65ad\u3002\u5e94\u7528\u65e0\u6cd5\u6062\u590d\u5176\u4e2d\u7684\u6587\u5b57\u3002\u518d\u6b21\u63d0\u4ea4\u8bf7\u6c42\u524d\uff0c\u8bf7\u67e5\u770b\u670d\u52a1\u5546\u7684\u7528\u91cf\u9875\u9762\u3002",
+        ) : !localSave ? t(
           "This meeting is unavailable. Keep this page open until you have saved the response export.",
           "\u65e0\u6cd5\u6253\u5f00\u6b64\u4f1a\u8bae\u3002\u8bf7\u4fdd\u6301\u9875\u9762\u6253\u5f00\uff0c\u76f4\u5230\u4fdd\u5b58\u5bfc\u51fa\u7684\u56de\u5e94\u3002",
         ) : t(
@@ -55,11 +59,11 @@ export function AgentResponseRecovery({
           "此页面仍保留已移除密钥的请求记录及限制内的回应。请保持页面开启，重试本地保存或先导出回应；不会重复发送请求。服务商收费仍未知。",
         )}
       </p>
-      {pending.recoveryArtifact && (
+      {pending.wireResponse !== undefined && (
         <p>
           {t(
-            "Local retry saves only the receipt. Export the recovery artifact to keep the available text grouped by content type. The file omits raw frames and cannot be imported as a backup.",
-            "\u672c\u5730\u91cd\u8bd5\u4ec5\u4fdd\u5b58\u8bf7\u6c42\u8bb0\u5f55\u3002\u8bf7\u5bfc\u51fa\u6062\u590d\u6587\u4ef6\u4ee5\u4fdd\u7559\u6309\u5185\u5bb9\u7c7b\u578b\u6574\u7406\u7684\u6587\u5b57\u3002\u6587\u4ef6\u7701\u7565\u539f\u59cb\u6570\u636e\u5e27\uff0c\u4e14\u65e0\u6cd5\u4f5c\u4e3a\u5907\u4efd\u5bfc\u5165\u3002",
+            "The full response was received, but the app could not decode it as a usable review. Local retry saves its receipt. Export the raw response to keep the received text.",
+            "\u5df2\u6536\u5230\u5b8c\u6574\u56de\u5e94\uff0c\u4f46\u5e94\u7528\u65e0\u6cd5\u5c06\u5176\u8f6c\u6362\u4e3a\u53ef\u7528\u7684\u590d\u6838\u7ed3\u679c\u3002\u672c\u5730\u91cd\u8bd5\u4f1a\u4fdd\u5b58\u8bf7\u6c42\u8bb0\u5f55\u3002\u5bfc\u51fa\u539f\u59cb\u56de\u5e94\u53ef\u4fdd\u7559\u6536\u5230\u7684\u6587\u5b57\u3002",
           )}
         </p>
       )}
@@ -81,7 +85,7 @@ export function AgentResponseRecovery({
       >
         {t("Retry local save only", "仅重试本地保存")}
       </Button>}
-      <Button
+      {canExport && <Button
         className="button secondary"
         disabled={busy}
         onClick={() => {
@@ -98,8 +102,8 @@ export function AgentResponseRecovery({
         }}
       >
         {t("Export unsaved response", "导出未保存回应")}
-      </Button>
-      {exported && (
+      </Button>}
+      {(exported || (!canExport && !localSave)) && (
         <Button
           className="button secondary"
           pending={busy}
@@ -114,10 +118,10 @@ export function AgentResponseRecovery({
             if (pendingAgentReceipt(meetingId) === pending) acknowledgeAgentExport(meetingId);
           }}
         >
-          {t(
+          {canExport ? t(
             "I saved the export; release this page copy",
             "我已保存导出文件，释放页面副本",
-          )}
+          ) : t("Dismiss receipt", "\u5173\u95ed\u8bf7\u6c42\u8bb0\u5f55")}
         </Button>
       )}
     </section>

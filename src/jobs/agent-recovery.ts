@@ -5,20 +5,21 @@ import { assertAgentStorageBudget } from "../providers/memo-agent-plan";
 import { applyStandardMemoResult, type StandardMemoContext } from "./standard-memo-result";
 import { buildMemoInput } from "../providers/memo-input";
 import { accounting, parseStandardMemoResponse } from "../providers/api";
-import type { MemoRecoveryArtifact } from "../providers/memo-response-redaction";
 
 export type PendingAgentReceipt = {
   meetingId: string;
   agentId: string;
   job: Job;
-  recoveryArtifact?: MemoRecoveryArtifact;
+  wireResponse?: string;
+  receiptOnly?: true;
 };
 /** Standard response retained in this page until saved locally or explicitly acknowledged after export. */
 export type PendingStandardReceipt = {
   kind: "standard";
   meetingId: string;
   job: Job & { memoResponse: string };
-  recoveryArtifact?: never;
+  wireResponse?: never;
+  receiptOnly?: never;
 };
 export type PendingMemoReceipt = PendingAgentReceipt | PendingStandardReceipt;
 // Only the live page needs the frozen input. It must never enter the receipt download.
@@ -26,11 +27,8 @@ const pending = new Map<string, { receipt: PendingMemoReceipt; context?: Standar
 
 /** Pure export payload for recovery controls, including when the meeting was removed. */
 export function receiptExport(receipt: PendingMemoReceipt) {
-  const format = "meeting-memo-agent-receipt";
-  if (!receipt.recoveryArtifact) return { format, version: 1, ...receipt };
-  // An interrupted job can also hold a partial SDK record. Export only the masked projection of its content.
-  const { assistantRecord: _assistantRecord, ...job } = receipt.job;
-  return { format, version: 2, ...receipt, job };
+  if (receipt.receiptOnly) throw new Error("The interrupted response is unavailable for export.");
+  return { format: "meeting-memo-agent-receipt", version: 1, ...receipt };
 }
 const changed = () =>
   window.dispatchEvent(new Event("memo-agent-recovery-changed"));
@@ -197,7 +195,7 @@ async function saveAgentReceipt(meetingId: string): Promise<Meeting> {
     existing.assistantRecord === recovery.job.assistantRecord &&
     existing.state === recovery.job.state
   ) {
-    if (!recovery.recoveryArtifact) pending.delete(meetingId);
+    if (recovery.wireResponse === undefined) pending.delete(meetingId);
     changed();
     return latest;
   }
@@ -235,7 +233,7 @@ async function saveAgentReceipt(meetingId: string): Promise<Meeting> {
   };
   assertAgentStorageBudget(value, false);
   const saved = await saveMeeting(value, undefined, true);
-  if (!recovery.recoveryArtifact) pending.delete(meetingId);
+  if (recovery.wireResponse === undefined) pending.delete(meetingId);
   changed();
   return saved;
 }

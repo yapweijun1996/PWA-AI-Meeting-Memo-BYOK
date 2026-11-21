@@ -15,6 +15,8 @@ type MatchSecret = ReturnType<typeof agentSecretMatcher>;
 type Spans = ReturnType<MatchSecret>;
 type MarkRedaction = (start: number, end: number, head: boolean) => void;
 const MAX_RESPONSE_PATH_DEPTH = 6;
+const MAX_TRACKED_RESPONSE_FIELDS = 8192;
+const MAX_SSE_FRAME_DATA_LINES = 8192;
 const indexFields = new Set(["output_index", "content_index", "summary_index", "index"]);
 const chatDeltaFields = new Set(["content", "reasoning", "reasoning_content", "reasoning_text"]);
 const responseEventFields = new Set(["type", "delta", "item_id", ...indexFields]);
@@ -53,7 +55,9 @@ function isTrackedField(path: PathPart[], name: string, mode: "output" | "stream
 }
 
 /** Retain only fields used by the adapter redactor, even if the frame is malformed. */
-function responseFields(json: string, offset: (index: number) => number, mode: "output" | "stream") {
+function responseFields(
+  json: string, offset: (index: number) => number, mode: "output" | "stream", limit: number,
+) {
   const fields: Field[] = [];
   const stack: Container[] = [];
   const quoteOrEscape = /["\\]/g;
@@ -83,6 +87,7 @@ function responseFields(json: string, offset: (index: number) => number, mode: "
       if (container.member === undefined) {
         container.member = decodeAgentJsonEscapes(json.slice(start, end));
       } else if (typeof container.member === "string" && isTrackedField(container.path, container.member, mode)) {
+        if (fields.length === limit) return undefined;
         const raw = json.slice(start, end);
         fields.push({ path: [...container.path, container.member], start: offset(start), complete: end !== json.length,
           raw, text: decodeAgentJsonEscapes(raw) });
@@ -92,6 +97,7 @@ function responseFields(json: string, offset: (index: number) => number, mode: "
       while (cursor < json.length && !jsonDelimiters.test(json[cursor])) cursor++;
       if (container?.path && typeof container.member === "string" && indexFields.has(container.member) &&
           isTrackedField(container.path, container.member, mode)) {
+        if (fields.length === limit) return undefined;
         const raw = json.slice(start, cursor);
         fields.push({ path: [...container.path, container.member], start: offset(start), complete: cursor < json.length,
           raw, text: String(Number(raw)) });
@@ -179,9 +185,10 @@ function wireRedactions(wire: string, key: string) {
   return { mark, apply };
 }
 
-export function redactMemoResponse(body: string, key: string): string {
+export function redactMemoResponse(body: string, key: string, fieldLimit = Infinity): string {
   if (!key) return body;
-  const fields = responseFields(body, index => index, "output");
+  const fields = responseFields(body, index => index, "output", fieldLimit);
+  if (!fields) return redactAgentSecret(body, key);
   const { mark, apply } = wireRedactions(body, key);
   redactOutput(fields, agentSecretMatcher(key), mark);
   return apply();
@@ -249,6 +256,10 @@ function* sseFrames(wire: string) {
     } else if (text.startsWith("event:")) {
       event = text.slice(6).trim();
     } else if (text.startsWith("data:")) {
+      if (data.length === MAX_SSE_FRAME_DATA_LINES) {
+        yield undefined;
+        return;
+      }
       const prefix = text[5] === " " ? 6 : 5;
       data.push({ text: text.slice(prefix), start: line.index + prefix, offset: dataLength });
       dataLength += text.length - prefix + 1;
@@ -270,214 +281,19 @@ function* sseFrames(wire: string) {
 
 export function redactMemoSse(wire: string, key: string): string {
   if (!key) return wire;
-  if (wire.trimStart()[0] === "{") return redactMemoResponse(wire, key);
+  if (wire.trimStart()[0] === "{") return redactMemoResponse(wire, key, MAX_TRACKED_RESPONSE_FIELDS);
+  const deltas = new Map<string, Field[]>();
+  let remainingFields = MAX_TRACKED_RESPONSE_FIELDS;
+  for (const frame of sseFrames(wire)) {
+    if (!frame) return redactAgentSecret(wire, key);
+    const { event, json, offset } = frame;
+    const fields = responseFields(json, offset, "stream", remainingFields);
+    if (!fields) return redactAgentSecret(wire, key);
+    remainingFields -= fields.length;
+    trackFrameDeltas(fields, event, deltas);
+  }
   const match = agentSecretMatcher(key);
   const { mark, apply } = wireRedactions(wire, key);
-  const deltas = new Map<string, Field[]>();
-  for (const { event, json, offset } of sseFrames(wire)) {
-    trackFrameDeltas(responseFields(json, offset, "stream"), event, deltas);
-  }
   for (const group of deltas.values()) markParts(group, match, mark);
   return apply();
-}
-
-type RecoveryKind = "outputText" | "refusal" | "reasoningSummary" | "reasoningText" | "toolArguments" | "other";
-type RecoveryContent = {
-  kind: RecoveryKind;
-  text: string;
-  fragmentCount: number;
-  tailCutMidString: boolean;
-};
-export type MemoRecoveryArtifact = {
-  content: RecoveryContent[];
-  byteLength: number;
-  frameCount: number;
-  eventCounts: Record<string, number>;
-};
-
-const responseEventKinds = new Map<string, RecoveryKind>();
-for (const [family, kind] of [
-  ["output_text", "outputText"],
-  ["refusal", "refusal"],
-  ["reasoning_summary_text", "reasoningSummary"],
-  ["reasoning_text", "reasoningText"],
-  ["function_call_arguments", "toolArguments"],
-] as const) {
-  for (const phase of ["delta", "done"]) responseEventKinds.set(`response.${family}.${phase}`, kind);
-}
-for (const phase of ["added", "done"]) {
-  responseEventKinds.set(`response.reasoning_summary_part.${phase}`, "reasoningSummary");
-  responseEventKinds.set(`response.content_part.${phase}`, "outputText");
-}
-const recoveryEventNames = new Set([
-  ...responseEventKinds.keys(),
-  "response.created", "response.in_progress", "response.completed", "response.incomplete",
-  "response.failed", "response.output_item.added", "response.output_item.done", "error",
-]);
-const MAX_RECOVERY_CONTEXT_DEPTH = 8;
-
-/** Assemble SSE data lines without retaining an offset record for each line. */
-function* recoveryFrames(wire: string) {
-  let event = "";
-  let data = "";
-  let hasData = false;
-  for (const [line, text] of wire.matchAll(/([^\r\n]*)(?:\r\n|[\r\n]|$)/g)) {
-    if (!line) break;
-    if (!text) {
-      if (hasData) yield { event, data };
-      event = data = "";
-      hasData = false;
-    } else if (text.startsWith("event:")) {
-      event = text.slice(6).trim();
-    } else if (text.startsWith("data:")) {
-      const value = text.slice(text[5] === " " ? 6 : 5);
-      data = hasData ? data + "\n" + value : value;
-      hasData = true;
-    }
-  }
-  if (hasData) yield { event, data };
-}
-
-type RecoveryStringVisitor = (
-  start: number, end: number, key: string | undefined, parents: (string | undefined)[], depth: number, cut: boolean,
-) => boolean | void;
-
-function visitRecoveryStrings(json: string, visit: RecoveryStringVisitor) {
-  const quoteOrEscape = /["\\]/g;
-  const whitespace = /\s/;
-  const parents: (string | undefined)[] = [];
-  let depth = 0;
-  let member: string | undefined;
-  for (let cursor = 0; cursor < json.length;) {
-    const char = json[cursor++];
-    if (char === "{" || char === "[") {
-      if (depth < MAX_RECOVERY_CONTEXT_DEPTH) parents[depth] = member;
-      depth++;
-      member = undefined;
-    } else if (char === "}" || char === "]") {
-      depth = Math.max(0, depth - 1);
-      member = undefined;
-    } else if (char === ",") {
-      member = undefined;
-    } else if (char === '"') {
-      const start = cursor;
-      const end = jsonStringEnd(json, start, quoteOrEscape);
-      const cut = end === json.length;
-      cursor = end + 1;
-      let next = cursor;
-      while (next < json.length && whitespace.test(json[next])) next++;
-      // A colon identifies a field name even when a neighboring token is malformed.
-      if (json[next] === ":") {
-        member = depth <= MAX_RECOVERY_CONTEXT_DEPTH ? decodeAgentJsonEscapes(json.slice(start, end)) : undefined;
-        cursor = next + 1;
-      } else {
-        if (visit(start, end, member, parents, depth, cut)) return;
-        member = undefined;
-      }
-    }
-  }
-}
-
-function contentKind(
-  field: string | undefined, parents: (string | undefined)[], depth: number, eventKind?: RecoveryKind,
-): RecoveryKind {
-  if (depth > MAX_RECOVERY_CONTEXT_DEPTH) return "other";
-  if (depth === 1 && eventKind && (field === "delta" || field === "text")) return eventKind;
-  switch (field) {
-    case "output_text": return "outputText";
-    case "refusal": return "refusal";
-    case "reasoning":
-    case "reasoning_content":
-    case "reasoning_text": return "reasoningText";
-    case "reasoning_summary":
-    case "summary_text": return "reasoningSummary";
-    case "arguments": return "toolArguments";
-    case "content":
-      if (depth === 4 && parents[1] === "choices" &&
-          (parents[3] === "delta" || parents[3] === "message")) return "outputText";
-      break;
-    case "summary":
-      if ((depth === 1 && eventKind === "reasoningSummary") ||
-          parents[depth - 2] === "reasoning_details") return "reasoningSummary";
-      break;
-    case "text":
-      // Arrays and their entries each occupy one level. The enclosing field identifies the part.
-      if (depth === 2 && parents[1] === "part" && eventKind) return eventKind;
-      if (parents[depth - 2] === "reasoning_details") return "reasoningText";
-      if (parents[depth - 2] === "summary") return "reasoningSummary";
-      if (parents[depth - 2] === "content") return "outputText";
-      break;
-  }
-  return "other";
-}
-
-/** Project received content into a page-only artifact without retaining frames or grouping by identity. */
-export function buildMemoRecoveryArtifact(wire: string, key: string, byteLength: number): MemoRecoveryArtifact {
-  type Fragments = { chunks: string[]; batch: string[]; count: number; cut: boolean };
-  const kinds = new Map<RecoveryKind, Fragments>();
-  const eventCounts: Record<string, number> = {};
-  let frameCount = 0;
-  const isJson = (body: string) => /^\s*[[{"]/.test(body);
-  if (isJson(wire) || !/(?:^|[\r\n])(?:data|event):/.test(wire)) {
-    collectFrame(wire, "");
-  } else {
-    for (const { event, data } of recoveryFrames(wire)) collectFrame(data, event);
-  }
-  return {
-    byteLength, frameCount, eventCounts,
-    content: Array.from(kinds, ([kind, fragments]) => {
-      fragments.chunks.push(fragments.batch.join(""));
-      return {
-        kind,
-        text: redactAgentSecret(fragments.chunks.join(""), key),
-        fragmentCount: fragments.count,
-        tailCutMidString: fragments.cut,
-      };
-    }),
-  };
-
-  function add(kind: RecoveryKind, text: string, cut: boolean) {
-    let fragments = kinds.get(kind);
-    if (!fragments) {
-      fragments = { chunks: [], batch: [], count: 0, cut: false };
-      kinds.set(kind, fragments);
-    }
-    fragments.count++;
-    fragments.cut = cut;
-    if (text) fragments.batch.push(text);
-    if (fragments.batch.length === 4096) {
-      fragments.chunks.push(fragments.batch.join(""));
-      fragments.batch.length = 0;
-    }
-  }
-
-  function collectFrame(data: string, headerEvent: string) {
-    frameCount++;
-    if (!isJson(data)) {
-      if (headerEvent && recoveryEventNames.has(headerEvent)) countEvent(headerEvent);
-      if (data) add("other", data, false);
-      return;
-    }
-    let event = recoveryEventNames.has(headerEvent) ? headerEvent : "";
-    if (!event) {
-      // Resolve a JSON event name even when it occurs after the content.
-      visitRecoveryStrings(data, (start, end, field, _parents, depth, cut) => {
-        if (depth !== 1 || field !== "type" || cut) return;
-        const value = decodeAgentJsonEscapes(data.slice(start, end));
-        if (!recoveryEventNames.has(value)) return;
-        event = value;
-        return true;
-      });
-    }
-    if (event) countEvent(event);
-    const eventKind = responseEventKinds.get(event);
-    visitRecoveryStrings(data, (start, end, field, parents, depth, cut) => {
-      if (depth === 1 && field === "type" && event && data.slice(start, end) === event) return;
-      add(contentKind(field, parents, depth, eventKind), decodeAgentJsonEscapes(data.slice(start, end)), cut);
-    });
-  }
-
-  function countEvent(event: string) {
-    eventCounts[event] = (eventCounts[event] ?? 0) + 1;
-  }
 }

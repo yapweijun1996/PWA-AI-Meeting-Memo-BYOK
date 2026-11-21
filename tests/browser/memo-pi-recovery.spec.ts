@@ -129,7 +129,7 @@ test("a bounded completed response in unsupported wire format remains available 
   expect(saved.jobs).toHaveLength(1);
   expect(attempts).toHaveLength(1);
   expect(unexpected).toEqual([]);
-  // An adapter may preserve the original in the receipt or expose the recovery artifact.
+  // An adapter may preserve the original in the receipt or offer the bounded wire export.
   if (!saved.jobs[0].assistantRecord?.includes(marker)) {
     const recovery = page.getByRole("alert", { name: "Unsaved review response" });
     await expect(recovery).toBeVisible();
@@ -140,14 +140,10 @@ test("a bounded completed response in unsupported wire format remains available 
     for await (const chunk of reader!) chunks.push(Buffer.from(chunk));
     const receipt = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     expect(receipt).toMatchObject({
-      version: 2,
-      recoveryArtifact: {
-        content: expect.arrayContaining([
-          expect.objectContaining({ kind: "outputText", text: expect.stringContaining(marker) }),
-        ]),
-      },
+      version: 1,
+      wireResponse: expect.stringContaining(marker),
     });
-    expect(receipt).not.toHaveProperty("wireResponse");
+    expect(receipt).not.toHaveProperty("recoveryArtifact");
   }
   expect(attempts).toHaveLength(1);
 });
@@ -207,6 +203,8 @@ test("a stream disconnect after headers keeps the earlier tool response and stop
   expect(saved.jobs.map(job => job.state)).toEqual(["completed", "outcome_unknown"]);
   expect(saved.jobs[0].assistantRecord).toContain("read_transcript_range");
   expect(saved.jobs[1].assistantRecord).toContain("Synthetic connection lost");
+  expect(saved.jobs[1].assistantRecord).not.toContain(marker);
+  await expect(page.getByRole("button", { name: "Export unsaved response" })).toHaveCount(0);
   await page.reload();
   await expectReviewedRetry(page);
   expect((await readPiMeeting(page)).jobs).toEqual(saved.jobs);

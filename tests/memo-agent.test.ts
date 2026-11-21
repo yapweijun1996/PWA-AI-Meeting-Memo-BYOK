@@ -1,4 +1,5 @@
 import "fake-indexeddb/auto";
+import { spawnSync } from "node:child_process";
 import { afterEach, expect, test, vi } from "vitest";
 import {
   sampleMeeting,
@@ -26,8 +27,10 @@ const selection = { provider: "openai" as const, model: "gpt-6-luna" };
 const key = "sk-synthetic-agent-unit-key";
 const redaction = "[redacted provider key]";
 const meetingIds: string[] = [];
-function recoveredContent(meetingId: string) {
-  return pendingAgentReceipt(meetingId)?.recoveryArtifact?.content;
+function exportedReceipt(meetingId: string) {
+  const pending = pendingAgentReceipt(meetingId);
+  expect(pending).toBeDefined();
+  return receiptExport(pending!);
 }
 afterEach(() => {
   for (const meetingId of meetingIds.splice(0))
@@ -395,7 +398,9 @@ test.each([400, 408, 429, 500, "disconnect", "truncated"])(
     expect(latest.jobs[0].usage).toBeNull();
     expect(JSON.stringify(latest)).not.toContain(key);
     if (status === "truncated") {
-      expect(pendingAgentReceipt(meeting.id)?.recoveryArtifact?.eventCounts).toEqual({ "response.created": 1 });
+      expect(exportedReceipt(meeting.id)).toMatchObject({
+        version: 1, wireResponse: 'event: response.created\ndata: {"type":"response.created","response":{"id":"synthetic"}}\n\n',
+      });
       await expect(runAgentMemo(latest, latest.memoAgents![0], key, signal, true)).rejects.toThrow("unsaved");
       acknowledgeAgentExport(meeting.id);
     }
@@ -675,7 +680,7 @@ test("schema coercion cannot make invalid raw tool arguments into consulted evid
   ).toBe(true);
 });
 
-test("an unsupported decoded response retains its bounded logical content for explicit export", async () => {
+test("an unsupported decoded response retains its bounded wire text for explicit export", async () => {
   const { meeting, plan, signal } = await setup();
   const args: Record<string, unknown> = {};
   let cursor = args;
@@ -684,6 +689,7 @@ test("an unsupported decoded response retains its bounded logical content for ex
     cursor.next = next;
     cursor = next;
   }
+  const wire = await agentSse([call(args)]).text();
   const request = vi.fn(async () => {
     const response = agentSse([call(args)]);
     response.headers.delete("x-request-id");
@@ -691,8 +697,7 @@ test("an unsupported decoded response retains its bounded logical content for ex
   });
   vi.stubGlobal("fetch", request);
   await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
-  expect(pendingAgentReceipt(meeting.id)?.recoveryArtifact?.eventCounts).toHaveProperty(["response.completed"], 1);
-  expect(recoveredContent(meeting.id)).toContainEqual(expect.objectContaining({ kind: "toolArguments" }));
+  expect(exportedReceipt(meeting.id)).toMatchObject({ version: 1, wireResponse: wire });
   expect(JSON.stringify(pendingAgentReceipt(meeting.id))).not.toContain(key);
   const saved = await recoverAgentReceipt(meeting.id);
   expect(saved.jobs[0]).toMatchObject({
@@ -717,10 +722,10 @@ test("oversized wire responses stop at the disclosed boundary without retrying o
   expect(latest.jobs[0].state).toBe("outcome_unknown");
   expect(latest.jobs[0].usage).toBeNull();
   expect(latest.memos).toEqual([]);
-  const artifact = pendingAgentReceipt(meeting.id)?.recoveryArtifact;
-  expect(artifact?.byteLength).toBe(MEMO_AGENT_RESPONSE_BYTES);
-  expect(artifact?.content[0]).toMatchObject({ kind: "outputText", fragmentCount: 1, tailCutMidString: true });
-  expect(artifact?.content[0].text.startsWith("Captured paid text. ")).toBe(true);
+  expect(pendingAgentReceipt(meeting.id)).toBeUndefined();
+  expect(latest.jobs[0].assistantRecord).not.toContain("Captured paid text.");
+  await expect(runAgentMemo(latest, latest.memoAgents![0], key, signal)).rejects.toThrow("previous paid outcome");
+  expect(request).toHaveBeenCalledTimes(1);
 });
 
 async function recoveryFixture(advanced = false) {
@@ -1168,34 +1173,6 @@ test("a reflected credential in the request ID is redacted before persistence an
   expect(JSON.stringify(restored.meeting)).not.toContain(key);
 });
 
-test.each(["malformed SSE", "body disconnect"])("bounded paid output survives %s for local export", async mode => {
-  const { meeting, plan, signal } = await setup();
-  const marker = "Synthetic paid output before interruption.";
-  const chunk = 'event: unsupported\ndata: ' + marker + ' ' + key + '\n\n';
-  let wrote = false;
-  const body = new ReadableStream<Uint8Array>({
-    pull(controller) {
-      if (!wrote) {
-        wrote = true;
-        controller.enqueue(new TextEncoder().encode(chunk));
-      } else if (mode === "body disconnect") controller.error(new Error("Synthetic disconnect"));
-      else controller.close();
-    },
-  });
-  const request = vi.fn().mockResolvedValue(new Response(body, { headers: { "content-type": "text/event-stream" } }));
-  vi.stubGlobal("fetch", request);
-  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
-  const saved = (await getMeeting(meeting.id))!;
-  expect(saved.jobs[0].state).toBe("outcome_unknown");
-  const recovery = pendingAgentReceipt(meeting.id);
-  expect(recovery?.recoveryArtifact?.content).toEqual([
-    { kind: "other", text: marker + " " + redaction, fragmentCount: 1, tailCutMidString: false },
-  ]);
-  expect(JSON.stringify(recovery)).not.toContain(key);
-  await expect(runAgentMemo(saved, saved.memoAgents![0], key, signal, true)).rejects.toThrow("unsaved");
-  expect(request).toHaveBeenCalledTimes(1);
-});
-
 test("an explicitly confirmed correction can replace a locally unrepresentable saved final", async () => {
   const { meeting, plan, signal } = await setup();
   const invalid = final(meeting.segments[0].id);
@@ -1249,9 +1226,9 @@ test.each(["no items", "unfinished item"])("a terminal response containing paid 
   vi.stubGlobal("fetch", request);
   await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
   expect(request).toHaveBeenCalledTimes(1);
-  expect(recoveredContent(meeting.id)).toContainEqual(expect.objectContaining({
-    kind: "outputText", text: expect.stringContaining("Synthetic evidence for human review."),
-  }));
+  expect(exportedReceipt(meeting.id)).toMatchObject({
+    version: 1, wireResponse: expect.stringContaining("Synthetic evidence for human review."),
+  });
   expect((await getMeeting(meeting.id))!.memos).toEqual(meeting.memos);
 });
 
@@ -1333,284 +1310,202 @@ test.each(["memo slots", "response reserve"])("durable intent checks the latest 
   expect(saved.memoAgents![0].jobIds).toHaveLength(0);
 });
 
-test("terminal SSE export masks escaped values and omits arbitrary transport fields", async () => {
-  const { meeting, plan, signal } = await setup();
-  const escaped = "\\u0073" + key.slice(1);
-  const output = final(meeting.segments[0].id);
-  const frame = { type: "response.completed", response: { id: key, status: "completed", output: [output] } };
-  const wire = "event: " + key + "\ndata: " + JSON.stringify(frame).replace(key, escaped) +
-    "\n\n: fragment " + escaped + "\n";
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(wire, { headers: { "content-type": "text/event-stream" } })));
-  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
-  const exported = receiptExport(pendingAgentReceipt(meeting.id)!);
-  expect(exported).toMatchObject({ version: 2, recoveryArtifact: { eventCounts: { "response.completed": 1 } } });
-  expect(exported).not.toHaveProperty("wireResponse");
-  expect(exported.recoveryArtifact!.content).toEqual(expect.arrayContaining([
-    expect.objectContaining({ kind: "other", text: expect.stringContaining(redaction) }),
-    expect.objectContaining({ kind: "outputText", text: expect.stringContaining("Synthetic evidence for human review.") }),
-  ]));
-  expect(JSON.stringify(exported)).not.toContain(key);
-  expect(JSON.stringify(exported)).not.toContain(": fragment ");
-});
-
-test.each(["Responses tool arguments", "Responses reasoning", "Chat tool arguments", "Chat reasoning"])(
-  "interrupted Pi recovery masks fragmented %s before retention and download", async stream => {
-    const { meeting, plan: responsesPlan, signal } = await setup();
-    const chat = stream.startsWith("Chat");
-    const plan = chat ? planAgentMemo(meeting, routerSelection, "en") : responsesPlan;
-    const frame = (delta: string, index: number) => {
-      if (chat) {
-        const tools = stream === "Chat tool arguments";
-        return `data: ${JSON.stringify({ choices: [{ index: 0, delta: tools
-          ? { tool_calls: [{ index: 0, ...(index === 0 ? { id: "call-synthetic", type: "function" } : {}),
-            function: { arguments: delta } }] }
-          : { reasoning: delta } }] })}\n\n`;
+function interruptedResponse(wire: string, contentType: string, abort?: AbortController) {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const bytes = new TextEncoder().encode(wire);
+      const splitAt = Math.floor(bytes.length / 2);
+      controller.enqueue(bytes.subarray(0, splitAt));
+      controller.enqueue(bytes.subarray(splitAt));
+    },
+    pull(controller) {
+      if (abort) {
+        abort.abort();
+        controller.close();
+      } else {
+        controller.error(new Error("Synthetic reader disconnect"));
       }
-      const summary = stream === "Responses reasoning";
-      const type = summary ? "response.reasoning_summary_text.delta" : "response.function_call_arguments.delta";
-      return `event: ${type}\ndata: ${JSON.stringify({ type, item_id: "synthetic-item", output_index: 0,
-        ...(summary ? { summary_index: 0 } : {}), delta })}\n\n`;
-    };
-    const truncatedFrame = (delta: string) => {
-      const complete = frame(delta, 2);
-      return complete.slice(0, complete.lastIndexOf('"'));
-    };
-    const wire = frame("before " + key.slice(0, 9), 0) + frame(key.slice(9, 18), 1) +
-      truncatedFrame(key.slice(18) + " after");
-    const request = vi.fn(async () => {
+    },
+  });
+  return new Response(body, { headers: { "content-type": contentType } });
+}
+
+test.each(["Responses", "Chat", "text/plain", "abort"] as const)(
+  "interrupted %s body saves one uncertain receipt and offers no export", async mode => {
+    const { meeting, plan, signal } = await setup();
+    const controller = mode === "abort" ? new AbortController() : undefined;
+    const selectedPlan = mode === "Chat" ? planAgentMemo(meeting, routerSelection, "en") : plan;
+    const marker = "Synthetic paid text before interruption";
+    const head = marker + " " + key.slice(0, 11);
+    const tail = key.slice(11);
+    const chatFrame = (summary: string) => 'data: ' + JSON.stringify({
+      choices: [{ delta: { reasoning_details: [{ summary, type: "reasoning.summary", index: 4 }] }, index: 2 }],
+    }) + "\n\n";
+    const responsesFrame = (delta: string, vendor_text: string) => 'data: ' + JSON.stringify({
+      type: "response.reasoning_text.delta", delta, vendor_text, item_id: "synthetic-item", output_index: 0,
+    }) + "\n\n";
+    const wire = mode === "Chat" ? chatFrame(head) + chatFrame(tail)
+      : mode === "text/plain" ? "# Memo\n" + head + "\ndata: 42\n" + tail
+      : responsesFrame(head, key.slice(0, 11)) + responsesFrame(tail, tail);
+    const request = vi.fn(async (_url, init) => {
+      expect(init.method).toBe("POST");
       expect((await getMeeting(meeting.id))!.jobs.at(-1)?.state).toBe("in_flight");
-      return new Response(wire, { headers: { "content-type": "text/event-stream" } });
+      return interruptedResponse(wire, mode === "text/plain" ? mode : "text/event-stream", controller);
     });
     vi.stubGlobal("fetch", request);
-    await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
-    const pending = pendingAgentReceipt(meeting.id)!;
-    const kind = stream.endsWith("arguments") ? "toolArguments" : chat ? "reasoningText" : "reasoningSummary";
-    expect(pending.recoveryArtifact?.content).toContainEqual({
-      kind, text: "before " + redaction + " after", fragmentCount: 3, tailCutMidString: true,
-    });
-    const exported = receiptExport(pending);
-    expect(exported.version).toBe(2);
-    expect(exported.recoveryArtifact).toBe(pending.recoveryArtifact);
-    expect(JSON.stringify(exported)).not.toContain(key);
-    expect((await getMeeting(meeting.id))!.jobs.at(-1)?.state).toBe("outcome_unknown");
+    await expect(runAgentMemo(meeting, selectedPlan, key, controller?.signal ?? signal)).rejects.toThrow();
+
+    const saved = (await getMeeting(meeting.id))!;
+    expect(saved.jobs).toHaveLength(1);
+    expect(saved.jobs[0]).toMatchObject({ state: "outcome_unknown", billing: "possibly_charged", usage: null });
+    expect(readAgentAssistant(saved.jobs[0].assistantRecord!).content).toEqual([]);
+    expect(saved.memoAgents![0].state).toBe(mode === "abort" ? "paused" : "blocked");
+    expect(saved.memoAgents![0].jobIds).toEqual([saved.jobs[0].id]);
+    expect(pendingAgentReceipt(meeting.id)).toBeUndefined();
+    expect(JSON.stringify(saved)).not.toContain(marker);
+    await expect(runAgentMemo(saved, saved.memoAgents![0], key, signal)).rejects.toThrow("previous paid outcome");
     expect(request).toHaveBeenCalledTimes(1);
   },
 );
 
-function disconnectedResponse(wire: string, splitAt?: number) {
-  const bytes = new TextEncoder().encode(wire);
-  return new Response(new ReadableStream({
-    start(controller) {
-      if (splitAt === undefined) controller.enqueue(bytes);
-      else {
-        controller.enqueue(bytes.subarray(0, splitAt));
-        controller.enqueue(bytes.subarray(splitAt));
-      }
-    },
-    pull(controller) { controller.error(new Error("Synthetic reader disconnect")); },
-  }), { headers: { "content-type": "text/event-stream" } });
-}
-
-async function exportInterruptedPi(wire: string, useChat = false, splitAt?: number) {
+test("an interrupted receipt can be saved locally after a write failure without offering an export", async () => {
   const { meeting, plan, signal } = await setup();
-  const request = vi.fn(async () => {
-    const saved = (await getMeeting(meeting.id))!;
-    expect(saved.jobs.at(-1)?.state).toBe("in_flight");
-    return disconnectedResponse(wire, splitAt);
+  const original = repository.saveMeeting;
+  let rejected = false;
+  vi.spyOn(repository, "saveMeeting").mockImplementation(async value => {
+    if (!rejected && value.jobs.some(job => job.state === "outcome_unknown")) {
+      rejected = true;
+      throw new DOMException("Synthetic quota failure", "QuotaExceededError");
+    }
+    return original(value);
   });
+  const marker = "Synthetic text lost on disconnect";
+  const request = vi.fn(() => interruptedResponse("data: " + marker, "text/event-stream"));
   vi.stubGlobal("fetch", request);
-  await expect(runAgentMemo(meeting, useChat ? planAgentMemo(meeting, routerSelection, "en") : plan, key, signal))
-    .rejects.toThrow();
-  expect(request).toHaveBeenCalledTimes(1);
-  const saved = (await getMeeting(meeting.id))!;
-  expect(saved.jobs).toHaveLength(1);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow("quota");
+  expect(pendingAgentReceipt(meeting.id)?.job.state).toBe("outcome_unknown");
+  expect(JSON.stringify(pendingAgentReceipt(meeting.id))).not.toContain(marker);
+  expect(() => exportedReceipt(meeting.id)).toThrow("unavailable for export");
+  const saved = await recoverAgentReceipt(meeting.id);
   expect(saved.jobs[0].state).toBe("outcome_unknown");
-  const pending = pendingAgentReceipt(meeting.id)!;
-  const exported = receiptExport(pending);
-  expect(exported).toMatchObject({ version: 2, recoveryArtifact: { byteLength: new TextEncoder().encode(wire).length } });
-  expect(pending.job.assistantRecord).toBeDefined();
-  expect(exported.job).not.toHaveProperty("assistantRecord");
-  expect(exported).not.toHaveProperty("wireResponse");
-  return exported.recoveryArtifact!;
-}
-
-test.each([
-  ["summary", "reasoningSummary"], ["text", "reasoningText"], ["arguments", "toolArguments"],
-] as const)("interrupted Chat %s is masked before its trailing discriminator is received", async (field, kind) => {
-  const frame = (id: string, text: string) => {
-    const delta = field === "arguments" ? { tool_calls: [{ function: { arguments: text }, index: 4 }] }
-      : { reasoning_details: [{ [field]: text, type: `reasoning.${field}`, index: 4 }] };
-    return `data: ${JSON.stringify({ id, choices: [{ delta, index: 2 }] })}\n\n`;
-  };
-  const unrelated = 'data: {"id":"independent","choices":[{"index":9,"delta":{"content":"Unrelated paid output."}}]}\n\n';
-  const tail = frame("third", key.slice(18) + " after").split(' after"')[0] + " after";
-  const wire = frame("first", "before " + key.slice(0, 9)) + unrelated + frame("second", key.slice(9, 18)) + tail;
-  const artifact = await exportInterruptedPi(wire, true);
-  expect(artifact.content).toEqual(expect.arrayContaining([
-    { kind, text: "before " + redaction + " after", fragmentCount: 3, tailCutMidString: true },
-    { kind: "outputText", text: "Unrelated paid output.", fragmentCount: 1, tailCutMidString: false },
-  ]));
-  expect(artifact.content.find(section => section.kind === "other")?.text).toContain("independent");
-});
-
-test.each([
-  ["function_call_arguments", "toolArguments"], ["output_text", "outputText"],
-  ["reasoning_summary_text", "reasoningSummary"], ["refusal", "refusal"],
-] as const)("interrupted Pi export masks a Responses %s tail preceding its item identity", async (family, kind) => {
-  const type = `response.${family}.delta`;
-  const frame = (delta: string, item_id: string, output_index: number) =>
-    `event: ${type}\ndata: ${JSON.stringify({ type, delta, item_id, output_index, content_index: 1 })}\n\n`;
-  const tail = frame(key.slice(18) + " after", "synthetic-final-item", 2).split(',"item_id"')[0] + ",";
-  const other = 'data: {"type":"response.created","response":{"id":"Unrelated metadata."}}\n\n';
-  const wire = frame("before " + key.slice(0, 9), "synthetic-first-item", 2) + other +
-    frame(key.slice(9, 18), "synthetic-second-item", 4) + tail;
-  const artifact = await exportInterruptedPi(wire);
-  expect(artifact.content).toContainEqual({
-    kind, text: "before " + redaction + " after", fragmentCount: 3, tailCutMidString: false,
-  });
-  expect(artifact.content.find(section => section.kind === "other")?.text).toContain("Unrelated metadata.");
-});
-
-test("a Responses tail with mismatched metadata stays in its own kind", async () => {
-  const type = "response.output_text.delta";
-  const wire = `event: ${type}\ndata: {"metadata":{"unlisted":["before ${key.slice(0, 18)}"]},"delta"\ndata: :"${key.slice(18)} after",`;
-  const artifact = await exportInterruptedPi(wire);
-  expect(artifact.content).toEqual([
-    { kind: "other", text: "before " + key.slice(0, 18), fragmentCount: 1, tailCutMidString: false },
-    { kind: "outputText", text: key.slice(18) + " after", fragmentCount: 1, tailCutMidString: false },
-  ]);
-});
-
-test("interrupted Pi export preserves a Responses tail with no matching continuation", async () => {
-  const type = "response.output_text.delta";
-  const wire = `event: ${type}\ndata: {"delta":"unrelated tail",`;
-  expect((await exportInterruptedPi(wire)).content).toEqual([
-    { kind: "outputText", text: "unrelated tail", fragmentCount: 1, tailCutMidString: false },
-  ]);
-});
-
-test.each([
-  { name: "frame boundary", fixture: key, fragments: [key.slice(0, 12), key.slice(12)] },
-  { name: "JSON escape boundary", fixture: key, fragments: ["\\u00", "73" + key.slice(1)] },
-  { name: "surrogate boundary", fixture: "sk-fixture-😀-unit", fragments: ["sk-fixture-\ud83d", "\ude00-unit"] },
-  { name: "overlapping prefixes", fixture: "sk-sk-sk-", fragments: ["sk-sk-", "sk-sk-"] },
-])("Pi recovery SSE redacts overlapping or split text while preserving the rest ($name)", async ({ fixture, fragments }) => {
-  const { meeting, plan, signal } = await setup();
-  // Fetch's header format excludes Unicode; exercise the same wire reader with a valid synthetic header.
-  const stream = agentTransport.streamAgentRoute;
-  vi.spyOn(agentTransport, "streamAgentRoute").mockImplementation((route, context, options) =>
-    stream(route, context, { ...options, apiKey: key }));
-  const event = (type: string, fields: object) => `event: ${type}\r\ndata: ${JSON.stringify({ type, ...fields })}\r\n\r\n`;
-  const delta = (delta: string, output_index: number) =>
-    event("response.output_text.delta", { item_id: "synthetic-item", output_index, content_index: 0, delta, unrelated: "keep" });
-  const lookalike = fixture.slice(0, -1) + "X";
-  const alternate = event("response.refusal.delta", { delta: lookalike, output_index: 1 });
-  const tail = delta(fragments[1] + " after " + lookalike, 0).split('","unrelated"')[0];
-  const wire = delta("before " + fragments[0], 0) + alternate + tail;
-  const request = vi.fn().mockResolvedValue(new Response(wire, { headers: { "content-type": "text/event-stream" } }));
-  vi.stubGlobal("fetch", request);
-  await expect(runAgentMemo(meeting, plan, fixture, signal)).rejects.toThrow();
-  const artifact = receiptExport(pendingAgentReceipt(meeting.id)!).recoveryArtifact!;
-  expect(artifact.content).toEqual(expect.arrayContaining([
-    { kind: "outputText", text: "before " + redaction + " after " + lookalike, fragmentCount: 2, tailCutMidString: true },
-    { kind: "refusal", text: lookalike, fragmentCount: 1, tailCutMidString: false },
-  ]));
+  expect(pendingAgentReceipt(meeting.id)).toBeUndefined();
+  await expect(runAgentMemo(saved, saved.memoAgents![0], key, signal)).rejects.toThrow("previous paid outcome");
   expect(request).toHaveBeenCalledTimes(1);
 });
 
-test("Pi recovery joins readable paid text across multiline and truncated SSE frames", async () => {
+test("clean EOF preserves a bracket-led Markdown data frame after a memo rejected by record validation", async () => {
   const { meeting, plan, signal } = await setup();
-  const line = (text: string) => "data: " + text;
-  const wire = [
-    'event: response.output_text.delta',
-    line('{"output_index":0,'),
-    line('"content_index":0,"delta":"Decision: "}'),
-    "",
-    'event: response.output_text.delta',
-    line(JSON.stringify({ output_index: 0, content_index: 1, delta: "ship the draft " })),
-    "",
-    'event: response.output_text.delta',
-    line('{"output_index":0,"content_index":0,"delta":"on Friday.'),
-  ].join("\n");
-  const request = vi.fn().mockResolvedValue(new Response(wire, { headers: { "content-type": "text/event-stream" } }));
-  vi.stubGlobal("fetch", request);
-  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
-  expect(recoveredContent(meeting.id)).toEqual([
-    { kind: "outputText", text: "Decision: ship the draft on Friday.", fragmentCount: 3, tailCutMidString: true },
-  ]);
-  expect(request).toHaveBeenCalledTimes(1);
-});
-
-test.each([
-  ["content index", "response.output_text.delta", "item-a", 3],
-  ["item ID", "response.output_text.delta", "item-b", 2],
-  ["event family", "response.refusal.delta", "item-a", 2],
-] as const)("malformed terminal does not broaden redaction during receipt recovery (%s)", async (_variant, type, item_id, content_index) => {
-  const { meeting, plan, signal } = await setup();
-  const event = (type: string, data: object) => `event: ${type}\r\ndata: ${JSON.stringify(data)}\r\n\r\n`;
-  const firstType = "response.output_text.delta";
-  const prefix = "before " + key.slice(0, 18);
-  const suffix = key.slice(18) + " after";
-  const wire = event("response.created", { type: "response.created", response: { id: "R".repeat(1001), status: "in_progress" } }) +
-    event(firstType, { type: firstType, item_id: "item-a", output_index: 7, content_index: 2, delta: prefix }) +
-    event(type, { delta: suffix, type, item_id, output_index: 7, content_index }) +
-    'event: response.completed\r\ndata: {"type":\r\n\r\n';
-  const request = vi.fn().mockResolvedValue(new Response(wire, { headers: { "content-type": "text/event-stream" } }));
+  const escaped = "\\u0073" + key.slice(1);
+  const output = final(meeting.segments[0].id);
+  const responseBody = await agentSse([output], "R".repeat(1001)).text();
+  const wire = responseBody + "data: [read the decision](https://example.invalid/notes) " + escaped +
+    "\r\n\r\n: preserve this comment " + key + "\r\n";
+  const request = vi.fn(() => new Response(wire, { headers: { "content-type": "text/event-stream" } }));
   vi.stubGlobal("fetch", request);
   await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow("responseId");
-  const exported = receiptExport(pendingAgentReceipt(meeting.id)!);
-  // The overlong response ID cannot enter a decoded record.
-  expect(exported.job).toMatchObject({ state: "outcome_unknown" });
-  expect(exported.job).not.toHaveProperty("assistantRecord");
-  const content = exported.recoveryArtifact!.content;
-  if (type === firstType) {
-    expect(content).toContainEqual({ kind: "outputText", text: "before " + redaction + " after", fragmentCount: 2, tailCutMidString: false });
-  } else {
-    expect(content).toEqual(expect.arrayContaining([
-      { kind: "outputText", text: prefix, fragmentCount: 1, tailCutMidString: false },
-      { kind: "refusal", text: suffix, fragmentCount: 1, tailCutMidString: false },
-    ]));
-  }
+  expect(exportedReceipt(meeting.id)).toEqual({
+    format: "meeting-memo-agent-receipt", version: 1, meetingId: meeting.id, agentId: plan.id,
+    job: expect.objectContaining({ state: "outcome_unknown" }),
+    wireResponse: wire.replace(escaped, redaction).replace(key, redaction),
+  });
+  expect((await getMeeting(meeting.id))!.jobs[0].state).toBe("outcome_unknown");
   expect(request).toHaveBeenCalledTimes(1);
 });
 
-test("Pi recovery masks a JSON escape cut across HTTP chunks without losing adjacent text", async () => {
-  const wire = 'event: response.output_text.delta\ndata: {"delta":"before ' +
-    "\\u0073" + key.slice(1) + ' after';
-  const artifact = await exportInterruptedPi(wire, false, wire.indexOf("\\u0073") + 4);
-  expect(artifact.content).toEqual([
-    { kind: "outputText", text: "before " + redaction + " after", fragmentCount: 1, tailCutMidString: true },
-  ]);
-});
-
-test("two interrupted exports keep separate paid text and require a fresh outcome review for each attempt", async () => {
+test("clean EOF preserves a text/plain body containing a literal data line", async () => {
   const { meeting, plan, signal } = await setup();
+  const escaped = "\\u0073" + key.slice(1);
+  const wire = "\ufeff# Meeting notes 📓\r\nKeep these details.\r\ndata: 42\r\n<strong>Conclusion</strong> " +
+    key + ' and "' + escaped + '"\r\n';
   const request = vi.fn(async () => {
-    const attempt = request.mock.calls.length;
-    const frame = (text: string) => `data: ${JSON.stringify({ type: "response.output_text.delta", delta: text })}\n\n`;
-    return disconnectedResponse(frame(`Attempt ${attempt}: ` + key.slice(0, 12)) + frame(key.slice(12) + " retained."));
+    const bytes = new TextEncoder().encode(wire);
+    const split = bytes.indexOf(0xf0) + 2;
+    return new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes.subarray(0, split));
+        controller.enqueue(bytes.subarray(split));
+        controller.close();
+      },
+    }), { headers: { "content-type": "text/plain" } });
   });
   vi.stubGlobal("fetch", request);
   await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
-  const first = receiptExport(pendingAgentReceipt(meeting.id)!);
-  let persisted = (await getMeeting(meeting.id))!;
-  await expect(runAgentMemo(persisted, persisted.memoAgents![0], key, signal, true)).rejects.toThrow("unsaved");
-  acknowledgeAgentExport(meeting.id);
-  await expect(runAgentMemo(persisted, persisted.memoAgents![0], key, signal)).rejects.toThrow("previous paid outcome");
+  expect(exportedReceipt(meeting.id)).toMatchObject({
+    version: 1, wireResponse: wire.replace(key, redaction).replace(escaped, redaction),
+  });
+  expect((await getMeeting(meeting.id))!.jobs[0].state).toBe("outcome_unknown");
   expect(request).toHaveBeenCalledTimes(1);
-
-  await expect(runAgentMemo(persisted, persisted.memoAgents![0], key, signal, true)).rejects.toThrow();
-  const second = receiptExport(pendingAgentReceipt(meeting.id)!);
-  persisted = (await getMeeting(meeting.id))!;
-  expect(request).toHaveBeenCalledTimes(2);
-  expect(persisted.memoAgents![0].jobIds).toEqual([first.job.id, second.job.id]);
-  expect(persisted.jobs.map(job => job.state)).toEqual(["outcome_unknown", "outcome_unknown"]);
-  expect(first.recoveryArtifact?.content[0].text).toBe("Attempt 1: " + redaction + " retained.");
-  expect(second.recoveryArtifact?.content[0].text).toBe("Attempt 2: " + redaction + " retained.");
-  acknowledgeAgentExport(meeting.id);
-  await expect(runAgentMemo(persisted, persisted.memoAgents![0], key, signal)).rejects.toThrow("previous paid outcome");
-  expect(request).toHaveBeenCalledTimes(2);
 });
+
+test("clean EOF leaves independent credential fragments and malformed SSE intact in the raw export", async () => {
+  const { meeting, plan, signal } = await setup();
+  const frame = (type: string, data: object) => `event: ${type}\r\ndata: ${JSON.stringify(data)}\r\n\r\n`;
+  const wire = frame("response.created", { type: "response.created", response: { id: "R".repeat(1001) } }) +
+    frame("response.output_text.delta", { item_id: "first", output_index: 0, delta: "before " + key.slice(0, 11) }) +
+    frame("response.output_text.delta", { delta: key.slice(11) + " after", item_id: "second", output_index: 0 }) +
+    'event: response.completed\r\ndata: {"type":\r\n\r\n';
+  const request = vi.fn(() => new Response(wire, { headers: { "content-type": "text/event-stream" } }));
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow("responseId");
+  expect(exportedReceipt(meeting.id)).toMatchObject({ version: 1, wireResponse: wire });
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
+test("clean EOF with dense tracked Chat indexes saves its receipt under 128 MiB", () => {
+  const script = `
+    import assert from "node:assert/strict";
+    import { registerHooks } from "node:module";
+    import "fake-indexeddb/auto";
+    registerHooks({ resolve(specifier, context, next) {
+      if (/^\\.\\.?\\//.test(specifier) && context.parentURL?.includes("/src/") && !/\\.\\w+$/.test(specifier)) {
+        return next(specifier + ".ts", context);
+      }
+      return next(specifier, context);
+    } });
+    globalThis.window = new EventTarget();
+    globalThis.BroadcastChannel = undefined;
+    const base = ${JSON.stringify(new URL("../src/", import.meta.url).href)};
+    const { sampleMeeting } = await import(base + "domain/model.ts");
+    const { getMeeting, saveMeeting } = await import(base + "storage/repository.ts");
+    const { planAgentMemo } = await import(base + "providers/memo-agent-plan.ts");
+    const { runAgentMemo } = await import(base + "jobs/memo-agent.ts");
+    const { pendingAgentReceipt, receiptExport } = await import(base + "jobs/agent-recovery.ts");
+
+    const meeting = await saveMeeting(sampleMeeting());
+    const selection = { provider: "openrouter", model: "openai/gpt-6-luna" };
+    const plan = planAgentMemo(meeting, selection, "en");
+    const marker = "Synthetic paid result.";
+    const prefix = 'data: {"id":"' + "R".repeat(1001) + '","model":"' + selection.model +
+      '","provider":"OpenAI","choices":[{';
+    const indexes = '"index":0,'.repeat(419313);
+    const suffix = '"index":0,"delta":{"content":"' + marker + '"},"finish_reason":"stop"}]}\\n\\ndata: [DONE]\\n\\n';
+    const limit = 4194304;
+    const padding = " ".repeat(limit - prefix.length - indexes.length - suffix.length);
+    const wire = prefix + indexes + padding + suffix;
+    assert.equal(Buffer.byteLength(wire), limit);
+
+    let posts = 0;
+    globalThis.fetch = async (_url, init) => {
+      assert.equal(init.method, "POST");
+      assert.equal(++posts, 1);
+      assert.equal((await getMeeting(meeting.id)).jobs[0].state, "in_flight");
+      return new Response(wire, { headers: { "content-type": "text/event-stream" } });
+    };
+    await assert.rejects(runAgentMemo(meeting, plan, ${JSON.stringify(key)}, new AbortController().signal), /responseId/);
+    const saved = await getMeeting(meeting.id);
+    assert.equal(posts, 1);
+    assert.equal(saved.jobs.length, 1);
+    assert.equal(saved.jobs[0].state, "outcome_unknown");
+    assert.equal(saved.memoAgents[0].jobIds[0], saved.jobs[0].id);
+    const exported = receiptExport(pendingAgentReceipt(meeting.id));
+    assert.equal(exported.version, 1);
+    assert.ok(exported.wireResponse === wire, "Did not preserve the complete Chat body");
+  `;
+  const result = spawnSync(process.execPath, [
+    "--max-old-space-size=128", "--experimental-transform-types", "--input-type=module", "--eval", script,
+  ], { encoding: "utf8", timeout: 15_000 });
+  expect(result.status, result.error?.message ?? result.stderr).toBe(0);
+}, 20_000);
 
 test("Pi masks split finished output in the assistant record, memo and restored backup", async () => {
   const { meeting, plan, signal } = await setup();

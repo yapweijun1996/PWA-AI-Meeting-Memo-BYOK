@@ -38,7 +38,7 @@ import {
   readAgentReportedUsage,
 } from "../providers/agent-record";
 import { normalizeMemo } from "../providers/api";
-import { buildMemoRecoveryArtifact, redactMemoSse } from "../providers/memo-response-redaction";
+import { redactMemoSse } from "../providers/memo-response-redaction";
 import { getMeeting, saveMeeting } from "../storage/repository";
 import { hasPendingAgentReceipt, retainAgentReceipt } from "./agent-recovery";
 
@@ -568,16 +568,20 @@ export async function runAgentMemo(
           responseId: string | null = null;
         let reportedUsage: Job["usage"] = null;
         let upstreamProvider: string | undefined;
-        let capturedWire: { text: string; byteLength: number } | undefined;
+        let completedWire: string | undefined;
         let preSubmissionError: unknown;
         let receivedSuccessfulHttp = false;
         const finishedOutputIndexes = new Set<number>();
         let terminalOutputCount = 0;
         let unfinishedOutput = false;
         const requestSignal = AbortSignal.any([signal, ...(options?.signal ? [options.signal] : []), AbortSignal.timeout(9 * 60 * 1000)]);
-        const finishReceipt = async (updated: Job, recoveryWire?: typeof capturedWire) => {
-          const recoveryArtifact = recoveryWire && buildMemoRecoveryArtifact(recoveryWire.text, key, recoveryWire.byteLength);
-          const recovery = { meetingId: meeting.id, agentId: plan.id, job: updated, recoveryArtifact };
+        const finishReceipt = async (updated: Job, recoveryWire?: string) => {
+          const wireResponse = recoveryWire ? redactAgentSecret(recoveryWire, key) : undefined;
+          const recovery = {
+            meetingId: meeting.id, agentId: plan.id, job: updated,
+            ...(completedWire === undefined ? { receiptOnly: true as const } : {}),
+            ...(wireResponse !== undefined ? { wireResponse } : {}),
+          };
           try {
             await persist((latest) =>
               checkpoint({
@@ -591,7 +595,7 @@ export async function runAgentMemo(
             retainAgentReceipt(recovery);
             throw error;
           }
-          if (recoveryArtifact) retainAgentReceipt(recovery);
+          if (wireResponse !== undefined) retainAgentReceipt(recovery);
         };
         try {
           if (stopped) return completedStream(requestError(stopped.message));
@@ -701,31 +705,35 @@ export async function runAgentMemo(
               const headerId = response.headers.get("x-request-id");
               responseId = headerId === null ? null : redactAgentSecret(headerId, key).slice(0, 200);
               const reader = response.body?.getReader();
-              const decoder = new TextDecoder();
-              const pieces: string[] = [];
+              let bytes = new Uint8Array(0);
               let total = 0;
               try {
                 while (reader) {
                   const { done, value } = await reader.read();
+                  requestSignal.throwIfAborted();
                   if (done) break;
-                  const remaining = MEMO_AGENT_RESPONSE_BYTES - total;
-                  if (value.byteLength > remaining) {
-                    pieces.push(decoder.decode(value.subarray(0, remaining), { stream: true }));
-                    total += remaining;
+                  total += value.byteLength;
+                  if (total > MEMO_AGENT_RESPONSE_BYTES) {
                     void reader.cancel().catch(() => undefined);
                     throw new Error(
                       "The provider response exceeds the 4 MiB response budget.",
                     );
                   }
-                  pieces.push(decoder.decode(value, { stream: true }));
-                  total += value.byteLength;
+                  if (total > bytes.length) {
+                    const capacity = Math.min(MEMO_AGENT_RESPONSE_BYTES, Math.max(total, bytes.length * 2));
+                    const expanded = new Uint8Array(capacity);
+                    expanded.set(bytes);
+                    bytes = expanded;
+                  }
+                  bytes.set(value, total - value.byteLength);
                 }
               } finally {
                 reader?.releaseLock();
-                pieces.push(decoder.decode());
-                if (total) capturedWire = { text: pieces.join(""), byteLength: total };
               }
-              return new Response(redactMemoSse(capturedWire?.text ?? "", key), {
+              requestSignal.throwIfAborted();
+              // Publish the wire only after clean EOF. The export and adapter redact it independently.
+              completedWire = new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes.subarray(0, total));
+              return new Response(redactMemoSse(completedWire, key), {
                 status: response.status,
                 statusText: response.statusText,
                 headers: response.headers,
@@ -769,7 +777,7 @@ export async function runAgentMemo(
             plan.state = signal.aborted ? "paused" : "blocked";
             plan.failure = { kind: "request", message: updated.message };
           }
-          await finishReceipt(updated, !successful && receivedSuccessfulHttp ? capturedWire : undefined);
+          await finishReceipt(updated, !successful && receivedSuccessfulHttp ? completedWire : undefined);
           if (!successful) throw new Error(updated.message);
           validateToolBurst(decoded);
           if (result.stopReason !== "stop" && result.stopReason !== "toolUse")
@@ -800,7 +808,7 @@ export async function runAgentMemo(
                 ...job, state: "outcome_unknown", billing: "possibly_charged",
                 updatedAt: new Date().toISOString(), requestId: responseId, usage: reportedUsage,
                 upstreamProvider, message: stopped.message,
-              }, capturedWire).catch(() => undefined);
+              }, completedWire).catch(() => undefined);
             } else {
               // Only this live runner can prove that fetch was never invoked.
               const unsentId = job.id;

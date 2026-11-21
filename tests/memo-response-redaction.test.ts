@@ -1,23 +1,20 @@
 import { spawnSync } from "node:child_process";
 import { expect, test } from "vitest";
 import { MEMO_AGENT_RESPONSE_BYTES } from "../src/domain/memo-agent-contract";
-import { buildMemoRecoveryArtifact, redactMemoResponse, redactMemoSse } from "../src/providers/memo-response-redaction";
+import { redactMemoResponse, redactMemoSse } from "../src/providers/memo-response-redaction";
 
 const marker = "[redacted provider key]";
 const fixture = "sk-synthetic-fragments";
-const recover = (wire: string, key = fixture) =>
-  buildMemoRecoveryArtifact(wire, key, new TextEncoder().encode(wire).length);
 
-function runConstrainedRecoveryCheck(check: string, argument?: string) {
+function runConstrainedRedactionCheck(check: string, argument?: string) {
   const script = `
     import { registerHooks } from "node:module";
     registerHooks({ resolve(specifier, context, next) {
       return next(specifier === "../domain/memo-agent-contract" ? specifier + ".ts" : specifier, context);
     } });
-    const { buildMemoRecoveryArtifact, redactMemoResponse, redactMemoSse } = await import(${JSON.stringify(new URL("../src/providers/memo-response-redaction.ts", import.meta.url).href)});
+    const { redactMemoResponse, redactMemoSse } = await import(${JSON.stringify(new URL("../src/providers/memo-response-redaction.ts", import.meta.url).href)});
     const fixture = ${JSON.stringify(fixture)};
     const marker = ${JSON.stringify(marker)};
-    const recover = (wire, key = fixture) => buildMemoRecoveryArtifact(wire, key, wire.length);
     ${check}
   `;
   const result = spawnSync(
@@ -27,70 +24,8 @@ function runConstrainedRecoveryCheck(check: string, argument?: string) {
   expect(result.status, result.error?.message ?? result.stderr).toBe(0);
 }
 
-test.each(["summary", "text", "arguments"])("interrupted Chat masks a split credential when %s comes before its discriminator", name => {
-  const frame = (id: string, value: string) => {
-    const delta = name === "arguments" ? { tool_calls: [{ function: { arguments: value }, index: 4 }] }
-      : { reasoning_details: [{ [name]: value, type: `reasoning.${name}`, index: 4 }] };
-    return `data: ${JSON.stringify({ id, choices: [{ delta, index: 2 }] })}\n\n`;
-  };
-  const last = frame("final", "fragments after");
-  const wire = frame("first", "before sk-syn") + frame("second", "thetic-") +
-    last.slice(0, last.indexOf('after"') + "after".length);
-  const kind = name === "arguments" ? "toolArguments" : name === "summary" ? "reasoningSummary" : "reasoningText";
-  expect(recover(wire).content).toContainEqual({
-    kind, text: "before " + marker + " after", fragmentCount: 3, tailCutMidString: true,
-  });
-});
-
-test("a malformed terminal does not erase paid text across an output and refusal", () => {
-  const first = 'data: {"type":"response.output_text.delta","item_id":"first","delta":"before sk-synthetic-"}\n\n';
-  const second = 'data: {"delta":"fragments after","type":"response.refusal.delta","item_id":"second"}\n\n';
-  const wire = first + second + 'data: {"type":"response.completed","response":';
-  const recovered = recover(wire);
-  expect(recovered.content).toEqual(expect.arrayContaining([
-    { kind: "outputText", text: "before sk-synthetic-", fragmentCount: 1, tailCutMidString: false },
-    { kind: "refusal", text: "fragments after", fragmentCount: 1, tailCutMidString: false },
-  ]));
-  expect(recovered.eventCounts).toEqual({
-    "response.output_text.delta": 1, "response.refusal.delta": 1, "response.completed": 1,
-  });
-});
-
-test.each(['{"data":""},', '{"data":"x","summary":"y","text":"z"},'])(
-  "a dense 4 MiB truncated reasoning array survives a 128 MiB heap (%s)", entry => {
-    runConstrainedRecoveryCheck(`
-      const entry = process.argv[1];
-      const prefix = 'data: {"choices":[{"index":0,"delta":{"reasoning_details":[';
-      const remaining = 4 * 1024 * 1024 - prefix.length;
-      const wire = prefix + entry.repeat(Math.floor(remaining / entry.length)) + " ".repeat(remaining % entry.length);
-      const result = recover(wire);
-      const count = Math.floor(remaining / entry.length);
-      const expected = entry.includes("summary") ? { reasoningSummary: "y", reasoningText: "z", other: "x" } : { other: "" };
-      for (const [kind, value] of Object.entries(expected)) {
-        const content = result.content.find(section => section.kind === kind);
-        if (content?.text !== value.repeat(count) || content.fragmentCount !== count) throw new Error("Changed the paid response");
-      }
-    `, entry);
-  }, 12_000,
-);
-
-test("4 MiB Responses recovery survives thousands of identities and a long unfinished tail under 128 MiB", () => {
-  runConstrainedRecoveryCheck(`
-    const type = "response.output_text.delta";
-    const key = "sk-" + "x".repeat(131072);
-    const frames = Array.from({ length: 2048 }, (_, i) => "data: " +
-      JSON.stringify({ type, item_id: "item-" + i, output_index: i, content_index: 0, delta: "unrelated" }) + "\\n\\n").join("");
-    const tailText = "z".repeat(5 * 131072);
-    const tail = "event: " + type + '\\ndata: {"delta":"' + tailText;
-    const padding = ":" + " ".repeat(4 * 1024 * 1024 - frames.length - tail.length - 2) + "\\n";
-    const content = recover(padding + frames + tail, key).content.find(section => section.kind === "outputText");
-    if (content.text !== "unrelated".repeat(2048) + tailText || content.fragmentCount !== 2049 ||
-        !content.tailCutMidString) throw new Error("Changed the paid response");
-  `);
-}, 12_000);
-
 test("4 MiB of irrelevant fields at clean EOF reaches decoding under 128 MiB", () => {
-  runConstrainedRecoveryCheck(`
+  runConstrainedRedactionCheck(`
     const prefix = 'data: {"choices":[{"index":0,"delta":{"reasoning_details":[';
     const entry = '{"type":""},';
     const remaining = 4 * 1024 * 1024 - prefix.length;
@@ -98,25 +33,6 @@ test("4 MiB of irrelevant fields at clean EOF reaches decoding under 128 MiB", (
     if (redactMemoSse(wire, fixture) !== wire) throw new Error("Changed the adapter input");
   `);
 }, 12_000);
-
-test("other strings keep their own order and an intervening same-kind value breaks exact adjacency", () => {
-  const frame = (delta: string, item_id: string, index: number) =>
-    `data: ${JSON.stringify({ type: "response.output_text.delta", delta, item_id, output_index: index })}\n\n`;
-  const wire = frame("before sk-synthetic-", "sk-synthetic-", 0) + frame(" unrelated ", "fragments", 1) +
-    frame("fragments after", "tail", 0);
-  expect(recover(wire).content).toEqual([
-    { kind: "outputText", text: "before sk-synthetic- unrelated fragments after", fragmentCount: 3, tailCutMidString: false },
-    { kind: "other", text: marker + "tail", fragmentCount: 3, tailCutMidString: false },
-  ]);
-});
-
-test("Responses recovery classifies text inside a reasoning summary part by its event name", () => {
-  const wire = 'data: {"part":{"text":"Keep this summary."},"type":"response.reasoning_summary_part.done"}\n\n';
-  expect(recover(wire)).toMatchObject({
-    eventCounts: { "response.reasoning_summary_part.done": 1 },
-    content: [{ kind: "reasoningSummary", text: "Keep this summary.", fragmentCount: 1, tailCutMidString: false }],
-  });
-});
 
 test("memo receipt redaction preserves unrelated wire data at 4 MiB", () => {
   const prefix = '{"output":[{"content":[{"type":"output_text","text":"before sk-synthetic-' +
@@ -195,31 +111,45 @@ test("Chat tool fragments follow choice and tool indexes when arrays change orde
   expect(redactMemoSse(first + other, fixture)).toBe(first + other);
 });
 
-test.each(["JSON", "SSE", "SSE recovery"])("4 MiB of malformed %s nesting is handled under a 128 MiB heap", kind => {
-  runConstrainedRecoveryCheck(`
+test.each(["JSON", "SSE"])("4 MiB of malformed %s nesting is handled under a 128 MiB heap", kind => {
+  runConstrainedRedactionCheck(`
     const kind = process.argv[1];
     const redact = kind === "JSON" ? redactMemoResponse : redactMemoSse;
     const prefix = kind === "JSON" ? "" : "data: ";
     const malformed = prefix + "[".repeat(4 * 1024 * 1024 - prefix.length);
     const reflected = malformed.slice(0, -fixture.length - 1) + '"' + fixture;
-    if (kind === "SSE recovery") {
-      if (recover(malformed).content.length !== 0) throw new Error("Invented text in malformed nesting");
-      const [deep] = recover(reflected).content;
-      if (deep.text !== marker || !deep.tailCutMidString) {
-        throw new Error("Failed to mask the credential in the deeply nested fragment");
-      }
-      const head = 'data: ["before sk-synthetic-",';
-      const tail = '"fragments after",';
-      const budget = 4 * 1024 * 1024 - head.length - tail.length;
-      const padding = '"x",'.repeat(Math.floor(budget / 4)) + ' '.repeat(budget % 4);
-      const dense = 'data: [' + padding + head.slice(7) + tail;
-      const expected = "x".repeat(Math.floor(budget / 4)) + "before " + marker + " after";
-      if (recover(dense).content[0].text !== expected) throw new Error("Failed to mask split strings in the dense truncated frame");
-    } else {
-      if (redact(malformed, fixture) !== malformed) throw new Error("Changed the paid response");
-      if (redact(reflected, fixture) !== reflected.replace(fixture, marker)) {
-        throw new Error("Failed to mask the credential in the deeply nested fragment");
-      }
+    if (redact(malformed, fixture) !== malformed) throw new Error("Changed the paid response");
+    if (redact(reflected, fixture) !== reflected.replace(fixture, marker)) {
+      throw new Error("Failed to mask the credential in the deeply nested fragment");
     }
   `, kind);
+}, 12_000);
+
+test("exceeding the tracked-field budget across SSE frames falls back to literal masking", () => {
+  const delta = (text: string) =>
+    `data: ${JSON.stringify({ type: "response.output_text.delta", delta: text, output_index: 0 })}\n\n`;
+  const splitCredential = delta("before sk-synthetic-") + delta("fragments after");
+  const escaped = "\\u0073" + fixture.slice(1);
+  const body = splitCredential + 'data: {"choices":[{"index":0}]}\n\n'.repeat(8192) + "data: " + escaped + "\n\n";
+  expect(redactMemoSse(body, fixture)).toBe(body.replace(escaped, marker));
+});
+
+test("the Pi JSON field budget preserves the standard memo checkpoint matcher", () => {
+  const part = (text: string) => ({ type: "output_text", text });
+  const content = [part("before sk-synthetic-"), part("fragments after"),
+    ...Array.from({ length: 4096 }, () => part("unrelated"))];
+  const body = JSON.stringify({ output: [{ content }], other: fixture }).replace(`"${fixture}"`, '"\\u0073' + fixture.slice(1) + '"');
+  const literal = body.replace("\\u0073" + fixture.slice(1), marker);
+  expect(redactMemoSse(body, fixture)).toBe(literal);
+  expect(redactMemoResponse(body, fixture)).toBe(literal.replace("sk-synthetic-", marker).replace("fragments after", " after"));
+});
+
+test("4 MiB of dense SSE data lines fall back to literal masking under 128 MiB", () => {
+  runConstrainedRedactionCheck(`
+    const escape = "\\\\u0073" + fixture.slice(1);
+    const tail = "data: " + escape + "\\n";
+    const limit = 4 * 1024 * 1024 - tail.length;
+    const body = "data:\\n".repeat(Math.floor(limit / 6)) + " ".repeat(limit % 6) + tail;
+    if (redactMemoSse(body, fixture) !== body.replace(escape, marker)) throw new Error("Changed the paid response");
+  `);
 }, 12_000);
