@@ -1,4 +1,5 @@
 import { Button } from "./components/controls";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { LanguageMenu } from "./components/LanguageMenu";
 import { InstallButton } from "./pwa/InstallButton";
 import { Masonry } from "./components/Masonry";
@@ -474,6 +475,7 @@ export default function App() {
               </Pill>
             )}
           </div>
+          <ThemeToggle language={uiLanguage} />
           <LanguageMenu language={uiLanguage} label={t("Display language", "显示语言")} saving={languageSaving} onChange={language => {
             setLanguageSaving(true);
             void saveUiLanguagePreference(language).catch(() => setError(t("Wait for settings to finish saving, or check local storage.", "请等待设置保存完成，或检查本地存储。"))).finally(() => setLanguageSaving(false));

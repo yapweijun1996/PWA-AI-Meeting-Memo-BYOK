@@ -4330,6 +4330,16 @@ details[open] > summary {
 :root[data-font-size="xxlarge"] { --font-scale: 1.45; }
 .topbar .privacy-top { flex: 0 0 auto; align-self: center; }
 .topbar .breadcrumb { flex: 1 1 auto; min-width: 0; }
+.topbar-theme {
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--color-accent-text);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+}
+@media (min-width: 761px) and (max-width: 1200px) {
+  .topbar { height: auto; min-height: 52px; flex-wrap: wrap; }
+}
 
 .panel-toolbar .toolbar-actions { align-items: center; flex-wrap: wrap; }
 .panel-toolbar .toolbar-actions > .checkbox-label { flex: 0 0 auto; width: auto; margin: 0; white-space: nowrap; }
