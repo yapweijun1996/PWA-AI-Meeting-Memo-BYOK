@@ -87,7 +87,7 @@
   margin-inline-start: auto;
   flex: 0 0 auto;
 }
-@media (max-width: 600px) {
+@media (max-width: 600px), (min-width: 761px) {
   .topbar-language .choice-menu-value {
     display: none;
   }
