@@ -22,7 +22,7 @@ async function expectHeaderFits(page: Page) {
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
   await expect(toggle(page)).toBeInViewport({ ratio: 1 });
   const boxes = await page.locator([
-    ".topbar-theme", ".topbar-language > button", ".privacy-top",
+    ".topbar-theme", ".topbar-palette > button", ".topbar-language > button", ".privacy-top",
     ".topbar-install", ".topbar .mobile-menu", ".topbar .sidebar-toggle",
   ].join(", ")).evaluateAll(elements => elements.filter(element => element.getClientRects().length).map(element => {
     const { left, right, top, bottom, width, height } = element.getBoundingClientRect();

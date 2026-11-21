@@ -1,5 +1,6 @@
 import { Button } from "./components/controls";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { PaletteMenu } from "./components/ChoiceMenu";
 import { LanguageMenu } from "./components/LanguageMenu";
 import { InstallButton } from "./pwa/InstallButton";
 import { Masonry } from "./components/Masonry";
@@ -44,7 +45,7 @@ import { restoreSpeakerAvatars, trackAvatarWrite } from "./storage/speaker-avata
 import { Brand, Empty, Pill } from "./components/ui";
 import { TooltipLayer } from "./components/TooltipLayer";
 import { useBackToTopPosition } from "./components/useBackToTopPosition";
-import { ToastLayer } from "./components/ToastLayer";
+import { showToast, ToastLayer } from "./components/ToastLayer";
 import { LoadingPlaceholder } from "./components/LoadingPlaceholder";
 import { NewMeeting } from "./features/NewMeeting";
 import { MeetingWorkspace } from "./features/MeetingWorkspace";
@@ -476,6 +477,7 @@ export default function App() {
             )}
           </div>
           <ThemeToggle language={uiLanguage} />
+          <PaletteMenu language={uiLanguage} onTabOnlyChange={showToast} />
           <LanguageMenu language={uiLanguage} label={t("Display language", "显示语言")} saving={languageSaving} onChange={language => {
             setLanguageSaving(true);
             void saveUiLanguagePreference(language).catch(() => setError(t("Wait for settings to finish saving, or check local storage.", "请等待设置保存完成，或检查本地存储。"))).finally(() => setLanguageSaving(false));

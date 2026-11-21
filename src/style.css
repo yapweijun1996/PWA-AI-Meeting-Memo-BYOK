@@ -527,6 +527,7 @@ small {
 }
 .breadcrumb {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
   gap: 10px;
   min-width: 0;
@@ -3247,7 +3248,10 @@ details[open] > summary {
     display: inline-grid;
   }
   .topbar {
-    height: calc(56px + env(safe-area-inset-top, 0px));
+    height: auto;
+    min-height: calc(56px + env(safe-area-inset-top, 0px));
+    flex-wrap: wrap;
+    column-gap: 8px;
     padding-left: max(20px, env(safe-area-inset-left, 0px));
     padding-right: max(20px, env(safe-area-inset-right, 0px));
     background: var(--palette-11);
@@ -3256,6 +3260,8 @@ details[open] > summary {
     z-index: var(--layer-topbar);
   }
   .breadcrumb {
+    flex-basis: 44px;
+    min-width: 44px;
     gap: 9px;
   }
   .breadcrumb > .breadcrumb-root,
@@ -4351,7 +4357,6 @@ details[open] > summary {
 :root[data-font-size="small"] { --font-scale: .9; }
 :root[data-font-size="xxlarge"] { --font-scale: 1.45; }
 .topbar .privacy-top { flex: 0 0 auto; align-self: center; }
-.topbar .breadcrumb { flex: 1 1 auto; min-width: 0; }
 .topbar-theme {
   min-width: 44px;
   min-height: 44px;
@@ -4360,6 +4365,31 @@ details[open] > summary {
   border: 1px solid var(--border-default);
 }
 .topbar-theme:focus-visible { outline-offset: -2px; }
+.topbar-palette { flex: 0 0 auto; }
+.topbar-palette .choice-menu-trigger {
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+}
+.topbar-palette .choice-menu-value,
+.topbar-palette .choice-menu-trigger .lucide-chevron-down { display: none; }
+.topbar-palette .choice-menu-option > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.topbar-palette-swatch {
+  flex: 0 0 14px;
+  height: 14px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-pill);
+}
+@media (max-width: 1200px) {
+  .topbar-palette { position: static; }
+  .topbar-palette .choice-menu-options {
+    inset-inline-end: max(20px, env(safe-area-inset-right, 0px));
+  }
+}
 @media (min-width: 761px) and (max-width: 1200px) {
   .topbar { height: auto; min-height: var(--topbar-height); flex-wrap: wrap; }
   .topbar .breadcrumb {

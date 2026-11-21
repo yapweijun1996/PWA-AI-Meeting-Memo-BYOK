@@ -74,6 +74,16 @@ export function toggleTheme() {
     return false;
   }
 }
-export function savePalette(value: PaletteChoice) { localStorage.setItem(paletteKey, value); applyPalette(value); }
+export function savePalette(value: PaletteChoice, { allowTabOnly = false } = {}) {
+  let persisted = true;
+  try {
+    localStorage.setItem(paletteKey, value);
+  } catch (error) {
+    if (!allowTabOnly) throw error;
+    persisted = false;
+  }
+  applyPalette(value);
+  return persisted;
+}
 export function useThemeChoice() { return useSyncExternalStore((listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => currentTheme, () => "light" as ThemeChoice); }
 export function usePaletteChoice() { return useSyncExternalStore((listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => currentPalette, () => parsePalette(null)); }

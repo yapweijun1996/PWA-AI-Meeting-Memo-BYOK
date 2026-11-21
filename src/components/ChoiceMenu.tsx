@@ -1,5 +1,7 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { Check, ChevronDown, Palette } from "lucide-react";
+import { paletteChoices, paletteOptions, savePalette, usePaletteChoice, type PaletteChoice } from "../appearance";
+import { translateUi, type UiLanguage } from "../i18n";
 import { Button } from "./controls";
 import { Icon } from "./Icon";
 import "./ChoiceMenu.css";
@@ -8,6 +10,7 @@ export type ChoiceOption<T extends string> = {
   value: T;
   label: string;
   description?: string;
+  decoration?: ReactNode;
 };
 
 /** A single-select action menu with native buttons and managed menu focus. */
@@ -18,6 +21,7 @@ export function ChoiceMenu<T extends string>({
   onChange,
   busy = false,
   showSelectedTitle = false,
+  triggerLabel,
   icon,
   className = "",
 }: {
@@ -27,6 +31,7 @@ export function ChoiceMenu<T extends string>({
   onChange: (value: T) => void;
   busy?: boolean;
   showSelectedTitle?: boolean;
+  triggerLabel?: string;
   icon?: ReactNode;
   className?: string;
 }) {
@@ -89,8 +94,8 @@ export function ChoiceMenu<T extends string>({
         ref={trigger}
         type="button"
         className="choice-menu-trigger"
-        aria-label={`${label}: ${selectedLabel}`}
-        title={showSelectedTitle ? selectedLabel : undefined}
+        aria-label={triggerLabel ?? `${label}: ${selectedLabel}`}
+        title={triggerLabel ?? (showSelectedTitle ? selectedLabel : undefined)}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
@@ -181,6 +186,7 @@ export function ChoiceMenu<T extends string>({
               }}
             >
               <span>
+                {option.decoration}
                 <span>{option.label}</span>
                 {option.description && <small>{option.description}</small>}
               </span>
@@ -190,5 +196,52 @@ export function ChoiceMenu<T extends string>({
         </div>
       )}
     </div>
+  );
+}
+
+export function paletteMenuOptions(language: UiLanguage): ChoiceOption<PaletteChoice>[] {
+  return paletteChoices.map((value) => ({
+    value,
+    label: translateUi(language, paletteOptions[value].en, paletteOptions[value].zh),
+    decoration: (
+      <span
+        className="topbar-palette-swatch"
+        aria-hidden="true"
+        style={{ backgroundColor: `var(--palette-accent-${value})` }}
+      />
+    ),
+  }));
+}
+
+export function PaletteMenu({ language, onTabOnlyChange }: {
+  language: UiLanguage;
+  onTabOnlyChange: (message: string) => void;
+}) {
+  const value = usePaletteChoice();
+  const options = useMemo(() => paletteMenuOptions(language), [language]);
+  const t = (en: string, zh: string, ms: string) =>
+    language === "ms" ? ms : translateUi(language, en, zh);
+  const label = t("Color palette", "\u914d\u8272", "Palet warna");
+  const selectedLabel = paletteOptions[value];
+  const triggerLabel = `${label}${t(": ", "\uff1a", ": ")}${translateUi(language, selectedLabel.en, selectedLabel.zh)}`;
+
+  return (
+    <ChoiceMenu
+      className="topbar-palette"
+      label={label}
+      triggerLabel={triggerLabel}
+      value={value}
+      options={options}
+      icon={<Icon glyph={Palette} size="transport" aria-hidden="true" />}
+      onChange={(next) => {
+        if (!savePalette(next, { allowTabOnly: true })) {
+          onTabOnlyChange(t(
+            "Color palette changed for this tab only.",
+            "\u914d\u8272\u66f4\u6539\u4ec5\u5bf9\u5f53\u524d\u6807\u7b7e\u9875\u751f\u6548\u3002",
+            "Palet warna ditukar untuk tab ini sahaja.",
+          ));
+        }
+      }}
+    />
   );
 }

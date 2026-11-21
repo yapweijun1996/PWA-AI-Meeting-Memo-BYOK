@@ -13,8 +13,8 @@ async function checkLayout(page: Page, width: number) {
   const trigger = page.locator(".topbar-language > button");
   const badge = page.locator(".topbar .privacy-top");
   const metrics = await trigger.evaluate(button => {
-    const { left, right, width, height } = button.getBoundingClientRect();
-    return { left, right, width, height, pageWidth: document.documentElement.scrollWidth };
+    const { left, right, top, bottom, width, height } = button.getBoundingClientRect();
+    return { left, right, top, bottom, width, height, pageWidth: document.documentElement.scrollWidth };
   });
   expect(metrics.width).toBeGreaterThanOrEqual(44);
   expect(metrics.height).toBeGreaterThanOrEqual(44);
@@ -24,7 +24,7 @@ async function checkLayout(page: Page, width: number) {
   if (width >= 761) {
     await expect(badge).toBeVisible();
     const box = (await badge.boundingBox())!;
-    expect(metrics.right).toBeLessThanOrEqual(box.x);
+    expect(metrics.right <= box.x || metrics.bottom <= box.y || box.y + box.height <= metrics.top).toBe(true);
     expect(box.x + box.width).toBeLessThanOrEqual(width);
   } else {
     await expect(badge).toBeHidden();

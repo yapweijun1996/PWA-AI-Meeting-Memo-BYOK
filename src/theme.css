@@ -16,7 +16,16 @@
   --status-danger-text: var(--status-danger);
   --status-danger-hover-bg: #f1d7d1;
   --text-body: #27313c;
-  --color-accent: #385e45;
+  /* These tokens supply both the active accent and the topbar palette swatches. */
+  --palette-accent-forest: #385e45;
+  --palette-accent-ocean: #285b70;
+  --palette-accent-violet: #5d4a79;
+  --palette-accent-amber: #745225;
+  --palette-accent-teal: #17665f;
+  --palette-accent-rose: #923e5d;
+  --palette-accent-indigo: #4c4d91;
+  --palette-accent-slate: #45576d;
+  --color-accent: var(--palette-accent-forest);
   --text-heading: #18212c;
   --text-muted: #52606e;
   --border-default: #dce1e7;
@@ -236,7 +245,7 @@
   --layer-toast: 12000;
 }
 :root[data-palette="ocean"] {
-  --color-accent: #285b70;
+  --color-accent: var(--palette-accent-ocean);
   --palette-13: #285b70;
   --palette-18: #245d75;
   --palette-19: #2d718b;
@@ -249,7 +258,7 @@
   --caption-highlight-text: #193e50;
 }
 :root[data-palette="violet"] {
-  --color-accent: #5d4a79;
+  --color-accent: var(--palette-accent-violet);
   --palette-13: #5d4a79;
   --palette-18: #5e477a;
   --palette-19: #755d91;
@@ -262,7 +271,7 @@
   --caption-highlight-text: #442b60;
 }
 :root[data-palette="amber"] {
-  --color-accent: #745225;
+  --color-accent: var(--palette-accent-amber);
   --palette-13: #745225;
   --palette-18: #75521d;
   --palette-19: #916b2f;
@@ -275,7 +284,7 @@
   --caption-highlight-text: #513a18;
 }
 :root[data-palette="teal"] {
-  --color-accent: #17665f;
+  --color-accent: var(--palette-accent-teal);
   --palette-13: #17665f;
   --palette-18: #185e57;
   --palette-19: #185e57;
@@ -288,7 +297,7 @@
   --caption-highlight-text: #153e36;
 }
 :root[data-palette="rose"] {
-  --color-accent: #923e5d;
+  --color-accent: var(--palette-accent-rose);
   --palette-13: #923e5d;
   --palette-18: #873653;
   --palette-19: #873653;
@@ -301,7 +310,7 @@
   --caption-highlight-text: #61243a;
 }
 :root[data-palette="indigo"] {
-  --color-accent: #4c4d91;
+  --color-accent: var(--palette-accent-indigo);
   --palette-13: #4c4d91;
   --palette-18: #46458c;
   --palette-19: #46458c;
@@ -314,7 +323,7 @@
   --caption-highlight-text: #303367;
 }
 :root[data-palette="slate"] {
-  --color-accent: #45576d;
+  --color-accent: var(--palette-accent-slate);
   --palette-13: #45576d;
   --palette-18: #3e526a;
   --palette-19: #3e526a;
@@ -465,7 +474,7 @@
   --palette-135: #93b792;
   --palette-136: #89ad91;
   --palette-137: #31513a;
-  --color-accent: #315c40;
+  --palette-accent-forest: #315c40;
   --review-selection-bg: #304a36;
   --review-selection-border: #9dd3a5;
   --processing-bg: #263c2c;
@@ -488,7 +497,6 @@
   --shadow-action: 0 3px 5px #00000033;
 }
 :root[data-theme="dark"][data-palette="ocean"] {
-  --color-accent: #285b70;
   --palette-13: #285b70;
   --palette-18: #a8d9ec;
   --palette-19: #a8d9ec;
@@ -499,7 +507,6 @@
   --caption-highlight-text: #dff4fc;
 }
 :root[data-theme="dark"][data-palette="violet"] {
-  --color-accent: #5d4a79;
   --palette-13: #5d4a79;
   --palette-18: #e0cdf3;
   --palette-19: #e0cdf3;
@@ -510,7 +517,6 @@
   --caption-highlight-text: #f3eafa;
 }
 :root[data-theme="dark"][data-palette="amber"] {
-  --color-accent: #745225;
   --palette-13: #745225;
   --palette-18: #f3d19a;
   --palette-19: #f3d19a;
@@ -522,7 +528,6 @@
 }
 
 :root[data-theme="dark"][data-palette="teal"] {
-  --color-accent: #17665f;
   --palette-13: #17665f;
   --palette-18: #b1e4d7;
   --palette-19: #b1e4d7;
@@ -533,7 +538,6 @@
   --caption-highlight-text: #def6ed;
 }
 :root[data-theme="dark"][data-palette="rose"] {
-  --color-accent: #923e5d;
   --palette-13: #923e5d;
   --palette-18: #f1bfd0;
   --palette-19: #f1bfd0;
@@ -544,7 +548,6 @@
   --caption-highlight-text: #ffe8f0;
 }
 :root[data-theme="dark"][data-palette="indigo"] {
-  --color-accent: #4c4d91;
   --palette-13: #4c4d91;
   --palette-18: #cdd0fa;
   --palette-19: #cdd0fa;
@@ -555,7 +558,6 @@
   --caption-highlight-text: #eceeff;
 }
 :root[data-theme="dark"][data-palette="slate"] {
-  --color-accent: #45576d;
   --palette-13: #45576d;
   --palette-18: #c8d8ec;
   --palette-19: #c8d8ec;
