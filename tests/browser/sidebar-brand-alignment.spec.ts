@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import preferences from "../../src/appearance-preferences.json";
+import preferences from "../../src/appearance-preferences.json" with { type: "json" };
 
 test.use({ locale: "en-US", reducedMotion: "reduce", serviceWorkers: "block" });
 
