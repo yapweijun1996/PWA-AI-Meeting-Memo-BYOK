@@ -45,6 +45,7 @@ import { ToastLayer } from "./components/ToastLayer";
 import { LoadingPlaceholder } from "./components/LoadingPlaceholder";
 import { NewMeeting } from "./features/NewMeeting";
 import { MeetingWorkspace } from "./features/MeetingWorkspace";
+import { AgentResponseRecovery } from "./features/AgentResponseRecovery";
 import { Settings } from "./features/Settings";
 import { isProcessing } from "./jobs/runner";
 import { hasPendingAgentReceipt, pendingAgentMeetingId, subscribeAgentRecovery } from "./jobs/agent-recovery";
@@ -73,6 +74,10 @@ export default function App() {
     [current, setCurrent] = useState<Meeting>(),
     [loading, setLoading] = useState(true);
   const recoveryMeetingId = useSyncExternalStore(subscribeAgentRecovery, pendingAgentMeetingId, () => undefined);
+  const [unreadableRecoveryId, setUnreadableRecoveryId] = useState<string>();
+  const recoveryMeetingAvailable = recoveryMeetingId !== unreadableRecoveryId &&
+    meetings.some(meeting => meeting.id === recoveryMeetingId);
+  const unavailableRecoveryId = recoveryMeetingAvailable ? undefined : recoveryMeetingId;
   const currentRoute = useRef(route);
   currentRoute.current = route;
   const meetingRouteId = route.match(/^\/meetings\/([^/]+)/)?.[1];
@@ -116,7 +121,7 @@ export default function App() {
     const fn = () => {
       const nextRoute = location.hash.slice(1) || "/";
       const pendingId = pendingAgentMeetingId();
-      if ((pendingId && nextRoute !== `/meetings/${pendingId}`) || document.querySelector('[data-unsaved-edit="true"]')) {
+      if ((pendingId && pendingId !== unavailableRecoveryId && nextRoute !== `/meetings/${pendingId}`) || document.querySelector('[data-unsaved-edit="true"]')) {
         history.pushState(null, "", `${location.pathname}${location.search}#${currentRoute.current}`);
         setError(uiLanguage === "zh-CN" ? "离开会议前请保存或处理未保存的笔记。" : "Save or resolve your unsaved note before leaving this meeting.");
         return;
@@ -126,7 +131,7 @@ export default function App() {
     };
     addEventListener("hashchange", fn);
     return () => removeEventListener("hashchange", fn);
-  }, [uiLanguage]);
+  }, [uiLanguage, unavailableRecoveryId]);
   useEffect(() => {
     setLoading(true);
     void refresh()
@@ -177,9 +182,14 @@ export default function App() {
           if (cancelled) return;
           if (!m) throw new Error("This meeting is no longer available.");
           setCurrent(m);
+          setUnreadableRecoveryId(previous => previous === id ? undefined : previous);
         })
         .catch((e) => {
-          if (!cancelled) setError(e.message);
+          if (!cancelled) {
+            const pendingId = pendingAgentMeetingId();
+            if (!pendingId || id === pendingId) setUnreadableRecoveryId(id);
+            setError(e.message);
+          }
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -200,7 +210,8 @@ export default function App() {
     return () => removeEventListener("beforeunload", guard);
   }, []);
   async function created(m: Meeting) {
-    if (hasPendingAgentReceipt()) throw new Error("Save or export the unsaved review response before leaving this meeting.");
+    const pendingId = pendingAgentMeetingId();
+    if (pendingId && pendingId !== unavailableRecoveryId) throw new Error("Save or export the unsaved review response before leaving this meeting.");
     await refresh();
     setNewOpen(false);
     setLoading(true);
@@ -457,7 +468,11 @@ export default function App() {
               </Button>
             </div>
           )}
-          {recoveryMeetingId && meetingRouteId !== recoveryMeetingId && (
+          {/* Item 3 integration point: mount standard memo page recovery here when its store is available. */}
+          {unavailableRecoveryId && (
+            <AgentResponseRecovery key={unavailableRecoveryId} meetingId={unavailableRecoveryId} t={t} />
+          )}
+          {recoveryMeetingId && !unavailableRecoveryId && meetingRouteId !== recoveryMeetingId && (
             <div className="notice sand" role="alert">
               <a href={`#/meetings/${recoveryMeetingId}`}>
                 {t("Unsaved review response", "\u5c1a\u672a\u4fdd\u5b58\u7684\u590d\u6838\u56de\u5e94")}
@@ -472,6 +487,7 @@ export default function App() {
               <MeetingWorkspace
                 key={current.id}
                 meeting={current}
+                recoveryAtAppLevel={current.id === unavailableRecoveryId}
                 onUpdate={(m) => {
                   if (location.hash === `#/meetings/${m.id}`) setCurrent(m);
                   void refresh();

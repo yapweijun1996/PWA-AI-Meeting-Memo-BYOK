@@ -262,3 +262,62 @@ test("sidebar blockers and registration failures stay local and confirmation rec
   await expect.poll(() => messages(page)).toEqual([{ type: "SKIP_WAITING" }]);
   await expect(opener).toBeDisabled();
 });
+
+for (const boundary of ["installation", "controller change"] as const) {
+  test(`a transcript correction survives a late ${boundary} during update`, async ({ page }) => {
+    await page.goto("./");
+    await page.getByRole("button", { name: "How it works" }).click();
+    await page.getByRole("button", { name: "Explore a synthetic example" }).click();
+    const edit = page.getByRole("button", { name: "Edit passage", exact: true }).first();
+    await expect(edit).toBeVisible();
+
+    // The sidebar knows about the first worker. Confirmation may find a replacement installing.
+    if (boundary === "installation") {
+      await page.evaluate(async () => {
+        const registration = (await navigator.serviceWorker.getRegistration())!;
+        Object.assign(registration, { installing: registration.waiting, waiting: null });
+      });
+    }
+    const controls = page.locator(".pwa-sidebar");
+    const update = controls.getByRole("button", { name: "Open update confirmation" });
+    const confirm = controls.getByRole("button", { name: "Confirm update" });
+    await update.click();
+    await confirm.click();
+    await expect(update).toBeDisabled();
+    if (boundary === "controller change") {
+      await expect.poll(() => messages(page)).toEqual([{ type: "SKIP_WAITING" }]);
+    }
+    await edit.click();
+    const draft = page.getByLabel("Transcript text");
+    const correction = "Retain this unsaved transcript correction.";
+    await draft.fill(correction);
+    await page.evaluate(async phase => {
+      const registration = (await navigator.serviceWorker.getRegistration())!;
+      if (phase === "installation") {
+        const worker = registration.installing!;
+        Object.assign(registration, { installing: null, waiting: worker });
+        worker.dispatchEvent(new Event("statechange"));
+      } else {
+        Object.assign(registration, { waiting: null });
+        navigator.serviceWorker.dispatchEvent(new Event("controllerchange"));
+      }
+    }, boundary);
+
+    if (boundary === "installation") expect(await messages(page)).toEqual([]);
+    await expect(draft).toHaveValue(correction);
+    await expect(controls.getByRole("status")).toHaveText("Save or close the open editor before updating.");
+    expect(await page.evaluate(() => !window.dispatchEvent(new Event("beforeunload", { cancelable: true })))).toBe(true);
+    await page.getByRole("button", { name: "Save correction" }).click();
+    await expect(page.getByText(correction, { exact: true }).first()).toBeVisible();
+    if (boundary === "controller change") await expect(update).toHaveText("Refresh page");
+    await update.click();
+    if (boundary === "installation") {
+      await confirm.click();
+      await expect.poll(() => messages(page)).toEqual([{ type: "SKIP_WAITING" }]);
+    } else {
+      await Promise.all([page.waitForEvent("domcontentloaded"), confirm.click()]);
+      await expect(page.getByText(correction, { exact: true }).first()).toBeVisible();
+      expect(await messages(page)).toEqual([]);
+    }
+  });
+}

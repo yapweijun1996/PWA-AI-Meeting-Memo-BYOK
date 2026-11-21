@@ -204,3 +204,47 @@ test("a stream disconnect after headers keeps the earlier tool response and stop
   expect(attempts).toHaveLength(2);
   expect(unexpected).toEqual([]);
 });
+
+test("a late Pi response remains exportable while navigating without its deleted meeting", async ({ page, context }) => {
+  let held: Route | undefined;
+  const { attempts, unexpected } = await startReview(page, async route => { held = route; });
+  await expect.poll(() => attempts.length).toBe(1);
+  const meetingUrl = page.url();
+  const meetingId = meetingUrl.split("/").at(-1)!;
+  await page.getByRole("link", { name: "All meetings", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Your meetings." })).toBeVisible();
+
+  const other = await context.newPage();
+  await other.goto(meetingUrl);
+  other.once("dialog", dialog => dialog.accept());
+  await other.getByRole("button", { name: "Delete meeting", exact: true }).click();
+  await expect(other.getByRole("heading", { name: "Your meetings." })).toBeVisible();
+  await stream(held!, [tool("recover-after-delete")]);
+  const recovery = page.getByRole("alert", { name: "Unsaved review response" });
+  await expect(recovery.getByRole("button", { name: "Export unsaved response" })).toBeVisible();
+
+  // A stale bookmark may still point at the deleted workspace.
+  await page.evaluate(url => { location.hash = new URL(url).hash; }, meetingUrl);
+  await expect(page.getByRole("link", { name: "Back to meetings" })).toBeVisible();
+  await expect(recovery.getByRole("button", { name: "Export unsaved response" })).toBeVisible();
+  await page.getByRole("link", { name: "Back to meetings" }).click();
+  await expect(page.getByRole("heading", { name: "Your meetings." })).toBeVisible();
+  await page.getByRole("button", { name: "How it works" }).click();
+  await page.getByRole("button", { name: "Explore a synthetic example" }).click();
+  await expect(page.getByRole("link", { name: "All meetings", exact: true })).toBeVisible();
+  await expect(recovery.getByRole("button", { name: /release this page copy/ })).toHaveCount(0);
+  expect(await page.evaluate(() => !window.dispatchEvent(new Event("beforeunload", { cancelable: true })))).toBe(true);
+  const downloaded = page.waitForEvent("download");
+  await recovery.getByRole("button", { name: "Export unsaved response" }).click();
+  const reader = await (await downloaded).createReadStream();
+  const chunks = [];
+  for await (const chunk of reader!) chunks.push(Buffer.from(chunk));
+  const receipt = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  expect(receipt).toMatchObject({ format: "meeting-memo-agent-receipt", meetingId });
+  expect(receipt.job.assistantRecord).toContain("recover-after-delete");
+  await recovery.getByRole("button", { name: /release this page copy/ }).click();
+  await expect(recovery).toHaveCount(0);
+  expect(await page.evaluate(() => window.dispatchEvent(new Event("beforeunload", { cancelable: true })))).toBe(true);
+  expect(attempts).toEqual([1]);
+  expect(unexpected).toEqual([]);
+});
