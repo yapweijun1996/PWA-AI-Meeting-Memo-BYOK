@@ -30,10 +30,12 @@ import {
 } from "lucide-react";
 import { sampleMeeting, type Meeting } from "./domain/model";
 import {
+  clearDeletedMeetingWriteFailure,
   listMeetings,
   getMeeting,
   saveMeeting,
   deleteMeeting,
+  trackMeetingOperation,
 } from "./storage/repository";
 import { cleanupIncompleteLongAudio } from "./storage/long-audio-store";
 import { readBackup } from "./storage/backup";
@@ -81,6 +83,8 @@ export default function App() {
   const currentRoute = useRef(route);
   currentRoute.current = route;
   const meetingRouteId = route.match(/^\/meetings\/([^/]+)/)?.[1];
+  const [deletedMeetingId, setDeletedMeetingId] = useState<string>();
+  const deletedWorkspace = !!current && current.id === meetingRouteId && current.id === deletedMeetingId;
   const [error, setError] = useState(getSettingsStorageError()),
     [search, setSearch] = useState(""),
     [filter, setFilter] = useState("all"),
@@ -115,7 +119,9 @@ export default function App() {
   }
 
   const refresh = useCallback(async () => {
-    setMeetings(await listMeetings());
+    const saved = await listMeetings();
+    setMeetings(saved);
+    return saved;
   }, []);
   useEffect(() => {
     const fn = () => {
@@ -165,12 +171,37 @@ export default function App() {
     };
   }, []);
   useEffect(() => {
-    const fn = () => {
-      void refresh();
+    const fn = (event: Event) => {
+      const id: unknown = event instanceof CustomEvent ? event.detail : undefined;
+      void refresh().then(async (saved) => {
+        if (typeof id !== "string" || saved.some(meeting => meeting.id === id)) return;
+        if (currentRoute.current === `/meetings/${id}`) setDeletedMeetingId(id);
+        await clearDeletedMeetingWriteFailure(id);
+      }).catch(() => {
+        setError("Local storage could not be refreshed. Check browser storage permissions.");
+      });
     };
     addEventListener("memo-storage-changed", fn);
     return () => removeEventListener("memo-storage-changed", fn);
   }, [refresh]);
+  useEffect(() => {
+    if (!deletedWorkspace) return;
+    const workspace = document.querySelector(".workspace");
+    if (!workspace) return;
+    let active = true;
+    const releaseIfClean = () => {
+      if (!active || workspace.querySelector('dialog[open], [data-unsaved-edit="true"]')) return;
+      observer.disconnect();
+      setCurrent(value => value?.id === deletedMeetingId ? undefined : value);
+    };
+    const observer = new MutationObserver(releaseIfClean);
+    observer.observe(workspace, { subtree: true, childList: true, attributes: true, attributeFilter: ["open", "data-unsaved-edit"] });
+    queueMicrotask(releaseIfClean);
+    return () => {
+      active = false;
+      observer.disconnect();
+    };
+  }, [deletedWorkspace, deletedMeetingId]);
   useEffect(() => {
     let cancelled = false;
     const id = route.match(/^\/meetings\/([^/]+)/)?.[1];
@@ -479,6 +510,16 @@ export default function App() {
             </div>
           )}
           <PwaStatus />
+          {deletedWorkspace && (
+            <div className="notice sand" role="status">
+              <span>{t("This meeting was deleted in another tab. Copy any unsaved changes before leaving.", "此会议已在另一个标签页删除。离开前请复制未保存的更改。")}</span>
+              <Button className="button secondary compact" onClick={() => {
+                if (confirm(t("Discard the draft for this deleted meeting?", "放弃此已删除会议的草稿吗？"))) setCurrent(undefined);
+              }}>
+                {t("Discard draft", "放弃草稿")}
+              </Button>
+            </div>
+          )}
           {route === "/settings" ? (
             <Settings />
           ) : route.startsWith("/meetings/") ? (
@@ -487,18 +528,19 @@ export default function App() {
                 key={current.id}
                 meeting={current}
                 recoveryAtAppLevel={current.id === unavailableRecoveryId}
+                deletedRemotely={deletedWorkspace}
                 onUpdate={(m) => {
                   if (location.hash === `#/meetings/${m.id}`) setCurrent(m);
                   void refresh();
                 }}
-                onDelete={async () => {
+                onDelete={() => trackMeetingOperation(current.id, async () => {
                   if (hasPendingAgentReceipt()) throw new Error("Save or export the unsaved review response before deleting a meeting.");
                   if (isProcessing())
                     throw new Error("Finish processing first.");
                   await deleteMeeting(current.id);
                   await refresh();
                   navigate("/");
-                }}
+                })}
                 onError={reportError}
               />
             ) : loading ? <LoadingPlaceholder kind="meeting" label={t("Opening your meeting...", "\u6b63\u5728\u6253\u5f00\u4f1a\u8bae...")} /> : (
