@@ -1459,6 +1459,17 @@ details[open] > summary {
 .notice > span {
   flex: 1;
 }
+.notice.dismissible-notice {
+  flex-wrap: nowrap;
+}
+.dismissible-notice > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dismissible-notice .icon-button {
+  min-width: 44px;
+  min-height: 44px;
+}
 /* Consent checkbox + its explanation: stack instead of squeezing into two columns. */
 .consent-notice {
   flex-direction: column;
