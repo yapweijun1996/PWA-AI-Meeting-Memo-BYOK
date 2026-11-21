@@ -62,6 +62,18 @@ export function saveFontSize(value: FontSize) { localStorage.setItem(sizeKey, va
 export function useFontSize() { return useSyncExternalStore((listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => currentSize, () => "normal" as FontSize); }
 
 export function saveTheme(value: ThemeChoice) { localStorage.setItem(themeKey, value); applyTheme(value); }
+export function toggleTheme() {
+  const next = currentTheme === "light" ? "dark" : "light";
+  try {
+    saveTheme(next);
+    return true;
+  } catch (error) {
+    // Once applyTheme has started, the failure is unrelated to storage.
+    if (currentTheme === next) throw error;
+    applyTheme(next);
+    return false;
+  }
+}
 export function savePalette(value: PaletteChoice) { localStorage.setItem(paletteKey, value); applyPalette(value); }
 export function useThemeChoice() { return useSyncExternalStore((listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => currentTheme, () => "light" as ThemeChoice); }
 export function usePaletteChoice() { return useSyncExternalStore((listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => currentPalette, () => parsePalette(null)); }
