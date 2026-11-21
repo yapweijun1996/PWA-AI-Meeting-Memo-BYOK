@@ -12,8 +12,27 @@ test.beforeEach(async ({ context, baseURL }) => {
 });
 
 const palettes = Object.entries(preferences.palette.options);
+const fontSizes = ["small", "normal", "large", "xlarge", "xxlarge"] as const;
+const meetingTitle = "Inventory reconciliation and quarterly planning with the operations team";
+const mainPhoneTitleWidth = 37;
 const trigger = (page: Page) => page.locator(".topbar-palette > button");
 const settingsSelect = (page: Page) => page.getByRole("combobox", { name: "Color palette", exact: true });
+const breadcrumbTitle = (page: Page) => page.locator(".topbar .breadcrumb strong");
+
+async function showInstall(page: Page) {
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeinstallprompt", { cancelable: true })));
+  await expect(page.locator(".topbar-install")).toBeVisible();
+}
+
+async function createMeeting(page: Page) {
+  await page.getByRole("button", { name: "Create your first meeting", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Meeting title").fill(meetingTitle);
+  await dialog.getByText("Start from a transcript instead").click();
+  await dialog.getByLabel("Transcript", { exact: true }).fill("Jamie: Review the inventory process.");
+  await dialog.getByRole("button", { name: "Create meeting", exact: true }).click();
+  await expect(breadcrumbTitle(page)).toHaveText(meetingTitle);
+}
 
 async function openAppearance(page: Page) {
   await page.goto("./#/settings");
@@ -33,7 +52,7 @@ async function expectHeaderFits(page: Page) {
   const layout = await page.locator(".topbar").evaluate((header) => {
     const controls = header.querySelectorAll([
       ".topbar-palette > button", ".topbar-theme", ".topbar-language > button",
-      ".privacy-top", ".mobile-menu", ".sidebar-toggle", ".topbar-install",
+      ".privacy-top", ".mobile-menu", ".sidebar-toggle", ".topbar-install", ".breadcrumb strong",
     ].join(", "));
     return {
       width: document.documentElement.clientWidth,
@@ -41,7 +60,7 @@ async function expectHeaderFits(page: Page) {
       headerOverflow: header.scrollWidth - header.clientWidth,
       boxes: Array.from(controls).filter((element) => element.getClientRects().length > 0).map((element) => {
         const { left, right, top, bottom, width, height } = element.getBoundingClientRect();
-        return { name: element.className, left, right, top, bottom, width, height };
+        return { name: element.className || element.tagName, left, right, top, bottom, width, height };
       }),
     };
   });
@@ -54,10 +73,44 @@ async function expectHeaderFits(page: Page) {
     expect(box.left, box.name).toBeGreaterThanOrEqual(0);
     expect(box.right, box.name).toBeLessThanOrEqual(layout.width + 0.5);
     for (const other of layout.boxes.slice(index + 1)) {
-      const overlap = box.left < other.right && box.right > other.left && box.top < other.bottom && box.bottom > other.top;
+      const overlap = Math.max(box.left, other.left) < Math.min(box.right, other.right)
+        && Math.max(box.top, other.top) < Math.min(box.bottom, other.bottom);
       expect(overlap, `${box.name} overlaps ${other.name}`).toBe(false);
     }
   }
+}
+
+async function expectPaletteMenuFitsAfterEnd(page: Page) {
+  const menu = page.getByRole("menu", { name: "Color palette", exact: true });
+  const choices = menu.getByRole("menuitemradio");
+  await trigger(page).press("ArrowDown");
+  await expect(choices).toHaveText(palettes.map(([, labels]) => labels.en));
+  await page.keyboard.press("End");
+  await expect(choices.last()).toBeFocused();
+  const layout = await choices.last().evaluate((choice) => {
+    const menu = choice.closest('[role="menu"]')!.getBoundingClientRect();
+    const option = choice.getBoundingClientRect();
+    const x = option.left + option.width / 2;
+    const y = option.top + option.height / 2;
+    return {
+      menu: { left: menu.left, top: menu.top, right: menu.right, bottom: menu.bottom },
+      width: document.documentElement.clientWidth,
+      height: window.innerHeight,
+      x,
+      y,
+      optionHasPointerTarget: choice.contains(document.elementFromPoint(x, y)),
+    };
+  });
+  expect(layout.menu.left).toBeGreaterThanOrEqual(0);
+  expect(layout.menu.top).toBeGreaterThanOrEqual(0);
+  expect(layout.menu.right).toBeLessThanOrEqual(layout.width);
+  expect(layout.menu.bottom).toBeLessThanOrEqual(layout.height);
+  expect(layout.x).toBeGreaterThan(0);
+  expect(layout.x).toBeLessThan(layout.width);
+  expect(layout.y).toBeGreaterThan(0);
+  expect(layout.y).toBeLessThan(layout.height);
+  expect(layout.optionHasPointerTarget).toBe(true);
+  await page.keyboard.press("Escape");
 }
 
 async function verifyPaletteWorkflow(page: Page) {
@@ -174,19 +227,101 @@ for (const width of [320, 390, 768]) {
   test(`palette and adjacent controls fit at ${width}px in every font size`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await openAppearance(page);
-    await page.evaluate(() => window.dispatchEvent(new Event("beforeinstallprompt", { cancelable: true })));
-    await expect(page.locator(".topbar-install")).toBeVisible();
+    await showInstall(page);
     const badge = page.locator(".topbar .privacy-top");
     if (width >= 761) await expect(badge).toBeVisible();
     else await expect(badge).toBeHidden();
     const fontSize = page.getByRole("combobox", { name: "Font size", exact: true });
     for (const mode of preferences.theme.values) {
       await page.getByRole("combobox", { name: "Theme", exact: true }).selectOption(mode);
-      for (const size of ["small", "normal", "large", "xlarge", "xxlarge"]) {
+      for (const size of fontSizes) {
         await fontSize.selectOption(size);
         await expect(page.locator("html")).toHaveAttribute("data-font-size", size);
         await expectHeaderFits(page);
+        if (width === 320 && size === "xxlarge") {
+          expect((await breadcrumbTitle(page).boundingBox())!.width).toBeGreaterThanOrEqual(mainPhoneTitleWidth);
+        }
       }
     }
+  });
+}
+
+test("keeps the library, Settings and meeting breadcrumb visible at 320x568 with Install and maximum text", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.addInitScript(() => localStorage.setItem("meeting-memo:font-size", "xxlarge"));
+  await page.goto("./");
+  await expect(page.locator("html")).toHaveAttribute("data-font-size", "xxlarge");
+  await showInstall(page);
+  for (const title of ["Your meetings", "Settings", meetingTitle]) {
+    await test.step(title, async () => {
+      if (title === "Settings") await page.goto("#/settings");
+      if (title === meetingTitle) {
+        await page.goto("#/");
+        await createMeeting(page);
+      }
+      await expect(breadcrumbTitle(page)).toHaveText(title);
+      expect.soft((await breadcrumbTitle(page).boundingBox())!.width, title).toBeGreaterThanOrEqual(mainPhoneTitleWidth);
+      await expectHeaderFits(page);
+      const controls = page.locator(".topbar").getByRole("button");
+      await expect(controls).toHaveCount(5);
+      for (const control of await controls.all()) {
+        await expect(control).toHaveAccessibleName(/\S/);
+        const box = (await control.boundingBox())!;
+        expect(box.width).toBeGreaterThanOrEqual(44);
+        expect(box.height).toBeGreaterThanOrEqual(44);
+      }
+    });
+  }
+});
+
+for (const size of [...fontSizes, null]) {
+  test(`palette popup fits at 768x320 with ${size ?? "unset"} text size`, async ({ page }) => {
+    await page.setViewportSize({ width: 768, height: 320 });
+    await page.addInitScript((fontSize) => {
+      if (fontSize) localStorage.setItem("meeting-memo:font-size", fontSize);
+      localStorage.setItem("meeting-memo:sidebar-collapsed", "0");
+    }, size);
+    await page.goto("./");
+    await createMeeting(page);
+    await expect(page.locator("html")).toHaveAttribute("data-font-size", size ?? "normal");
+    await expect(page.locator(".sidebar-toggle")).toHaveAttribute("aria-expanded", "true");
+    await showInstall(page);
+    const badge = page.locator(".topbar .privacy-top");
+    const install = page.locator(".topbar-install");
+    for (const showInstallAction of [true, false]) {
+      if (!showInstallAction) {
+        await page.evaluate(() => window.dispatchEvent(new Event("appinstalled")));
+        await expect(install).toBeHidden();
+      }
+      for (const showBadge of [true, false]) {
+        await test.step(`Install ${showInstallAction}, storage badge ${showBadge}`, async () => {
+          await badge.evaluate((element, shown) => element.style.display = shown ? "" : "none", showBadge);
+          if (showBadge) await expect(badge).toBeVisible();
+          else await expect(badge).toBeHidden();
+          await expectPaletteMenuFitsAfterEnd(page);
+          if (size === "xxlarge" && showInstallAction && showBadge) {
+            await trigger(page).click();
+            const menu = page.getByRole("menu", { name: "Color palette", exact: true });
+            await menu.hover();
+            await page.mouse.wheel(0, 1000);
+            const slate = menu.getByRole("menuitemradio", { name: "Slate", exact: true });
+            await expect(slate).toBeInViewport({ ratio: 1 });
+            await slate.click();
+            await expectPalette(page, "slate");
+          }
+        });
+      }
+    }
+  });
+}
+
+for (const [width, height] of [[320, 568], [390, 844], [768, 1024], [1024, 768], [1200, 800], [1440, 900]]) {
+  test(`palette popup fits at ${width}x${height} with Install and maximum text`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await page.addInitScript(() => localStorage.setItem("meeting-memo:font-size", "xxlarge"));
+    await page.goto("./");
+    await createMeeting(page);
+    await showInstall(page);
+    await expectPaletteMenuFitsAfterEnd(page);
   });
 }

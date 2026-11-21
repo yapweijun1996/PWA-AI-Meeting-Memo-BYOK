@@ -3260,8 +3260,9 @@ details[open] > summary {
     z-index: var(--layer-topbar);
   }
   .breadcrumb {
-    flex-basis: 44px;
-    min-width: 44px;
+    /* Leave room for the drawer button, gap and a readable title before controls wrap. */
+    flex-basis: 90px;
+    min-width: 90px;
     gap: 9px;
   }
   .breadcrumb > .breadcrumb-root,
@@ -4388,6 +4389,9 @@ details[open] > summary {
   .topbar-palette { position: static; }
   .topbar-palette .choice-menu-options {
     inset-inline-end: max(20px, env(safe-area-inset-right, 0px));
+    /* The percentage is the actual height of the sticky header, including wrapped rows. */
+    max-height: calc(100dvh - 100% - 8px - env(safe-area-inset-bottom, 0px));
+    overscroll-behavior-y: contain;
   }
 }
 @media (min-width: 761px) and (max-width: 1200px) {
