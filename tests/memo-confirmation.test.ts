@@ -151,3 +151,18 @@ test("a tool-only response at the ceiling cannot authorize local finalization or
   expect(buttonAttributes(html, "Generate new notes")).toContain("disabled");
   expect(html).toContain("100-request limit");
 });
+
+test("standalone memo confirmation requires billing review for the same unknown revision and route", () => {
+  credentialAvailable.mockReturnValue(true);
+  const meeting = agentLocalFinalFixture({ attempts: 2 });
+  const selection = { provider: "openai" as const, model: "gpt-6-luna" };
+  meeting.jobs.push({ ...meeting.jobs[0], id: crypto.randomUUID(), agentId: undefined, assistantRecord: undefined,
+    state: "outcome_unknown", ...selection });
+  const props = { confirmation: { selection, plan: null }, costAcknowledged: true };
+  const consent = confirmation(meeting, props);
+  expect(consent).toContain("I reviewed the previous request outcome and billing.");
+  expect(buttonAttributes(consent, "Generate new notes")).toContain("disabled");
+  expect(buttonAttributes(confirmation(meeting, { ...props, reviewedRetry: true }), "Generate new notes")).not.toContain("disabled");
+  expect(buttonAttributes(confirmation({ ...meeting, revision: meeting.revision + 1 }, props), "Generate new notes")).not.toContain("disabled");
+  expect(buttonAttributes(confirmation(meeting, { ...props, confirmation: { selection: { ...selection, model: "other" } } }), "Generate new notes")).not.toContain("disabled");
+});

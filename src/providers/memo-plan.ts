@@ -1,10 +1,24 @@
 import { memoSpeakerLabel, type MemoTemplate } from "../domain/memo-templates";
-import { getMemoOutputLanguage } from "./credentials";
+import { getMemoOutputLanguage, type Selection } from "./credentials";
 import { id, pipelineSourceSegments, MAX_JOBS, MAX_MEETING_JSON_BYTES, MAX_MEMO_ITEM_SOURCES, type Meeting, type MemoItem } from "../domain/model";
 import { buildMemoInput, MEMO_INPUT_MAX_CHARS, MemoInputError, type MemoInput } from "./memo-input";
 
 export type MemoPipeline = NonNullable<Meeting["memoPipelines"]>[number];
 export type Extraction = NonNullable<MemoPipeline["results"][number]>;
+
+export function needsMemoBillingReview(
+  meeting: Meeting,
+  confirmation: { selection: Selection; agentPlan?: { id: string }; plan?: { id: string } | null },
+): boolean {
+  const { agentPlan, plan, selection } = confirmation;
+  return meeting.jobs.some(job => {
+    if (agentPlan) return job.agentId === agentPlan.id && job.state !== "completed";
+    if (plan) return job.pipelineId === plan.id && job.state !== "completed";
+    return job.stage === "memo" && !job.agentId && !job.pipelineId && !job.contextual &&
+      job.state === "outcome_unknown" && job.inputRevision === meeting.revision &&
+      job.provider === selection.provider && job.model === selection.model;
+  });
+}
 
 export function pipelineMeeting(m: Meeting, p: MemoPipeline): Meeting {
   return {

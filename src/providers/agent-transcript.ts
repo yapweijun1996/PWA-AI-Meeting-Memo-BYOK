@@ -30,6 +30,7 @@ function boundary(text: string, offset: number) {
 export function searchAgentTranscript(
   sources: readonly Segment[],
   input: unknown,
+  cursorBudget: "current" | "legacy" = "current",
 ): AgentLookup {
   const { query, startIndex, limit } = AgentSearchArguments.parse(input);
   if (startIndex > sources.length)
@@ -67,8 +68,8 @@ export function searchAgentTranscript(
       if (
         bytes({
           matches: [...matches, candidate],
-          nextIndex: largestCursor,
-          scanned: endIndex - startIndex,
+          nextIndex: cursorBudget === "legacy" ? index + 1 : largestCursor,
+          scanned: (cursorBudget === "legacy" ? index + 1 : endIndex) - startIndex,
         }) > MEMO_AGENT_TOOL_BYTES
       )
         break;

@@ -185,7 +185,7 @@ const TimedSpeech = z.object({
     .optional(),
 });
 // Read only validated accounting fields, independently of result validation.
-function accounting(value: unknown, provider: Selection["provider"]) {
+export function accounting(value: unknown, provider: Selection["provider"]) {
   const parsed = z.object({ usage: z.unknown().optional(), id: z.unknown().optional() }).safeParse(value);
   const data = parsed.success ? parsed.data : undefined;
   const usage = z.record(z.string(), z.unknown()).safeParse(data?.usage);

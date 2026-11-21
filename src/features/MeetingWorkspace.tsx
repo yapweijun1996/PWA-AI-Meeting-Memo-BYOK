@@ -6,7 +6,7 @@ import { previewHistoryCleanup } from "../domain/history-cleanup";
 import { Icon } from "../components/Icon";
 import { usePlayerClearance } from "./usePlayerClearance";
 import { translateUi } from "../i18n";
-import { planMemo, type MemoPipeline } from "../providers/memo-plan";
+import { needsMemoBillingReview, planMemo, type MemoPipeline } from "../providers/memo-plan";
 import { markInterruptedRequests } from "../jobs/memo-interruption";
 import { resumablePipeline } from "../jobs/memo-pipeline";
 import { remainingAgentRequests } from "../domain/memo-agent-requests";
@@ -570,10 +570,7 @@ export function MeetingWorkspace({
       if (locked || isProcessingMeeting(m.id) || pendingAgentReceipt(m.id)) return;
       if (!localOnly && confirmed?.agentPlan && remainingAgentRequests(confirmed.agentPlan) === 0) return;
       if (!confirmed || (!localOnly && (!costAcknowledged || !getKey(confirmed.selection.provider))) || (confirmed.planError && !confirmed.agentPlan)) return;
-      const previousAttempt = confirmed.agentPlan
-        ? m.jobs.some(job => job.agentId === confirmed.agentPlan!.id && job.state !== "completed")
-        : confirmed.plan && m.jobs.some(job => job.pipelineId === confirmed.plan!.id && job.state !== "completed");
-      if (!localOnly && previousAttempt && !reviewedRetry) return;
+      if (!localOnly && needsMemoBillingReview(m, confirmed) && !reviewedRetry) return;
     }
     if (confirmStage === "memo" && !navigateTab("memo")) return;
     const stage = confirmStage;

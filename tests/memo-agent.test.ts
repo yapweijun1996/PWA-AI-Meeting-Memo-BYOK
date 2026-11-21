@@ -1312,3 +1312,65 @@ test.each(["memo slots", "response reserve"])("durable intent checks the latest 
   expect(saved.jobs).toHaveLength(0);
   expect(saved.memoAgents![0].jobIds).toHaveLength(0);
 });
+
+test("terminal SSE export removes escaped credentials from decoded fields and malformed fragments", async () => {
+  const { meeting, plan, signal } = await setup();
+  const escaped = "\\u0073" + key.slice(1);
+  const output = final(meeting.segments[0].id);
+  const frame = { type: "response.completed", response: { id: key, status: "completed", output: [output] } };
+  const wire = "data: " + JSON.stringify(frame).replace(key, escaped) + "\n\n: fragment " + escaped + "\n";
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(wire, { headers: { "content-type": "text/event-stream" } })));
+  await expect(runAgentMemo(meeting, plan, key, signal)).rejects.toThrow();
+  const exported = pendingAgentReceipt(meeting.id)!.wireResponse!;
+  expect(JSON.parse(exported.split("\n")[0].slice(6)).response.id).toBe("[redacted provider key]");
+  expect(exported).toContain(": fragment [redacted provider key]");
+  expect(exported).toContain("Synthetic evidence for human review.");
+});
+
+test.each([6, null, "mismatch"] as const)("continuation verifies checkpointed search evidence (%s)", async mode => {
+  const { meeting: base, signal } = await setup();
+  const segments = Array.from({ length: 120 }, (_, index) => ({
+    ...base.segments[0], id: crypto.randomUUID(), text: "界".repeat(160) + "a".repeat(index < 11 ? 20 : 19),
+  }));
+  const meeting = { ...base, segments };
+  const plan = planAgentMemo(meeting, selection, "en");
+  const jobId = crypto.randomUUID();
+  const callId = "legacy-search";
+  const args = { query: "a", limit: 20 };
+  const assistantRecord = JSON.stringify({
+    role: "assistant", api: "openai-responses", provider: "openai", model: selection.model,
+    content: [{ type: "toolCall", id: callId, name: "search_transcript", arguments: args }],
+    timestamp: 1, stopReason: "toolUse", usage: {input: 0, output: 0, totalTokens: 0, cacheRead: 0, cacheWrite: 0},
+  });
+  const matches = segments.slice(0, 14).map((s, index) => ({ index, id: s.id, revision: s.revision, excerpt: s.text }));
+  const text = JSON.stringify({ matches, nextIndex: 14, scanned: 14 });
+  expect(new TextEncoder().encode(text).length).toBe(8190);
+  const savedResult = { kind: "tool" as const, callId, name: "search_transcript",
+    text: mode === "mismatch" ? text.replace("界", "x") : text, isError: false, timestamp: 123 };
+  plan.jobIds = [jobId];
+  plan.context = [{ kind: "assistant", jobId }, savedResult];
+  plan.requestLimit = mode === "mismatch" ? 6 : mode;
+  plan.state = "paused";
+  const paused = await saveMeeting({ ...meeting, memoAgents: [plan], jobs: [{
+    id: jobId, agentId: plan.id, stage: "memo", state: "completed", stepIndex: 0, outputLanguage: plan.outputLanguage,
+    billing: "possibly_charged", provider: "openai", model: selection.model, inputRevision: meeting.revision,
+    requestId: null, createdAt: meeting.createdAt, updatedAt: meeting.updatedAt, message: "Recorded search", assistantRecord,
+  }] });
+  const request = vi.fn(async (_url: unknown, _init: RequestInit) => new Response("", { status: 503 }));
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(paused, paused.memoAgents![0], key, signal)).rejects.toThrow();
+  const saved = (await getMeeting(meeting.id))!;
+  if (mode === "mismatch") {
+    expect(request).not.toHaveBeenCalled();
+    expect(saved).toEqual(paused);
+  } else {
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(saved.memoAgents![0].context[1]).toEqual(savedResult);
+    const sent = JSON.parse(String(request.mock.calls[0][1].body));
+    expect(sent.input).toContainEqual(expect.objectContaining({ type: "function_call_output", output: savedResult.text }));
+    // Upgraded plans still need to verify old search receipts on the next reload.
+    await expect(runAgentMemo(saved, saved.memoAgents![0], key, signal, true)).rejects.toThrow();
+    expect(request).toHaveBeenCalledTimes(2);
+    expect((await getMeeting(meeting.id))!.memoAgents![0].context[1]).toEqual(savedResult);
+  }
+});

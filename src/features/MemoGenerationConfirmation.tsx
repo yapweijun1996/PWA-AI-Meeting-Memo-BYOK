@@ -6,7 +6,7 @@ import type { Meeting, MemoAgentPlan } from "../domain/model";
 import type { MemoOutputLanguage } from "../domain/memo-language";
 import { memoLanguageLabel, translateUi, type UiLanguage } from "../i18n";
 import { getKey, type Selection } from "../providers/credentials";
-import type { MemoPipeline } from "../providers/memo-plan";
+import { needsMemoBillingReview, type MemoPipeline } from "../providers/memo-plan";
 import { hasSavedAgentFinal, supportsAgentMemo } from "../providers/memo-agent-plan";
 import { translateMessage } from "../ui-messages";
 import { resolveAgentRoute, type AgentRoute } from "../domain/memo-agent-route";
@@ -63,9 +63,7 @@ export function MemoGenerationConfirmation({
   const requestLimitReached = Boolean(agentPlan && remainingAgentRequests(agentPlan) === 0);
   const missingKey = !(savedFinal && requestLimitReached) && !getKey(selection.provider);
   const localRecovery = savedFinal && (requestLimitReached || missingKey);
-  const needsRetryReview = !localRecovery && (agentPlan
-    ? meeting.jobs.some(job => job.agentId === agentPlan.id && job.state !== "completed")
-    : Boolean(plan && meeting.jobs.some(job => job.pipelineId === plan.id && job.state !== "completed")));
+  const needsRetryReview = !localRecovery && needsMemoBillingReview(meeting, confirmation);
   const planBlocked = Boolean(confirmation.planError && !agentPlan);
   const requestBlocked = requestLimitReached && !localRecovery;
   const canGenerate = !missingKey && !planBlocked && !requestLimitReached && costAcknowledged && (!needsRetryReview || reviewedRetry);

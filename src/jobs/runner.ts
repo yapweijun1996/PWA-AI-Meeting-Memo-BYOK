@@ -5,11 +5,11 @@ import {
   pipelineActive,
   cancelPipeline,
 } from "./memo-pipeline";
-import type { MemoPipeline } from "../providers/memo-plan";
+import { needsMemoBillingReview, type MemoPipeline } from "../providers/memo-plan";
 import type { Selection } from "../providers/credentials";
 import { MAX_JOBS, id, type Meeting, type Job } from "../domain/model";
 import { replaceTranscript } from "../domain/operations";
-import { getMeeting, saveMemoResponse, saveMeeting, getAudio } from "../storage/repository";
+import { checkMemoBackupBudget, getMeeting, saveMeeting, getAudio } from "../storage/repository";
 import { generateMemo, transcribe, ProviderError } from "../providers/api";
 import {
   getKey,
@@ -19,7 +19,7 @@ import {
 } from "../providers/credentials";
 import { buildMemoInput } from "../providers/memo-input";
 import type {MemoAgentPlan} from "../domain/model";
-import {hasPendingAgentReceipt} from "./agent-recovery";
+import { checkpointStandardReceipt, hasPendingAgentReceipt, StandardReceiptSaveError } from "./agent-recovery";
 let controller: AbortController | undefined;
 let activeMeetingId: string | undefined;
 export const isProcessingMeeting = (id: string) =>
@@ -101,6 +101,8 @@ export async function runJob(
       throw new Error(
         "This meeting changed. Reload before starting a request.",
       );
+    if (stage === "memo" && !confirmed?.reviewedRetry && needsMemoBillingReview(current, { selection }))
+      throw new Error("Review the previous paid outcome before confirming another attempt.");
     const estimate =
       stage === "speech" ? getSpeechEstimate(m.audio?.duration) : null;
     const job: Job = {
@@ -126,7 +128,8 @@ export async function runJob(
           }
         : null,
     };
-    await saveMeeting({ ...m, jobs: [...m.jobs, job] });
+    const intent = { ...current, jobs: [...current.jobs, job] };
+    await saveMeeting(stage === "memo" ? checkMemoBackupBudget(intent, true) : intent);
     controller = new AbortController();
     activeMeetingId = m.id;
     window.dispatchEvent(new Event("memo-processing-changed"));
@@ -163,10 +166,7 @@ export async function runJob(
               "",
               outputLanguage,
               confirmed?.template,
-              body => {
-                job.memoResponse = body;
-                return saveMemoResponse(m.id, job.id, body);
-              },
+              body => checkpointStandardReceipt(m.id, job, body),
             );
       let latest = await getMeeting(m.id);
       if (!latest) throw new Error("The meeting was removed while processing.");
@@ -219,7 +219,6 @@ export async function runJob(
         j.id === job.id
           ? {
               ...j,
-              ...(job.memoResponse !== undefined && { memoResponse: job.memoResponse }),
               state: "completed",
               billing:
                 reportedCostUsd === null
@@ -236,8 +235,9 @@ export async function runJob(
             }
           : j,
       );
-      return await saveMeeting(latest);
+      return await saveMeeting(stage === "memo" ? checkMemoBackupBudget(latest) : latest);
     } catch (error) {
+      if (error instanceof StandardReceiptSaveError) throw error;
       const failure =
         error instanceof ProviderError
           ? error
@@ -246,14 +246,13 @@ export async function runJob(
               true,
             );
       const latest = await getMeeting(m.id);
-      if (latest)
-        await saveMeeting({
+      if (latest) {
+        const stopped: Meeting = {
           ...latest,
           jobs: latest.jobs.map((j) =>
             j.id === job.id
               ? {
                   ...j,
-                  ...(job.memoResponse !== undefined && { memoResponse: job.memoResponse }),
                   usage: reportedUsage,
                   reportedCostUsd,
                   requestId: memoRequestId,
@@ -271,7 +270,9 @@ export async function runJob(
                 }
               : j,
           ),
-        });
+        };
+        await saveMeeting(stage === "memo" ? checkMemoBackupBudget(stopped) : stopped);
+      }
       throw failure;
     } finally {
       clearTimeout(timer);

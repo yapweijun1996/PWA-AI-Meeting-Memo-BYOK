@@ -63,10 +63,56 @@ export const AgentRangeArguments = z
   })
   .strict();
 
+const redaction = "[redacted provider key]";
+const jsonEscapes = /\\(?:u[0-9a-fA-F]{4}|["\\/bfnrt])/g;
+
+type Span = { start: number; end: number };
+
+/** Inspect JSON escapes even in incomplete strings. Offset mapping preserves all other wire bytes. */
+function credentialSpans(text: string, key: string, layers: number): Span[] {
+  const matches: Span[] = [];
+  for (let at = text.indexOf(key); at !== -1; at = text.indexOf(key, at + key.length))
+    matches.push({ start: at, end: at + key.length });
+  if (!layers || !text.includes("\\")) return matches;
+
+  const decoded = text.replace(jsonEscapes, escape => JSON.parse('"' + escape + '"') as string);
+  if (decoded === text) return matches;
+  const inner = credentialSpans(decoded, key, layers - 1);
+  if (!inner.length) return matches;
+
+  // Both the match boundaries and the escape offsets are ordered.
+  const escapes = text.matchAll(jsonEscapes);
+  let next = escapes.next();
+  let extra = 0;
+  const rawOffset = (offset: number) => {
+    while (!next.done && next.value.index - extra < offset) {
+      extra += next.value[0].length - 1;
+      next = escapes.next();
+    }
+    return offset + extra;
+  };
+  for (const span of inner) matches.push({ start: rawOffset(span.start), end: rawOffset(span.end) });
+  matches.sort((a, b) => a.start - b.start);
+  const merged: Span[] = [];
+  for (const span of matches) {
+    const last = merged.at(-1);
+    if (last && span.start < last.end) last.end = Math.max(last.end, span.end);
+    else merged.push(span);
+  }
+  return merged;
+}
+
 export function redactAgentSecret(value: string, key: string): string {
   if (!key) return value;
-  const escaped = JSON.stringify(key).slice(1, -1);
-  return value
-    .replaceAll(escaped, "[redacted provider key]")
-    .replaceAll(key, "[redacted provider key]");
+  if (!value.includes("\\")) return value.replaceAll(key, redaction);
+  // The JSON HTTP body or SSE data field can enclose another serialized memo or tool argument.
+  const spans = credentialSpans(value, key, 2);
+  if (!spans.length) return value;
+  const parts: string[] = [];
+  let start = 0;
+  for (const span of spans) {
+    parts.push(value.slice(start, span.start), redaction);
+    start = span.end;
+  }
+  return parts.join("") + value.slice(start);
 }

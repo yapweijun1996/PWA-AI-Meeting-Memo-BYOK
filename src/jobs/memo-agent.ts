@@ -182,11 +182,10 @@ export async function runAgentMemo(
         throw new Error(AGENT_REQUEST_LIMIT_MESSAGE);
       }
     };
-    const toolResult = (name: string, args: unknown) => {
+    const toolResult = (name: string, args: unknown, cursorBudget: "current" | "legacy" = "current") => {
       if (name !== "search_transcript" && name !== "read_transcript_range")
         throw new Error("Unknown local transcript tool.");
-      const lookup = name === "search_transcript" ? searchAgentTranscript : readAgentTranscript;
-      const result = lookup(frozen.segments, args);
+      const result = name === "search_transcript" ? searchAgentTranscript(frozen.segments, args, cursorBudget) : readAgentTranscript(frozen.segments, args);
       if (redactAgentSecret(result.text, key) !== result.text)
         throw new Error("This lookup cannot return exact evidence without disclosing the provider credential.");
       return result;
@@ -212,6 +211,8 @@ export async function runAgentMemo(
     const recoverTools = () => {
       const next: MemoAgentPlan["context"] = [];
       const savedResults = new Map(plan.context.filter(item => item.kind === "tool").map(item => [item.callId, item]));
+      if (savedResults.size !== plan.context.filter(item => item.kind === "tool").length)
+        throw new Error("Stored tool results contain duplicate call IDs. Review stopped before submission.");
       const lastAssistant = plan.context.filter(item => item.kind === "assistant").at(-1);
       const warning = agentContextOrderWarning(plan);
       if (warning) throw new Error(warning);
@@ -224,27 +225,34 @@ export async function runAgentMemo(
           const calls = validateToolBurst(response);
           for (const call of calls) {
             const saved = savedResults.get(call.id);
+            savedResults.delete(call.id);
             // A later assistant saw this failure. Only outstanding tools may be retried locally.
             if (saved?.isError && item !== lastAssistant) {
               next.push(saved);
               continue;
             }
-            // Replay only deterministic, read-only tools against the same frozen revision.
-            let text: string,
-              isError = false;
+            // Verify a successful receipt before rebuilding context or recording a new attempt.
+            let text: string, isError = false;
             try {
               if (response.stopReason !== "toolUse" || call.argumentsError)
-                throw new Error(
-                  "The previous tool arguments were incomplete. Request a valid bounded range.",
-                );
-              const result = toolResult(call.name, call.arguments);
-              if (saved && !saved.isError && (saved.name !== call.name || saved.text !== result.text))
-                throw new Error("Stored tool evidence differs from this range.");
+                throw new Error("Incomplete tool arguments.");
+              let result = toolResult(call.name, call.arguments);
+              if (saved && !saved.isError) {
+                // Upgraded plans can still contain results from the original cursor calculation.
+                if (saved.text !== result.text && call.name === "search_transcript")
+                  result = toolResult(call.name, call.arguments, "legacy");
+                if (saved.name !== call.name || saved.text !== result.text)
+                  throw new Error("Mismatched tool evidence.");
+                plan.consulted = mergeConsulted(plan.consulted, result.consulted);
+                next.push(saved);
+                continue;
+              }
               text = result.text;
               plan.consulted = mergeConsulted(plan.consulted, result.consulted);
             } catch {
-              text =
-                "Invalid local transcript lookup. Use only the declared tools and bounded arguments.";
+              if (saved && !saved.isError)
+                throw new Error("Stored tool evidence differs from the frozen transcript or recorded call. Review stopped before submission.");
+              text = "Invalid local transcript lookup. Use only the declared tools and bounded arguments.";
               isError = true;
             }
             next.push({
@@ -257,6 +265,7 @@ export async function runAgentMemo(
             });
           }
         } else if (item.kind === "user") next.push(item);
+      if (savedResults.size) throw new Error("A stored tool result has no matching assistant call. Review stopped before submission.");
       // Tool artifacts are rebuilt, including schema-rejection artifacts the SDK does not send to afterToolCall.
       plan.context = next;
     };

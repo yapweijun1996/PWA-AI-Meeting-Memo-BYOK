@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import { expect, test, vi, afterEach, onTestFinished } from "vitest";
-import { createMeeting, segment, validateMeeting } from "../src/domain/model";
+import { createMeeting, segment, validateMeeting, MAX_MEETING_JSON_BYTES, type Job, type Meeting } from "../src/domain/model";
 import { reviewSegments } from "../src/domain/operations";
 import {
   planMemo,
@@ -16,15 +16,20 @@ import {
   cancelPipeline,
 } from "../src/jobs/memo-pipeline";
 import { runJob } from "../src/jobs/runner";
-import { saveMeeting, getMeeting } from "../src/storage/repository";
+import { deleteMeeting, saveMeeting, getMeeting } from "../src/storage/repository";
 import { summarizeMeetingAccounting } from "../src/domain/accounting";
-import { readBackup } from "../src/storage/backup";
+import { acknowledgeAgentExport, pendingAgentReceipt, receiptExport, recoverAgentReceipt } from "../src/jobs/agent-recovery";
+import { backupMeeting, readBackup } from "../src/storage/backup";
 
 vi.mock("../src/providers/credentials", async (original) => ({
   ...(await original<typeof import("../src/providers/credentials")>()),
   getKey: () => "synthetic-test",
 }));
-afterEach(() => vi.unstubAllGlobals());
+const recoveryFixtures: string[] = [];
+afterEach(() => {
+  for (const id of recoveryFixtures.splice(0)) acknowledgeAgentExport(id);
+  vi.unstubAllGlobals();
+});
 const selection = { provider: "openai" as const, model: "gpt-6-luna" };
 function longMeeting() {
   const m = createMeeting();
@@ -526,5 +531,179 @@ test("an unreadable paid standard response retains its redacted text and never r
     state: "outcome_unknown", billing: "possibly_charged", memoResponse: "incomplete { [redacted provider key]",
   });
   expect(restored.meeting.memos).toHaveLength(0);
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
+async function receiptFixture(pipeline = false) {
+  vi.stubGlobal("window", new EventTarget());
+  vi.stubGlobal("navigator", {});
+  const meeting = longMeeting();
+  if (!pipeline) meeting.segments = meeting.segments.slice(0, 1);
+  const saved = await saveMeeting(meeting);
+  recoveryFixtures.push(saved.id);
+  return saved;
+}
+
+test("standard JSON receipts redact escaped credentials through persistence, parsed memo and ZIP restore", async () => {
+  const saved = await receiptFixture();
+  const request = vi.fn(async (_url: unknown, init: { body: string }) => {
+    const reply = await response(init.body, "synthetic-test").text();
+    return new Response(reply.replace("synthetic-test", "\\u0073ynthetic-test").replace("synthetic-response", "\\u0073ynthetic-test"));
+  });
+  vi.stubGlobal("fetch", request);
+  const generated = await runJob(saved, "memo", { selection });
+  const restored = await readBackup(new File([await backupMeeting(generated)], "memo.zip"));
+  for (const meeting of [generated, restored.meeting]) {
+    const job = meeting.jobs[0];
+    const body = JSON.parse(job.memoResponse!);
+    expect(body.id).toBe("[redacted provider key]");
+    expect(job.requestId).toBe(body.id);
+    expect(JSON.parse(body.output[0].content[0].text).items[0].due_original).toBe(body.id);
+    expect(meeting.memos[0].items[0].dueOriginal).toBe(body.id);
+    expect(job.memoResponse).not.toContain("\\u0073ynthetic-test");
+  }
+});
+
+test.each(["single", "extraction", "synthesis"])("standard %s receipt survives failed body writes and can be saved locally", async mode => {
+  const saved = await receiptFixture(mode !== "single");
+  const plan = planMemo(saved, selection.provider, selection.model);
+  const failedStep = mode === "synthesis" ? plan!.chunks.length : 0;
+  const request = vi.fn(async (_url: unknown, init: { body: string }) => response(init.body, "synthetic-test"));
+  vi.stubGlobal("fetch", request);
+  const put = IDBObjectStore.prototype.put;
+  const quota = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function(this: IDBObjectStore, value, index) {
+    if (value.jobs?.some((job: Job) => (job.stepIndex ?? 0) === failedStep && job.memoResponse !== undefined))
+      throw new DOMException("Synthetic quota failure", "QuotaExceededError");
+    return put.call(this, value, index);
+  });
+  onTestFinished(() => quota.mockRestore());
+  await expect(runJob(saved, "memo", { selection, plan })).rejects.toThrow();
+  const pending = pendingAgentReceipt(saved.id);
+  expect(pending?.job.memoResponse).toContain("[redacted provider key]");
+  const exported = JSON.parse(JSON.stringify(receiptExport(pending!)));
+  expect(exported).toMatchObject({ kind: "standard", meetingId: saved.id, job: { memoResponse: pending!.job.memoResponse } });
+  expect(JSON.stringify(exported)).not.toContain("synthetic-test");
+  const latest = (await getMeeting(saved.id))!;
+  expect(latest.jobs[failedStep]).toMatchObject({ state: "failed", requestId: "synthetic-response", usage: {inputTokens: 10} });
+  expect(latest.jobs[failedStep].memoResponse).toBeUndefined();
+  expect(latest.memos).toHaveLength(0);
+  if (plan) {
+    expect(latest.memoPipelines![0].state).toBe("blocked");
+    expect(latest.memoPipelines![0].results.filter(Boolean)).toHaveLength(failedStep);
+  }
+  await expect(runJob(latest, "memo", { selection, plan, reviewedRetry: true })).rejects.toThrow(/unsaved/i);
+  quota.mockRestore();
+  await saveMeeting({ ...latest, title: "Human edit" });
+  const recovered = await recoverAgentReceipt(saved.id);
+  expect(recovered.title).toBe("Human edit");
+  expect(recovered.jobs[failedStep].memoResponse).toBe(pending!.job.memoResponse);
+  expect(pendingAgentReceipt(saved.id)).toBeUndefined();
+  expect(request).toHaveBeenCalledTimes(failedStep + 1);
+});
+
+test("standalone runner blocks a repeat unknown outcome until the matching billing review", async () => {
+  const saved = await receiptFixture();
+  const request = vi.fn().mockRejectedValueOnce(new TypeError("Disconnected"))
+    .mockImplementation(async (_url: unknown, init: {body: string}) => response(init.body));
+  vi.stubGlobal("fetch", request);
+  await expect(runJob(saved, "memo", { selection, plan: null })).rejects.toThrow();
+  const stopped = (await getMeeting(saved.id))!;
+  await expect(runJob(stopped, "memo", { selection, plan: null, reviewedRetry: false })).rejects.toThrow(/review/i);
+  expect(request).toHaveBeenCalledTimes(1);
+  await runJob(stopped, "memo", { selection, plan: null, reviewedRetry: true });
+  expect(request).toHaveBeenCalledTimes(2);
+});
+
+function fillReceiptHistory(meeting: Meeting) {
+  const historical: Job = {
+    id: crypto.randomUUID(), stage: "memo", state: "completed", billing: "possibly_charged", inputRevision: meeting.revision,
+    createdAt: meeting.createdAt, updatedAt: meeting.updatedAt, requestId: null, message: "Existing receipt", memoResponse: "",
+  };
+  const value = { ...meeting, jobs: [historical, ...meeting.jobs] };
+  historical.memoResponse = "x".repeat(MAX_MEETING_JSON_BYTES - 5000 - new Blob([JSON.stringify(value, null, 2)]).size);
+  return value;
+}
+
+test("standard receipt headroom is checked before a standalone attempt is allocated", async () => {
+  const meeting = await saveMeeting(fillReceiptHistory(await receiptFixture()));
+  const request = vi.fn().mockResolvedValue(new Response("{}"));
+  vi.stubGlobal("fetch", request);
+  await expect(runJob(meeting, "memo", {selection})).rejects.toThrow();
+  expect(request).not.toHaveBeenCalled();
+  expect((await getMeeting(meeting.id))!.jobs).toHaveLength(1);
+}, 30000);
+
+test("concurrent meeting growth routes the standard body to page export and keeps the ZIP restorable", async () => {
+  const meeting = await receiptFixture();
+  const body = "paid response ".repeat(5000);
+  const request = vi.fn(async () => {
+    const latest = (await getMeeting(meeting.id))!;
+    await saveMeeting(fillReceiptHistory(latest));
+    return new Response(body);
+  });
+  vi.stubGlobal("fetch", request);
+  await expect(runJob(meeting, "memo", {selection})).rejects.toThrow();
+  const pending = pendingAgentReceipt(meeting.id)!;
+  expect(receiptExport(pending).job.memoResponse === body).toBe(true);
+  await expect(recoverAgentReceipt(meeting.id)).rejects.toThrow(/backup/);
+  expect(pendingAgentReceipt(meeting.id)).toBe(pending);
+  const latest = (await getMeeting(meeting.id))!;
+  expect(latest.jobs.at(-1)?.memoResponse).toBeUndefined();
+  const restored = await readBackup(new File([await backupMeeting(latest)], "bounded.zip"));
+  expect(restored.meeting.jobs).toEqual(latest.jobs);
+  const json = await readBackup(new File([JSON.stringify(latest, null, 2)], "bounded.json"));
+  expect(json.meeting.jobs).toEqual(latest.jobs);
+  expect(request).toHaveBeenCalledTimes(1);
+}, 30000);
+
+test("a truncated nested JSON string keeps its paid text and redacts the encoded credential", async () => {
+  const saved = await receiptFixture();
+  const field = JSON.stringify('{"message":"\\u0073ynthetic-test"}');
+  const malformed = '{"paid":"keep this evidence","output":' + field.slice(0, -1);
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(malformed)));
+  await expect(runJob(saved, "memo", { selection })).rejects.toThrow();
+  const body = (await getMeeting(saved.id))!.jobs[0].memoResponse!;
+  expect(body).toContain("keep this evidence");
+  const repairedField = JSON.parse(body.slice(body.indexOf('"output":') + 9) + '"');
+  expect(JSON.parse(repairedField).message).toBe("[redacted provider key]");
+});
+
+test("a standard receipt stays exportable if even the metadata write fails and the meeting is removed", async () => {
+  const saved = await receiptFixture();
+  const quota = vi.spyOn(IDBObjectStore.prototype, "put");
+  onTestFinished(() => quota.mockRestore());
+  const request = vi.fn(async () => {
+    quota.mockImplementation(() => { throw new DOMException("No space", "QuotaExceededError"); });
+    return new Response('{"paid":"keep me", "reflection":"\\u0073ynthetic-test"}');
+  });
+  vi.stubGlobal("fetch", request);
+  await expect(runJob(saved, "memo", { selection })).rejects.toThrow(/export/);
+  expect((await getMeeting(saved.id))!.jobs[0].state).toBe("in_flight");
+  quota.mockRestore();
+  await deleteMeeting(saved.id);
+  await expect(recoverAgentReceipt(saved.id)).rejects.toThrow(/export/i);
+  const exported = receiptExport(pendingAgentReceipt(saved.id)!);
+  expect(JSON.parse(exported.job.memoResponse!)).toEqual({ paid: "keep me", reflection: "[redacted provider key]" });
+  expect(request).toHaveBeenCalledTimes(1);
+  acknowledgeAgentExport(saved.id);
+  expect(pendingAgentReceipt(saved.id)).toBeUndefined();
+});
+
+test("local recovery fills in known accounting after an interruption was marked in another tab", async () => {
+  const saved = await receiptFixture();
+  const quota = vi.spyOn(IDBObjectStore.prototype, "put");
+  onTestFinished(() => quota.mockRestore());
+  const request = vi.fn(async (_url: unknown, init: { body: string }) => {
+    quota.mockImplementation(() => { throw new DOMException("No space", "QuotaExceededError"); });
+    return response(init.body);
+  });
+  vi.stubGlobal("fetch", request);
+  await expect(runJob(saved, "memo", {selection})).rejects.toThrow(/export/);
+  quota.mockRestore();
+  const latest = (await getMeeting(saved.id))!;
+  await saveMeeting({ ...latest, jobs: latest.jobs.map(job => ({...job, state: "outcome_unknown"})) });
+  const recovered = await recoverAgentReceipt(saved.id);
+  expect(recovered.jobs[0]).toMatchObject({ state: "failed", requestId: "synthetic-response", usage: {inputTokens: 10} });
+  expect(recovered.jobs[0].memoResponse).toContain("A candidate for review.");
   expect(request).toHaveBeenCalledTimes(1);
 });

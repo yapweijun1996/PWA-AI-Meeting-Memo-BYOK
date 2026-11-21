@@ -1,6 +1,6 @@
 import { clientDraft, type MemoTemplate } from "../domain/memo-templates";
 import { id, type Meeting, type Job, type MemoItem } from "../domain/model";
-import { getMeeting, saveMemoResponse, saveMeeting } from "../storage/repository";
+import { checkMemoBackupBudget, getMeeting, saveMeeting } from "../storage/repository";
 import { generateMemo, ProviderError } from "../providers/api";
 import { getKey, type Selection } from "../providers/credentials";
 import {
@@ -8,9 +8,11 @@ import {
   extractionInput,
   extractionInstructions,
   pipelineMeeting,
+  needsMemoBillingReview,
   synthesisInput,
   type MemoPipeline,
 } from "../providers/memo-plan";
+import { checkpointStandardReceipt, hasPendingAgentReceipt, StandardReceiptSaveError } from "./agent-recovery";
 
 let controller: AbortController | undefined;
 let meetingId: string | undefined;
@@ -26,6 +28,7 @@ export async function runMemoPipeline(
   reviewedRetry = false,
   onCheckpoint?: (m: Meeting) => void,
 ): Promise<Meeting> {
+  if (hasPendingAgentReceipt()) throw new Error("Save or export the unsaved response before another provider request.");
   if (controller)
     throw new Error("Finish the current request before starting another.");
   const key = getKey(selection.provider);
@@ -39,9 +42,7 @@ export async function runMemoPipeline(
       "The confirmed memo plan changed. Open the confirmation again.",
     );
   if (
-    m.jobs.some(
-      (j) => j.pipelineId === proposed.id && j.state !== "completed",
-    ) &&
+    needsMemoBillingReview(m, { selection, plan: proposed }) &&
     !reviewedRetry
   )
     throw new Error(
@@ -66,15 +67,15 @@ export async function runMemoPipeline(
     if (existing?.state === "completed") return current;
     if (existing) p = structuredClone(existing);
     else
-      current = await saveMeeting({
+      current = await saveMeeting(checkMemoBackupBudget({
         ...current,
         schemaVersion: 2,
         memoPipelines: [...(current.memoPipelines ?? []), p],
-      });
-    const persist = async (update: (value: Meeting) => Meeting) => {
+      }, true));
+    const persist = async (update: (value: Meeting) => Meeting, reserveReceipt = false) => {
       const latest = await getMeeting(m.id);
       if (!latest) throw new Error("The meeting was removed while processing.");
-      current = await saveMeeting(update(latest));
+      current = await saveMeeting(checkMemoBackupBudget(update(latest), reserveReceipt));
       onCheckpoint?.(current);
       window.dispatchEvent(new Event("memo-storage-changed"));
     };
@@ -123,7 +124,7 @@ export async function runMemoPipeline(
         if (value.jobs.some((j) => j.state === "in_flight"))
           throw new Error("Another tab is processing this meeting.");
         return checkpoint({ ...value, jobs: [...value.jobs, job] });
-      });
+      }, true);
       let usage: Job["usage"] = null,
         requestId: string | null = null,
         cost: number | null = null;
@@ -145,10 +146,7 @@ export async function runMemoPipeline(
             : extractionInstructions(p),
           p.outputLanguage ?? "meeting",
           p.template,
-          body => {
-            job.memoResponse = body;
-            return saveMemoResponse(m.id, job.id, body);
-          },
+          body => checkpointStandardReceipt(m.id, job, body),
         );
         if (prepared) {
           p.memoId = id();
@@ -162,7 +160,6 @@ export async function runMemoPipeline(
               j.id === job.id
                 ? {
                     ...j,
-                    memoResponse: job.memoResponse,
                     state: "completed",
                     billing:
                       cost === null ? "possibly_charged" : "provider_reported",
@@ -205,6 +202,7 @@ export async function runMemoPipeline(
           return result;
         });
       } catch (error) {
+        if (error instanceof StandardReceiptSaveError) throw error;
         p.state = "blocked";
         const uncertain = !(error instanceof ProviderError) || error.uncertain;
         // Do not persist an in-memory result when its atomic save failed.
@@ -218,7 +216,6 @@ export async function runMemoPipeline(
               j.id === job.id
                 ? {
                     ...j,
-                    memoResponse: job.memoResponse,
                     state: uncertain ? "outcome_unknown" : "failed",
                     billing:
                       cost === null ? "possibly_charged" : "provider_reported",
