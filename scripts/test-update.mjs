@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { chromium, webkit, expect } from "@playwright/test";
+import { checkForWorkerUpdate } from "./test-pwa-worker-state.mjs";
 const base = "/PWA-AI-Meeting-Memo-BYOK/";
 const files = new Map();
 async function load(dir) {
@@ -17,13 +19,23 @@ async function load(dir) {
 }
 await load("dist");
 const sw = files.get(base + "sw.js").toString();
-assert.match(sw, /const VERSION\s*=/);
-const next = sw.replace(
-  /(const VERSION\s*=\s*["'])([^"']+)/,
-  (_, prefix, version) => prefix + version + "-update-check",
-);
-assert.notEqual(sw, next);
-let activeWorker = sw;
+const index = files.get(base + "index.html").toString();
+const digest = (html) => "sha256-" + createHash("sha256").update(html).digest("base64");
+
+// Each fixture serves the exact HTML declared by its worker, except during the mixed-release case.
+function fixtureRelease(versionSuffix, marker) {
+  const html = index.replace("<head>", `<head><meta name="pwa-test-release" content="${marker}">`);
+  assert.notEqual(html, index);
+  assert(sw.includes(digest(index)), "Build the app before running the update checks");
+  const worker = sw
+    .replace(/(const VERSION = "[^"]+)/, `$1-${versionSuffix}`)
+    .replace(digest(index), digest(html));
+  return { worker, html };
+}
+const initial = fixtureRelease("initial", "initial");
+const next = fixtureRelease("update-check", "next");
+let release = initial;
+let indexReads = 0;
 const types = {
   ".html": "text/html",
   ".js": "application/javascript",
@@ -36,7 +48,7 @@ const server = createServer((req, res) => {
   const url = new URL(req.url, "http://localhost").pathname;
   const target = url === base ? base + "index.html" : url;
   const file =
-    target === base + "sw.js" ? Buffer.from(activeWorker) : files.get(target);
+    target === base + "sw.js" ? release.worker : files.get(target);
   if (!file) {
     res.writeHead(404);
     res.end("Not found");
@@ -46,21 +58,12 @@ const server = createServer((req, res) => {
     "Content-Type": types[path.extname(target)] || "application/octet-stream",
     "Cache-Control": "public, max-age=600",
   });
-  const release = activeWorker.includes("forward-recovery")
-    ? "forward"
-    : activeWorker === sw
-      ? "initial"
-      : "next";
-  res.end(
-    target === base + "index.html"
-      ? file
-          .toString()
-          .replace(
-            "<head>",
-            `<head><meta name="pwa-test-release" content="${release}">`,
-          )
-      : file,
-  );
+  if (target === base + "index.html") {
+    indexReads++;
+    res.end(release.html);
+  } else {
+    res.end(file);
+  }
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const url = `http://127.0.0.1:${server.address().port}${base}`;
@@ -69,7 +72,7 @@ try {
     ["Chromium", chromium],
     ["WebKit", webkit],
   ]) {
-    activeWorker = sw;
+    release = initial;
     const browser = await engine.launch();
     try {
       const page = await browser.newPage();
@@ -147,7 +150,16 @@ try {
           new Response("old client asset preserved"),
         );
       }, base);
-      activeWorker = next;
+      const cacheNames = () => page.evaluate(async () => (await caches.keys()).sort());
+      const originalCaches = await cacheNames();
+      const readsBeforeUpdate = indexReads;
+      release = { worker: next.worker, html: initial.html };
+      assert.equal(await checkForWorkerUpdate(page), "redundant");
+      assert(indexReads > readsBeforeUpdate, "Worker must fetch the mismatched HTML");
+      assert.equal(await page.evaluate(async () => !!(await navigator.serviceWorker.ready).waiting), false);
+      assert.deepEqual(await cacheNames(), originalCaches);
+
+      release = next;
       await page.evaluate(async () => {
         await (await navigator.serviceWorker.ready).update();
       });
@@ -262,9 +274,11 @@ try {
       );
 
       // A worker that never activates must expose failure and permit a forward fix.
-      activeWorker = next
-        .replace("-update-check", "-activation-failure")
-        .replace("void self.skipWaiting()", 'event.source?.postMessage({ type: "PWA_TEST_ACTIVATION_ATTEMPT" })');
+      const stalled = fixtureRelease("activation-failure", "next");
+      release = {
+        ...stalled,
+        worker: stalled.worker.replace("void self.skipWaiting()", 'event.source?.postMessage({ type: "PWA_TEST_ACTIVATION_ATTEMPT" })'),
+      };
       await page.evaluate(async () => {
         await (await navigator.serviceWorker.ready).update();
       });
@@ -299,7 +313,7 @@ try {
       await expect(
         page.getByText("Saved draft survives activation.", { exact: true }),
       ).toBeVisible();
-      activeWorker = next.replace("-update-check", "-forward-recovery");
+      release = fixtureRelease("forward-recovery", "forward");
       await page.evaluate(async () => {
         await (await navigator.serviceWorker.ready).update();
       });

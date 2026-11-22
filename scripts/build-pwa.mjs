@@ -156,20 +156,20 @@ const allFiles = (await walk("dist"))
     relative: path.relative("dist", file).split(path.sep).join("/"),
   }))
   .sort((a, b) => a.relative.localeCompare(b.relative));
-const shellFiles = allFiles.filter(
-  ({ relative }) => !isDeferredSpeakerAsset(relative),
-);
-const assets = shellFiles.map(({ relative }) => base + relative);
 const source = await readFile("src/pwa/worker.template.js", "utf8");
-const hash = createHash("sha256");
-hash.update(source);
-// The canonical asset list is part of the release identity. A path-only fix
-// must not reuse a cache created with a different URL set.
-hash.update(JSON.stringify(assets));
+const hash = createHash("sha256").update(source);
+const assets = [];
 for (const { file, relative } of allFiles) {
+  const bytes = await readFile(file);
   hash.update(relative);
-  hash.update(await readFile(file));
+  hash.update(bytes);
+  if (!isDeferredSpeakerAsset(relative)) {
+    const digest = createHash("sha256").update(bytes).digest("base64");
+    assets.push({ url: base + relative, integrity: `sha256-${digest}` });
+  }
 }
+// Include canonical URLs so a base-path change creates a separate release.
+hash.update(JSON.stringify(assets));
 const build = hash.digest("hex").slice(0, 16);
 await writeFile(
   "dist/sw.js",

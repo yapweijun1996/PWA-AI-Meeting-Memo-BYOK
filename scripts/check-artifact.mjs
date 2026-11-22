@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import {
   isAllowedSpeakerAssetPath,
@@ -103,8 +104,8 @@ try {
 }
 assert(Array.isArray(assets) && assets.length > 0, "ASSETS must be nonempty");
 const seen = new Set();
-for (const asset of assets) {
-  assert.equal(typeof asset, "string", "ASSETS entries must be strings");
+for (const { url: asset, integrity } of assets) {
+  assert.equal(typeof asset, "string", "ASSETS entries must contain a URL");
   assert(!seen.has(asset), `Duplicate worker asset: ${asset}`);
   seen.add(asset);
   assert(!asset.includes("\\"), `Worker asset must use slash paths: ${asset}`);
@@ -123,6 +124,9 @@ for (const asset of assets) {
   const resolved = new URL(asset, "https://artifact.invalid");
   assert.equal(resolved.origin, "https://artifact.invalid");
   assert.equal(resolved.pathname, asset, `Worker asset is not canonical: ${asset}`);
+  const bytes = await readFile(path.join("dist", relative));
+  const digest = createHash("sha256").update(bytes).digest("base64");
+  assert.equal(integrity, `sha256-${digest}`, `Worker integrity mismatch: ${asset}`);
 }
 assert(seen.has(`${base}index.html`), "ASSETS must include the app index");
 const expectedAssets = artifactFiles

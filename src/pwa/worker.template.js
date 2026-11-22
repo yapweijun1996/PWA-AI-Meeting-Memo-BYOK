@@ -2,19 +2,25 @@
 const VERSION = __CACHE_VERSION__;
 const BASE = __BASE_PATH__;
 const ASSETS = __PRECACHE_ASSETS__;
+const assetPaths = new Set(ASSETS.map(({ url }) => url));
 const PREFIX = "meeting-memo-byok:" + BASE + ":";
 const CACHE = PREFIX + VERSION;
+async function installShell() {
+  // A rollback can reuse a cache still needed by an older tab.
+  const alreadyCached = await caches.has(CACHE);
+  const cache = await caches.open(CACHE);
+  try {
+    const requests = ASSETS.map(({ url, integrity }) =>
+      new Request(url, { cache: "reload", mode: "same-origin", redirect: "error", integrity }),
+    );
+    await cache.addAll(requests);
+  } catch (error) {
+    if (!alreadyCached) await caches.delete(CACHE);
+    throw error;
+  }
+}
 self.addEventListener("install", (event) => {
-  // Unhashed HTML must bypass a still-fresh HTTP cache when a new release installs.
-  event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) =>
-        cache.addAll(
-          ASSETS.map((url) => new Request(url, { cache: "reload" })),
-        ),
-      ),
-  );
+  event.waitUntil(installShell());
 });
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") void self.skipWaiting();
@@ -50,7 +56,7 @@ self.addEventListener("fetch", (event) => {
     );
     return;
   }
-  if (!ASSETS.includes(url.pathname)) {
+  if (!assetPaths.has(url.pathname)) {
     if (!url.pathname.startsWith(BASE + "assets/")) return;
     event.respondWith(
       (async () => {

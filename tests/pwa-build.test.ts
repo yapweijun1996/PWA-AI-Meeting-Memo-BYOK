@@ -49,10 +49,10 @@ async function listFiles(dir: string): Promise<string[]> {
   return files;
 }
 
-function assetsFromWorker(worker: string): string[] {
+function assetsFromWorker(worker: string): { url: string; integrity: string }[] {
   const match = worker.match(/const ASSETS\s*=\s*(\[[\s\S]*?\]);/);
   if (!match) throw new Error("Generated worker has no ASSETS declaration");
-  return JSON.parse(match[1]) as string[];
+  return JSON.parse(match[1]);
 }
 
 async function createFixture() {
@@ -126,7 +126,7 @@ it("builds canonical scoped assets and rejects Windows/dist worker paths", async
 
   const workerPath = path.join(fixtureRoot!, "dist", "sw.js");
   const firstWorker = await readFile(workerPath, "utf8");
-  const firstAssets = assetsFromWorker(firstWorker);
+  const firstAssets = assetsFromWorker(firstWorker).map(({ url }) => url);
   expect(firstAssets).toContain(`${base}speaker-assets/manifest.json`);
   expect(
     firstAssets.some((asset) => asset.includes("speaker-assets/model/")),
@@ -199,7 +199,8 @@ it("builds canonical scoped assets and rejects Windows/dist worker paths", async
   const secondBuild = runNodeScript(buildScript);
   expect(secondBuild.status, secondBuild.output).toBe(0);
   const secondWorker = await readFile(workerPath, "utf8");
-  const secondAssets = assetsFromWorker(secondWorker);
+  const secondEntries = assetsFromWorker(secondWorker);
+  const secondAssets = secondEntries.map(({ url }) => url);
   const secondVersion = secondWorker.match(
     /const VERSION\s*=\s*"([^"]+)"/,
   )?.[1];
@@ -207,15 +208,24 @@ it("builds canonical scoped assets and rejects Windows/dist worker paths", async
   expect(secondAssets).toContain(`${base}assets/renamed.js`);
   expect(secondAssets).not.toContain(`${base}assets/app.js`);
 
+  const appFile = path.join(fixtureRoot!, "dist", "assets", "renamed.js");
+  const original = await readFile(appFile);
+  await writeFile(appFile, "console.log('stale release');");
+  const staleCheck = runNodeScript(checkScript);
+  expect(staleCheck.status).not.toBe(0);
+  expect(staleCheck.output).toContain("Worker integrity mismatch");
+  await writeFile(appFile, original);
+
   for (const badAssets of [
     [`${base}dist\\index.html`],
     [`${base}dist/index.html`],
     [`${base}missing.js`],
     [secondAssets[0], secondAssets[0]],
   ]) {
+    const badEntries = badAssets.map((url) => ({ ...secondEntries[0], url }));
     const badWorker = secondWorker.replace(
       /const ASSETS\s*=\s*(\[[\s\S]*?\]);/,
-      `const ASSETS = ${JSON.stringify(badAssets)};`,
+      `const ASSETS = ${JSON.stringify(badEntries)};`,
     );
     await writeFile(workerPath, badWorker);
     const badCheck = runNodeScript(checkScript);

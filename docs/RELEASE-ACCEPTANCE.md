@@ -16,6 +16,47 @@ node scripts/create-acceptance-fixture.mjs private-fixtures/owner-acceptance
 
 Transfer `synthetic-playback.zip` to the device and use Restore backup. It contains eight seconds of low/high tones, authored timing/overlap/gaps, an untimed note and a clearly labeled authored memo. It contains no people, recognized speech, credentials or paid attempts. It exercises playback, review and restore; it cannot establish recognition accuracy. The generator refuses to overwrite an existing archive. Generated archives remain outside Git and the production artifact.
 
+## Local browser release checks
+
+Use the Node version in `.node-version` and a static build. The lifecycle test covers Chromium and WebKit with real workers and synthetic local data. It verifies offline reload, explicit activation, draft and request protection, cache isolation, and recovery when activation stalls.
+
+```sh
+npm ci
+npx playwright install chromium webkit
+npm run build
+npm run check:artifact
+npm run test:pwa
+```
+
+Prepare two artifacts from the same clean checkout with different build IDs, or use exported artifacts from the baseline and candidate release. The test server serves a real candidate worker and injects baseline HTML or baseline entry JavaScript into separate install attempts. Each attempt must fail, preserve the old and unrelated caches, and allow an offline launch of the baseline. Once every file matches the candidate, the worker must wait for confirmation and the updated app must launch offline.
+
+```sh
+pwa_acceptance_dir=$(mktemp -d) &&
+VITE_BUILD_ID=pwa-baseline npm run build &&
+mv dist "$pwa_acceptance_dir/baseline" &&
+VITE_BUILD_ID=pwa-candidate npm run build &&
+mv dist "$pwa_acceptance_dir/candidate" &&
+node scripts/test-pwa-install-integrity.mjs "$pwa_acceptance_dir/baseline" "$pwa_acceptance_dir/candidate"
+```
+
+Run the install-integrity check separately from `test:pwa`. A nonzero exit records a failed gate. The two static artifacts exercise the generated workers and their actual release identities.
+
+**2026-11-22 local result.** Node 22.23.3 on macOS 27.2, Chromium 156.0.8078.4 and WebKit 27.2. Before the fix, both engines accepted stale HTML during the `be16b1c` → `085a7bc` upgrade. The fixed candidate used source from `b7b109e` plus the install-integrity patch, with `VITE_BUILD_ID=pwa-install-integrity-candidate`. The baseline worker reported `edfeb98edf747296` and the fixed worker reported `77a71bfe36e9f2db`. The candidate passed 702 unit tests in 77 files, lint, SSOT, the production build/type check and artifact verification. A separate build from the working tree at base `6fbb904` also passed the artifact check and both browsers’ two-build test (worker `6d03f5ef64cf95c8`).
+
+| Assertion on the local static origin | Chromium | WebKit |
+| --- | --- | --- |
+| Reject old HTML and old entry JS independently, each served with HTTP 200 at the candidate URL | PASS | PASS |
+| Discard a newly created candidate cache on rejection, and preserve a pre-existing same-version cache and an unrelated cache | PASS | PASS |
+| Launch the old app offline after rejection, wait for explicit confirmation of the coherent upgrade, then launch the new app offline | PASS | PASS |
+| Protect active requests and unsaved edits, retain the saved correction across activation and recover from a stalled update | PASS | PASS |
+
+GitHub Pages delivery of this fix and physical-device installation remain separate acceptance cases. Retention of every asset used by an older open tab when a second waiting worker supersedes the first also needs a separate check.
+
+| Known gap | Current evidence |
+| --- | --- |
+| A queued memo Accept during an update | Prior tests reproduced the reload/write ordering. Actual data loss was not observed. [BUG-049](../BUGS.md#2026-11-22-pi-memo-audit-and-release-review) |
+| A Pi receipt near the ZIP limit | A previous near-limit fixture reproduced an export refusal after a Pi receipt. [BUG-051](../BUGS.md#2026-11-22-pi-memo-audit-and-release-review) |
+
 ## Device and accessibility cases
 
 | ID | Steps | Expected result |
