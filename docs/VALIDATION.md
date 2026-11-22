@@ -1063,3 +1063,13 @@ The final isolated candidate is on `codex/pi-context-compaction-reviewed`, based
 - The original catalogue run recorded 36 passes and three failures. The isolated candidate recorded 38 passes and one WebKit keyboard-tooltip failure. A focused main run reproduced the same failure, and its catalogue output compared byte-for-byte equal to the isolated candidate's catalogue output.
 
 Real-provider behavior, quality with compacted context and physical devices remain unmeasured. No deployment was performed.
+
+### Checkpoint performance and full Ubuntu validation
+
+The candidate removes duplicate writes of unchanged tool checkpoints. With Node 22.23.3 on the same Ubuntu workstation, the 17-turn, 11,865-passage fixture went from 75 full meeting reads and 75 writes to 56 each. Observed runner time was 24.07 seconds before and 17.42 seconds after. The fixture, assertions and 120-second limit stayed identical. A heavily loaded Mac could still exceed the limit.
+
+The Ubuntu candidate run passed lint, SSOT, type checking, build, artifact validation, 704 unit tests, 39 catalogue tests and both engines' PWA lifecycle checks. The unit count includes two additional adapter boundary regressions from the validation worktree. The shipped runner, context projection and memo-agent test files match that worktree byte-for-byte. Playwright's original 874-case list was covered across the initial and resumed runs of the same static build, with 863 passed, five failed and six skipped.
+
+The same five browser assertions failed on the candidate and clean main `6fbb904` in isolated Ubuntu reruns. They cover the 390px immersive theme in both engines and three WebKit cases for sidebar update feedback, update-button layout and speaker toolbar alignment. Provider responses were mocked. Real-meeting quality and physical-device performance remain unmeasured.
+
+GitHub Actions [run 45032824635](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/45032824635) verified and published application commit `085a7bc`. The served app module carried the full commit SHA, and the served Service Worker reported `edfeb98edf747296`, matching the build log.
