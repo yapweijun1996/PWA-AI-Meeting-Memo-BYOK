@@ -83,6 +83,12 @@ export async function streamAgentRoute(
   ).result();
 }
 
+export class AgentRequestSizeError extends Error {
+  constructor() {
+    super("The next request exceeds the 256 KiB input budget. No new request was sent.");
+  }
+}
+
 /** Treat SDK serialization as untrusted until the final outbound payload is checked. */
 export function assertAgentTransport(
   route: AgentRoute,
@@ -96,10 +102,9 @@ export function assertAgentTransport(
     typeof init.body !== "string"
   )
     throw new Error("Unexpected review transport destination or method.");
-  if (new TextEncoder().encode(init.body).byteLength > MEMO_AGENT_REQUEST_BYTES)
-    throw new Error(
-      "The next request exceeds the 256 KiB input budget. No new request was sent.",
-    );
+  if (init.body.length > MEMO_AGENT_REQUEST_BYTES ||
+      new TextEncoder().encode(init.body).byteLength > MEMO_AGENT_REQUEST_BYTES)
+    throw new AgentRequestSizeError();
   const body = JSON.parse(init.body);
   const tools: { type: string; name?: string; function?: { name?: string } }[] =
     body.tools ?? [];

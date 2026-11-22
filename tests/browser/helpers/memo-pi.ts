@@ -1,4 +1,4 @@
-import { expect, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import { createMeeting, segment, type Meeting } from "../../../src/domain/model";
 
 export const key = "sk-synthetic-browser-agent-key";
@@ -67,9 +67,16 @@ export async function stream(route: Route, items: Record<string, unknown>[]) {
     body: sse(items),
   });
 }
-export async function setup(page: Page, passageCount = 2, provider: "openai" | "openrouter" = "openai") {
+export function piBrowserOrigin() {
+  const baseURL = test.info().project.use.baseURL;
+  if (!baseURL) throw new Error("The Pi browser tests require a configured app URL.");
+  return new URL(baseURL).origin;
+}
+
+export async function setupPiSettings(page: Page, provider: "openai" | "openrouter" = "openai") {
+  const appOrigin = piBrowserOrigin();
   await page.context().route("**/*", route =>
-    new URL(route.request().url()).origin === "http://127.0.0.1:4180" ? route.fallback() : route.abort(),
+    new URL(route.request().url()).origin === appOrigin ? route.fallback() : route.abort(),
   );
   await page.goto("./#/settings");
   await page.getByLabel(provider === "openai" ? "OpenAI API key" : "OpenRouter API key", { exact: true }).fill(key);
@@ -80,6 +87,10 @@ export async function setup(page: Page, passageCount = 2, provider: "openai" | "
   await expect(
     page.getByRole("button", { name: "Saved on this device", exact: true }),
   ).toBeVisible();
+}
+
+export async function setup(page: Page, passageCount = 2, provider: "openai" | "openrouter" = "openai") {
+  await setupPiSettings(page, provider);
   await page.goto("./#/");
   const fixture = {
     ...createMeeting({ title: "Selective review fixture" }),

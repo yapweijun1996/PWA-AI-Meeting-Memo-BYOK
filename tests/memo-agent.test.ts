@@ -119,7 +119,7 @@ const final = (source: string) => ({
   ],
 });
 
-test.each([17, 22])("Pi reports its request input limit after %i completed tool rounds on a word-level transcript", async rounds => {
+test.each([17, 22])("Pi compacts an oversized request after %i tool rounds without losing citations or receipts", async rounds => {
   const { meeting: base, signal } = await setup();
   const speakers = Array.from({ length: 14 }, (_, index) => ({
     ...base.speakers[0], id: crypto.randomUUID(), name: `Speaker ${index + 1}`,
@@ -149,7 +149,12 @@ test.each([17, 22])("Pi reports its request input limit after %i completed tool 
   let submitted = 0;
   const request = vi.fn(async (_url, init: RequestInit) => {
     const round = ++submitted;
-    if (round > rounds) throw new Error("Unexpected additional provider request");
+    if (round === rounds + 1) {
+      expect(String(init.body)).toContain("Local context index");
+      expect(new TextEncoder().encode(String(init.body)).length).toBeLessThanOrEqual(MEMO_AGENT_REQUEST_BYTES);
+      return agentSse([final(segments[0].id)]);
+    }
+    if (round > rounds + 1) throw new Error("Unexpected additional provider request");
     const count = rounds === 22 ? 16 : round === 17 ? 32 : 20;
     const calls = [0, 1].map(index => {
       const startIndex = nextPassage;
@@ -164,23 +169,41 @@ test.each([17, 22])("Pi reports its request input limit after %i completed tool 
     }, ...calls]);
   });
   vi.stubGlobal("fetch", request);
-  const run = runAgentMemo(meeting, plan, key, signal);
-  const message = "The next request exceeds the 256 KiB input budget. No new request was sent.";
-  const failure = await run.catch((error: Error) => error.message);
-  const saved = (await getMeeting(meeting.id))!;
-  expect(request).toHaveBeenCalledTimes(rounds);
-  expect(guard).toHaveBeenCalledTimes(rounds + 1);
-  const rejectedBody = guard.mock.calls.at(-1)![2]!.body as string;
-  expect(new TextEncoder().encode(rejectedBody).length).toBeGreaterThan(MEMO_AGENT_REQUEST_BYTES);
+  const saved = await runAgentMemo(meeting, plan, key, signal);
+  expect(request).toHaveBeenCalledTimes(rounds + 1);
+  expect(guard.mock.calls.some(([, , init]) => new TextEncoder().encode(String(init!.body)).length > MEMO_AGENT_REQUEST_BYTES)).toBe(true);
   expect(new TextEncoder().encode(JSON.stringify(saved)).length).toBeLessThan(10 * 1024 * 1024);
   expect(saved.jobs.slice(0, 3)).toEqual(speechJobs);
-  expect(saved.jobs.slice(3)).toHaveLength(rounds);
+  expect(saved.jobs.slice(3)).toHaveLength(rounds + 1);
   expect(saved.jobs.slice(3).every(job => job.state === "completed" && job.assistantRecord)).toBe(true);
   expect(saved.memoAgents![0].jobIds).toEqual(saved.jobs.slice(3).map(job => job.id));
   expect(saved.memoAgents![0].consulted).toHaveLength(704);
-  expect(failure).toBe(message);
-  expect(saved.memoAgents![0]).toMatchObject({ state: "blocked", failure: { message } });
+  expect(saved.memoAgents![0]).toMatchObject({ state: "completed", failure: null });
+  expect(saved.memos[0].items[0].sources).toEqual([{ id: segments[0].id, revision: segments[0].revision }]);
+  expect(saved.jobs[rounds + 2].assistantRecord).toContain("x".repeat(2000));
 }, 120000);
+
+test("checkpoints tool evidence before the next request without rewriting unchanged review state", async () => {
+  const { meeting, plan, signal } = await setup();
+  const checkpoints: string[] = [];
+  let attempt = 0;
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    const saved = (await getMeeting(meeting.id))!;
+    expect(saved.jobs.at(-1)?.state).toBe("in_flight");
+    if (++attempt === 1) return agentSse([call()]);
+    expect(saved.memoAgents?.[0].context.some(item => item.kind === "tool")).toBe(true);
+    return agentSse([final(meeting.segments[0].id)]);
+  }));
+
+  await runAgentMemo(meeting, plan, key, signal, false, saved => {
+    checkpoints.push(JSON.stringify({
+      jobs: saved.jobs, review: saved.memoAgents?.[0], memos: saved.memos,
+    }));
+  });
+
+  expect(attempt).toBe(2);
+  expect(new Set(checkpoints).size).toBe(checkpoints.length);
+});
 
 test("an SDK failure before the fetch hook reports request preparation and leaves the ledger empty", async () => {
   const { meeting, plan, signal } = await setup();
@@ -472,6 +495,61 @@ test("repeated lookups stop without another paid turn when they produce no new e
   expect(latest.memoAgents![0].failure?.kind).toBe("limit");
 });
 
+test.each(["distinct passages", "one repeated passage", "an empty result"] as const)(
+  "compacted progress guard handles rereads of %s",
+  async (scenario) => {
+    const { meeting: sample, signal } = await setup();
+    const segments = Array.from({ length: 6 }, (_, index) => ({
+      ...sample.segments[0], id: crypto.randomUUID(), text: `Omitted source fact ${index}.`,
+    }));
+    const meeting = await saveMeeting({ ...sample, segments });
+    const plan = planAgentMemo(meeting, selection, "zh-CN");
+    const distinct = scenario === "distinct passages";
+    const empty = scenario === "an empty result";
+    const firstReads = [0, 1, 2, 3, 4, empty ? segments.length : 5];
+    const expectedTurns = empty ? 9 : 10;
+    let turn = 0;
+    const request = vi.fn(async (_input, init: RequestInit) => {
+      turn++;
+      const body = String(init.body);
+      expect(new TextEncoder().encode(body).length).toBeLessThanOrEqual(MEMO_AGENT_REQUEST_BYTES);
+      if (distinct && turn === 10) return agentSse([final(segments[3].id)]);
+      if (turn > expectedTurns) throw new Error("Unexpected provider submission");
+      const index = firstReads[turn - 1] ?? (distinct ? turn - 6 : empty ? segments.length : 1);
+      if (turn > 6) {
+        expect(body).toContain("Local context index");
+        if (segments[index]) expect(body).not.toContain(segments[index].text);
+      }
+      const lookup = call({ startIndex: index, count: 1 }, `lookup-${turn}`);
+      // In the repeat case, keep projecting away the repeated result on every turn.
+      return turn === 6 || (!distinct && turn > 6)
+        ? agentSse([{
+          type: "reasoning", id: `rs_oversize_${turn}`, summary: [],
+          encrypted_content: "r".repeat(MEMO_AGENT_REQUEST_BYTES),
+        }, lookup])
+        : agentSse([lookup]);
+    });
+    vi.stubGlobal("fetch", request);
+    const run = runAgentMemo(meeting, plan, key, signal);
+    if (distinct) {
+      const saved = await run;
+      expect(saved.memoAgents![0].state).toBe("completed");
+      expect(saved.memos[0].items[0].sources).toEqual([{ id: segments[3].id, revision: segments[3].revision }]);
+    } else {
+      await expect(run).rejects.toThrow("repeated lookups produced no new evidence");
+      const saved = (await getMeeting(meeting.id))!;
+      expect(saved.memoAgents![0].failure?.kind).toBe("limit");
+      expect(saved.memos).toHaveLength(0);
+    }
+    const saved = (await getMeeting(meeting.id))!;
+    expect(request).toHaveBeenCalledTimes(expectedTurns);
+    expect(saved.jobs).toHaveLength(expectedTurns);
+    expect(saved.jobs.every(job => job.state === "completed" && job.assistantRecord)).toBe(true);
+    expect(saved.memoAgents![0].consulted).toHaveLength(empty ? 5 : 6);
+  },
+  60_000,
+);
+
 test("explicit continuation replays saved read-only tools without resubmitting a known paid response", async () => {
   const { meeting, plan } = await setup();
   const controller = new AbortController();
@@ -660,6 +738,48 @@ test("aborting a submitted request records an unknown outcome and never continue
   expect(request).toHaveBeenCalledTimes(1);
   expect(latest.jobs[0].state).toBe("outcome_unknown");
   expect(latest.jobs[0].billing).toBe("possibly_charged");
+});
+
+test("a compacted request preserves the interrupted attempt, evidence and order across ZIP restore", async () => {
+  const { meeting, plan, signal } = await setup();
+  const controller = new AbortController();
+  let turns = 0;
+  const request = vi.fn(async (_input, init: RequestInit) => {
+    switch (++turns) {
+      case 1:
+        return agentSse([{
+          type: "reasoning", id: "rs_compacted", summary: [], encrypted_content: "r".repeat(MEMO_AGENT_REQUEST_BYTES),
+        }, call()]);
+      case 2:
+        expect(String(init.body)).toContain("Local context index");
+        controller.abort();
+        init.signal?.throwIfAborted();
+        throw new Error("Expected the request to be aborted.");
+      case 3:
+        expect(String(init.body)).toContain("Local context index");
+        expect(String(init.body)).toContain("Request 3 of 100");
+        return agentSse([final(meeting.segments[0].id)]);
+      default:
+        throw new Error("Unexpected provider submission");
+    }
+  });
+  vi.stubGlobal("fetch", request);
+  await expect(runAgentMemo(meeting, plan, key, controller.signal)).rejects.toThrow();
+  const saved = (await getMeeting(meeting.id))!;
+  expect(saved.jobs.map(job => job.state)).toEqual(["completed", "outcome_unknown"]);
+  expect(saved.memoAgents![0].context.filter(item => item.kind === "tool")).toHaveLength(1);
+  expect(request).toHaveBeenCalledTimes(2);
+  const restored = await readBackup(new File([await backupMeeting(saved)], "compacted-interrupted.zip"));
+  const copy = await saveMeeting(restored.meeting);
+  const savedPlan = copy.memoAgents![0];
+  await expect(runAgentMemo(copy, savedPlan, key, signal)).rejects.toThrow("Review the previous paid outcome");
+  expect(request).toHaveBeenCalledTimes(2);
+  const completed = await runAgentMemo(copy, savedPlan, key, signal, true);
+  expect(request).toHaveBeenCalledTimes(3);
+  expect(completed.jobs.map(job => job.state)).toEqual(["completed", "outcome_unknown", "completed"]);
+  expect(completed.jobs[0].assistantRecord).toBe(saved.jobs[0].assistantRecord);
+  expect(completed.memoAgents![0].jobIds).toEqual([...savedPlan.jobIds, completed.jobs[2].id]);
+  expect(completed.memos[0].items[0].sources).toEqual([{ id: meeting.segments[0].id, revision: meeting.segments[0].revision }]);
 });
 
 test("schema coercion cannot make invalid raw tool arguments into consulted evidence", async () => {
@@ -1284,8 +1404,8 @@ test.each(["memo slots", "response reserve"])("durable intent checks the latest 
   let runningCheckpoints = 0;
   vi.spyOn(repository, "saveMeeting").mockImplementation(async value => {
     const saved = await save(value);
-    if (saved.memoAgents?.[0].state === "running" && !saved.jobs.length && ++runningCheckpoints === 2) {
-      // A concurrent local save wins after the last tool checkpoint and before request intent.
+    if (saved.memoAgents?.[0].state === "running" && !saved.jobs.length && ++runningCheckpoints === 1) {
+      // A concurrent local save wins after the running plan is saved and before request intent.
       if (capacity === "response reserve") {
         const text = "x".repeat(20000);
         const history = Array.from({ length: 1200 }, () => ({

@@ -1,4 +1,4 @@
-import { confirm, key, memo, readPiMeeting as backup, setup, stream, tool } from "./helpers/memo-pi";
+import { confirm, key, memo, readPiMeeting as backup, setup, setupPiSettings, stream, tool } from "./helpers/memo-pi";
 import {changeTopbarLanguage} from "./helpers/language";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
@@ -270,13 +270,20 @@ test("quota failure retains an exportable response and local retry never repeats
   expect(calls).toBe(2);
 });
 
-test("request byte budget stops locally before another receipt or provider submission", async ({
+test("an oversized Pi turn is compacted before the next receipt and keeps the original response", async ({
   page,
 }) => {
-  await setup(page);
+  const fixture = await setup(page);
   let calls = 0;
   await page.route("https://api.openai.com/v1/responses", async (route) => {
     calls++;
+    expect(Buffer.byteLength(route.request().postData()!)).toBeLessThanOrEqual(256 * 1024);
+    if (calls === 2) {
+      expect(route.request().postData()).toContain("Local context index");
+      expect(route.request().postData()).not.toContain("Synthetic bounded response");
+      await stream(route, [memo(fixture.segments[0].id)]);
+      return;
+    }
     await stream(route, [
       {
         type: "message",
@@ -299,14 +306,64 @@ test("request byte budget stops locally before another receipt or provider submi
     .click();
   await expect
     .poll(async () => (await backup(page)).memoAgents?.[0]?.state)
-    .toBe("blocked");
-  expect(calls).toBe(1);
+    .toBe("completed");
+  expect(calls).toBe(2);
   const saved = await backup(page);
-  expect(saved.jobs).toHaveLength(1);
+  expect(saved.jobs).toHaveLength(2);
   expect(saved.jobs[0].state).toBe("completed");
   expect(saved.jobs[0].assistantRecord).toContain("Synthetic bounded response");
+  expect(saved.memos[0].items[0].sources).toEqual([{ id: fixture.segments[0].id, revision: fixture.segments[0].revision }]);
   await page.reload();
-  expect(calls).toBe(1);
+  expect(calls).toBe(2);
+});
+
+test("60 mocked Pi requests review a 12,000-passage meeting with bounded wire context", async ({ page }) => {
+  test.setTimeout(240000);
+  await page.addInitScript(() => { window.confirm = () => true; });
+  await setupPiSettings(page);
+  const fixture = {
+    ...createMeeting({ title: "Long context fixture" }),
+    segments: Array.from({ length: 12000 }, (_, index) => segment(`Source ${index}: retain this independently reviewed condition.`)),
+  };
+  await page.goto("./#/");
+  await page.getByLabel("Restore backup", { exact: true }).setInputFiles({
+    name: "long-context.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(fixture)),
+  });
+  await expect(page.getByRole("heading", { name: "Long context fixture (restored)", exact: true })).toBeVisible({ timeout: 30000 });
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  let calls = 0;
+  let compacted = 0;
+  await page.route("https://api.openai.com/v1/responses", async route => {
+    const wire = route.request().postData()!;
+    expect(Buffer.byteLength(wire)).toBeLessThanOrEqual(256 * 1024);
+    if (wire.includes("Local context index")) compacted++;
+    const round = calls++;
+    if (round === 59) {
+      await stream(route, [memo(fixture.segments[0].id)]);
+      return;
+    }
+    await stream(route, [{
+      type: "reasoning", id: `rs_${round}`, summary: [], encrypted_content: "r".repeat(5500),
+    }, {
+      ...tool(`read-${round}`),
+      arguments: JSON.stringify({ startIndex: round * 16, count: 16 }),
+    }]);
+  });
+  const dialog = await confirm(page);
+  expect(calls).toBe(0);
+  await dialog.getByRole("button", { name: "Generate new notes", exact: true }).click();
+  await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic selective review result", { timeout: 190000 });
+  const saved = await backup(page);
+  expect(calls).toBe(60);
+  expect(compacted).toBeGreaterThan(1);
+  expect(saved.jobs).toHaveLength(60);
+  expect(saved.jobs.every(job => job.state === "completed" && job.assistantRecord)).toBe(true);
+  expect(saved.memoAgents![0].consulted).toHaveLength(59 * 16);
+  expect(saved.memos[0].items[0].sources).toEqual([{ id: fixture.segments[0].id, revision: fixture.segments[0].revision }]);
+  await page.reload();
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await expect(page.locator(".memo-reading-text")).toHaveText("Synthetic selective review result");
+  expect(calls).toBe(60);
 });
 
 test("Chinese selective confirmation captures the resolved memo language and remains usable at 390px", async ({

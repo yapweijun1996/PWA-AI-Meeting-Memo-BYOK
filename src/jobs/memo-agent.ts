@@ -38,6 +38,7 @@ import {
   readAgentReportedUsage,
 } from "../providers/agent-record";
 import { normalizeMemo } from "../providers/api";
+import { streamAgentContext } from "../providers/memo-agent-context";
 import { redactMemoSse } from "../providers/memo-response-redaction";
 import { getMeeting, saveMeeting } from "../storage/repository";
 import { hasPendingAgentReceipt, retainAgentReceipt } from "./agent-recovery";
@@ -355,7 +356,7 @@ export async function runAgentMemo(
       }
     }
     if (localOnly) throw new Error("No saved final response is available for local recovery.");
-    const { agentModel, assertAgentTransport, streamAgentRoute } = await import("../providers/memo-agent-transport");
+    const { AgentRequestSizeError, agentModel, assertAgentTransport, streamAgentRoute } = await import("../providers/memo-agent-transport");
     const model = agentModel(route);
     const requestError = (message: string) => createRequestError(model, message);
     plan.state = "running";
@@ -469,6 +470,13 @@ export async function runAgentMemo(
     let stopped: Error | undefined;
     const assessed = new Set(plan.context.filter(item => item.kind === "assistant").map(item => item.jobId));
     const seenLookups = new Set(plan.context.filter(item => item.kind === "tool" && !item.isError).map(item => item.kind === "tool" ? `${item.name}:${item.text}` : ""));
+    const rangeReadTexts = (messages: readonly Message[]) => new Set(messages.flatMap(message =>
+      message.role === "toolResult" && !message.isError && message.toolName === "read_transcript_range" &&
+      message.content[0]?.type === "text" ? [message.content[0].text] : [],
+    ));
+    // Each omitted result can earn credit once in this execution even if later projections drop it again.
+    const creditedRereads = new Set<string>();
+    let omittedRangeReads = new Set<string>();
     let noProgressRounds = 0;
     const assessProgress = () => {
       for (const item of plan.context) {
@@ -481,7 +489,16 @@ export async function runAgentMemo(
         for (const result of results) {
           if (result?.kind !== "tool" || result.isError) continue;
           const signature = `${result.name}:${result.text}`;
-          if (!seenLookups.has(signature)) progressed = true;
+          if (!seenLookups.has(signature)) {
+            progressed = true;
+          } else if (result.name === "read_transcript_range" &&
+              omittedRangeReads.has(result.text) && !creditedRereads.has(result.text)) {
+            const { excerpts } = JSON.parse(result.text) as { excerpts: { text: string }[] };
+            if (excerpts.some(excerpt => excerpt.text.length > 0)) {
+              progressed = true;
+              creditedRereads.add(result.text);
+            }
+          }
           seenLookups.add(signature);
         }
         noProgressRounds = progressed ? 0 : noProgressRounds + 1;
@@ -489,6 +506,7 @@ export async function runAgentMemo(
       }
     };
     const checkpointTools = async (messages: AgentMessage[]) => {
+      const checkpointedCount = plan.context.length;
       for (const message of messages)
         if (message.role === "toolResult") {
           const already = plan.context.some(
@@ -536,7 +554,8 @@ export async function runAgentMemo(
             timestamp: message.timestamp,
           });
         }
-      await persist(checkpoint);
+      // The SDK exposes the same tool results at turn completion and before the next request.
+      if (plan.context.length !== checkpointedCount) await persist(checkpoint);
     };
     const agent: InstanceType<typeof Agent> = new Agent({
       toolExecution: "sequential",
@@ -622,9 +641,9 @@ export async function runAgentMemo(
             if (text === undefined) throw new Error("The local tool result was not checkpointed.");
             return { ...message, content: [{ type: "text", text }] };
           });
-          const result = await streamAgentRoute(route, {
+          const stream = (messages: Message[]) => streamAgentRoute(route, {
             ...context,
-            messages: [...boundedMessages, { role: "system", content: agentRequestInstruction(plan), timestamp: Date.now() }],
+            messages: [...messages, { role: "system", content: agentRequestInstruction(plan), timestamp: Date.now() }],
           }, {
             ...options,
             apiKey: key,
@@ -739,6 +758,23 @@ export async function runAgentMemo(
                 headers: response.headers,
               });
             },
+          });
+          const result = await streamAgentContext(boundedMessages, async candidate => {
+            requestSignal.throwIfAborted();
+            // Only an oversize serialization before intent creation can reach another candidate.
+            fetchCalls = 0;
+            preSubmissionError = undefined;
+            const result = await stream(candidate);
+            if (sent) {
+              omittedRangeReads = new Set();
+              if (candidate !== boundedMessages) {
+                const retained = rangeReadTexts(candidate);
+                for (const text of rangeReadTexts(boundedMessages)) {
+                  if (!retained.has(text)) omittedRangeReads.add(text);
+                }
+              }
+            }
+            return { result, overBudget: preSubmissionError instanceof AgentRequestSizeError && !job && !sent };
           });
           if (preSubmissionError) throw preSubmissionError;
           if (!job)
