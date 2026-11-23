@@ -1,7 +1,8 @@
+import { nextKeyboardControl } from "./helpers/keyboard";
 import {paletteChoices} from "./helpers/appearance";
 import { expect, test } from "@playwright/test";
 
-test("palette accents remain independent of success and speaker colors", async ({ page }) => {
+test("palette accents remain independent of success and speaker colors", async ({ page, browserName }) => {
   await page.goto("#/settings");
   await page.getByRole("tab", { name: "Appearance" }).click();
   await page.evaluate(() => {
@@ -28,7 +29,7 @@ test("palette accents remain independent of success and speaker colors", async (
     for (const palette of paletteChoices) {
       await page.getByLabel("Color palette", { exact: true }).selectOption(palette);
       await page.getByTestId("color-fixture").locator(".button.primary").focus();
-      await page.keyboard.press("Tab");
+      await page.keyboard.press(nextKeyboardControl(browserName));
       await expect(page.getByTestId("color-fixture").locator(".player-skip")).toBeFocused();
       await page.getByTestId("color-fixture").locator(".button.primary").evaluate(async (button) => {
         void getComputedStyle(button).backgroundColor;

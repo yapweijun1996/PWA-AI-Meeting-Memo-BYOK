@@ -1,8 +1,9 @@
+import { nextKeyboardControl } from "./helpers/keyboard";
 import {changeTopbarLanguage} from "./helpers/language";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { sampleMeeting, type Meeting } from "../../src/domain/model";
 import { encodePcm16Wav } from "../../src/audio/wav";
-import { memo, readPiMeeting, setup } from "./helpers/memo-pi";
+import { chooseStandardMemo, memo, readPiMeeting, setup } from "./helpers/memo-pi";
 
 test.use({ serviceWorkers: "block", reducedMotion: "reduce" });
 
@@ -66,7 +67,7 @@ async function messages(page: Page) {
   return page.evaluate(() => (window as unknown as { __sidebarWorkerProbe: WorkerProbe }).__sidebarWorkerProbe.messages);
 }
 
-test("collapsed update controls stay centered and describe their actions", async ({ page }) => {
+test("collapsed update controls stay centered and describe their actions", async ({ page, browserName }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("./");
   await page.getByRole("button", { name: "Collapse sidebar", exact: true }).click();
@@ -93,7 +94,7 @@ test("collapsed update controls stay centered and describe their actions", async
   }
   expect(Math.abs(await center(storage) - await center(confirm.locator("svg")))).toBeLessThanOrEqual(1);
   await expect(page.getByRole("tooltip")).toHaveText("Confirm update");
-  await page.keyboard.press("Tab");
+  await page.keyboard.press(nextKeyboardControl(browserName));
   await expect(cancel).toBeFocused();
   await expect(page.getByRole("tooltip")).toHaveText("Cancel");
   await page.keyboard.press("Enter");
@@ -130,7 +131,7 @@ test("maximum-text sidebar keeps confirmation and Cancel reachable after real wh
   await expect.poll(() => sidebar.evaluate(element => element.scrollTop)).toBe(0);
 });
 
-test("sidebar confirmation stays at its anchored initiator and Cancel never activates", async ({ page }) => {
+test("sidebar confirmation stays at its anchored initiator and Cancel never activates", async ({ page, browserName }) => {
   await page.goto("./#/settings");
   await page.evaluate(() => window.scrollTo(0, 300));
   const sidebar = page.locator(".pwa-sidebar");
@@ -146,7 +147,7 @@ test("sidebar confirmation stays at its anchored initiator and Cancel never acti
   expect(Math.abs(after.y + after.height - before.y - before.height)).toBeLessThanOrEqual(1);
   expect(Math.abs(await page.evaluate(() => window.scrollY) - scroll)).toBeLessThanOrEqual(1);
   expect(await messages(page)).toEqual([]);
-  await page.keyboard.press("Tab");
+  await page.keyboard.press(nextKeyboardControl(browserName));
   await expect(sidebar.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(confirm).toHaveCount(0);
@@ -519,6 +520,64 @@ async function updateAfterSkipWaiting(page: Page) {
   await expect.poll(() => messages(page)).toEqual([{ type: "SKIP_WAITING" }]);
 }
 
+for (const failAccept of [false, true]) {
+  test(`a queued memo Accept ${failAccept ? "save failure keeps the page and allows retry" : "commits before update reload and can be reversed"}`, async ({ page }) => {
+    const id = await seedFactReview(page);
+    await updateAfterSkipWaiting(page);
+    await holdFactWrite(page, id);
+    await page.evaluate(({ id, failAccept }) => {
+      let committed = false;
+      const accepts = new WeakSet<IDBTransaction>();
+      const transaction = IDBDatabase.prototype.transaction;
+      IDBDatabase.prototype.transaction = function(...args: Parameters<IDBDatabase["transaction"]>) {
+        const tx = transaction.apply(this, args);
+        // Observe completion before the app's transaction promise can trigger reload.
+        tx.addEventListener("complete", () => { if (accepts.has(tx)) committed = true; });
+        return tx;
+      };
+      const put = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function(value: Meeting, ...args) {
+        if (this.name === "meetings" && value.id === id && value.memos[0].items[0].review === "accepted") {
+          IDBObjectStore.prototype.put = put;
+          if (failAccept) throw new DOMException("Injected Accept write failure", "QuotaExceededError");
+          accepts.add(this.transaction);
+        }
+        return put.call(this, value, ...args);
+      };
+      window.addEventListener("beforeunload", () => {
+        sessionStorage.setItem("accept-committed-before-reload", String(committed));
+      });
+    }, { id, failAccept });
+    const fact = page.getByRole("combobox", { name: "Fact status", exact: true });
+    await fact.selectOption("confirmed");
+    await expect(fact).toBeDisabled();
+    await page.getByRole("button", { name: "✓ Accept", exact: true }).click();
+    const reloaded = failAccept ? undefined : page.waitForEvent("domcontentloaded");
+    await page.evaluate(async () => {
+      const registration = (await navigator.serviceWorker.getRegistration())!;
+      Object.assign(registration, { waiting: null });
+      navigator.serviceWorker.dispatchEvent(new Event("controllerchange"));
+      (window as unknown as { __sidebarWorkerProbe: WorkerProbe }).__sidebarWorkerProbe.releaseFactWrite!();
+    });
+    if (failAccept) {
+      await expect(page.getByText("Injected Accept write failure", { exact: true }).first()).toBeVisible();
+      expect(await page.evaluate(() => sessionStorage.getItem("accept-committed-before-reload"))).toBeNull();
+      expect((await readPiMeeting(page)).memos[0].items[0]).toMatchObject({ review: "edited", factStatus: "confirmed" });
+      await page.getByRole("button", { name: "✓ Accept", exact: true }).click();
+    } else {
+      await reloaded;
+      expect(await page.evaluate(() => sessionStorage.getItem("accept-committed-before-reload"))).toBe("true");
+      await openFactReview(page);
+    }
+    await expect.poll(async () => (await readPiMeeting(page)).memos[0].items[0]).toMatchObject({
+      review: "accepted", factStatus: "confirmed",
+    });
+    await page.getByRole("button", { name: "Needs review", exact: true }).click();
+    await expect.poll(async () => (await readPiMeeting(page)).memos[0].items[0].review).toBe("pending");
+    expect((await readPiMeeting(page)).memos[0].originalItems?.[0]).toMatchObject({ review: "pending", factStatus: "proposed" });
+  });
+}
+
 async function activateWhilePreparationIsHeld(page: Page) {
   await expect.poll(() => page.evaluate(() => !!(window as unknown as { __sidebarWorkerProbe: WorkerProbe })
     .__sidebarWorkerProbe.releaseLocalPreparation)).toBe(true);
@@ -591,6 +650,126 @@ test("a recording attachment starts blocking reload before its checksum returns"
   await attachSyntheticRecording(page);
   await activateWhilePreparationIsHeld(page);
   expect((await readPiMeeting(page)).audio).toMatchObject({ name: "local-checksum.wav", present: true });
+});
+
+async function holdFirstRecordingRead(page: Page) {
+  await page.evaluate(() => {
+    const probe = (window as unknown as { __sidebarWorkerProbe: WorkerProbe }).__sidebarWorkerProbe;
+    const read = Blob.prototype.arrayBuffer;
+    Blob.prototype.arrayBuffer = async function() {
+      Blob.prototype.arrayBuffer = read;
+      await new Promise<void>(resolve => { probe.releaseLocalPreparation = resolve; });
+      return read.call(this);
+    };
+  });
+}
+
+test("new and restored recordings keep original and corrected speaker evidence across confirmed updates", async ({ page }, info) => {
+  await page.goto("./");
+  await updateAfterSkipWaiting(page);
+  await page.getByRole("button", { name: "New meeting", exact: true }).last().click();
+  const dialog = page.getByRole("dialog");
+  const title = "Synthetic recording and corrected voices";
+  await dialog.getByLabel("Meeting title").fill(title);
+  const source = sampleMeeting();
+  source.runs = [{ id: crypto.randomUUID(), provider: "openai", model: "fixture",
+    createdAt: source.createdAt, speakers: structuredClone(source.speakers), originalSegments: structuredClone(source.segments) }];
+  const original = source.segments[0];
+  source.history = [original];
+  source.segments[0] = { ...original, revision: original.revision + 1, reviewed: true, speakerIds: [source.speakers[1].id] };
+  await dialog.getByText("Start from a transcript instead").click();
+  await dialog.getByLabel("Transcript", { exact: true }).fill(JSON.stringify(source));
+  const frame = Buffer.alloc(417);
+  frame.set([0xff, 0xfb, 0x90, 0]);
+  const buffer = Buffer.alloc(61000 * frame.length);
+  for (let offset = 0; offset < buffer.length; offset += frame.length) frame.copy(buffer, offset);
+  const audio = { name: "synthetic-import.mp3", mimeType: "audio/mpeg", buffer };
+  await dialog.getByLabel("Audio recording").setInputFiles(audio);
+  await holdFirstRecordingRead(page);
+  await dialog.getByRole("button", { name: "Create meeting" }).click();
+  await expect.poll(() => page.evaluate(() => !!(window as unknown as { __sidebarWorkerProbe: WorkerProbe }).__sidebarWorkerProbe.releaseLocalPreparation)).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  await activateWhilePreparationIsHeld(page);
+  const saved = await readPiMeeting(page);
+  expect(saved.title).toBe(title);
+  expect(saved.audio).toMatchObject({ name: "synthetic-import.mp3", present: true, chunked: { chunkCount: 2 } });
+  expect(saved.segments[0]).toEqual(source.segments[0]);
+  expect(saved.history).toEqual(source.history);
+  expect(saved.runs).toEqual(source.runs);
+
+  await page.getByText("Export", { exact: true }).click();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Meeting backup (long audio not included)", exact: true }).click();
+  const backup = info.outputPath("synthetic-recording.zip");
+  await (await download).saveAs(backup);
+  page.once("dialog", notice => notice.accept());
+  await page.getByLabel("Restore backup", { exact: true }).setInputFiles(backup);
+  await expect(page.getByText(/audio missing on this device/)).toBeVisible();
+  await updateAfterSkipWaiting(page);
+  await holdFirstRecordingRead(page);
+  await page.getByLabel("Attach audio", { exact: true }).setInputFiles(audio);
+  await activateWhilePreparationIsHeld(page);
+  await expect(page.getByText(/plays from 2 local parts/)).toBeVisible();
+  const restored = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("meeting-memo-byok-v1");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const id = location.hash.split("/").at(-1)!;
+    try {
+      const tx = db.transaction(["meetings", "audioChunks"]);
+      const record = new Promise<Meeting>(resolve => {
+        const request = tx.objectStore("meetings").get(id);
+        request.onsuccess = () => resolve(request.result);
+      });
+      const chunkCount = new Promise<number>(resolve => {
+        const request = tx.objectStore("audioChunks").count(IDBKeyRange.bound([id, 0], [id, Infinity]));
+        request.onsuccess = () => resolve(request.result);
+      });
+      return { meeting: await record, chunks: await chunkCount };
+    } finally { db.close(); }
+  });
+  expect(restored.chunks).toBe(2);
+  expect(restored.meeting.audio).toEqual(saved.audio);
+  expect(restored.meeting.segments[0]).toEqual(source.segments[0]);
+  expect(restored.meeting.history).toEqual(source.history);
+  expect(restored.meeting.runs).toEqual(source.runs);
+});
+
+test("a failed new recording save keeps its draft and a successful retry can update", async ({ page }) => {
+  await page.goto("./");
+  await page.getByRole("button", { name: "New meeting", exact: true }).last().click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Meeting title").fill("Retry imported recording");
+  await dialog.getByText("Start from a transcript instead").click();
+  await dialog.getByLabel("Transcript", { exact: true }).fill("A: A synthetic passage");
+  await dialog.getByLabel("Audio recording").setInputFiles({
+    name: "synthetic-retry.wav", mimeType: "audio/wav",
+    buffer: Buffer.from(await encodePcm16Wav(new Float32Array(8000), 8000).arrayBuffer()),
+  });
+  await page.evaluate(() => {
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function(value, ...keys) {
+      if (this.name === "meetings") {
+        IDBObjectStore.prototype.put = put;
+        throw new DOMException("Synthetic meeting write failure", "QuotaExceededError");
+      }
+      return put.call(this, value, ...keys);
+    };
+  });
+  await dialog.getByRole("button", { name: "Create meeting" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Synthetic meeting write failure");
+  await expect(dialog.getByLabel("Meeting title")).toHaveValue("Retry imported recording");
+  await expect(dialog.locator("textarea").first()).toHaveValue("A: A synthetic passage");
+  await expect(dialog.getByLabel("Audio recording")).toHaveValue(/synthetic-retry.wav$/);
+  await dialog.getByRole("button", { name: "Create meeting" }).click();
+  await expect(page.getByRole("heading", { name: "Retry imported recording" })).toBeVisible();
+  const saved = await readPiMeeting(page);
+  expect(saved.audio?.present).toBe(true);
+  expect(saved.segments[0].text).toBe("A synthetic passage");
+  await updateAfterSkipWaiting(page);
 });
 
 test("confirmed voice analysis blocks update reload while loading its local meeting", async ({ page }) => {
@@ -707,6 +886,7 @@ test("an acknowledged orphan receipt no longer blocks a confirmed update", async
   await page.route("https://api.openai.com/v1/responses", route => { request = route; });
   await page.getByRole("button", { name: "Generate meeting notes", exact: true }).first().click();
   const confirmation = page.getByRole("dialog");
+  await chooseStandardMemo(confirmation);
   await confirmation.getByRole("checkbox", { name: /I understand the selected data/ }).check();
   await confirmation.getByRole("button", { name: "Generate new notes", exact: true }).click();
   await expect.poll(() => !!request).toBe(true);

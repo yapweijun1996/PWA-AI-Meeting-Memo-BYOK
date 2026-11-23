@@ -5,12 +5,13 @@ import { sampleMeeting } from "../../src/domain/model";
 
 test.use({ serviceWorkers: "block", reducedMotion: "reduce" });
 
-async function prepare(page: Page, language: "en" | "zh-CN", withKey = true) {
+async function prepare(page: Page, language: "en" | "zh-CN", withKey = true, model?: string) {
   await page.context().route("https://**/*", route => route.abort());
   await page.addInitScript(() => { window.confirm = () => true; });
   if (withKey) {
     await page.goto("./#/settings");
     await page.getByLabel("OpenAI API key", { exact: true }).fill("synthetic-confirmation-only");
+    if (model) await page.getByLabel("Memo model ID").fill(model);
     await page.getByRole("button", { name: "Save settings", exact: true }).click();
     await expect(page.getByRole("button", { name: "Saved on this device", exact: true })).toBeVisible();
   }
@@ -47,6 +48,7 @@ for (const language of ["en", "zh-CN"] as const) {
     const acknowledge = dialog.getByRole("checkbox", { name: chinese ? "我了解所选数据将被发送，并可能产生 API 费用。" : "I understand the selected data will be sent and may incur API charges.", exact: true });
     const generate = dialog.getByRole("button", { name: chinese ? "生成新版笔记" : "Generate new notes", exact: true });
     const pi = dialog.getByRole("checkbox", { name: chinese ? "使用选择性转录复核（Pi，可选）" : "Use selective transcript review (Pi, optional)", exact: true });
+    await expect(pi).toBeChecked();
     await expect(acknowledge).not.toBeChecked();
     await expect(generate).toBeDisabled();
     for (const viewport of [{width: 1440, height: 900}, {width: 768, height: 1024}, {width: 390, height: 844}, {width: 320, height: 568}]) {
@@ -62,11 +64,12 @@ for (const language of ["en", "zh-CN"] as const) {
     expect((await new AxeBuilder({ page }).include("dialog[open]").withTags(["wcag2a", "wcag2aa", "wcag22aa"]).analyze()).violations).toEqual([]);
     await acknowledge.check();
     await expect(generate).toBeEnabled();
-    await pi.check();
+    await pi.uncheck();
     await expect(acknowledge).not.toBeChecked();
     await expect(generate).toBeDisabled();
+    await expect(dialog).toContainText(chinese ? "标准纪要" : "Standard memo");
+    await pi.check();
     await expect(dialog).toContainText(chinese ? "总费用未知" : "total cost is unknown");
-    await pi.uncheck();
     await expect(acknowledge).not.toBeChecked();
     await dialog.getByRole("button", { name: chinese ? "取消" : "Cancel", exact: true }).click();
     await page.getByRole("button", { name: chinese ? "生成会议笔记" : "Generate meeting notes", exact: true }).click();
@@ -152,4 +155,19 @@ test("an open confirmation follows credential availability changed by another ta
   await expect(generate).toBeDisabled();
   await expect(dialog).toContainText("Add your key in Settings first");
   expect(providerPosts).toBe(0);
+});
+
+
+test("an unsupported memo model keeps standard generation and fresh cost consent", async ({ page }) => {
+  const outside: string[] = [];
+  page.on("request", request => { if (request.method() === "POST" && request.url().startsWith("https:")) outside.push(request.url()); });
+  await prepare(page, "en", true, "custom-memo-model");
+  const dialog = page.getByRole("dialog", { name: "Generate new meeting notes" });
+  await expect(dialog).toContainText("custom-memo-model");
+  await expect(dialog.getByRole("checkbox", { name: /Use selective transcript review/ })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Generate new notes" })).toBeDisabled();
+  await dialog.getByRole("checkbox", { name: /I understand the selected data/ }).check();
+  await expect(dialog.getByRole("button", { name: "Generate new notes" })).toBeEnabled();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(outside).toEqual([]);
 });

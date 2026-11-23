@@ -539,6 +539,11 @@ for (const width of [390, 1440]) {
     await expect(dialog.getByRole("combobox", { name: "Output token limit", exact: true })).toHaveValue("32768");
     await dialog.getByRole("combobox", { name: "Reasoning effort", exact: true }).selectOption("medium");
     await dialog.getByRole("combobox", { name: "Output token limit", exact: true }).selectOption("16384");
+    const mode = dialog.getByRole("checkbox", { name: /Use selective transcript review/ });
+    await mode.uncheck();
+    await mode.check();
+    await expect(dialog.getByRole("combobox", { name: "Reasoning effort", exact: true })).toHaveValue("medium");
+    await expect(dialog.getByRole("combobox", { name: "Output token limit", exact: true })).toHaveValue("16384");
     await expect(dialog.getByRole("button", { name: "Generate new notes", exact: true })).toBeDisabled();
     await expect(dialog).toContainText("not benchmark-verified");
     await expect(dialog).toContainText("Automatic provider fallback is disabled");

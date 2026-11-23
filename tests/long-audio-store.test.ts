@@ -5,6 +5,7 @@ import { backupMeeting, readBackup } from "../src/storage/backup";
 import { createMeeting, segment } from "../src/domain/model";
 import { getChunkSpeech, putChunkSpeech } from "../src/storage/chunk-speech-store";
 import {
+  attachLongAudio,
   checkCapacity,
   cleanupIncompleteLongAudio,
   getLongAudioChunk,
@@ -45,6 +46,35 @@ describe("long audio IndexedDB store", () => {
     const database = await repo.db();
     expect(database.objectStoreNames.contains("audioChunks")).toBe(true);
     expect(database.objectStoreNames.contains("audioManifests")).toBe(true);
+  });
+
+  it("rolls back a new long recording and its staged parts when the meeting write fails", async () => {
+    const meeting = createMeeting();
+    const db = await repo.db();
+    const beforeChunks = await db.getAllKeys("audioChunks");
+    const beforeManifests = await db.getAllKeys("audioManifests");
+    const publish = () => attachLongAudio(input(meeting.id, ["first", "second"]), meeting, manifest => ({
+      name: "synthetic.mp3", type: "audio/mpeg", size: manifest.totalBytes, duration: manifest.totalSeconds,
+      hash: manifest.manifestSha256, present: true,
+      chunked: { format: "mp3", chunkCount: manifest.chunks.length,
+        totalSeconds: manifest.totalSeconds, manifestSha256: manifest.manifestSha256 },
+    }));
+    const put = IDBObjectStore.prototype.put;
+    const fault = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function(this: IDBObjectStore, value, key) {
+      if (this.name === "meetings" && value.id === meeting.id) throw new DOMException("Synthetic full disk", "QuotaExceededError");
+      return put.call(this, value, key);
+    });
+    try { await expect(publish()).rejects.toThrow(LongAudioQuotaError); }
+    finally { fault.mockRestore(); }
+    expect(await repo.getMeeting(meeting.id)).toBeUndefined();
+    expect(await db.getAllKeys("audioChunks")).toEqual(beforeChunks);
+    expect(await db.getAllKeys("audioManifests")).toEqual(beforeManifests);
+
+    const saved = await publish();
+    expect(saved.version).toBe(1);
+    expect(await repo.getMeeting(meeting.id)).toEqual(saved);
+    expect((await getLongAudioManifest(meeting.id))?.manifestSha256).toBe(saved.audio?.hash);
+    expect(await db.count("audioChunks", IDBKeyRange.bound([meeting.id, 0], [meeting.id, Infinity]))).toBe(2);
   });
 
   it("round-trips multiple chunks and verifies chunk and manifest hashes", async () => {
@@ -361,7 +391,8 @@ describe("long audio IndexedDB store", () => {
     expect(repaired).toEqual(legacy);
     await verifyLongAudio(meeting.id);
     expect(await database.get("acousticCheckpoints", meeting.id)).toEqual({ sentinel: "retained" });
-    const saved = await repo.saveMeeting({ ...meeting, audio: { name: "legacy.mp3", type: "audio/mpeg", size: 16, duration: 20, hash, present: true,
+    const overlapEvidence = {audioSha256: hash, source: "Synthetic detector", intervals: [{start: 1, end: 2}]};
+    const saved = await repo.saveMeeting({ ...meeting, audio: { name: "legacy.mp3", type: "audio/mpeg", size: 16, duration: 20, hash, present: true, overlapEvidence,
       chunked: { format: "mp3", chunkCount: 2, totalSeconds: 20, manifestSha256: hash } },
       jobs: [{ id: crypto.randomUUID(), stage: "speech", state: "completed", billing: "possibly_charged", inputRevision: meeting.revision,
         requestId: null, createdAt: meeting.createdAt, updatedAt: meeting.updatedAt, message: "Saved", chunk: { index: 0, total: 2 } }],
@@ -370,6 +401,7 @@ describe("long audio IndexedDB store", () => {
     await putChunkSpeech(saved.id, 0, speech);
     const restored = await readBackup(new File([await backupMeeting(saved)], "legacy.zip"));
     expect(restored.meeting.audio!.hash).toBe(first.manifestSha256);
+    expect(restored.meeting.audio!.overlapEvidence).toEqual({...overlapEvidence, audioSha256: first.manifestSha256});
     expect((await repo.getMeeting(meeting.id))!.audio!.hash).toBe(hash);
     await repo.saveMeeting(restored.meeting, restored.audio);
     const attached = await storeLongAudio({ ...input(restored.meeting.id, ["original", "retained"]), expectedHash: restored.meeting.audio!.hash });

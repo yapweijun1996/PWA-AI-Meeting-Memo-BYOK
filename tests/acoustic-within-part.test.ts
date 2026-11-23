@@ -55,7 +55,7 @@ describe("labels split inside one recording part", () => {
         { meta: { index: 1, ownStartSeconds: 20, ownDurationSeconds: 20, leadInSeconds: 0 }, read: async () => new Blob([encoded], { type: "audio/mpeg" }) },
       ],
     });
-    const ids = ["part-0:A", "part-0:B", "part-0:C", "part-1:D", "part-1:E"];
+    const ids = ["part-0:A", "part-0:B", "part-0:C", "part-1:D", "part-1:E", "part-1:F"];
     const speakers = ids.map((id, index) => ({ id, name: `Speaker ${index + 1}`, confirmed: false, sourceLabels: [] }));
     const segments = [
       segment("part zero one", ["part-0:A"], 0, 6),
@@ -63,6 +63,7 @@ describe("labels split inside one recording part", () => {
       segment("part zero three", ["part-0:C"], 12, 18),
       segment("part one one", ["part-1:D"], 20, 26),
       segment("part one two", ["part-1:E"], 26, 32),
+      segment("short reply", ["part-1:F"], 36, 36.2),
     ];
     const initial = validateMeeting({
       ...createMeeting(),
@@ -101,6 +102,8 @@ describe("labels split inside one recording part", () => {
     const state = await describeAcousticState(meetingId);
     expect(state.byState.matched + state.byState.new_identity).toBe(5);
     expect(state.voices).toBe(2);
+    expect(state.byState.unresolved).toBe(1);
+    expect(speakerOf("short reply")).toBe("part-1:F");
     // Every label has a near-identical label in the other part.
     expect(state.crossPart.labels).toBe(5);
     expect(state.crossPart.strong).toBe(5);

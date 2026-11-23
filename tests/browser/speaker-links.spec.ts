@@ -114,7 +114,7 @@ test("overlap links merge as one undoable group and manual selection merges inde
   await dialog.getByRole("button", { name: `Confirm and send ${total} requests` }).click();
   await expect(page.getByRole("heading", { name: "Suggested same-speaker links from overlapping audio" })).toBeVisible();
   await expect(page.getByText("8 matching words across the part overlap").first()).toBeVisible();
-  await expect(page.getByText(/Speakers are numbered per part/)).toBeVisible();
+  await expect(page.getByText(/You can generate notes without confirming speaker names.*Source speaker labels are numbered separately/)).toBeVisible();
   const names = page.locator(".playback-speaker");
   const originalCount = await names.count();
   expect(originalCount).toBeGreaterThan(1);

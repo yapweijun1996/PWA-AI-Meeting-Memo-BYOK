@@ -78,14 +78,17 @@ test("restored long recording accepts identical audio under the new meeting ID",
   await createLong(page);
   await page.getByText("Export", { exact: true }).click();
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Full backup with audio", exact: true }).click();
+  await page.getByRole("button", { name: "Meeting backup (long audio not included)", exact: true }).click();
   const path = info.outputPath("recording.zip");
   await (await download).saveAs(path);
   page.on("dialog", dialog => dialog.accept());
   await page.getByLabel("Restore backup", { exact: true }).setInputFiles(path);
   await expect(page.getByRole("heading", { name: "Recording recovery (restored)", exact: true })).toBeVisible();
+  await expect(page.getByText(/audio missing on this device/)).toBeVisible();
+  await expect(page.getByText(/plays from \d+ local parts/)).toHaveCount(0);
   await page.getByLabel("Attach audio", { exact: true }).setInputFiles(recording());
   await expect(page.getByRole("button", { name: "Transcribe", exact: true })).toBeEnabled();
+  await expect(page.getByText(/plays from \d+ local parts/)).toBeVisible();
   await expect(page.locator(".app-error")).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole("button", { name: "Transcribe", exact: true })).toBeEnabled();

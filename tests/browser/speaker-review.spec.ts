@@ -1,3 +1,5 @@
+import { wavFile } from "./helpers/synthetic-recording";
+import { nextKeyboardControl } from "./helpers/keyboard";
 import {paletteChoices} from "./helpers/appearance";
 import {changeTopbarLanguage} from "./helpers/language";
 import { test, expect, type Page } from "@playwright/test";
@@ -117,24 +119,6 @@ function longFixtureMeeting() {
   return { ...baseMeeting, segments: [...baseMeeting.segments, ...longSegments] };
 }
 
-function wavFile(seconds = 40) {
-  const sampleRate = 8_000;
-  const dataSize = sampleRate * seconds * 2;
-  const buffer = Buffer.alloc(44 + dataSize);
-  buffer.write("RIFF", 0);
-  buffer.writeUInt32LE(36 + dataSize, 4);
-  buffer.write("WAVEfmt ", 8);
-  buffer.writeUInt32LE(16, 16);
-  buffer.writeUInt16LE(1, 20);
-  buffer.writeUInt16LE(1, 22);
-  buffer.writeUInt32LE(sampleRate, 24);
-  buffer.writeUInt32LE(sampleRate * 2, 28);
-  buffer.writeUInt16LE(2, 32);
-  buffer.writeUInt16LE(16, 34);
-  buffer.write("data", 36);
-  buffer.writeUInt32LE(dataSize, 40);
-  return buffer;
-}
 
 async function isolateSyntheticDecoderEvents(page: Page) {
   // Synthetic play/pause drivers do not establish native codec support. Keep
@@ -741,7 +725,7 @@ test("caption identities stay distinct and readable with chunk labels and long c
   }
 });
 
-test("real playback colors follow every palette with readable semantic states", async ({ page, context }) => {
+test("real playback colors follow every palette with readable semantic states", async ({ page, context, browserName }) => {
   test.setTimeout(120_000);
   await isolateSyntheticDecoderEvents(page);
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -776,7 +760,7 @@ test("real playback colors follow every palette with readable semantic states", 
       await page.mouse.move(0, 0);
       await page.bringToFront();
       await page.locator(".player-skip-back").focus();
-      await page.keyboard.press("Tab");
+      await page.keyboard.press(nextKeyboardControl(browserName));
       await expect(page.locator(".audio-player .play-button")).toBeFocused();
       const colors = await page.evaluate(() => {
         const rgb = (value: string) => value.match(/[\d.]+/g)!.map(Number);
@@ -1009,6 +993,9 @@ test("immersive fallback preserves the player and restores focus", async ({ page
   await opener.click();
   const dialog = page.getByRole("dialog", { name: "Immersive playback" });
   await expect(dialog).toBeVisible();
+  const editMeeting = page.getByRole("button", { name: "Edit meeting details", exact: true });
+  await editMeeting.evaluate(element => element.focus());
+  await expect(editMeeting).not.toBeFocused();
   await expect(dialog.getByRole("status")).toContainText("in-page view");
   await expect(dialog.getByRole("button", { name: "Exit immersive" })).toBeFocused();
   await expect(page.locator("audio")).toHaveCount(1);
@@ -1024,6 +1011,7 @@ test("immersive fallback preserves the player and restores focus", async ({ page
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(opener).toBeFocused();
+  await expect(editMeeting).toBeVisible();
   await expect(page.locator("audio")).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Pause audio", exact: true })).toBeVisible();
   await expect(page.getByLabel("Playback speed", { exact: true })).toHaveValue("1.5");

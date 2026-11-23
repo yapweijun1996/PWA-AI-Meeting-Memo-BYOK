@@ -29,6 +29,14 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
 
+const loadingTest = test.extend({
+  page: async ({ page }, use) => {
+    await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+    await page.clock.pauseAt(new Date("2026-01-02T00:00:00Z"));
+    await use(page);
+  },
+});
+
 test("renders actual shared component variants without app services and passes an accessibility scan", async ({ page, diagnostics }) => {
   await expect(page.getByRole("heading", { name: "Components in context" })).toBeVisible();
   await expect(page.getByText("YOUR MEETING WORKSPACE")).toBeVisible();
@@ -67,11 +75,13 @@ test("opens the real modal, focuses its marked control, and returns focus after 
   await expect(opener).toBeFocused();
 });
 
-test("shows a keyboard tooltip with an accessible description and dismisses it with Escape", async ({ page }) => {
+test("shows a keyboard tooltip with an accessible description and dismisses it with Escape", async ({ page, browserName }) => {
   const modalOpener = page.getByRole("button", { name: "Open sample dialog" });
   const trigger = page.getByRole("button", { name: "Focus for a tooltip" });
   await modalOpener.focus();
-  await page.keyboard.press("Tab");
+  // macOS WebKit uses Option-Tab to include buttons with default keyboard navigation.
+  const nextControl = browserName === "webkit" && process.platform === "darwin" ? "Alt+Tab" : "Tab";
+  await page.keyboard.press(nextControl);
   await expect(trigger).toBeFocused();
   await expect(page.getByRole("tooltip")).toHaveText("A short keyboard and pointer hint.");
   await expect(trigger).toHaveAttribute("aria-describedby", /app-tooltip/);
@@ -88,18 +98,26 @@ test("announces and dismisses the actual shared toast layer", async ({ page }) =
   await expect(toast).toHaveCount(0);
 });
 
-test("shows a loading placeholder only during the short local loading transition", async ({ page }) => {
-  await page.getByRole("button", { name: "Simulate local loading" }).click();
-  await expect(page.getByRole("status", { name: "Loading local catalogue preview" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Simulate local loading" })).toBeDisabled();
-  await expect(page.getByRole("status", { name: "Loading local catalogue preview" })).toBeHidden();
+loadingTest("shows a loading placeholder only during the short local loading transition", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const trigger = page.getByRole("button", { name: "Simulate local loading" });
+  const status = page.getByRole("status", { name: "Loading local catalogue preview" });
+  await expect(status).toBeHidden();
+  await trigger.click();
+  await expect(status).toBeVisible();
+  await expect(trigger).toBeDisabled();
+  await expect(status.locator(".loading-line").first()).toHaveCSS("animation-name", "placeholder-pulse");
+  await page.clock.fastForward(1100);
+  await expect(status).toBeHidden();
+  await expect(trigger).toBeEnabled();
 });
 
-test("respects reduced motion for the actual loading placeholder animation", async ({ page }) => {
+loadingTest("respects reduced motion for the actual loading placeholder animation", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Simulate local loading" }).click();
-  await expect(page.getByRole("status", { name: "Loading local catalogue preview" })).toBeVisible();
-  await expect.poll(() => page.locator(".loading-line").first().evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
+  const status = page.getByRole("status", { name: "Loading local catalogue preview" });
+  await expect(status).toBeVisible();
+  await expect(status.locator(".loading-line").first()).toHaveCSS("animation-name", "none");
 });
 
 test("keeps the catalogue within the viewport at desktop, tablet, and mobile widths", async ({ page }) => {
@@ -130,7 +148,7 @@ for (const viewport of [
   });
 }
 
-test("captures the full mobile catalogue with its temporary loading state", async ({ page }) => {
+loadingTest("captures the full mobile catalogue with its temporary loading state", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Simulate local loading" }).click();
   await expect(page.getByRole("status", { name: "Loading local catalogue preview" })).toBeVisible();

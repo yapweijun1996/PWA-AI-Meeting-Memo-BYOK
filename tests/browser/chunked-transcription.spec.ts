@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { unzipSync, zipSync } from "fflate";
 import { readFile } from "node:fs/promises";
+import { changeTopbarLanguage } from "./helpers/language";
 
 test.use({ serviceWorkers: "block" });
 test.describe.configure({ timeout: 120_000 });
@@ -11,23 +12,23 @@ const base = "/PWA-AI-Meeting-Memo-BYOK/";
 const endpoint = "https://api.openai.com/v1/audio/transcriptions";
 const fakeKey = "synthetic-chunked-speech-key";
 
-function syntheticMp3(): Buffer {
+function syntheticMp3(frameCount = 63_000): Buffer {
   const frame = Buffer.alloc(417);
   frame.set([0xff, 0xfb, 0x90, 0]);
-  const bytes = Buffer.alloc(63_000 * frame.length);
+  const bytes = Buffer.alloc(frameCount * frame.length);
   for (let offset = 0; offset < bytes.length; offset += frame.length) frame.copy(bytes, offset);
   return bytes;
 }
 
-async function prepare(page: Page, title: string) {
+async function prepare(page: Page, title: string, options: { model?: string; short?: boolean } = {}) {
   await page.goto(base);
   await page.getByRole("button", { name: "New meeting", exact: true }).last().click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Meeting title").fill(title);
   await dialog.getByLabel("Audio recording").setInputFiles({
-    name: "long-meeting.mp3",
+    name: options.short ? "short-meeting.mp3" : "long-meeting.mp3",
     mimeType: "audio/mpeg",
-    buffer: syntheticMp3(),
+    buffer: syntheticMp3(options.short ? 80 : undefined),
   });
   await dialog.getByRole("button", { name: "Create meeting" }).click();
   await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
@@ -35,6 +36,7 @@ async function prepare(page: Page, title: string) {
   await page.getByRole("link", { name: "Settings & API keys" }).click();
   await page.getByLabel("OpenAI API key", { exact: true }).fill(fakeKey);
   await page.getByLabel("Transcription provider").selectOption("openai");
+  if (options.model) await page.getByLabel("Transcription model ID").fill(options.model);
   await page.getByRole("button", { name: "Save settings" }).click();
   await expect(page.getByRole("button", { name: "Saved on this device" })).toBeVisible();
   await page.evaluate((hash) => { location.hash = hash; }, meetingHash);
@@ -44,6 +46,7 @@ async function prepare(page: Page, title: string) {
 function installSpeechRoute(page: Page, options: {
   failOn?: number;
   abortOn?: number;
+  textOnly?: boolean;
 } = {}) {
   let count = 0;
   let inFlight = 0;
@@ -64,7 +67,9 @@ function installSpeechRoute(page: Page, options: {
       }
       await route.fulfill({
         headers: { "Access-Control-Allow-Origin": "*" },
-        json: { segments: [{ text: `CHUNK_RESULT_${count}`, start: 12, end: 13 }], duration: 600 },
+        json: options.textOnly
+          ? { text: `CHUNK_RESULT_${count}` }
+          : { segments: [{ text: `CHUNK_RESULT_${count}`, start: 12, end: 13 }], duration: 600 },
       });
     } finally {
       inFlight -= 1;
@@ -77,7 +82,7 @@ test("without cross-tab locks, opting into voice analysis sends nothing and tran
   await page.addInitScript(() => Object.defineProperty(navigator, "locks", { configurable: true, value: undefined }));
   const routes = installSpeechRoute(page);
   await routes.finished;
-  await prepare(page, "Voice lock unavailable");
+  await prepare(page, "Voice lock unavailable", { model: "gpt-4o-transcribe-diarize" });
   await page.getByRole("button", { name: "Transcribe", exact: true }).click();
   let dialog = page.getByRole("dialog");
   await dialog.getByRole("group", { name: "Automatic speaker continuity" }).getByRole("checkbox").check();
@@ -91,6 +96,67 @@ test("without cross-tab locks, opting into voice analysis sends nothing and tran
   await expect(page.getByText("CHUNK_RESULT_1", { exact: true })).toBeVisible();
   expect(routes.count).toBeGreaterThanOrEqual(2);
 });
+
+test("speaker count validates before chunked transcription and an unset count is optional", async ({ page }) => {
+  const routes = installSpeechRoute(page);
+  await routes.finished;
+  await prepare(page, "Speaker count before transcription", { model: "custom-speech-model" });
+  await page.getByRole("button", { name: "Transcribe", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const voice = dialog.getByRole("group", { name: "Automatic speaker continuity" }).getByRole("checkbox");
+  const count = dialog.getByRole("spinbutton", { name: "How many people spoke? (optional)" });
+  const send = dialog.getByRole("button", { name: /^Confirm and send \d+ requests$/ });
+  await voice.check();
+  await expect(send).toBeEnabled();
+  for (const invalid of ["0", "1.5", "51"]) {
+    await count.fill(invalid);
+    await expect(count).toHaveAttribute("aria-invalid", "true");
+    await expect(dialog.getByText("Enter a whole number from 1 to 50, or leave it blank.")).toBeVisible();
+    await expect(send).toBeDisabled();
+  }
+  await voice.uncheck();
+  await expect(send).toBeEnabled();
+  await voice.check();
+  await expect(send).toBeDisabled();
+  await count.fill("50");
+  await expect(send).toBeEnabled();
+  await count.fill("");
+  await expect(send).toBeEnabled();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(routes.count).toBe(0);
+});
+
+for (const short of [true, false]) {
+  test(`known text-only speech supports ${short ? "short" : "chunked"} recordings without voice analysis`, async ({ page }) => {
+    await page.addInitScript(() => Object.defineProperty(navigator, "locks", { configurable: true, value: undefined }));
+    let modelRequests = 0;
+    await page.route("https://huggingface.co/**", (route) => {
+      modelRequests += 1;
+      return route.abort();
+    });
+    const routes = installSpeechRoute(page, { textOnly: true });
+    await routes.finished;
+    await prepare(page, "Text-only recording", { short });
+    if (!short) await changeTopbarLanguage(page, "zh-CN");
+    await page.getByRole("button", { name: short ? "Transcribe" : "转录", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("gpt-transcribe", { exact: true })).toBeVisible();
+    await expect(dialog.getByText(short
+      ? "This model returns text only. Choose a transcription model that returns speaker labels and timestamps to use automatic voice matching."
+      : "此模型仅返回文本。要使用自动关联声音，请选择能返回说话人标签和时间戳的转录模型。",
+    )).toBeVisible();
+    await expect(dialog.getByRole("checkbox")).toHaveCount(0);
+    await expect(dialog.getByRole("spinbutton")).toHaveCount(0);
+    const send = dialog.getByRole("button", { name: short ? /^Confirm and send$/ : /^确认并发送 2 次请求$/ });
+    await expect(send).toBeEnabled();
+    expect(routes.count).toBe(0);
+    await send.click();
+    await expect(page.getByText("CHUNK_RESULT_1", { exact: true })).toBeVisible();
+    expect(routes.count).toBe(short ? 1 : 2);
+    expect(modelRequests).toBe(0);
+    await expect(page.getByText(/cross-tab locking|跨标签页锁定/)).toHaveCount(0);
+  });
+}
 
 test("chunked transcription confirms before sequential per-part requests and merges timestamps", async ({ page }) => {
   const routes = installSpeechRoute(page);
@@ -141,7 +207,7 @@ test(restore ? "restored transcription resumes only unsaved parts after reattach
     await expect(resume).toBeEnabled();
     await page.getByText("Export", { exact: true }).click();
     const download = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Full backup with audio", exact: true }).click();
+    await page.getByRole("button", { name: "Meeting backup (long audio not included)", exact: true }).click();
     const path = info.outputPath("resume.zip");
     await (await download).saveAs(path);
     page.on("dialog", (dialog) => dialog.accept());
@@ -178,7 +244,7 @@ test(`unknown chunk outcomes require account review before an explicit resend (r
     await expect(page.getByRole("button", { name: "Transcribe", exact: true })).toBeEnabled();
     await page.getByText("Export", { exact: true }).click();
     const download = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Full backup with audio", exact: true }).click();
+    await page.getByRole("button", { name: "Meeting backup (long audio not included)", exact: true }).click();
     const path = info.outputPath("unknown.zip"); await (await download).saveAs(path);
     page.on("dialog", dialog => dialog.accept());
     await page.getByLabel("Restore backup", { exact: true }).setInputFiles(path);
@@ -237,7 +303,7 @@ test("restored completed transcription blocks missing checkpoints before consent
   const evidence = await evidenceSnapshot(page);
   await page.getByText("Export", { exact: true }).click();
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Full backup with audio", exact: true }).click();
+  await page.getByRole("button", { name: "Meeting backup (long audio not included)", exact: true }).click();
   const path = info.outputPath("checkpoints.zip"); await (await download).saveAs(path);
   const files = unzipSync(await readFile(path));
   expect(files["chunk-speech.json"]).toBeDefined();

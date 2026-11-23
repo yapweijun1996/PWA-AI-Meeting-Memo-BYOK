@@ -1,4 +1,5 @@
-import { applyAcousticAssignments } from "../domain/acoustic-speaker";
+import { recoverChunkUnknownTurns } from "./unknown-turn-recovery";
+import { applyAcousticAssignments, applyRecoveredTurnAnchors, type AcousticAssignment, type AcousticIdentity } from "../domain/acoustic-speaker";
 import { linkChunkSpeakers, mergeChunkSpeech, type ChunkSpeechInput } from "../domain/long-audio";
 import { id, MAX_JOBS, type Job, type Meeting } from "../domain/model";
 import { replaceTranscript } from "../domain/operations";
@@ -7,6 +8,7 @@ import { getKey, getSpeechEstimate, type Selection } from "../providers/credenti
 import { getChunkSpeech, listChunkSpeechIndexes, putChunkSpeech } from "../storage/chunk-speech-store";
 import { getLongAudioChunk, getLongAudioManifest } from "../storage/long-audio-store";
 import {
+  getAcousticCheckpoint,
   listAcousticAssignments,
   listAcousticIdentities,
   getTranscriptPage,
@@ -248,41 +250,48 @@ export async function runChunkedSpeech(m: Meeting, confirmed: Confirmed): Promis
     const merged = mergeChunkSpeech(inputs);
     const speakerLinks = linkChunkSpeakers(inputs).slice(0, 200);
     let speech = merged.speech;
-    let acousticAssignments = await listAcousticAssignments(m.id);
-    let acousticIdentities = await listAcousticIdentities(m.id);
     const analysisNotes: string[] = [];
-    if (confirmed.acoustic) {
-      try {
-        await runAcousticContinuity({
-          meetingId: m.id,
-          recordingHash: audioMeta.hash,
-          sourceRevision: m.revision,
-          manifest,
-          provider: confirmed.acoustic.provider,
-          consent: confirmed.acoustic.consent,
-          signal: requestController.signal,
-          onProgress: confirmed.acoustic.onProgress,
-          expectedVoices: confirmed.acoustic.expectedVoices,
-        });
-      } catch (error) {
-        analysisNotes.push(`Local acoustic analysis is unresolved: ${error instanceof Error ? error.message : "retry the local analysis"}`);
+    let finalizedVoices: [AcousticAssignment[], AcousticIdentity[]] | undefined;
+    try {
+      const checkpoint = confirmed.acoustic
+        ? (await runAcousticContinuity({
+            meetingId: m.id,
+            recordingHash: audioMeta.hash,
+            sourceRevision: m.revision,
+            manifest,
+            provider: confirmed.acoustic.provider,
+            consent: confirmed.acoustic.consent,
+            signal: requestController.signal,
+            onProgress: confirmed.acoustic.onProgress,
+            expectedVoices: confirmed.acoustic.expectedVoices,
+          })).checkpoint
+        : await getAcousticCheckpoint(m.id);
+      // Earlier parts can contain provisional decisions until consolidation commits.
+      if (checkpoint?.state === "completed" && checkpoint.completedChunkCount === manifest.chunks.length
+          && checkpoint.recordingHash === audioMeta.hash && checkpoint.sourceRevision === m.revision) {
+        finalizedVoices = await Promise.all([listAcousticAssignments(m.id), listAcousticIdentities(m.id)]);
       }
-      acousticAssignments = await listAcousticAssignments(m.id);
-      acousticIdentities = await listAcousticIdentities(m.id);
+    } catch (error) {
+      analysisNotes.push(`Local acoustic analysis is unresolved: ${error instanceof Error ? error.message : "retry the local analysis"}`);
     }
     const latest = await getMeeting(m.id);
     if (!latest) throw new Error("The meeting was removed while processing.");
-    if (latest.revision === m.revision) {
-      speech = applyAcousticAssignments(
-        speech,
-        acousticAssignments,
-        acousticIdentities,
-        latest.speakers,
-        { recordingHash: audioMeta.hash, sourceRevision: m.revision },
-      );
-    }
     let result = latest;
     if (latest.revision === m.revision) {
+      if (finalizedVoices) {
+        const [assignments, identities] = finalizedVoices;
+        speech = applyAcousticAssignments(speech, assignments, identities, latest.speakers, {
+          recordingHash: audioMeta.hash, sourceRevision: m.revision,
+        });
+        if (confirmed.acoustic) {
+          try {
+            const anchors = await recoverChunkUnknownTurns(latest, manifest, speech.segments, merged.speech.segments, confirmed.acoustic.provider, requestController.signal);
+            speech = { ...speech, segments: applyRecoveredTurnAnchors(speech.segments, anchors) };
+          } catch (error) {
+            analysisNotes.push(`Unattributed turns were retained: ${error instanceof Error ? error.message : "local analysis incomplete"}`);
+          }
+        }
+      }
       result = replaceTranscript(latest, speech.speakers, speech.segments, provider, selection.model, {
         runId,
         originalSpeakers: merged.speech.speakers,

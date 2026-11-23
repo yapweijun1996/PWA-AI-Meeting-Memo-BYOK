@@ -105,6 +105,12 @@ Verify HTTPS, JS/CSS/worker/icon responses, base path, provider CORS, no unexpec
 
 For a bad release, revert its code on `main` and pass the same pipeline. Check storage backward compatibility first. A destructive migration may require a forward fix or explicit backup/restore; reverting JavaScript alone cannot undo a database migration.
 
+## Diagnose a failed provider request
+
+1. In the meeting, expand **Processing history**. Record the stage, displayed outcome, billing state and HTTP status if present. An HTTP 401 confirms an authentication rejection. Check the key for the selected provider in Settings. A connection that ends without a result is recorded as **outcome unknown**. Check the provider account before authorizing any new submission.
+2. Read the full **Build** value under **Settings & API keys → About** and the engine or browser version from the browser’s About screen. For a Pages release, match the full build value to the Git commit in the deployment run. Local builds can use a separate label. A worker cache ID identifies the static shell and is recorded separately.
+3. The support record needs only the build, browser/version, stage, outcome, billing state and HTTP status or a short error category. A maintainer can reproduce this tuple against the matching artifact with synthetic inputs. Keep API keys, meeting and speaker names, screenshots, recordings, transcripts, raw responses and meeting backups local.
+
 ## Official deployment references
 
 - [GitHub custom Pages workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)

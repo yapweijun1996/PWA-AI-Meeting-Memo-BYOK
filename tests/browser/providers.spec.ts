@@ -1,3 +1,5 @@
+import { nextKeyboardControl } from "./helpers/keyboard";
+import { chooseStandardMemo, readPiMeeting } from "./helpers/memo-pi";
 import { test, expect, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { unzipSync, strFromU8 } from "fflate";
@@ -18,6 +20,7 @@ async function confirmMemo(page: Page) {
   const dialog = page.getByRole("dialog", { name: "Generate new meeting notes", exact: true });
   const send = dialog.getByRole("button", { name: "Generate new notes", exact: true });
   await expect(send).toBeDisabled();
+  await chooseStandardMemo(dialog);
   await dialog.getByRole("checkbox", { name: "I understand the selected data will be sent and may incur API charges.", exact: true }).check();
   await send.click();
 }
@@ -127,8 +130,8 @@ function touchReviewMeeting(): Meeting {
 }
 
 test("memo submissions require confirmation, preserve evidence and mark source changes stale", async ({
-  page,
-}) => {
+  page, browserName,
+}, info) => {
   let requests = 0;
   await page.route("https://api.openai.com/v1/responses", async (route) => {
     if (route.request().method() === "OPTIONS") {
@@ -288,8 +291,9 @@ test("memo submissions require confirmation, preserve evidence and mark source c
   const keyboardAccept = page.getByRole("button", { name: /Accept/ }).first();
   await page.getByLabel("action note").focus();
   let keyboardAcceptFocused = false;
+  const nextControl = nextKeyboardControl(browserName);
   for (let i = 0; i < 10; i++) {
-    await page.keyboard.press("Tab");
+    await page.keyboard.press(nextControl);
     if (
       await keyboardAccept.evaluate(
         (element) => element === document.activeElement,
@@ -326,6 +330,41 @@ test("memo submissions require confirmation, preserve evidence and mark source c
       .locator(".original-text")
       .getByText(/Review inventory with finance\./),
   ).toBeVisible();
+  await page.getByText("Export", { exact: true }).click();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Meeting backup (no audio)", exact: true }).click();
+  const path = info.outputPath("source-correction.zip");
+  await (await download).saveAs(path);
+  const archive = unzipSync(await readFile(path));
+  const saved = validateMeeting(JSON.parse(strFromU8(archive["meeting.json"])));
+  const corrected = saved.segments[0];
+  expect(corrected).toMatchObject({ text: "The source is corrected.", originalText: "Review the current stock process." });
+  expect(corrected.revision).toBeGreaterThan(1);
+  const originalRef = { id: corrected.id, revision: 1 };
+  expect(saved.history).toContainEqual(expect.objectContaining({ ...originalRef, text: corrected.originalText }));
+  expect(saved.memos).toHaveLength(2);
+  expect(saved.memos[0].items[0]).toMatchObject({ text: "Human amended follow-up.", review: "accepted", sources: [originalRef] });
+  expect(saved.memos[0].originalItems?.[0]).toMatchObject({ text: expect.stringContaining("Review inventory with finance."), sources: [originalRef] });
+  expect(saved.memos[1].items[0].sources).toEqual([{ id: corrected.id, revision: corrected.revision }]);
+
+  page.on("dialog", dialog => void dialog.accept());
+  await page.locator(".nav-file input").setInputFiles(path);
+  await expect(page.getByRole("heading", { name: "ERP review (restored)", exact: true })).toBeVisible();
+  expect(new URL(page.url()).hash).not.toBe(hash);
+  await page.reload();
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page.getByLabel("Memo version").selectOption({ index: 0 });
+  const evidenceReview = page.getByRole("button", { name: "Evidence Review", exact: true });
+  if (await evidenceReview.getAttribute("aria-pressed") !== "true") await evidenceReview.click();
+  await expect(page.getByLabel("action note")).toHaveValue("Human amended follow-up.");
+  await expect(page.getByRole("button", { name: /Accept/ }).first()).toHaveClass(/selected/);
+  await page.getByText("Original generated item", { exact: true }).click();
+  await expect(page.locator(".original-text")).toContainText("Review inventory with finance.");
+  await page.getByRole("button", { name: "Passage 1 · r1", exact: true }).click();
+  const sourceDialog = page.getByRole("dialog", { name: "Source passage · r1", exact: true });
+  await expect(sourceDialog.getByText(corrected.originalText, { exact: true })).toBeVisible();
+  await sourceDialog.getByRole("button", { name: "View current passage", exact: true }).click();
+  await expect(page.getByText(corrected.text, { exact: true })).toBeVisible();
   expect(requests).toBe(2);
 });
 
@@ -678,13 +717,40 @@ test("uncertain requests are recorded and never automatically resubmitted", asyn
     page.getByText("Memo · outcome unknown", { exact: true }),
   ).toBeVisible();
   await page.reload();
-  await page.waitForTimeout(400);
+  await page.getByRole("tab", { name: /Meeting notes/ }).click();
+  await page.getByRole("button", { name: "Generate meeting notes", exact: true }).click();
+  const retry = page.getByRole("dialog");
+  await expect(retry.getByRole("checkbox", { name: /Use selective transcript review/ })).not.toBeChecked();
+  await retry.getByRole("checkbox", { name: /I understand the selected data/ }).check();
+  await expect(retry.getByRole("checkbox", { name: /I reviewed the previous request outcome and billing/ })).not.toBeChecked();
+  await expect(retry.getByRole("button", { name: "Generate new notes", exact: true })).toBeDisabled();
   expect(calls).toBe(1);
 });
 
 test("recording, transcript, reviewed memo, exports and full backup form one workflow", async ({
   page,
 }, info) => {
+  const memoKey = "synthetic-test-only", speechKey = "synthetic-router-only";
+  const memoUrl = "https://api.openai.com/v1/responses";
+  const speechUrl = "https://openrouter.ai/api/v1/audio/transcriptions";
+  const hasKey = (value: string) => value.includes(memoKey) || value.includes(speechKey);
+  const exposedChannels: string[] = [];
+  const sentTo: string[] = [];
+  page.on("console", message => { if (hasKey(message.text())) exposedChannels.push("console"); });
+  page.on("pageerror", error => { if (hasKey(String(error))) exposedChannels.push("page error"); });
+  page.on("request", request => {
+    const { authorization, ...otherHeaders } = request.headers();
+    if (hasKey(request.url()) || hasKey(JSON.stringify(otherHeaders)) || hasKey(request.postData() ?? "")) {
+      exposedChannels.push("request outside authorization header");
+    }
+    if (authorization && hasKey(authorization)) {
+      const expectedUrl = authorization === `Bearer ${speechKey}` ? speechUrl : memoUrl;
+      if (authorization !== `Bearer ${speechKey}` && authorization !== `Bearer ${memoKey}` || request.url() !== expectedUrl) {
+        exposedChannels.push("unauthorized recipient");
+      }
+      sentTo.push(request.url());
+    }
+  });
   await page.route("https://api.openai.com/v1/responses", async (route) => {
     const input = JSON.parse(route.request().postDataJSON().input);
     await route.fulfill({
@@ -781,9 +847,15 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
   await expect(
     page.getByRole("button", { name: "Saved on this device" }),
   ).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("OpenAI API key", { exact: true })).toHaveValue(memoKey);
+  await expect(page.getByLabel("OpenRouter API key", { exact: true })).toHaveValue(speechKey);
   await page.evaluate((hash) => {
     location.hash = hash;
   }, hash);
+  await page.getByRole("button", { name: "Transcribe", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(sentTo).toEqual([]);
   await page.getByRole("button", { name: "Transcribe", exact: true }).click();
   await page
     .getByRole("button", { name: "Confirm and send", exact: true })
@@ -841,8 +913,8 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
   await file.saveAs(path);
   const backupFiles = unzipSync(await readFile(path));
   const backupDocument = strFromU8(backupFiles["meeting.json"]);
-  expect(backupDocument).not.toContain("synthetic-test-only");
-  expect(backupDocument).not.toContain("synthetic-router-only");
+  expect(JSON.parse(backupDocument).audio.present).toBe(true);
+  for (const entry of Object.values(backupFiles)) expect(hasKey(strFromU8(entry))).toBe(false);
   page.on("dialog", (d) => void d.accept());
   await page.locator(".nav-file input").setInputFiles(path);
   await expect(
@@ -856,6 +928,12 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
   await expect(page.getByLabel("summary note")).toHaveValue(
     "Human reviewed greeting.",
   );
+  await page.getByRole("button", { name: /^Passage 1 · r[0-9]+$/ }).click();
+  const sourceDialog = page.getByRole("dialog", { name: /^Source passage · r[0-9]+$/ });
+  await expect(sourceDialog.getByText("Hello", { exact: true }).first()).toBeVisible();
+  await sourceDialog.getByRole("button", { name: "Play source audio with context", exact: true }).click();
+  await expect.poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.played.length)).toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Evidence Review", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "✓ Accept", exact: true }),
@@ -866,6 +944,8 @@ test("recording, transcript, reviewed memo, exports and full backup form one wor
       .locator(".original-text")
       .getByText("A greeting was exchanged.", { exact: true }),
   ).toBeVisible();
+  expect(sentTo).toEqual([speechUrl, memoUrl]);
+  expect(exposedChannels).toEqual([]);
 });
 
 test("preserves zero-width speech evidence across reload without resubmitting", async ({
@@ -1059,6 +1139,7 @@ test("a rejected HTTP request is failed with unconfirmed billing, not marked uns
     .click();
   await confirmMemo(page);
   await expect(page.getByRole("alert")).toContainText("HTTP 401");
+  await expect(page.getByRole("alert")).toContainText("Check the key for this provider.");
   await page.getByText("Processing history", { exact: false }).click();
   await expect(page.getByText("Memo · failed", { exact: true })).toBeVisible();
   await expect(page.getByText(/possibly charged|可能已收费/)).toBeVisible();
@@ -1264,10 +1345,17 @@ test("default OpenAI speech and selected OpenRouter memo use their own model and
   await expect(page.getByRole("dialog")).toContainText("api.openai.com");
   await expect(page.getByRole("dialog")).toContainText("gpt-transcribe");
   expect(speechCalls).toBe(0);
-  await page.getByRole("button", { name: "Confirm and send" }).click();
+  // Decoders can deliver the precise duration at the same time as consent.
+  await page.getByRole("button", { name: "Confirm and send" }).evaluate((button: HTMLButtonElement) => {
+    const media = document.querySelector("audio")!;
+    Object.defineProperty(media, "duration", { configurable: true, value: 1.23456 });
+    media.dispatchEvent(new Event("loadedmetadata"));
+    button.click();
+  });
   await expect(
     page.getByText("A plain transcript.", { exact: true }),
   ).toBeVisible();
+  await expect.poll(async () => (await readPiMeeting(page)).audio?.duration).toBe(1.23456);
   await page.getByRole("tab", { name: /Meeting notes/ }).click();
   await page
     .getByRole("button", { name: "Generate meeting notes", exact: true })

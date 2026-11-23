@@ -14,7 +14,7 @@ import {hasSavedAgentFinal, planAgentMemo, resumableAgentMemo, supportsAgentMemo
 import {pendingAgentReceipt} from "../jobs/agent-recovery";
 import { AgentResponseRecovery } from "./AgentResponseRecovery";
 import { speakerBackground } from "../components/speaker-appearance";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import {
   ArrowLeft,
   AudioLines,
@@ -40,6 +40,8 @@ import {
 import type { Meeting, MemoItem, Segment } from "../domain/model";
 import type { ReferenceVideo as ReferenceVideoValue } from "../domain/reference-video";
 import { groupTranscript, transcriptTextSeparator } from "../domain/transcript-groups";
+import { detectedOverlap, matchingOverlapNeighbors, recordingOverlap, retainRecordingOverlap } from "../domain/overlap-evidence";
+import { OverlapNotice } from "./OverlapNotice";
 import { summarizeMeetingAccounting } from "../domain/accounting";
 import { id, importTranscript } from "../domain/model";
 import {
@@ -67,8 +69,8 @@ import { ChunkedAudio, type PlayerLike } from "../audio/chunked-audio";
 import { getKey, getSelection, getSpeechEstimate, getSettingsRevision, subscribeSettingsChanges, getMemoOutputLanguage } from "../providers/credentials";
 import { beginRequest, cancelProcessing, finishRequest, runJob, isProcessingMeeting } from "../jobs/runner";
 import { requireVoiceAnalysisLocks, withVoiceAnalysisLock } from "../jobs/voice-analysis-lock";
-import { analyzeExistingMeetingAcoustics, describeAcousticState, exportVoiceEvaluation, listCurrentAcousticEmbeddings } from "../jobs/acoustic-continuity";
-import type { AcousticEmbeddingRecord } from "../domain/acoustic-speaker";
+import { analyzeExistingMeetingAcoustics, readAcousticOutcome, exportVoiceEvaluation, listCurrentAcousticEmbeddings } from "../jobs/acoustic-continuity";
+import { isValidExpectedSpeakerCount, MAX_EXPECTED_SPEAKERS, type AcousticEmbeddingRecord } from "../domain/acoustic-speaker";
 import { analyzeSingleRecordingVoices, singleRecordingFormat } from "../jobs/single-recording-voices";
 import { assertRetainedChunkResults, getChunkedProgress, runChunkedSpeech } from "../jobs/chunked-runner";
 import { WavLmSpeakerEmbeddingProvider } from "../audio/speaker-embedding";
@@ -91,6 +93,36 @@ import { usePlaybackClock } from "./usePlaybackClock";
 import { useUiLanguage } from "../ui-language";
 import { translateMessage } from "../ui-messages";
 import { SpeakerModelNotice } from "./SpeakerModelNotice";
+type ExpectedSpeakerInput = { value: string; badInput: boolean };
+
+function ExpectedSpeakerCount({ input, invalid, onChange }: {
+  input: ExpectedSpeakerInput;
+  invalid: boolean;
+  onChange: (input: ExpectedSpeakerInput) => void;
+}) {
+  const language = useUiLanguage();
+  const messageId = useId();
+  return <>
+    <label className="checkbox-label">
+      <span>{translateUi(language, "How many people spoke? (optional)", "大概有几个人说话？（可选）")}</span>
+      <input
+        type="number"
+        min={1}
+        max={MAX_EXPECTED_SPEAKERS}
+        inputMode="numeric"
+        value={input.value}
+        aria-invalid={invalid || undefined}
+        aria-describedby={invalid ? messageId : undefined}
+        onChange={(event) => onChange({ value: event.currentTarget.value, badInput: event.currentTarget.validity.badInput })}
+        style={{ width: "5em" }}
+      />
+    </label>
+    {invalid && <p id={messageId} className="small danger-text" role="alert">
+      {translateUi(language, `Enter a whole number from 1 to ${MAX_EXPECTED_SPEAKERS}, or leave it blank.`, `请输入 1 至 ${MAX_EXPECTED_SPEAKERS} 的整数，或留空。`)}
+    </p>}
+  </>;
+}
+
 export function MeetingWorkspace({
   meeting: m,
   recoveryAtAppLevel = false,
@@ -130,6 +162,7 @@ export function MeetingWorkspace({
   const [transcriptPage, setTranscriptPage] = useState(0);
   const [expandedGroup, setExpandedGroup] = useState("");
   const [inspectedFragment, setInspectedFragment] = useState("");
+  const [measuredAudio, setMeasuredAudio] = useState<{ hash: string; duration: number }>();
   const [url, setUrl] = useState(""),
     [audioMissing, setAudioMissing] = useState(false),
     [chunkManifest, setChunkManifest] = useState<LongAudioManifest>(),
@@ -181,15 +214,23 @@ export function MeetingWorkspace({
   const [memoSelection, setMemoSelection] = useState<{ memoId: string; itemId: string; originalText: string; start: number; end: number }>();
   const [assistantSelection, setAssistantSelection] = useState<typeof memoSelection>();
   const [acousticConfirm, setAcousticConfirm] = useState(false);
-  const [expectedSpeakers, setExpectedSpeakers] = useState("");
+  const [expectedSpeakerInput, setExpectedSpeakerInput] = useState<ExpectedSpeakerInput>({ value: "", badInput: false });
+  const expectedVoices = expectedSpeakerInput.value.trim() ? Number(expectedSpeakerInput.value) : undefined;
+  const invalidExpectedVoices = expectedSpeakerInput.badInput || (expectedVoices !== undefined && !isValidExpectedSpeakerCount(expectedVoices));
+  const invalidLocalVoiceCount = Boolean(m.audio?.chunked && invalidExpectedVoices);
   const evidenceTrigger = useRef<HTMLElement | null>(null);
   const [evidence, setEvidence] = useState<Segment>();
   const [evidenceRefs, setEvidenceRefs] = useState<{ id: string; revision: number }[]>([]);
   const [template, setTemplate] = useState<MemoTemplate>("decision");
   const [confirmed, setConfirmed] = useState<MemoConfirmation>();
+  const speechSelection = confirmed?.selection ?? getSelection("speech");
+  const speechIsKnownTextOnly = speechSelection.provider === "openai" && speechSelection.model === "gpt-transcribe";
+  const analyzeVoicesAfterSpeech = acousticConsent && !speechIsKnownTextOnly;
+  const invalidTranscriptionVoiceCount = analyzeVoicesAfterSpeech && invalidLocalVoiceCount;
   const uiLanguage = useUiLanguage();
   useSyncExternalStore(subscribeSettingsChanges, getSettingsRevision, getSettingsRevision);
   const t = (en: string, zh: string) => translateUi(uiLanguage, en, zh);
+  const overlap = recordingOverlap(m.audio);
   function navigateTab(next: string) {
     if (document.querySelector('[data-unsaved-edit="true"]')) {
       onError(t("Wait for note changes to save before changing views.", "切换视图前请等待笔记更改保存。"));
@@ -217,6 +258,14 @@ export function MeetingWorkspace({
   },[m.id]);
   const locked = saving || processing || dirtyMemoItems.size > 0 || agentRecovery || deletedRemotely;
   const activeLocalWrites = useRef(0);
+  // Decoder metadata can arrive while consent or a request holds the meeting version.
+  useEffect(() => {
+    if (!measuredAudio || confirmStage || locked) return;
+    setMeasuredAudio(undefined);
+    if (m.audio?.hash === measuredAudio.hash && !m.audio.chunked && m.audio.duration !== measuredAudio.duration)
+      void persistQuietly({ ...m, audio: retainRecordingOverlap(m.audio, { ...m.audio, duration: measuredAudio.duration }) });
+  }, [measuredAudio, confirmStage, locked, m]);
+
   useEffect(() => {
     const changed = () => setProcessing(isProcessingMeeting(m.id));
     addEventListener("memo-processing-changed", changed);
@@ -367,12 +416,12 @@ export function MeetingWorkspace({
   async function queueMemoEdit(apply: (meeting: Meeting) => Meeting) {
     const previous = memoWriteQueue.current ?? pendingMeetingWrite.current;
     const revision = m.revision;
-    const task = (async () => {
+    const task = trackMeetingOperation(m.id, async () => {
       const base = previous ? await previous : latestLocallySaved.current;
       if (base.revision !== revision) throw new Error(t("The transcript changed. Review the current source before saving this note.", "转录已更改。保存笔记前请检查当前来源。"));
       const updated = apply(base);
       return updated === base ? base : await persist(updated);
-    })();
+    });
     memoWriteQueue.current = task;
     try { await task; }
     catch (error) { onError(error instanceof Error ? error.message : t("Could not save the note.", "无法保存笔记。")); throw error; }
@@ -421,7 +470,8 @@ export function MeetingWorkspace({
     reviewWriteInFlight.current = true;
     setReviewBusy(true);
     reviewInteraction.current = { key: interactionKey, phase: "committing" };
-    void (async () => {
+    // Register the decision while queued, before a PWA update can drain the prior write.
+    void trackMeetingOperation(m.id, async () => {
       await draftsSaved;
       const pendingWrite = memoWriteQueue.current ?? pendingMeetingWrite.current;
       // Apply this review only after our own earlier draft write succeeds. The
@@ -455,7 +505,7 @@ export function MeetingWorkspace({
           : v,
       ),
       });
-    })().catch((error: unknown) => { onError(`${t("The draft could not be saved, so the item was not reviewed. Your draft remains available.", "草稿保存失败，项目未被审阅。草稿仍保留。")}${error instanceof Error && error.message !== "draft-save-failed" ? ` ${error.message}` : ""}`); }).finally(() => {
+    }).catch((error: unknown) => { onError(`${t("The draft could not be saved, so the item was not reviewed. Your draft remains available.", "草稿保存失败，项目未被审阅。草稿仍保留。")}${error instanceof Error && error.message !== "draft-save-failed" ? ` ${error.message}` : ""}`); }).finally(() => {
       reviewWriteInFlight.current = false;
       setReviewBusy(false);
       if (
@@ -528,15 +578,34 @@ export function MeetingWorkspace({
     }
     cueRange(s.start, s.end);
   }
-  async function prepareConfirmation(stage: "speech" | "memo") {
-    try {
-      const selection = { ...getSelection(stage) };
-      let plan: MemoPipeline | null=null, planError: string | undefined;
-      try {plan = stage === "memo" ? resumablePipeline(m,selection,true,template) ?? planMemo(m,selection.provider,selection.model,template) : null;}
-      catch(error) {
-        if (stage!=="memo" || !supportsAgentMemo(selection)) throw error;
-        planError=error instanceof Error ? error.message : "The standard memo plan is unavailable.";
+  function memoConfirmation(
+    selection: MemoConfirmation["selection"],
+    chosenTemplate: MemoTemplate | undefined,
+    mode: "default" | "standard" | "pi",
+    savedStandard?: MemoPipeline,
+  ): MemoConfirmation {
+    const outputLanguage = getMemoOutputLanguage();
+    const confirmation: MemoConfirmation = { selection, template: chosenTemplate, outputLanguage };
+    const previous = savedStandard ?? resumablePipeline(m, selection, true, chosenTemplate);
+    const keepStandard = previous || needsMemoBillingReview(m, { selection });
+    if (supportsAgentMemo(selection) && (mode === "pi" || (mode === "default" && !keepStandard))) {
+      try {
+        const agentPlan = resumableAgentMemo(m, selection, chosenTemplate) ?? planAgentMemo(m, selection, outputLanguage, chosenTemplate);
+        return { ...confirmation, agentPlan, outputLanguage: agentPlan.outputLanguage };
+      } catch (error) {
+        return { ...confirmation, agentPlanError: error instanceof Error ? error.message : "Could not prepare selective review." };
       }
+    }
+    try {
+      const plan = previous ?? planMemo(m, selection.provider, selection.model, chosenTemplate);
+      return { ...confirmation, plan, outputLanguage: plan ? plan.outputLanguage ?? "meeting" : outputLanguage };
+    } catch (error) {
+      return { ...confirmation, planError: error instanceof Error ? error.message : "The standard memo plan is unavailable." };
+    }
+  }
+  async function prepareConfirmation(stage: "speech" | "memo", savedStandard?: MemoPipeline) {
+    try {
+      const selection = savedStandard ? { provider: savedStandard.provider, model: savedStandard.model } : { ...getSelection(stage) };
       setReviewedRetry(false);
       if (stage === "memo") setCostAcknowledged(false);
       if (stage === "speech") setAcousticConsent(false);
@@ -548,7 +617,9 @@ export function MeetingWorkspace({
         setChunkManifest(manifest);
         setChunkProgress(progress);
       }
-      setConfirmed({selection, template: plan ? plan.template : template, plan, planError, outputLanguage: plan ? plan.outputLanguage ?? "meeting" : getMemoOutputLanguage()});
+      setConfirmed(stage === "memo"
+        ? memoConfirmation(selection, savedStandard ? savedStandard.template : template, savedStandard ? "standard" : "default", savedStandard)
+        : { selection });
       setConfirmStage(stage);
     } catch(error) { onError(error instanceof Error ? error.message : "Could not prepare the memo plan."); }
   }
@@ -570,13 +641,13 @@ export function MeetingWorkspace({
     setConfirmStage("memo");
   }
   async function process(action: "generate" | "recover" = "generate") {
-    if (!confirmStage) return;
+    if (!confirmStage || locked || (confirmStage === "speech" && invalidTranscriptionVoiceCount)) return;
     const localOnly = action === "recover";
     if (localOnly && (!confirmed?.agentPlan || confirmStage !== "memo" || !hasSavedAgentFinal(m, confirmed.agentPlan))) return;
     if (confirmStage === "memo") {
-      if (locked || isProcessingMeeting(m.id) || pendingAgentReceipt(m.id)) return;
+      if (isProcessingMeeting(m.id) || pendingAgentReceipt(m.id)) return;
       if (!localOnly && confirmed?.agentPlan && remainingAgentRequests(confirmed.agentPlan) === 0) return;
-      if (!confirmed || (!localOnly && (!costAcknowledged || !getKey(confirmed.selection.provider))) || (confirmed.planError && !confirmed.agentPlan)) return;
+      if (!confirmed || confirmed.agentPlanError || (!localOnly && (!costAcknowledged || !getKey(confirmed.selection.provider))) || (confirmed.planError && !confirmed.agentPlan)) return;
       if (!localOnly && needsMemoBillingReview(m, confirmed) && !reviewedRetry) return;
     }
     if (confirmStage === "memo" && !navigateTab("memo")) return;
@@ -589,8 +660,8 @@ export function MeetingWorkspace({
     let acousticProvider: WavLmSpeakerEmbeddingProvider | undefined;
     let acousticRequestController: AbortController | undefined;
     try {
-      if (stage === "speech" && acousticConsent) requireVoiceAnalysisLocks();
-      if (stage === "speech" && m.audio?.chunked && acousticConsent) {
+      if (stage === "speech" && analyzeVoicesAfterSpeech) requireVoiceAnalysisLocks();
+      if (stage === "speech" && m.audio?.chunked && analyzeVoicesAfterSpeech) {
         setProcessingKind("local");
         acousticRequestController = beginRequest(m.id);
         acousticProvider = new WavLmSpeakerEmbeddingProvider({ allowRemoteDownload: true });
@@ -611,7 +682,7 @@ export function MeetingWorkspace({
             acoustic: acousticProvider ? {
               provider: acousticProvider,
               consent: true,
-              expectedVoices: /^\d{1,2}$/.test(expectedSpeakers.trim()) && Number(expectedSpeakers) >= 1 ? Number(expectedSpeakers) : undefined,
+              expectedVoices,
               onProgress: (progress) => {
                 setProcessingKind("local");
                 if (progress.phase === "sample") setChunkProgressText(t(`Analyzing local voice sample in part ${ (progress.chunkIndex ?? 0) + 1 }`, `正在分析第 ${(progress.chunkIndex ?? 0) + 1} 部分的本地声音样本`));
@@ -629,10 +700,10 @@ export function MeetingWorkspace({
       onUpdate(completed);
       setViewVersion(undefined);
       let voiceNote = "";
-      if (stage === "speech" && m.audio?.chunked && acousticConsent) {
-        voiceNote = ` ${await acousticSummaryText(m.id).catch(() => "")}`;
+      if (stage === "speech" && m.audio?.chunked && analyzeVoicesAfterSpeech) {
+        voiceNote = ` ${await acousticSummaryText(m.id, expectedVoices).catch(() => t("The local voice matching status is unavailable.", "暂时无法读取本地声音匹配结果。"))}`;
       }
-      if (stage === "speech" && !m.audio?.chunked && acousticConsent) {
+      if (stage === "speech" && !m.audio?.chunked && analyzeVoicesAfterSpeech) {
         // The transcript is already saved; a failed local check must not undo it.
         try {
           voiceNote = ` ${await checkSingleRecordingVoices(completed)}`;
@@ -642,7 +713,13 @@ export function MeetingWorkspace({
       }
       setNotice(
         stage === "speech"
-          ? `${t("Transcript ready. Review speakers and passages before making notes.", "转录已就绪。请先审阅说话人和段落，再生成笔记.")}${m.audio?.chunked && m.audio.chunked.chunkCount > 1 ? ` ${t("Speakers are numbered per part; use the suggested links or merge manually in the Speakers tab.", "说话人编号在每个分段中独立；请使用建议链接，或在“说话人”标签页手动合并。")}` : ""}${voiceNote}`
+          ? [
+              t("Transcription finished. You can generate notes without confirming speaker names.", "转录已完成。无需确认说话人姓名即可生成笔记。"),
+              !analyzeVoicesAfterSpeech && completed.speakers.length > 0 && (m.audio?.chunked?.chunkCount ?? 0) > 1
+                ? t("Source speaker labels are numbered separately in each recording part.", "原始说话人标签在各录音分段中独立编号。")
+                : "",
+              voiceNote.trim(),
+            ].filter(Boolean).join(" ")
           : t("New memo version ready for review.", "新版本笔记已就绪，请审阅。"),
       );
       navigateTab(
@@ -683,47 +760,30 @@ export function MeetingWorkspace({
       onError("Could not export voice evaluation data.");
     }
   }
+  function recoveredTurnText(before: Meeting, after: Meeting) {
+    const unknown = new Set(before.segments.filter(s => !s.speakerIds.length).map(s => s.id));
+    if (!unknown.size) return "";
+    const matched = after.segments.filter(s => unknown.has(s.id) && s.speakerIds.length).length;
+    const remaining = unknown.size - matched;
+    return uiLanguage === "ms"
+      ? ` ${matched} petikan yang sebelum ini tidak dikenal pasti kini dipadankan. ${remaining} masih belum dipadankan.`
+      : t(` Previously unattributed passages (${matched} matched, ${remaining} still unassigned).`,
+          ` 为 ${matched} 个先前未归属的段落匹配了声音，仍有 ${remaining} 个未归属。`);
+  }
   async function acousticSummaryText(meetingId: string, expectedVoices?: number): Promise<string> {
-    const s = await describeAcousticState(meetingId);
-    if (!s.labels && !s.samples) {
-      return t("No voice samples were analysed: no clean, timed, single-speaker passages were found.", "没有分析任何声音样本：没有找到干净、带时间、单人说话的片段。");
+    const result = await readAcousticOutcome(meetingId);
+    if (result.checkpointState !== "completed") {
+      return t("Local voice matching is incomplete.", "本地声音匹配尚未完成。") + (result.error ? ` ${result.error}` : "");
     }
-    const b = s.byState;
-    const c = s.crossPart;
-    const cross = c.labels
-      ? t(
-          ` Closest match to a label in another part: ${c.strong} at or above 0.86, ${c.middle} between 0.72 and 0.86, ${c.weak} below 0.72 (median ${c.median?.toFixed(2)}).`,
-          ` 与其他分段最接近的标签：${c.strong} 个 ≥0.86，${c.middle} 个在 0.72 到 0.86 之间，${c.weak} 个 <0.72（中位数 ${c.median?.toFixed(2)}）。`,
-        )
-      : "";
-    const p = s.pairs;
-    const fmt = (value: number | null) => (value === null ? "n/a" : value.toFixed(2));
-    const pairText = t(
-      ` Sample pairs: same label median ${fmt(p.sameLabel.median)} (10th percentile ${fmt(p.sameLabel.p10)}, ${p.sameLabel.count} pairs); different labels in one part median ${fmt(p.otherLabelSamePart.median)} (90th percentile ${fmt(p.otherLabelSamePart.p90)}, ${p.otherLabelSamePart.count} pairs).`,
-      ` 样本对相似度：同标签中位数 ${fmt(p.sameLabel.median)}（10% 分位 ${fmt(p.sameLabel.p10)}，${p.sameLabel.count} 对）；同段不同标签中位数 ${fmt(p.otherLabelSamePart.median)}（90% 分位 ${fmt(p.otherLabelSamePart.p90)}，${p.otherLabelSamePart.count} 对）。`,
-    );
-    // The head count is not forced: voices too unlike each other stay apart for a person to review.
-    const headCountText = expectedVoices !== undefined && s.voices > expectedVoices
-      ? t(
-          ` You entered ${expectedVoices} people, but ${s.voices} voices remain: the others were too different to join automatically. Check them under "Most similar voices".`,
-          ` 您填写了 ${expectedVoices} 人，但仍有 ${s.voices} 个声音：其余的差别太大，没有自动合并。请在“最相似的声音”中检查。`,
-        )
-      : "";
-    const mixedText = b.conflict
-      ? t(
-          ` ${b.conflict} label(s) may mix two people and were left ungrouped; listen to their samples and reassign passages if needed.`,
-          ` ${b.conflict} 个标签可能混有两个人，未自动分组；请试听样本，必要时重新指定片段的说话人。`,
-        )
-      : "";
-    const k = s.centered;
-    const centeredText = t(
-      ` After removing the recording's average voice: same label median ${fmt(k.pairs.sameLabel.median)} (10th percentile ${fmt(k.pairs.sameLabel.p10)}); different labels in one part median ${fmt(k.pairs.otherLabelSamePart.median)} (90th percentile ${fmt(k.pairs.otherLabelSamePart.p90)}); closest label in another part median ${fmt(k.closestOtherPartMedian)}.`,
-      ` 去掉整段录音的平均声音后：同标签中位数 ${fmt(k.pairs.sameLabel.median)}（10% 分位 ${fmt(k.pairs.sameLabel.p10)}）；同段不同标签中位数 ${fmt(k.pairs.otherLabelSamePart.median)}（90% 分位 ${fmt(k.pairs.otherLabelSamePart.p90)}）；其他分段最接近标签的中位数 ${fmt(k.closestOtherPartMedian)}。`,
-    );
-    return `${t(
-      `Voice check: ${s.samples} samples analysed, ${s.labels} speaker labels resolved into ${s.voices} voices (matched ${b.matched}, new ${b.new_identity}, ambiguous ${b.ambiguous}, too few samples ${b.unresolved}, conflicting ${b.conflict}).${s.error ? ` ${s.error}` : ""}`,
-      `声音检查：分析 ${s.samples} 个样本，${s.labels} 个说话人标签归为 ${s.voices} 个声音（已匹配 ${b.matched}，新建 ${b.new_identity}，存疑 ${b.ambiguous}，样本太少 ${b.unresolved}，互相矛盾 ${b.conflict}）。${s.error ? ` ${s.error}` : ""}`,
-    )}${headCountText}${mixedText}${pairText}${cross}${centeredText}`;
+    if (!result.labels) return t("The original transcription had no speaker labels to group.", "原始转录没有可归组的说话人标签。");
+    const unresolved = result.labels - result.byState.matched - result.byState.new_identity;
+    const counts = uiLanguage === "ms"
+      ? `Kumpulan suara yang dikesan: ${result.voices}. Label sumber yang belum dipadankan: ${unresolved}.`
+      : t(`Anonymous voice groups detected: ${result.voices}. Unassigned source labels: ${unresolved}.`,
+          `自动检测到 ${result.voices} 个匿名声音组。仍有 ${unresolved} 个来源标签未归组。`);
+    return expectedVoices !== undefined && result.voices > expectedVoices
+      ? `${counts} ${t("Some voices were too different to combine.", "部分声音差异较大，已单独保留。")}`
+      : counts;
   }
   /** Local voice check for one non-chunked recording; saves the result and returns a notice. */
   async function checkSingleRecordingVoices(source: Meeting): Promise<string> {
@@ -754,7 +814,7 @@ export function MeetingWorkspace({
         return t(
           `Local voice check: ${comparedLabels} speaker labels compared, ${mergedLabels} merged by voice, ${unresolvedLabels} left unresolved. Undo restores the previous speakers.`,
           `本地声音检查：比较了 ${comparedLabels} 个说话人标签，按声音合并 ${mergedLabels} 个，${unresolvedLabels} 个保持未解决。撤销可恢复之前的说话人。`,
-        );
+        ) + recoveredTurnText(source, single.meeting);
       } finally {
         provider.dispose();
         finishRequest(controller);
@@ -762,6 +822,7 @@ export function MeetingWorkspace({
     });
   }
   async function analyzeAcousticVoices() {
+    if (invalidLocalVoiceCount) return;
     setAcousticConfirm(false);
     setProcessingKind("local");
     setProcessing(true);
@@ -786,7 +847,6 @@ export function MeetingWorkspace({
         if (!manifest) throw new Error("The chunk manifest is missing. Reattach or restore the long recording before local analysis.");
         controller = beginRequest(latest.id);
         acousticProvider = new WavLmSpeakerEmbeddingProvider({ allowRemoteDownload: true });
-        const expectedVoices = /^\d{1,2}$/.test(expectedSpeakers.trim()) && Number(expectedSpeakers) >= 1 ? Number(expectedSpeakers) : undefined;
         const analyzed = await analyzeExistingMeetingAcoustics(latest, {
           expectedVoices,
           manifest,
@@ -806,7 +866,7 @@ export function MeetingWorkspace({
         });
         await persist(analyzed);
         navigateTab("speakers");
-        setNotice(`${t("Anonymous voice continuity was updated locally. Ambiguous voices remain unresolved.", "匿名声音连续性已在本地更新。模糊声音保持未解决状态。")} ${await acousticSummaryText(latest.id, expectedVoices)}`);
+        setNotice(`${t("Anonymous voice continuity was updated locally. Ambiguous voices remain unresolved.", "匿名声音连续性已在本地更新。模糊声音保持未解决状态。")} ${await acousticSummaryText(latest.id, expectedVoices)}${recoveredTurnText(latest, analyzed)}`);
       });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Local speaker analysis did not complete.");
@@ -836,7 +896,7 @@ export function MeetingWorkspace({
           throw new Error("This meeting belongs to a different recording. Create a new meeting to preserve its source evidence.");
         if (!m.audio && m.segments.some((s) => s.start !== null) && !confirm(t("Confirm this is the original recording for the imported timestamps. Verify playback before relying on the evidence.", "请确认这是导入时间戳对应的原始录音。依赖此证据前请验证播放。")))
           return;
-        onUpdate(await saveMeeting({ ...m, audio: info }, file));
+        onUpdate(await saveMeeting({ ...m, audio: retainRecordingOverlap(m.audio, info) }, file));
       }
     } catch (e) {
       onError(e instanceof Error ? e.message : "Could not attach recording.");
@@ -943,6 +1003,11 @@ export function MeetingWorkspace({
   const page = Math.min(transcriptPage, Math.max(0, Math.ceil(groups.length / pageSize) - 1));
   const visibleGroups = groups.slice(page * pageSize, (page + 1) * pageSize);
   const evidenceHasTime = !!evidence && evidence.start !== null && evidence.end !== null && Number.isFinite(evidence.start) && Number.isFinite(evidence.end) && evidence.start >= 0 && evidence.end > evidence.start;
+  const zipBackupLabel = m.audio?.chunked
+    ? t("Meeting backup (long audio not included)", "会议备份（不含长录音）")
+    : m.audio?.present && url && !audioMissing
+      ? t("Full backup with audio", "完整备份（含录音）")
+      : t("Meeting backup (no audio)", "会议备份（不含录音）");
   const { workspaceRef, playerBarRef } = usePlayerClearance(canPlay);
   return (
     <div ref={workspaceRef} data-unsaved-edit={deletedRemotely || undefined} className={`${canPlay ? "workspace has-player" : "workspace"}${tab === "memo" && miniPlayer ? " memo-mini-active" : ""}`}>
@@ -989,7 +1054,7 @@ export function MeetingWorkspace({
                   }}
                 >
                   {f === "zip"
-                    ? t("Full backup with audio", "完整备份（含录音）")
+                    ? zipBackupLabel
                     : f === "json"
                       ? t("Meeting JSON (no audio)", "会议 JSON（不含录音）")
                       : `${f.toUpperCase()} ${t("notes", "笔记")}`}
@@ -1036,7 +1101,7 @@ export function MeetingWorkspace({
                 ? `${(m.audio.size / 1024 / 1024).toFixed(1)} MB${duration ? ` · ${formatTime(duration)}` : ""}${audioMissing ? ` · ${t("audio missing on this device", "此设备缺少录音")}` : ""}`
                 : t("Import audio to transcribe, or work from a transcript.", "导入录音进行转录，或使用已有转录。")}
             </small>
-            {m.audio?.chunked && (
+            {m.audio?.chunked && chunkManifest?.meetingId === m.id && (
               <div className="small muted">
                 {t(`This recording plays from ${m.audio.chunked.chunkCount} local parts.`, `此录音由 ${m.audio.chunked.chunkCount} 个本地部分播放。`)}
               </div>
@@ -1271,6 +1336,7 @@ export function MeetingWorkspace({
                 // Inspection is a view selection; it never rewrites or bulk-selects sources.
                 const inspected = group.segments.find((segment) => segment.id === highlight)
                   ?? group.segments.find((segment) => segment.id === inspectedFragment) ?? first;
+                const neighborName = overlap && matchingOverlapNeighbors(m, inspected, segmentIndexById.get(inspected.id) ?? -1);
                 return <div key={first.id} className="transcript-group">
                   {group.segments.length > 1 && <div className="transcript-group-summary">
                     <div className="passage-meta">
@@ -1284,6 +1350,8 @@ export function MeetingWorkspace({
                         }} />
                       <strong>{first.speakerIds.length ? speakerName(m, first.speakerIds) : t("Unknown speaker", "未知说话人")}</strong>
                       {first.speakerIds.length > 1 && <Pill>{t("Overlap / multiple", "重叠／多人")}</Pill>}
+                      {overlap && group.segments.some(s => detectedOverlap(overlap, s.start, s.end)) &&
+                        <OverlapNotice evidence={overlap} unknown={!first.speakerIds.length} t={t} />}
                       {first.speakerIds.some((id) => !m.speakers.find((speaker) => speaker.id === id)?.confirmed) && <span className="small muted">{t("Unconfirmed", "未确认")}</span>}
                       <Button className="time-link" disabled={first.start === null || !canPlay}
                         onClick={() => first.start !== null && cueRange(first.start, last.end)}>
@@ -1350,6 +1418,8 @@ export function MeetingWorkspace({
                   <div className="passage-content">
                     <div className="passage-meta">
                       <strong>{s.speakerIds.length ? speakerName(m, s.speakerIds) : t("Unknown speaker", "未知说话人")}</strong>
+                      {overlap && detectedOverlap(overlap, s.start, s.end) &&
+                        <OverlapNotice evidence={overlap} unknown={!s.speakerIds.length} t={t} />}
                       {s.speakerIds.length > 1 && (
                         <Pill>{t("Overlap / multiple", "重叠／多人")}</Pill>
                       )}
@@ -1369,6 +1439,7 @@ export function MeetingWorkspace({
                       {s.reviewed && <Icon glyph={Check} size="small" className="green-text" />}
                     </div>
                     <p>{s.text}</p>
+                    {neighborName && <p className="small muted">{t("Both neighboring passages are {name}.", "前后两段均为 {name}。").replace("{name}", () => neighborName)}</p>}
                     {s.text !== s.originalText && (
                       <details className="original-text">
                         <summary>{t("Original text", "原始文字")}</summary>
@@ -1847,7 +1918,7 @@ export function MeetingWorkspace({
         <section className={`notice memo-plan-progress${p.state === "blocked" ? " sand" : ""}`} key={p.id} aria-label={t("Long memo progress", "长纪要进度")}>
           <strong role="status">{t("Long memo", "长纪要")} · {p.results.filter(Boolean).length}/{p.chunks.length} {t("extractions saved", "步提取已保存")}</strong>
           <span>{t("State", "状态")}: {uiLanguage === "zh-CN" ? ({ready:"待执行",running:"执行中",paused:"已暂停",blocked:"已停止，需核对",completed:"已完成"})[p.state] : p.state}</span>
-          {!processing && p.state !== "completed" && <Button className="button secondary" disabled={locked} onClick={() => prepareConfirmation("memo")}>{t("Review generation plan", "查看生成计划")}</Button>}
+          {!processing && p.state !== "completed" && p.sourceRevision === m.revision && <Button className="button secondary" disabled={locked} onClick={() => prepareConfirmation("memo", p)}>{t("Review generation plan", "查看生成计划")}</Button>}
         </section>
       ))}
       {(m.jobs.length > 0 || m.runs.length > 0) && (
@@ -1946,8 +2017,8 @@ export function MeetingWorkspace({
               preload="metadata"
               onLoadedMetadata={(e) => {
                 const d = e.currentTarget.duration;
-                if (Number.isFinite(d) && !m.audio?.chunked && m.audio && m.audio.duration !== d && !saving)
-                  void persistQuietly({ ...m, audio: { ...m.audio, duration: d } });
+                if (Number.isFinite(d) && !m.audio?.chunked && m.audio && m.audio.duration !== d)
+                  setMeasuredAudio({ hash: m.audio.hash, duration: d });
               }}
               onTimeUpdate={(e) => {
                 if (playUntil.current !== null && e.currentTarget.currentTime >= playUntil.current) {
@@ -2036,18 +2107,7 @@ export function MeetingWorkspace({
               {t("The model policy is uncalibrated. The app associates only sufficiently supported same-meeting voices; overlap, missing timing and conflicting evidence remain unresolved. Human names and edits are preserved and the operation can be undone as a new revision.", "模型策略尚未校准。应用只关联证据充分的同一会议声音；重叠、缺少时间或冲突证据保持未解决。人工姓名和编辑会保留，操作会作为新修订并可撤销。")}
             </p>
             {m.audio?.chunked && (
-              <label className="checkbox-label">
-                <span>{t("How many people spoke? (optional)", "大概有几个人说话？（可选）")}</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={50}
-                  inputMode="numeric"
-                  value={expectedSpeakers}
-                  onChange={(event) => setExpectedSpeakers(event.target.value)}
-                  style={{ width: "5em" }}
-                />
-              </label>
+              <ExpectedSpeakerCount input={expectedSpeakerInput} onChange={setExpectedSpeakerInput} invalid={invalidLocalVoiceCount} />
             )}
             {m.audio?.chunked && (
               <p className="small muted">
@@ -2056,7 +2116,7 @@ export function MeetingWorkspace({
             )}
             <div className="modal-actions">
               <Button className="button secondary" onClick={() => setAcousticConfirm(false)}>{t("Cancel", "取消")}</Button>
-              <Button className="button primary" disabled={deletedRemotely} onClick={() => void trackMeetingOperation(m.id, analyzeAcousticVoices)}>{t("Download and analyze locally", "下载并在本地分析")}</Button>
+              <Button className="button primary" disabled={deletedRemotely || invalidLocalVoiceCount} onClick={() => void trackMeetingOperation(m.id, analyzeAcousticVoices)}>{t("Download and analyze locally", "下载并在本地分析")}</Button>
             </div>
           </div>
         </Modal>
@@ -2073,21 +2133,21 @@ export function MeetingWorkspace({
             onReviewedRetry={setReviewedRetry}
             onRouteChange={route => {
               if (!confirmed.agentPlan || m.memoAgents?.some(plan => plan.id === confirmed.agentPlan!.id)) return;
-              setConfirmed({ ...confirmed, agentPlan: { ...confirmed.agentPlan, route } });
+              setConfirmed({ ...confirmed, draftRoute: route, agentPlan: { ...confirmed.agentPlan, route } });
               setCostAcknowledged(false);
               setReviewedRetry(false);
             }}
             onToggleReview={enabled => {
               if (!enabled && confirmed.agentPlan && m.memoAgents?.some(plan => plan.id === confirmed.agentPlan!.id)) {
-                void prepareConfirmation("memo");
+                // Leaving a saved Pi plan starts standard generation on the configured memo route.
+                setConfirmed(memoConfirmation({ ...getSelection("memo") }, template, "standard"));
                 return;
               }
-              try {
-                const agentPlan = enabled ? resumableAgentMemo(m, confirmed.selection, confirmed.template) ?? planAgentMemo(m, confirmed.selection, getMemoOutputLanguage(), confirmed.template) : undefined;
-                setConfirmed({ ...confirmed, agentPlan, outputLanguage: agentPlan?.outputLanguage ?? confirmed.plan?.outputLanguage ?? getMemoOutputLanguage() });
-              } catch (error) {
-                onError(error instanceof Error ? error.message : "Could not prepare selective review.");
+              const next = memoConfirmation(confirmed.selection, confirmed.template, enabled ? "pi" : "standard");
+              if (confirmed.draftRoute && next.agentPlan && !m.memoAgents?.some(plan => plan.id === next.agentPlan!.id)) {
+                next.agentPlan = { ...next.agentPlan, route: confirmed.draftRoute };
               }
+              setConfirmed({ ...next, draftRoute: confirmed.draftRoute });
             }}
             onReview={target => {
               const next = target === "speakers" ? "speakers" : "transcript";
@@ -2120,7 +2180,7 @@ export function MeetingWorkspace({
             <dl className="confirmation-list">
               <dt>{t("Destination", "接收方")}</dt>
               <dd>
-                {(confirmed?.selection ?? getSelection("speech")).provider === "openai"
+                {speechSelection.provider === "openai"
                   ? "OpenAI · api.openai.com"
                   : t("OpenRouter · openrouter.ai (routes to a model provider)", "OpenRouter · openrouter.ai（转发给模型服务商）")}
               </dd>
@@ -2131,7 +2191,7 @@ export function MeetingWorkspace({
                   : t(`Your complete recording (${((m.audio?.size || 0) / 1024 / 1024).toFixed(1)} MB)`, `完整录音（${((m.audio?.size || 0) / 1024 / 1024).toFixed(1)} MB）`)}
               </dd>
               <dt>{t("Model", "模型")}</dt>
-              <dd>{(confirmed?.selection ?? getSelection("speech")).model}</dd>
+              <dd>{speechSelection.model}</dd>
               <dt>{t("Estimated charge", "预计费用")}</dt>
               <dd>
                 {m.audio?.chunked
@@ -2175,7 +2235,11 @@ export function MeetingWorkspace({
                 )}
               </>
             )}
-            {m.audio && (m.audio.chunked || singleRecordingFormat(m.audio)) && (
+            {speechIsKnownTextOnly ? (
+              <p className="notice">
+                {t("This model returns text only. Choose a transcription model that returns speaker labels and timestamps to use automatic voice matching.", "此模型仅返回文本。要使用自动关联声音，请选择能返回说话人标签和时间戳的转录模型。")}
+              </p>
+            ) : m.audio && (m.audio.chunked || singleRecordingFormat(m.audio)) && (
               <div className="notice consent-notice" role="group" aria-label={t("Automatic speaker continuity", "自动说话人连续性")}>
                 <label className="checkbox-label">
                   <input
@@ -2188,18 +2252,7 @@ export function MeetingWorkspace({
                     : t("After transcription, automatically group speaker labels that share the same voice (may download the speaker model once, about 102 MB, from huggingface.co). Needs a model that returns speaker labels and timestamps.", "转录后自动把声音相同的说话人标签归为一人（可能会从 huggingface.co 一次性下载约 102 MB 的说话人模型）。需要返回说话人标签和时间戳的模型。")}
                 </label>
                 {m.audio.chunked && (
-                  <label className="checkbox-label">
-                    <span>{t("How many people spoke? (optional)", "大概有几个人说话？（可选）")}</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={50}
-                      inputMode="numeric"
-                      value={expectedSpeakers}
-                      onChange={(event) => setExpectedSpeakers(event.target.value)}
-                      style={{ width: "5em" }}
-                    />
-                  </label>
+                  <ExpectedSpeakerCount input={expectedSpeakerInput} onChange={setExpectedSpeakerInput} invalid={invalidTranscriptionVoiceCount} />
                 )}
                 <SpeakerModelNotice t={t} context="transcription" />
               </div>
@@ -2212,9 +2265,8 @@ export function MeetingWorkspace({
                 {t("Audio uploads are limited to 25 MB. Speaker labels and timestamps depend on the chosen model and returned result; missing evidence stays unknown.", "录音上传上限为 25 MB。说话人标签和时间戳取决于所选模型及其返回结果；缺少的证据保持未知。")}
               </p>
             )}
-            {confirmStage === "speech" &&
-              getSelection("speech").provider === "openai" &&
-              getSelection("speech").model === "gpt-4o-transcribe-diarize" &&
+            {speechSelection.provider === "openai" &&
+              speechSelection.model === "gpt-4o-transcribe-diarize" &&
               duration > 1400 && (
                 <div className="notice sand">
                   <span>
@@ -2236,7 +2288,7 @@ export function MeetingWorkspace({
               </Button>
               <Button
                 className="button primary"
-                disabled={!getKey((confirmed?.selection ?? getSelection("speech")).provider) || (Boolean(m.audio?.chunked && chunkProgress?.blockedIndex !== null && chunkProgress?.blockedIndex !== undefined) && !reviewedRetry)}
+                disabled={locked || invalidTranscriptionVoiceCount || !getKey(speechSelection.provider) || (Boolean(m.audio?.chunked && chunkProgress?.blockedIndex !== null && chunkProgress?.blockedIndex !== undefined) && !reviewedRetry)}
                 onClick={() => void process()}
               >
                 {m.audio?.chunked
@@ -2244,7 +2296,7 @@ export function MeetingWorkspace({
                   : t("Confirm and send", "确认并发送")}
               </Button>
             </div>
-            {!getKey((confirmed?.selection ?? getSelection("speech")).provider) && (
+            {!getKey(speechSelection.provider) && (
               <a
                 href="#/settings"
                 className="text-button"

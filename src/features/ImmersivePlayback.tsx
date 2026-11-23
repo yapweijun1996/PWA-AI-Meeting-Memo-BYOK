@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { Button } from "../components/controls";
 import { Icon } from "../components/Icon";
 import { SpeakerAvatar, useSpeakerAvatars } from "../components/SpeakerAvatar";
@@ -7,6 +8,8 @@ import type { Meeting } from "../domain/model";
 import { formatTime, speakerName } from "../domain/operations";
 import { buildPlaybackCaptions, captionsAtTime, captionContextAtTime, fragmentsAtTime, playbackBoundaries, playbackCaptionWindowStart, snapToPlaybackInterval } from "../domain/playback";
 import type { PlaybackClockStore, PlaybackStatus } from "./usePlaybackClock";
+import { detectedOverlap, recordingOverlap } from "../domain/overlap-evidence";
+import { OverlapNotice } from "./OverlapNotice";
 
 type Props = {
   meeting: Meeting; clock: PlaybackClockStore; position: number; duration: number; rate: number;
@@ -82,7 +85,8 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
   const commands = useRef({ onSeek, onTogglePlayback, duration, clock });
   commands.current = { onSeek, onTogglePlayback, duration, clock };
   const captions = useMemo(() => buildPlaybackCaptions(meeting.segments), [meeting.segments]);
-  const boundaries = useMemo(() => playbackBoundaries(meeting.segments, captions), [meeting.segments, captions]);
+  const overlap = recordingOverlap(meeting.audio);
+  const boundaries = useMemo(() => playbackBoundaries(meeting.segments, captions, overlap?.intervals), [meeting.segments, captions, overlap]);
   const subscribe = useCallback((listener: () => void) => open ? clock.subscribe(listener) : () => {}, [clock, open]);
   const exact = useSyncExternalStore(subscribe, () => open ? snapToPlaybackInterval(boundaries, clock.getPosition()) : 0, () => 0);
   const current = useMemo(() => captionsAtTime(captions, exact), [captions, exact]);
@@ -268,6 +272,9 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
     restorePage.current = restore;
     document.body.style.overflow = "hidden";
     exitButton.current?.focus();
+    const appRoot = opener.current?.closest<HTMLElement>("#root");
+    const wasInert = appRoot?.inert ?? false;
+    if (appRoot) appRoot.inert = true;
     const changed = () => {
       const isFullscreen = document.fullscreenElement === host.current;
       setFullscreenActive(isFullscreen);
@@ -306,6 +313,7 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
       const pendingExit = exitingFullscreen.current ?? (host.current && document.fullscreenElement === host.current ? exitClosedFullscreen(host.current) : null);
       document.removeEventListener("fullscreenchange", changed);
       document.removeEventListener("keydown", key);
+      if (appRoot) appRoot.inert = wasInert;
       document.body.style.overflow = previousOverflow;
       void Promise.resolve(pendingExit).then(restore);
     };
@@ -419,7 +427,7 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
   const jumpToCurrent = () => { setSearch(""); setFollow(true); setPauseReason(""); };
   return <>
     <Button ref={opener} type="button" className="button secondary compact" onClick={enter}><Icon glyph={Maximize2} size="compact" /> {t("Immersive playback", "沉浸式播放")}</Button>
-    <div ref={host} hidden={!open} className="immersive" role="dialog" aria-modal="true" aria-label={t("Immersive playback", "沉浸式播放")}>
+    {createPortal(<div ref={host} hidden={!open} className="immersive" role="dialog" aria-modal="true" aria-label={t("Immersive playback", "沉浸式播放")}>
       {open && <>
         <header ref={header} hidden={!controlsVisible} className="immersive-header"><strong>MeetingMemo</strong><span role="group" aria-label={t("Meeting title", "会议标题")}>{meeting.title}</span><Button className="immersive-fullscreen-toggle" type="button" onClick={toggleFullscreen} aria-label={fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Enter full screen", "\u8fdb\u5165\u5168\u5c4f")}>{fullscreenActive ? <Icon glyph={Minimize2} size="status" /> : <Icon glyph={Maximize2} size="status" />}<span className="immersive-fullscreen-label">{fullscreenActive ? t("Exit full screen", "\u9000\u51fa\u5168\u5c4f") : t("Full screen", "\u5168\u5c4f")}</span></Button><Button className="immersive-exit-button" ref={exitButton} type="button" onClick={close} aria-label={t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}><Icon glyph={X} size="status" /><span className="immersive-exit-label">{t("Exit immersive", "\u9000\u51fa\u6c89\u6d78\u6a21\u5f0f")}</span></Button></header>
         {fallback && <p className="immersive-fallback" role="status">{t("Full screen is unavailable; using the in-page view.", "无法使用全屏，正在使用页面内视图。")}</p>}
@@ -475,6 +483,8 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
             </div>}
             {/* Two fixed lines, so a status or context message appearing never moves what is below it. */}
             <div className="immersive-status">
+              {overlap && current.length > 0 && detectedOverlap(overlap, exact) &&
+                <OverlapNotice evidence={overlap} unknown={activeUnknown} t={t} />}
               <p className={`immersive-state${status === "error" || status === "buffering" ? "" : " immersive-sr-only"}`}>{state}</p>
               {showTable && (activeUnknown || (!current.length && contextUnknown)) && <p className="immersive-state">{activeUnknown ? t("Unknown speaker at this position", "此位置有未知说话人") : t("Previous unknown speaker · context only", "上一位未知说话人 · 仅显示上下文")}</p>}
               <p className="immersive-state immersive-sr-only">{contextOnly ? t("Between words · context only", "词语间隙 · 仅显示上下文") : lastCaptions.length ? retainedLabel : " "}</p>
@@ -522,6 +532,6 @@ export function ImmersivePlayback({ meeting, clock, position, duration, rate, pl
           <p id="immersive-keyboard-help" className="immersive-keyboard-help">{t("Focus the stage: Space plays or pauses; arrow keys skip 5 seconds.", "聚焦舞台后：空格播放或暂停；方向键跳转 5 秒。")}</p>
         </footer>
       </>}
-    </div>
+    </div>, document.body)}
   </>;
 }

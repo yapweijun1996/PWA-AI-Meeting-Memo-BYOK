@@ -1,3 +1,4 @@
+import { recoverUnknownTurns } from "./unknown-turn-recovery";
 import {
   ACOUSTIC_POLICY,
   acousticSourceKey,
@@ -96,7 +97,11 @@ export async function analyzeSingleRecordingVoices(
   }
   const part: AcousticSourcePart = { index: 0, ownStartSeconds: 0, ownDurationSeconds: duration, leadInSeconds: 0 };
   const selection = selectAcousticSamples([{ chunk: part, speech }]);
-  if (!selection.samples.length) {
+  // Imported diarization may label only the working projection of an originally
+  // unlabelled run. Those current anchors still have independently testable audio.
+  const hasUnattributedSource = latestRun?.originalSegments.some(s => !s.speakerIds.length) &&
+    meeting.segments.some(s => !s.speakerIds.length) && meeting.segments.some(s => s.speakerIds.length === 1);
+  if (!selection.samples.length && !hasUnattributedSource) {
     throw new Error("No clean, timed single-speaker passages were found. The transcript may lack speaker labels or timestamps, or the speakers overlap.");
   }
 
@@ -211,11 +216,17 @@ export async function analyzeSingleRecordingVoices(
   const grouped = assignments.filter(
     (assignment) => assignment.identityId && (perIdentity.get(assignment.identityId) ?? 0) > 1 && !rejectedIdentities.has(assignment.identityId),
   );
+  const recovered = await recoverUnknownTurns({
+    source: { audio: latest.audio, verifiedHash: audio.hash },
+    segments: latest.segments, originals: latestRun?.originalSegments ?? [], parts: [part],
+    readPart: async () => bytes, format, provider, signal,
+  });
   const projected = applyAcousticAssignmentsToMeeting(
     latest,
     grouped,
     clustered.identities,
     (assignment) => assignment.sourceSpeakerId,
+    recovered,
   );
   const compared = new Set(assignments.map((assignment) => acousticSourceKey(assignment.chunkIndex, assignment.sourceSpeakerId))).size;
   const mergedLabels = grouped.length - new Set(grouped.map((assignment) => assignment.identityId)).size;

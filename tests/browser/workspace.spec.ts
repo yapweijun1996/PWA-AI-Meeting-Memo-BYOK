@@ -228,7 +228,7 @@ test("full backup restores as a new copy without replacing the original", async 
   await create(page, "Backup round trip");
   await page.getByText("Export", { exact: true }).click();
   const download = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Full backup with audio" }).click();
+  await page.getByRole("button", { name: "Meeting backup (no audio)" }).click();
   const file = await download,
     path = testInfo.outputPath("meeting.zip");
   await file.saveAs(path);

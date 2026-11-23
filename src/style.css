@@ -2606,6 +2606,7 @@ details[open] > summary {
 .immersive-controls { display: flex; flex-direction: column; gap: 8px; padding: 10px max(18px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left)); border-top: 1px solid var(--immersive-border); background: var(--immersive-controls-bg); }
 .immersive-timeline, .immersive-control-row { display: flex; align-items: center; gap: 9px; width: 100%; }
 .immersive-control-row { flex-wrap: wrap; justify-content: center; }
+.immersive-control-row select { width: auto; margin: 0; }
 .immersive-view-mode { display: flex; gap: 4px; }
 .immersive-view-mode button[aria-pressed="true"] { border-color: var(--immersive-accent); background: var(--immersive-control-selected-bg); color: var(--action-selected-text); }
 .immersive-keyboard-help { margin: 0; color: var(--immersive-text-muted); font-size: var(--font-size-immersive-keyboard-help); text-align: center; }
@@ -3216,12 +3217,14 @@ details[open] > summary {
     font-size: var(--text-base);
   }
   .sidebar {
+    visibility: hidden;
     transform: translateX(-100%);
     transition: transform 0.2s;
     width: 246px;
     --sidebar-brand-base-padding: calc(30px + env(safe-area-inset-top, 0px));
   }
   .sidebar.open {
+    visibility: visible;
     transform: translateX(0);
   }
   .brand {
@@ -4615,3 +4618,4 @@ body:has(.audio-player) .toast-layer { bottom: calc(150px + env(safe-area-inset-
 .storage-parts > div { display: flex; justify-content: space-between; gap: 12px; }
 .storage-parts dt, .storage-parts dd { margin: 0; }
 .storage-parts dd { font-variant-numeric: tabular-nums; }
+.overlap-notice { overflow-wrap: anywhere; }

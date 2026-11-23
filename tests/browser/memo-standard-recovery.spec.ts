@@ -2,7 +2,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import type { Meeting } from "../../src/domain/model";
 import { captureExtraction, planMemo } from "../../src/providers/memo-plan";
-import { key, readPiMeeting, setup } from "./helpers/memo-pi";
+import { chooseStandardMemo, key, readPiMeeting, setup } from "./helpers/memo-pi";
 
 test.use({ serviceWorkers: "block" });
 
@@ -68,6 +68,7 @@ async function submit(page: Page, stage: "single" | "extraction" | "synthesis" =
   });
   await page.getByRole("button", { name: stage === "synthesis" ? "Review generation plan" : "Generate meeting notes", exact: true }).first().click();
   const dialog = page.getByRole("dialog");
+  if (stage !== "synthesis") await chooseStandardMemo(dialog);
   if (stage !== "single") await expect(dialog).toContainText("extraction requests and one synthesis request");
   await expect(dialog.getByRole("checkbox", { name: /Use selective transcript review/ })).not.toBeChecked();
   await dialog.getByRole("checkbox", { name: /I understand the selected data/ }).check();

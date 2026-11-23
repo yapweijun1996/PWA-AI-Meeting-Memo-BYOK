@@ -1,6 +1,12 @@
 import {expect, test} from "@playwright/test";
 
-test.beforeEach(async ({page}) => {await page.goto("/");});
+const clockStart = new Date("2026-01-01T00:00:00Z");
+const beforeOperation = new Date("2026-01-02T00:00:00Z");
+
+test.beforeEach(async ({page}) => {
+  await page.clock.install({time: clockStart});
+  await page.goto("/");
+});
 
 test("shared field exposes its retained draft and error description; pending controls submit once", async ({page}) => {
   const field = page.getByRole("textbox", {name:"Synthetic shared field",exact:true});
@@ -13,11 +19,13 @@ test("shared field exposes its retained draft and error description; pending con
   await field.fill("Unsaved local draft");
   const action = page.getByRole("button", {name:"Run synthetic operation",exact:true});
   await action.focus();
+  await page.clock.pauseAt(beforeOperation);
   await page.keyboard.press("Enter");
   await expect(action).toBeDisabled();
   await expect(action).toHaveAttribute("aria-busy","true");
   await page.keyboard.press("Enter");
   await expect(page.getByText("Synthetic operation count: 1",{exact:true})).toBeVisible();
+  await page.clock.fastForward(300);
   await expect(action).toBeEnabled();
   await expect(field).toHaveValue("Unsaved local draft");
 });
@@ -54,12 +62,15 @@ test('choice menu selects with keys, preserves focus and blocks duplicate change
   await page.keyboard.press('Home');
   await expect(page.getByRole('menuitemradio',{name:'First choice',exact:true})).toBeFocused();
   await page.keyboard.press('ArrowDown');
+  // Observe the pending state before explicitly completing the synthetic save.
+  await page.clock.pauseAt(beforeOperation);
   await page.keyboard.press('Enter');
   await expect(trigger).toContainText('Second choice');
   await expect(trigger).toBeFocused();
   await expect(trigger).toHaveAttribute('aria-busy','true');
   await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('menu')).toHaveCount(0);
+  await page.clock.fastForward(300);
   await expect(trigger).not.toHaveAttribute('aria-busy','true');
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Escape');

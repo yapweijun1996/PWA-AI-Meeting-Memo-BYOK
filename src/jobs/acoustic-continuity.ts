@@ -1,3 +1,4 @@
+import { recoverChunkUnknownTurns } from "./unknown-turn-recovery";
 import {
   ACOUSTIC_POLICY,
   acousticSourceKey,
@@ -38,6 +39,7 @@ import {
   putAcousticCheckpoint,
   putAcousticEmbedding,
   putAcousticIdentity,
+  replaceAcousticGroups,
 } from "../storage/acoustic-store";
 import { getMeeting } from "../storage/repository";
 
@@ -254,7 +256,9 @@ export async function runAcousticContinuity(
       if (!speech) throw new Error(`Saved speech for chunk ${meta.index + 1} is missing.`);
       const input: AcousticChunkInput = { chunk: meta, speech };
       const selection = selectAcousticSamples([input]);
-      const sourceKeys = [...new Set(selection.samples.map((sample) => acousticSourceKey(sample.chunkIndex, sample.sourceSpeakerId)))];
+      const sourceKeys = [...new Set(speech.segments.flatMap((segment) =>
+        segment.speakerIds.map((id) => acousticSourceKey(meta.index, id)),
+      ))];
       const identities = await listAcousticIdentities(meetingId);
       const localEmbeddings: AcousticEmbeddingRecord[] = [];
       const usedIdentityIds = new Set<string>();
@@ -324,7 +328,6 @@ export async function runAcousticContinuity(
         const chunkIndex = Number(chunkIndexText);
         if (!Number.isInteger(chunkIndex) || !sourceSpeakerId) continue;
         const embeddings = sourceEmbeddings(localEmbeddings, chunkIndex, sourceSpeakerId);
-        if (!embeddings.length) continue;
         const previous = await getAcousticAssignment(meetingId, sourceKey);
         if (
           previous &&
@@ -435,15 +438,19 @@ export async function runAcousticContinuity(
           expectedVoices: options.expectedVoices,
           constraints,
         });
-        await deleteAcousticAssignments(meetingId);
-        await deleteAcousticIdentities(meetingId);
-        for (const identity of decided.identities) await putAcousticIdentity(identity);
+        // The matcher works on vectors. Preserve source labels that occurred only
+        // in short, overlapping or unusable audio, including before a resume.
+        const withoutEvidence = (await listAcousticAssignments(meetingId)).filter((assignment) =>
+          assignment.recordingHash === options.recordingHash && assignment.sourceRevision === options.sourceRevision &&
+          assignment.state === "unresolved" && !assignment.evidenceEmbeddingIds.length,
+        );
+        const replacements = decided.assignments.map((value) => ({
+          ...value, id: `${meetingId}:${value.sourceKey}`, updatedAt: now(),
+        }));
+        const resolvedKeys = new Set(replacements.map((assignment) => assignment.sourceKey));
         allAssignments.length = 0;
-        for (const value of decided.assignments) {
-          const assignment: AcousticAssignment = { ...value, id: `${meetingId}:${value.sourceKey}`, updatedAt: now() };
-          await putAcousticAssignment(assignment);
-          allAssignments.push(assignment);
-        }
+        allAssignments.push(...replacements, ...withoutEvidence.filter((assignment) => !resolvedKeys.has(assignment.sourceKey)));
+        await replaceAcousticGroups(checkpoint, decided.identities, allAssignments);
         options.onProgress?.({ phase: "assignment", done: allAssignments.length, total: allAssignments.length });
       }
     }
@@ -601,24 +608,27 @@ export async function exportVoiceEvaluation(meetingId: string): Promise<VoiceEva
   return buildVoiceEvaluationExport(meeting, embeddings, assignments);
 }
 
-/** Read-only summary of saved local voice analysis, so results are visible after the fact. */
-export async function describeAcousticState(meetingId: string): Promise<AcousticStateSummary> {
-  const [checkpoint, assignments, allEmbeddings] = await Promise.all([
-    getAcousticCheckpoint(meetingId),
-    listAcousticAssignments(meetingId),
-    listAcousticEmbeddings(meetingId),
-  ]);
-  const current = embeddingsOfCheckpoint(checkpoint, allEmbeddings);
+/** Normal completion notices only need assignment counts for the latest checkpoint. */
+export async function readAcousticOutcome(meetingId: string) {
+  const [checkpoint, rows] = await Promise.all([getAcousticCheckpoint(meetingId), listAcousticAssignments(meetingId)]);
+  const assignments = rows.filter((row) =>
+    row.recordingHash === checkpoint?.recordingHash && row.sourceRevision === checkpoint.sourceRevision,
+  );
   const byState: Record<AcousticAssignmentState, number> = { matched: 0, new_identity: 0, ambiguous: 0, unresolved: 0, conflict: 0, stale: 0 };
-  for (const assignment of assignments) byState[assignment.state] += 1;
+  const voices = new Set<string>();
+  for (const row of assignments) {
+    byState[row.state] += 1;
+    if (row.identityId && (row.state === "matched" || row.state === "new_identity")) voices.add(row.identityId);
+  }
+  return { checkpointState: checkpoint?.state ?? null, error: checkpoint?.error ?? null, labels: assignments.length, voices: voices.size, byState };
+}
+
+/** Detailed vector diagnostics for offline analysis and calibration. */
+export async function describeAcousticState(meetingId: string): Promise<AcousticStateSummary> {
+  const [outcome, current] = await Promise.all([readAcousticOutcome(meetingId), listCurrentAcousticEmbeddings(meetingId)]);
   return {
-    checkpointState: checkpoint?.state ?? null,
-    error: checkpoint?.error ?? null,
-    // Count vectors in use, not only newly computed ones (a re-run reuses cached vectors).
+    ...outcome,
     samples: current.length,
-    labels: assignments.length,
-    voices: new Set(assignments.filter((a) => a.identityId && (a.state === "matched" || a.state === "new_identity")).map((a) => a.identityId)).size,
-    byState,
     crossPart: crossPartSimilarity(current),
     pairs: pairStatistics(current),
     centered: (() => {
@@ -663,6 +673,8 @@ export async function analyzeExistingMeetingAcoustics(
   // Keep current text, segment IDs, revisions, reviewed flags, memo sources,
   // and human edits intact. Only the speaker attribution projection changes;
   // editMeeting records one undo snapshot and invalidates derived citations.
-  return applyAcousticAssignmentsToMeeting(latest, assignments, identities);
+  const original = [...latest.runs].reverse().find(run => run.originalSegments.length > 0);
+  const recovered = await recoverChunkUnknownTurns(latest, options.manifest, latest.segments, original?.originalSegments ?? [], options.provider, options.signal);
+  return applyAcousticAssignmentsToMeeting(latest, assignments, identities, undefined, recovered);
 }
 

@@ -131,6 +131,8 @@ try {
       await page
         .getByRole("button", { name: "Generate meeting notes", exact: true })
         .click();
+      // Exercise the standard request's explicit Stop waiting action.
+      await page.getByRole("checkbox", {name: /Use selective transcript review/}).uncheck();
       await page
         .getByRole("checkbox", { name: "I understand the selected data will be sent and may incur API charges.", exact: true })
         .check();

@@ -1,3 +1,4 @@
+import { flushSync } from "react-dom";
 import { Button } from "./components/controls";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { PaletteMenu } from "./components/ChoiceMenu";
@@ -94,6 +95,26 @@ export default function App() {
     [newOpen, setNewOpen] = useState(false),
     [mobileNav, setMobileNav] = useState(false),
     [help, setHelp] = useState(false);
+  const mobileMenuButton = useRef<HTMLButtonElement>(null);
+  const sidebarHome = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    if (!mobileNav) return;
+    sidebarHome.current?.focus({ preventScroll: true });
+    const phone = matchMedia("(max-width: 760px)");
+    const onResize = () => { if (!phone.matches) setMobileNav(false); };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || document.querySelector("dialog[open]")) return;
+      event.preventDefault();
+      setMobileNav(false);
+    };
+    phone.addEventListener("change", onResize);
+    document.addEventListener("keydown", onEscape);
+    return () => {
+      phone.removeEventListener("change", onResize);
+      document.removeEventListener("keydown", onEscape);
+      if (phone.matches && !document.querySelector("dialog[open]")) mobileMenuButton.current?.focus({ preventScroll: true });
+    };
+  }, [mobileNav]);
   const hasMeetings = meetings.length > 0;
   const [online, setOnline] = useState(navigator.onLine);
   const [topHidden, setTopHidden] = useState(false),
@@ -246,8 +267,11 @@ export default function App() {
     const pendingId = pendingAgentMeetingId();
     if (pendingId && pendingId !== unavailableRecoveryId) throw new Error("Save or export the unsaved review response before leaving this meeting.");
     await refresh();
-    setNewOpen(false);
-    setLoading(true);
+    // An already-confirmed PWA update checks the open dialog as soon as this operation settles.
+    flushSync(() => {
+      setNewOpen(false);
+      setLoading(true);
+    });
     navigate(`/meetings/${m.id}`);
   }
   async function restore(file?: File) {
@@ -296,6 +320,7 @@ export default function App() {
       <ToastLayer />
       <a
         className="skip-link"
+        inert={mobileNav}
         href="#main-content"
         onClick={(e) => {
           e.preventDefault();
@@ -312,7 +337,7 @@ export default function App() {
         />
       )}
       <aside id="app-sidebar" className={`sidebar ${mobileNav ? "open" : ""}`}>
-        <a className="brand-link" href="#/" aria-label={t("Meeting Memo home", "Meeting Memo 首页")}>
+        <a ref={sidebarHome} className="brand-link" onClick={() => setMobileNav(false)} href="#/" aria-label={t("Meeting Memo home", "Meeting Memo 首页")}>
           <Brand />
         </a>
         <p className="nav-label">{t("WORKSPACE", "工作空间")}</p>
@@ -326,7 +351,7 @@ export default function App() {
                 ? "active"
                 : ""
             }
-            onClick={() => setFilter("all")}
+            onClick={() => { setFilter("all"); setMobileNav(false); }}
           >
             <Icon glyph={FolderOpen} size="navigation" />
             <span className="nav-text">{t("Your meetings", "您的会议")}</span><span className="nav-count">{meetings.length}</span>
@@ -414,6 +439,7 @@ export default function App() {
         <div className="sidebar-bottom">
           <a
             href="#/settings"
+            onClick={() => setMobileNav(false)}
             aria-current={route === "/settings" ? "page" : undefined}
             data-tooltip={navTip(t("Settings & API keys", "设置与 API 密钥"))}
             className={route === "/settings" ? "active" : ""}
@@ -433,11 +459,14 @@ export default function App() {
           <div id="pwa-sidebar-slot" />
         </div>
       </aside>
-      <div className="main-shell">
+      <div className="main-shell" inert={mobileNav}>
         <header className={`topbar ${topHidden ? "topbar-hidden" : ""}`}>
           <div className="breadcrumb">
             <Button
+              ref={mobileMenuButton}
               className="icon-button mobile-menu"
+              aria-controls="app-sidebar"
+              aria-expanded={mobileNav}
               onClick={() => setMobileNav(true)}
               aria-label={t("Open navigation", "打开导航")}
             >
@@ -755,7 +784,7 @@ export default function App() {
           )}
         </main>
       </div>
-      {showTop && (
+      {showTop && !mobileNav && (
         <Button
           ref={backToTopRef}
           className="back-to-top"

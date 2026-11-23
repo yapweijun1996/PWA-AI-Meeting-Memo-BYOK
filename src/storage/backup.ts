@@ -52,8 +52,10 @@ async function prepareBackupDocument(m: Meeting, audioPresent: boolean): Promise
         await verifyManifestIdentity(manifest);
         const hash = await contentIdentity(manifest);
         const { chunked } = audio;
-        document.audio = { ...audio, present: audioPresent, hash, chunked: { ...chunked, manifestSha256: hash } };
         if (manifest.format === chunked.format && manifest.chunks.length === chunked.chunkCount && manifest.totalSeconds === chunked.totalSeconds) {
+          // The legacy and portable identities were verified above against the same manifest.
+          document.audio = { ...audio, present: audioPresent, hash, chunked: { ...chunked, manifestSha256: hash },
+            ...(audio.overlapEvidence && { overlapEvidence: { ...audio.overlapEvidence, audioSha256: hash } }) };
           return { document, checkpointHash: hash };
         }
       }

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Meeting } from "../domain/model";
+import { retainRecordingOverlap } from "../domain/overlap-evidence";
 import { db, nextMeetingVersion, trackMeetingWrite } from "./repository";
 import { deleteAcousticFeatures } from "./acoustic-store";
 
@@ -167,9 +168,9 @@ export function attachLongAudio(
   audioFor: (manifest: LongAudioManifest) => NonNullable<Meeting["audio"]>,
 ): Promise<Meeting> {
   const write = publishLongAudio({
-    ...input, meetingId: meeting.id, replace: true, expectedHash: meeting.audio?.hash, expectedMeetingVersion: meeting.version,
+    ...input, meetingId: meeting.id, replace: meeting.version > 0, expectedHash: meeting.audio?.hash, expectedMeetingVersion: meeting.version,
   }, async (manifest, putMeeting) => {
-    const updated = nextMeetingVersion({ ...meeting, audio: audioFor(manifest) });
+    const updated = nextMeetingVersion({ ...meeting, audio: retainRecordingOverlap(meeting.audio, audioFor(manifest)) });
     await putMeeting(updated);
     return updated;
   });
@@ -264,7 +265,10 @@ async function stageAndPublishLongAudio<T>(
       const latest = await tx.objectStore("audioManifests").get(input.meetingId);
       if (JSON.stringify(latest) !== JSON.stringify(existing)) throw new Error("Another import changed this recording. Existing data was retained.");
       const meeting = await tx.objectStore("meetings").get(input.meetingId);
-      if (input.expectedMeetingVersion !== undefined && meeting?.version !== input.expectedMeetingVersion)
+      // A new meeting reserves version zero for absence. Publish its first row with the audio.
+      const currentVersion = meeting?.version ?? 0;
+      if (input.expectedMeetingVersion !== undefined &&
+          (currentVersion !== input.expectedMeetingVersion || (meeting && input.expectedMeetingVersion === 0)))
         throw new Error("Another tab changed this meeting. Reload before attaching the recording.");
       if (meeting?.audio && (!meeting.audio.chunked || meeting.audio.hash !== manifest.manifestSha256 ||
         meeting.audio.chunked.manifestSha256 !== manifest.manifestSha256)) throw new LongAudioIntegrityError(identityError);

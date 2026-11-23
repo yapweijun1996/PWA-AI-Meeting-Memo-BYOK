@@ -76,6 +76,35 @@ test("mobile keeps its drawer and hides the desktop toggle", async ({ page }) =>
   expect(await noHorizontalOverflow(page)).toBe(true);
 });
 
+test("the closed phone drawer skips hidden controls and returns focus after dismissal", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("./");
+  const opener = page.getByRole("button", { name: "Open navigation" });
+  const sidebar = page.locator("aside.sidebar");
+  await expect(opener).toBeVisible();
+  await page.locator(".skip-link").focus();
+  await page.keyboard.press("Tab");
+  expect(await sidebar.evaluate(element => element.contains(document.activeElement))).toBe(false);
+  await opener.focus();
+  await page.keyboard.press("Enter");
+  await expect(sidebar.getByRole("link", { name: "Meeting Memo home" })).toBeFocused();
+  await page.locator("#main-content").evaluate(element => element.focus());
+  await expect(sidebar.getByRole("link", { name: "Meeting Memo home" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(opener).toBeFocused();
+  await expect(sidebar).toBeHidden();
+
+  await opener.click();
+  await sidebar.getByRole("link", { name: "Meeting Memo home" }).click();
+  await expect(opener).toBeFocused();
+  await opener.click();
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect(page.getByRole("main")).toBeVisible();
+  await expect(sidebar.getByRole("navigation")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(sidebar).toBeHidden();
+});
+
 test("recent meetings show their status and short sidebars keep actions reachable", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 600 });
   await page.goto("./");

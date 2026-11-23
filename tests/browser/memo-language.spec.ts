@@ -1,3 +1,4 @@
+import { chooseStandardMemo } from "./helpers/memo-pi";
 import {changeTopbarLanguage} from "./helpers/language";
 import { expect, test } from "@playwright/test";
 
@@ -54,6 +55,7 @@ for (const [preference, instruction] of [
     await page.getByRole("tab", {name: /Meeting notes|会议笔记/}).click();
     await page.getByRole("button", {name: /^(Generate meeting notes|生成会议笔记)$/}).click();
     const confirmation = page.getByRole("dialog");
+    await chooseStandardMemo(confirmation);
     await expect(confirmation).toContainText(preference === "interface" ? "简体中文" : ({meeting: "Meeting language", en: "English", "zh-CN": "Simplified Chinese", ms: "Malay"} as const)[preference]);
     expect(calls).toBe(0);
     await confirmation.getByRole("checkbox", {name: /^(I understand the selected data will be sent and may incur API charges\.|我了解所选数据将被发送，并可能产生 API 费用。)$/}).check();

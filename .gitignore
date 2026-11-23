@@ -12,3 +12,4 @@ playwright-report/
 coverage/
 private-fixtures/
 playwright-race-check/
+/sample_mp3/

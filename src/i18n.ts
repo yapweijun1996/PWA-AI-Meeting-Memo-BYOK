@@ -15,6 +15,12 @@ export function memoLanguageLabel(value: MemoOutputLanguage, language: UiLanguag
 }
 // English is the explicit fallback for strings not translated to Malay yet.
 const malay: Record<string, string> = {
+  "Overlapping speech detected": "Pertuturan bertindih dikesan",
+  "Both neighboring passages are {name}.": "Kedua-dua petikan bersebelahan dituturkan oleh {name}.",
+  "Overlapping speech detected · words unattributed": "Pertuturan bertindih dikesan · penutur bagi kata-kata ini belum dikenal pasti",
+  "Open navigation": "Buka navigasi", "Close navigation": "Tutup navigasi",
+  "Standard memo generation is selected.": "Penjanaan memo standard dipilih.",
+  "Clear this option to choose standard memo generation.": "Kosongkan pilihan ini untuk memilih penjanaan memo standard.",
   "Saved locally on this device": "Disimpan pada peranti ini",
   "Storage": "Storan", "About": "Perihal",
   "Dismiss notification": "Tutup pemberitahuan",
@@ -28,6 +34,13 @@ const malay: Record<string, string> = {
   "Transcript": "Transkrip", "Speakers": "Penutur", "Meeting notes": "Nota mesyuarat", "Saved locally": "Disimpan secara setempat",
   "Appearance": "Penampilan", "Font family": "Jenis fon", "Font size": "Saiz fon", "Normal": "Biasa", "Large": "Besar", "Extra large": "Sangat besar",
   "Save settings": "Simpan tetapan", "Cancel": "Batal", "Close dialog": "Tutup dialog", "Recording details": "Butiran rakaman",
+  "Transcription finished. You can generate notes without confirming speaker names.": "Transkripsi selesai. Anda boleh menjana nota tanpa mengesahkan nama penutur.",
+  "Source speaker labels are numbered separately in each recording part.": "Label penutur asal dinomborkan secara berasingan dalam setiap bahagian rakaman.",
+  "Local voice matching is incomplete.": "Padanan suara setempat belum selesai.",
+  "The original transcription had no speaker labels to group.": "Transkripsi asal tidak mempunyai label penutur untuk dikumpulkan.",
+  "Some voices were too different to combine.": "Sesetengah suara terlalu berbeza untuk digabungkan.",
+  "The local voice matching status is unavailable.": "Status padanan suara setempat tidak tersedia.",
+  "This model returns text only. Choose a transcription model that returns speaker labels and timestamps to use automatic voice matching.": "Model ini hanya mengembalikan teks. Pilih model transkripsi yang mengembalikan label penutur dan cap masa untuk menggunakan padanan suara automatik.",
   "Reattach source": "Lampirkan semula sumber", "Attach audio": "Lampirkan audio", "Transcribe": "Transkripsi",
   "Playback mode": "Mod main balik", "Edit speakers": "Edit penutur", "Immersive playback": "Main balik imersif",
   "Speaker review": "Semakan penutur", "Speaker review queue": "Senarai semakan penutur", "Unconfirmed": "Belum disahkan",

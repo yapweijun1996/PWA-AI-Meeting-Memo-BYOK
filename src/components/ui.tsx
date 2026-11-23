@@ -51,7 +51,11 @@ export function Modal({
     };
   }, []);
   return (
-    <dialog ref={ref} className={className} aria-label={title} onCancel={onClose}>
+    <dialog ref={ref} className={className} aria-label={title} onCancel={event => {
+      // The owner may keep a busy editor open to preserve its draft.
+      event.preventDefault();
+      onClose();
+    }}>
       <header className="modal-head">
         <h2>{title}</h2>
         <IconButton

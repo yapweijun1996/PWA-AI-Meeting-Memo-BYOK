@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAcousticAssignments, applyAcousticAssignmentsToMeeting, type AcousticAssignment, type AcousticIdentity } from "../src/domain/acoustic-speaker";
 import { createMeeting, segment, validateMeeting } from "../src/domain/model";
-import { replaceTranscript } from "../src/domain/operations";
+import { replaceTranscript, undoEdit } from "../src/domain/operations";
 import type { NormalizedSpeech } from "../src/providers/api";
 
 const HASH = "e".repeat(64);
@@ -25,6 +25,45 @@ function speech(speakers: ReturnType<typeof speaker>[], segments: ReturnType<typ
 // source label being the bare part after the colon.
 describe("applying voices when a human already confirmed a speaker", () => {
   const ctx = { recordingHash: HASH, sourceRevision: 1 };
+
+  it.each(["untimed co-attribution", "overlapping intervals", "touching intervals"])(
+    "preserves simultaneous speakers when applying voice matches (%s)",
+    (example) => {
+      const a = "part-0:A", b = "part-0:B", c = "part-0:C";
+      const speakers = [speaker(a, "Alice", true), speaker(b, "Speaker 2"), speaker(c, "Speaker 3")];
+      const segments = example === "untimed co-attribution"
+        ? [segment("both", [a, b]), segment("other", [c])]
+        : [segment("short", [b], example === "overlapping intervals" ? 9 : 10, 12),
+           segment("nested", [a], 1, 2), segment("long", [a], 0, 10), segment("other", [c], 20, 24)];
+      const result = applyAcousticAssignments(speech(speakers, segments),
+        [assignment(0, "A", "v1"), assignment(0, "B", "v1"), assignment(0, "C", "v2")],
+        [identity("v1"), identity("v2")], speakers, ctx);
+      const expected = example === "untimed co-attribution" ? [[a, b], ["v2"]]
+        : [[example === "overlapping intervals" ? b : a], [a], [a], ["v2"]];
+      expect(result.segments.map((entry) => entry.speakerIds)).toEqual(expected);
+      expect(result.speakers.map((entry) => entry.id)).toEqual(
+        example === "touching intervals" ? [a, "v2"] : [a, b, "v2"],
+      );
+    },
+  );
+
+  it("keeps confirmed names and simultaneous attributions through local re-analysis and undo", () => {
+    const [a, b, c] = ["part-0:A", "part-0:B", "part-1:C"] as const;
+    const base = { ...createMeeting(), audio: { name: "a.mp3", type: "audio/mpeg", size: 10, duration: 30, hash: HASH, present: true } };
+    const speakers = [speaker(a, "Alice", true), speaker(b, "Speaker 2"), speaker(c, "Speaker 3")];
+    const original = [segment("both", [a, b], 1, 5), segment("other", [c], 10, 14)];
+    const meeting = replaceTranscript(base, speakers, original, "provider", "model");
+    const distinctVoice = crypto.randomUUID();
+    const common = { meetingId: meeting.id, sourceRevision: meeting.revision };
+    const applied = applyAcousticAssignmentsToMeeting(meeting,
+      [assignment(0, "A", "v1"), assignment(0, "B", "v1"), assignment(1, "C", distinctVoice)].map(row => ({ ...row, ...common })),
+      [identity("v1"), identity(distinctVoice)].map(row => ({ ...row, ...common })),
+    );
+    expect(applied.segments.map(row => row.speakerIds)).toEqual([[a, b], [distinctVoice]]);
+    expect(applied.speakers.find(row => row.id === a)).toMatchObject({ name: "Alice", confirmed: true });
+    expect(applied.runs).toEqual(meeting.runs);
+    expect(undoEdit(applied).segments.map(row => row.speakerIds)).toEqual([[a, b], [c]]);
+  });
 
   it("makes other labels of the same voice join the confirmed speaker", () => {
     const speakers = [speaker("part-0:A", "Alice", true), speaker("part-1:X", "Speaker 1 (part 2)"), speaker("part-1:Y", "Speaker 2 (part 2)")];

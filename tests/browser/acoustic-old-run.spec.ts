@@ -1,3 +1,4 @@
+import { nextKeyboardControl } from "./helpers/keyboard";
 import {changeTopbarLanguage} from "./helpers/language";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -476,7 +477,9 @@ function transcriptSnapshot(meeting: Record<string, unknown>) {
   }));
 }
 
-test("re-analyzes an old completed chunked run without provider traffic or data loss", async ({ page }) => {
+for (const withOverlap of [false, true]) test(withOverlap
+  ? "preserves a human-added overlap while automatically re-matching and undoing other speakers"
+  : "re-analyzes an old completed chunked run without provider traffic or data loss", async ({ page }) => {
   const outgoing: string[] = [];
   await page.route("https://**/*", (route) => route.abort());
   await page.route("**/speaker-assets/manifest.json", (route) =>
@@ -494,6 +497,14 @@ test("re-analyzes an old completed chunked run without provider traffic or data 
   await page.goto(base);
 
   const fixture = oldRunFixture();
+  const overlapIds = ["part-0:voice-a", "part-1:voice-a"];
+  if (withOverlap) {
+    // The current transcript contains an attribution edit. Its immutable provider
+    // originals and clean samples still support grouping the two A labels.
+    fixture.meeting.segments = (fixture.meeting.segments as Record<string, unknown>[]).map((row) =>
+      row.id === segmentIds[4] ? { ...row, speakerIds: overlapIds } : row,
+    );
+  }
   await seedOldRun(page, fixture);
   await expect.poll(() => readOldStoreCounts(page)).toEqual({
     chunks: 2,
@@ -517,7 +528,7 @@ test("re-analyzes an old completed chunked run without provider traffic or data 
   await expect(
     page.getByText(/Anonymous voice continuity was updated locally\./),
   ).toBeVisible({ timeout: 90_000 });
-  await expect(page.locator(".speaker-queue-item")).toHaveCount(2);
+  await expect(page.locator(".speaker-queue-item")).toHaveCount(withOverlap ? 3 : 2);
   expect(outgoing).toEqual([]);
 
   const after = await readMeeting(page);
@@ -528,13 +539,59 @@ test("re-analyzes an old completed chunked run without provider traffic or data 
   expect(after.runs).toHaveLength(1);
   expect((after.history as unknown[]).length).toBeGreaterThanOrEqual(8);
   expect(after.undo).toHaveLength(1);
-  expect(new Set((after.segments as Record<string, unknown>[]).flatMap((segment) => segment.speakerIds as string[])).size).toBe(2);
+  const afterSegments = after.segments as Record<string, unknown>[];
+  expect(new Set(afterSegments.flatMap((segment) => segment.speakerIds as string[])).size).toBe(withOverlap ? 3 : 2);
+  if (withOverlap) expect(afterSegments.find((row) => row.id === segmentIds[4])?.speakerIds).toEqual(overlapIds);
 
   await page.getByRole("tab", { name: /Transcript/ }).click();
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   const undone = await readMeeting(page);
   expect(transcriptSnapshot(undone)).toEqual(transcriptSnapshot(before));
   expect(undone.runs).toHaveLength(1);
+});
+
+test("Auto-match restores a masked short turn from working anchors and preserves the wholly unlabelled raw run", async ({page, context}) => {
+  let external = 0;
+  await context.route("https://**/*", route => { external++; return route.abort(); });
+  await page.route("**/speaker-assets/manifest.json", route => route.fulfill({json: readySpeakerManifest}));
+  await installDeterministicLocalEmbedding(page);
+  const fixture = oldRunFixture();
+  const voice = "part-0:voice-a", rival = "part-0:voice-b";
+  const turn = (index: number, start: number, end: number, speaker: string, text: string) =>
+    segment(`part-0:masked-${index}`, start, end, speaker, text, speaker ? {} : {speakerIds: []});
+  // The fixture's independent PCM clock encodes the first voice at 5–19s
+  // and a rival at 25–39s. No provider ID or predicted turn enters the bank.
+  const current = [
+    turn(0,5,7.2,voice,"The proposal includes"),
+    turn(1,7.2,9.4,"","an additional check on the handover"),
+    turn(2,9.4,11.6,voice,"and the schedule also includes"),
+    turn(3,11.6,14,"","another change for the next delivery"),
+    turn(4,14,16.5,"","plus a separate decision on funding"),
+    turn(5,16.5,19,"","with conditions on the new approval"),
+    turn(6,22,23,"","Yes."),
+    turn(7,25,27.5,rival,"Independent rival turn one."),
+    turn(8,31,33.5,rival,"Independent rival turn two."),
+  ];
+  fixture.meeting.segments = current;
+  fixture.meeting.memos = [];
+  const [run] = fixture.meeting.runs as Array<Record<string, unknown>>;
+  const originals = current.map(s => ({...s, speakerIds: []}));
+  run!.originalSegments = originals;
+  await page.goto(base);
+  await seedOldRun(page, fixture);
+  await page.goto(`${base}#/meetings/${meetingId}`);
+  await page.getByRole("button", { name:"Auto-match voices", exact:true }).click();
+  await page.getByRole("dialog").getByRole("button", {name:"Download and analyze locally", exact:true}).click();
+  await expect(page.getByText(/Anonymous voice continuity was updated locally/)).toBeVisible({timeout:90_000});
+  await expect(page.getByText(/Previously unattributed passages \(4 matched, 1 still unassigned\)/)).toBeVisible();
+  const changed = await readMeeting(page);
+  const labels = (changed.segments as typeof current).map(s => s.speakerIds);
+  expect(labels).toEqual([[voice], [voice], [voice], [voice], [voice], [voice], [], [rival], [rival]]);
+  expect((changed.runs as Array<{originalSegments: unknown}>)[0]!.originalSegments).toEqual(originals);
+  await page.getByRole("tab",{name:/Transcript/}).click();
+  await page.getByRole("button",{name:"Undo",exact:true}).click();
+  expect((await readMeeting(page)).segments).toEqual(current);
+  expect(external).toBe(0);
 });
 
 test("prevents concurrent analysis and allows recovery after the owning tab closes", async ({ page, context }) => {
@@ -690,7 +747,19 @@ test("suggests the most similar voice in speaker review and merges it reversibly
 
   // The head-count shortcut opens the existing local analysis dialog.
   await hints.getByRole("button", { name: "Regroup with a head count", exact: true }).click();
-  await expect(page.getByRole("dialog").getByText("How many people spoke? (optional)")).toBeVisible();
+  const voiceDialog = page.getByRole("dialog");
+  const count = voiceDialog.getByRole("spinbutton", { name: "How many people spoke? (optional)" });
+  const analyze = voiceDialog.getByRole("button", { name: "Download and analyze locally", exact: true });
+  await expect(count).toBeVisible();
+  await expect(analyze).toBeEnabled();
+  await count.fill("51");
+  await expect(count).toHaveAttribute("aria-invalid", "true");
+  await expect(voiceDialog.getByText("Enter a whole number from 1 to 50, or leave it blank.")).toBeVisible();
+  await expect(analyze).toBeDisabled();
+  await count.fill("1");
+  await expect(analyze).toBeEnabled();
+  await count.fill("");
+  await expect(analyze).toBeEnabled();
 });
 
 for (const language of ["en", "zh-CN"] as const) {
@@ -704,7 +773,7 @@ for (const language of ["en", "zh-CN"] as const) {
     const windowsWebKit = browserName === "webkit" && process.platform === "win32";
     // Safari on macOS uses Option-Tab for full webpage-item traversal by default.
     // https://support.apple.com/guide/safari/keyboard-shortcuts-and-gestures-cpsh003/mac
-    const nextItemKey = browserName === "webkit" && process.platform === "darwin" ? "Alt+Tab" : "Tab";
+    const nextItemKey = nextKeyboardControl(browserName);
     if (windowsWebKit) {
       test.info().annotations.push({ type: "coverage-gap", description: "Windows WebKit: focused-anchor Enter activation only; sequential Tab reachability remains unverified. Prior failed navigation traces are retained in the REL03 evidence." });
     }

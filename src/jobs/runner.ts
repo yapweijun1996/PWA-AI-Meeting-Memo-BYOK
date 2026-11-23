@@ -1,3 +1,4 @@
+import { retainRecordingOverlap } from "../domain/overlap-evidence";
 import { applyStandardMemoResult } from "./standard-memo-result";
 import type { MemoTemplate } from "../domain/memo-templates";
 import type { MemoOutputLanguage } from "../domain/memo-language";
@@ -200,7 +201,7 @@ export async function runJob(
             ],
           };
         if (latest.audio && result.duration !== null)
-          latest.audio = { ...latest.audio, duration: result.duration };
+          latest.audio = retainRecordingOverlap(latest.audio, { ...latest.audio, duration: result.duration });
       } else if (Array.isArray(result))
         latest = applyStandardMemoResult(latest, job, memoContext, result);
       latest.jobs = latest.jobs.map((j) =>

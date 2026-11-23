@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { setup } from "./helpers/memo-pi";
+import { chooseStandardMemo, setup } from "./helpers/memo-pi";
 import { test, expect } from "@playwright/test";
 import { createMeeting, segment } from "../../src/domain/model";
 
@@ -45,6 +45,7 @@ test("Chinese long memo confirmation is readable and sends nothing before confir
   await page.getByRole("tab", { name: /会议笔记/ }).click();
   await page.getByRole("button", { name: "生成会议笔记", exact: true }).click();
   dialog = page.getByRole("dialog");
+  await chooseStandardMemo(dialog);
   await expect(dialog).toContainText("长纪要：");
   await expect(dialog).toContainText("总费用未知，每次请求均可能收费");
   await expect(dialog).toContainText("重新加载不会自动恢复请求");
@@ -166,6 +167,7 @@ for (const {failOnce, wordLevel} of [{failOnce: false, wordLevel: true}, {failOn
       .getByRole("button", { name: "Generate meeting notes", exact: true })
       .click();
     dialog = page.getByRole("dialog");
+    await chooseStandardMemo(dialog);
     await expect(dialog).toContainText(
       "extraction requests and one synthesis request",
     );
@@ -260,6 +262,7 @@ test("standard notes export the complete paid date quote from history after relo
   });
   await page.getByRole("button", { name: "Generate meeting notes", exact: true }).click();
   const dialog = page.getByRole("dialog");
+  await chooseStandardMemo(dialog);
   await dialog.getByRole("checkbox", { name: /I understand the selected data/ }).check();
   await dialog.getByRole("button", { name: "Generate new notes", exact: true }).click();
   await expect(page.locator(".memo-reading-text")).toContainText("Request approval.");

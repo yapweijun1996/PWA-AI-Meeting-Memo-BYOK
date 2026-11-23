@@ -135,6 +135,23 @@ describe("existing meeting local acoustic analysis", () => {
     await deleteMeeting(meetingId);
   });
 
+  it("recovers an untouched Unknown between working anchors when the raw chunk run has no labels", async () => {
+    const meetingId = crypto.randomUUID();
+    const { saved, manifest } = await prepare(meetingId);
+    const current = [
+      segment("We still need to decide", ["part-0:A"], 0, 2.2),
+      segment("whether a second review is necessary", [], 2.2, 4.2),
+      segment("before the change proceeds.", ["part-0:A"], 4.2, 7),
+    ];
+    const originals = current.map(s => ({...s, speakerIds: []}));
+    const input = await saveMeeting(replaceTranscript(saved, saved.speakers, current, "synthetic", "masked", {originalSegments: originals}));
+    const result = await analyzeExistingMeetingAcoustics(input, {manifest, provider, consent: true});
+    expect(result.segments[1]?.speakerIds).toEqual(["part-0:A"]);
+    expect(result.runs.at(-1)?.originalSegments).toEqual(originals);
+    expect(undoEdit(result).segments).toEqual(input.segments);
+    await deleteMeeting(meetingId);
+  });
+
   it("keeps two speakers apart after a person marked them not the same", async () => {
     const meetingId = "00000000-0000-4000-8000-000000000012";
     const { saved, manifest } = await prepare(meetingId);

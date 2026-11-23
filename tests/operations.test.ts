@@ -225,6 +225,17 @@ describe("human revisions and provenance", () => {
     expect(merged.segments[1].speakerIds).toEqual([merged.speakers[0].id]);
   });
 });
+it("accepts UUIDs and bounded chunk passage IDs while rejecting malformed lookalikes", () => {
+  const m = createMeeting();
+  const passage = segment("Evidence");
+  const maxChunkId = `part-0:${"x".repeat(93)}`;
+  const valid = [passage.id, "00000000-0000-0000-0000-000000000000", "part-2:abc_123-x:9", maxChunkId];
+  for (const id of valid)
+    expect(validateMeeting({ ...m, segments: [{ ...passage, id }] }).segments[0].id).toBe(id);
+  for (const id of [`${maxChunkId}x`, "part-2:", "part-2:name:x", "not-a-uuid"])
+    expect(() => validateMeeting({ ...m, segments: [{ ...passage, id }] })).toThrow("Meeting data is invalid");
+});
+
 it("permits a different review flag in history but rejects changed text at the same revision", () => {
   const m = acceptedMeeting();
   const source = m.segments[0];

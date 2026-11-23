@@ -176,7 +176,7 @@ export const NEXT_CAPTION_LOOKAHEAD = 0.05;
  * neighbouring boundaries every derived value is constant, so a consumer only
  * needs to re-render when the playhead crosses one.
  */
-export function playbackBoundaries(segments: Segment[], captions: PlaybackCaption[]): number[] {
+export function playbackBoundaries(segments: Segment[], captions: PlaybackCaption[], overlap: readonly { start: number; end: number }[] = []): number[] {
   const points = new Set<number>();
   const add = (value: number | null) => {
     if (value !== null && Number.isFinite(value)) points.add(value);
@@ -184,6 +184,10 @@ export function playbackBoundaries(segments: Segment[], captions: PlaybackCaptio
   for (const segment of segments) {
     add(segment.start);
     add(segment.end);
+  }
+  for (const range of overlap) {
+    add(range.start);
+    add(range.end);
   }
   captions.forEach((caption, index) => {
     add(caption.start - NEXT_CAPTION_LOOKAHEAD);

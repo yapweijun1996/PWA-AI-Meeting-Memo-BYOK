@@ -266,7 +266,14 @@ for (const viewport of [
     expect(
       await captions.evaluate((element) => element.clientHeight),
     ).toBeGreaterThan(0);
-    const scrollOwners = [];
+    const scrollOwners: {
+      top: number;
+      bottom: number;
+      left: number;
+      right: number;
+      range: number;
+      owners: { className: string; scrollTop: number; range: number }[];
+    }[] = [];
     for (let attempt = 0; attempt < 3; attempt++) {
       const geometry = await captions.evaluate((element) => {
         const box = element.getBoundingClientRect();
@@ -324,7 +331,7 @@ for (const viewport of [
       }
     }
     await expect(captions).toBeInViewport();
-    const longText = await captions.evaluate((element) => {
+    const measureLongText = () => captions.evaluate((element) => {
       const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
       let last: Text | undefined;
       while (walker.nextNode()) {
@@ -367,12 +374,17 @@ for (const viewport of [
         tailVisible: tail.top >= clipTop - 1 && tail.bottom <= clipBottom + 1,
       };
     });
-    await writeFile(
-      info.outputPath("long-text-observation.json"),
-      JSON.stringify({ longText, scrollOwners }, null, 2),
-    );
-    expect(longText.tailVisible).toBe(true);
-    expect(longText.characters).toBeGreaterThan(15000);
+    let longText = await measureLongText();
+    // WebKit may continue its native wheel animation after the two observed frames.
+    await expect(async () => {
+      longText = await measureLongText();
+      await writeFile(
+        info.outputPath("long-text-observation.json"),
+        JSON.stringify({ longText, scrollOwners }, null, 2),
+      );
+      expect(longText.tailVisible).toBe(true);
+      expect(longText.characters).toBeGreaterThan(15000);
+    }).toPass({ timeout: 2000 });
     await expect(
       dialog.getByRole("button", { name: "Exit immersive", exact: true }),
     ).toBeInViewport();

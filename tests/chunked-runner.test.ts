@@ -1,5 +1,7 @@
 import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ACOUSTIC_POLICY } from "../src/domain/acoustic-speaker";
+import { putAcousticAssignment, putAcousticCheckpoint, putAcousticIdentity } from "../src/storage/acoustic-store";
 import { ProviderError } from "../src/providers/api";
 import type * as ProviderApi from "../src/providers/api";
 import { createMeeting, MeetingSchema, segment } from "../src/domain/model";
@@ -54,6 +56,53 @@ describe("chunked speech runner", () => {
       else Reflect.deleteProperty(navigator, "locks");
     }
   });
+  it.each(["failed_local", "completed", "model failure"] as const)(
+    "publishes only finalized acoustic identities with the saved speech (%s)",
+    async (outcome) => {
+      const meeting = await prepare();
+      const common = { meetingId: meeting.id, recordingHash: meeting.audio!.hash, sourceRevision: meeting.revision };
+      const updatedAt = new Date().toISOString();
+      const checkpoint = { ...common, id: meeting.id, modelId: ACOUSTIC_POLICY.modelId, modelRevision: ACOUSTIC_POLICY.modelRevision,
+        extractionVersion: ACOUSTIC_POLICY.extractionVersion, thresholdVersion: ACOUSTIC_POLICY.version,
+        calibrationStatus: ACOUSTIC_POLICY.calibrationStatus, updatedAt };
+      const completed = outcome === "completed";
+      await putAcousticCheckpoint({ ...checkpoint, state: completed ? "completed" : "failed_local",
+        completedChunkCount: completed ? 3 : 1, nextChunkIndex: completed ? 3 : 1, lastCompletedChunkIndex: completed ? 2 : 0,
+        nextSpeakerKey: null, processedEmbeddingCount: 2, error: completed ? null : "interrupted" });
+      const voiceId = crypto.randomUUID();
+      const sourceSpeakerId = crypto.randomUUID();
+      const sourceKey = `0:${sourceSpeakerId}`;
+      const sample = Array.from({ length: ACOUSTIC_POLICY.dimensions }, (_, i) => Number(i === 0));
+      await putAcousticIdentity({ ...common, id: voiceId, modelRevision: checkpoint.modelRevision,
+        extractionVersion: checkpoint.extractionVersion, centroid: sample, anchors: [sample], sourceKeys: [sourceKey],
+        representativeEmbeddingIds: [], sourceCount: 1, sampleCount: 2, confirmedSpeakerId: null, createdAt: updatedAt, updatedAt });
+      await putAcousticAssignment({ ...common, id: `${meeting.id}:${sourceKey}`, chunkIndex: 0, sourceKey, sourceSpeakerId,
+        identityId: voiceId, state: "new_identity", scores: [], evidenceEmbeddingIds: [], reason: "First part",
+        thresholdVersion: checkpoint.thresholdVersion, calibrationStatus: checkpoint.calibrationStatus, updatedAt });
+      mocks.transcribe.mockResolvedValue({ speakers: [{ id: sourceSpeakerId, name: "Speaker 1", confirmed: false, sourceLabels: ["1"] }],
+        segments: [segment("one", [sourceSpeakerId], 1, 2)], duration: 10, requestId: null });
+      const originalLocks = Object.getOwnPropertyDescriptor(navigator, "locks");
+      Object.defineProperty(navigator, "locks", { configurable: true, value: {
+        request: (_name: string, _opts: unknown, work: (lock: object) => Promise<unknown>) => work({}),
+      } });
+      try {
+        const acoustic = outcome === "model failure" ? { consent: true, provider: {
+          load: vi.fn().mockRejectedValue(new Error("local model unavailable")), embed: vi.fn(), dispose: vi.fn(),
+        } } : undefined;
+        const result = await runChunkedSpeech(meeting, { selection, acoustic });
+        const sourceId = `part-0:${sourceSpeakerId}`;
+        expect(result.segments[0]?.speakerIds).toEqual([completed ? voiceId : sourceId]);
+        expect(result.runs.at(-1)?.originalSegments[0]?.speakerIds).toEqual([sourceId]);
+        expect(result.segments).toHaveLength(3);
+        expect(mocks.transcribe).toHaveBeenCalledTimes(3);
+        if (acoustic) expect(result.jobs.at(-1)?.message).toContain("local model unavailable");
+      } finally {
+        if (originalLocks) Object.defineProperty(navigator, "locks", originalLocks);
+        else Reflect.deleteProperty(navigator, "locks");
+      }
+    },
+  );
+
   it("transcribes each chunk once, records indexed jobs, and merges absolute timestamps", async () => {
     mocks.transcribe.mockImplementation(async (_audio: Blob, _key: string, _signal: AbortSignal, _selection: unknown, filename: string) => response(filename.includes("0001") ? "one" : filename.includes("0002") ? "two" : "three", 1));
     const meeting = await prepare();

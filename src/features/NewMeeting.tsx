@@ -10,10 +10,9 @@ import {
   validateMeeting,
   type Meeting,
 } from "../domain/model";
-import { saveMeeting } from "../storage/repository";
+import { clearDeletedMeetingWriteFailure, saveMeeting, trackMeetingOperation } from "../storage/repository";
 import { inspectAudio } from "../audio/files";
-import { importLongRecording, isLongRecordingCandidate } from "../audio/long-import";
-import { deleteLongAudio } from "../storage/long-audio-store";
+import { attachLongRecording, isLongRecordingCandidate } from "../audio/long-import";
 import { Modal } from "../components/ui";
 import { useUiLanguage } from "../ui-language";
 import { translateMessage } from "../ui-messages";
@@ -23,7 +22,7 @@ export function NewMeeting({
   onError,
 }: {
   onClose: () => void;
-  onCreated: (m: Meeting) => void;
+  onCreated: (m: Meeting) => void | Promise<void>;
   onError: (s: string) => void;
 }) {
   const language = useUiLanguage();
@@ -51,8 +50,7 @@ export function NewMeeting({
     e.preventDefault();
     setBusy(true);
     setError("");
-    let importedMeetingId = "";
-    let storedChunks = false;
+    let creatingId: string | undefined;
     try {
       const form = new FormData(e.currentTarget);
       const selectedTimezone = String(form.get("timezone")).trim();
@@ -90,38 +88,31 @@ export function NewMeeting({
           m = { ...m, ...importTranscript(transcript) };
         }
       }
-      if (file) {
-        if (isLongRecordingCandidate(file)) {
-          const result = await importLongRecording(file, m.id, {
-            expectedHash: m.audio?.hash,
+      if (file && !m.audio && m.segments.some(source => source.start !== null) &&
+          !confirm(t("Confirm this is the original recording for the imported timestamps. Verify playback before relying on them.", "请确认这是导入时间戳对应的原始录音，并在使用前验证播放。"))) return;
+      creatingId = m.id;
+      await trackMeetingOperation(m.id, async () => {
+        if (file && isLongRecordingCandidate(file)) {
+          const result = await attachLongRecording(file, m, {
             onProgress: (p) => setProgress(`${p.phase}: ${p.done}/${p.total}`),
           });
-          importedMeetingId = m.id;
-          storedChunks = true;
-          if (m.audio && m.audio.hash !== result.audio.hash)
-            throw new Error(t("This recording does not match the imported transcript's source. Use its original recording or create a separate meeting.", "录音与导入转录的来源不符。请使用原录音或另建会议。"));
-          if (!m.audio && m.segments.some((s) => s.start !== null) && !confirm(t("Confirm this is the original recording for the imported timestamps. Verify playback before relying on them.", "请确认这是导入时间戳对应的原始录音，并在使用前验证播放。"))) {
-            await deleteLongAudio(m.id);
-            return;
-          }
-          m.audio = result.audio;
-        } else {
+          await onCreated(result.meeting);
+          return;
+        }
+        if (file) {
           const info = await inspectAudio(file);
           if (m.audio && m.audio.hash !== info.hash)
             throw new Error(t("This recording does not match the imported transcript's source. Use its original recording or create a separate meeting.", "录音与导入转录的来源不符。请使用原录音或另建会议。"));
-          if (!m.audio && m.segments.some((s) => s.start !== null) && !confirm(t("Confirm this is the original recording for the imported timestamps. Verify playback before relying on them.", "请确认这是导入时间戳对应的原始录音，并在使用前验证播放。"))) return;
           m.audio = info;
         }
-      }
-      const saved = storedChunks ? await saveMeeting(m) : await saveMeeting(m, file);
-      onCreated(saved);
+        await onCreated(await saveMeeting(m, file));
+      });
     } catch (err) {
-      if (storedChunks && importedMeetingId) {
-        try { await deleteLongAudio(importedMeetingId); } catch { /* preserve the original import error */ }
-      }
       const message = err instanceof Error ? err.message : t("The meeting could not be saved.", "无法保存会议。");
       setError(message);
       onError("");
+      // A failed first write has no stored meeting to repair after this draft is retried or discarded.
+      if (creatingId) await clearDeletedMeetingWriteFailure(creatingId).catch(() => undefined);
     } finally {
       setProgress("");
       setBusy(false);

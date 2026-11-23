@@ -2,6 +2,12 @@ import type { NormalizedSpeech } from "../providers/api";
 import { editMeeting, remapVoiceDecisions } from "./operations";
 import { ref, type Meeting } from "./model";
 
+export const MAX_EXPECTED_SPEAKERS = 50;
+
+export function isValidExpectedSpeakerCount(count: number): boolean {
+  return Number.isInteger(count) && count >= 1 && count <= MAX_EXPECTED_SPEAKERS;
+}
+
 /**
  * The anonymous, meeting-scoped acoustic policy. These values are intentionally
  * uncalibrated; they are a conservative starting point for local evaluation,
@@ -841,7 +847,7 @@ export interface PartMatchRules {
 const MIN_SAMPLES_FOR_PURITY = 4;
 
 export const PART_MATCH_POLICY = {
-  version: `${ACOUSTIC_POLICY.version}+one-to-one-centered-v2`,
+  version: `${ACOUSTIC_POLICY.version}+one-to-one-centered-v3`,
   purityMargin: 0.2,
   headCountFloorCosine: 0,
   /** Two labels in one part join only when their averages are nearly identical. */
@@ -1081,8 +1087,8 @@ export function matchLabelsAcrossParts(
   const sharesGroup = (groups: ReadonlySet<number>, voice: Voice) =>
     groups.size > 0 && voice.members.some((member) => [...member.unit.groups].some((group) => groups.has(group)));
   const expected = input.expectedVoices;
-  if (expected !== undefined && (!Number.isInteger(expected) || expected < 1 || expected > 50)) {
-    throw new RangeError("The expected number of speakers must be a whole number from 1 to 50.");
+  if (expected !== undefined && !isValidExpectedSpeakerCount(expected)) {
+    throw new RangeError(`The expected number of speakers must be a whole number from 1 to ${MAX_EXPECTED_SPEAKERS}.`);
   }
   const deferLeftovers = expected !== undefined;
   const deferred: MatchUnit[] = [];
@@ -1099,10 +1105,6 @@ export function matchLabelsAcrossParts(
     const similarity = partUnits.map((unit) =>
       existing.map((voice) => (forbidden(unit.keys, voiceKeys(voice)) ? Number.NaN : cosineSimilarity(unit.mean, voice.centroid))),
     );
-    const pairs = partUnits
-      .flatMap((_, u) => existing.map((__, v) => ({ u, v, score: similarity[u]![v]! })))
-      .filter((pair) => Number.isFinite(pair.score) && pair.score >= rules.floorCosine)
-      .sort((left, right) => right.score - left.score);
     const takenUnits = new Set<number>();
     const takenVoices = new Set<number>();
     const placed: { unit: MatchUnit; voice: Voice; score: number; human?: boolean }[] = [];
@@ -1114,28 +1116,41 @@ export function matchLabelsAcrossParts(
       takenVoices.add(v);
       placed.push({ unit, voice: existing[v]!, score: cosineSimilarity(unit.mean, existing[v]!.centroid), human: true });
     });
-    for (const pair of pairs) {
-      if (takenUnits.has(pair.u) || takenVoices.has(pair.v)) continue;
-      takenUnits.add(pair.u);
-      takenVoices.add(pair.v);
-      const unit = partUnits[pair.u]!;
-      const runnerUp = Math.max(Number.NEGATIVE_INFINITY, ...similarity[pair.u]!.filter((score, v) => v !== pair.v && Number.isFinite(score)));
-      if (pair.score - runnerUp < rules.margin) {
-        if (deferLeftovers) deferred.push(unit);
-        else for (const label of unit.labels) state(labelEvidence(unit, label), "ambiguous", "The leading voices are too close to choose safely.");
-        continue;
-      }
-      placed.push({ unit, voice: existing[pair.v]!, score: pair.score });
-    }
+    const leaveAmbiguous = (unit: MatchUnit, reason: string) => {
+      if (deferLeftovers) deferred.push(unit);
+      else for (const label of unit.labels) state(labelEvidence(unit, label), "ambiguous", reason);
+    };
+    const contenders = existing.map(() => [] as { unit: MatchUnit; score: number }[]);
     partUnits.forEach((unit, u) => {
       if (takenUnits.has(u)) return;
-      const best = Math.max(Number.NEGATIVE_INFINITY, ...similarity[u]!.filter((score) => Number.isFinite(score)));
-      if (!(best >= rules.floorCosine)) {
+      const ranked = similarity[u]!
+        .map((score, v) => ({ score, v }))
+        .filter(({ score }) => Number.isFinite(score))
+        .sort((left, right) => right.score - left.score);
+      const best = ranked[0];
+      if (!best || best.score < rules.floorCosine) {
         voices.push(newVoice(unit));
-        return;
+      } else if (ranked[1] && best.score - ranked[1].score < rules.margin) {
+        leaveAmbiguous(unit, "The leading voices are too close to choose safely.");
+      } else if (takenVoices.has(best.v)) {
+        leaveAmbiguous(unit, "A human-confirmed label in this part already holds the closest voice.");
+      } else {
+        contenders[best.v]!.push({ unit, score: best.score });
       }
-      if (deferLeftovers) deferred.push(unit);
-      else for (const label of unit.labels) state(labelEvidence(unit, label), "ambiguous", "A better-matching label in this part already holds the closest voice; no merge was forced.");
+    });
+    // A voice is awarded only among labels that independently prefer it.
+    // Otherwise the ordering of two labels can turn a tie into an assignment.
+    contenders.forEach((entries, v) => {
+      entries.sort((left, right) => right.score - left.score);
+      const winner = entries[0];
+      if (!winner) return;
+      const clear = !entries[1] || winner.score - entries[1].score >= rules.margin;
+      for (const contender of entries) {
+        if (clear && contender === winner) placed.push({ ...contender, voice: existing[v]! });
+        else leaveAmbiguous(contender.unit, clear
+          ? "A better-matching label in this part already holds the closest voice."
+          : "Two labels in this part compete for the same voice without a clear lead.");
+      }
     });
     // Apply the part's placements together so earlier pairs do not shift later ones.
     for (const { unit, voice, score, human } of placed) {
@@ -1278,6 +1293,37 @@ function partSourceId(assignment: AcousticAssignment): string {
   return `part-${assignment.chunkIndex}:${assignment.sourceSpeakerId}`;
 }
 
+/** A projected voice cannot replace distinct speakers active at the same time. */
+function withholdOverlappingMerges(speech: NormalizedSpeech, accepted: Map<string, string>): void {
+  const sourcesPerTarget = new Map<string, number>();
+  for (const { id } of speech.speakers) {
+    const target = accepted.get(id) ?? id;
+    sourcesPerTarget.set(target, (sourcesPerTarget.get(target) ?? 0) + 1);
+  }
+  const merging = new Set([...sourcesPerTarget].filter(([, count]) => count > 1).map(([target]) => target));
+  if (!merging.size) return;
+  const conflicted = new Set<string>();
+  const active = new Map<string, { source: string; end: number }>();
+  const ordered = [...speech.segments].sort((a, b) => (a.start ?? -1) - (b.start ?? -1));
+  for (const segment of ordered) {
+    const inPassage = new Set<string>();
+    for (const source of new Set(segment.speakerIds)) {
+      const target = accepted.get(source) ?? source;
+      if (!merging.has(target) || conflicted.has(target)) continue;
+      if (inPassage.has(target)) conflicted.add(target);
+      inPassage.add(target);
+      if (segment.start === null || segment.end === null || segment.end <= segment.start) continue;
+      const previous = active.get(target);
+      if (previous && previous.source !== source && previous.end > segment.start) conflicted.add(target);
+      // A short nested passage must not erase a longer active interval.
+      if (!previous || segment.end > previous.end) active.set(target, { source, end: segment.end });
+    }
+  }
+  for (const [source, target] of accepted) {
+    if (conflicted.has(target)) accepted.delete(source);
+  }
+}
+
 /**
  * Apply only persisted, non-ambiguous anonymous assignments to the merged
  * transcript projection. Raw provider speaker IDs remain in the paged source
@@ -1345,6 +1391,7 @@ export function applyAcousticAssignments(
     const [target] = [...targets];
     if (targets.size === 1 && target && target !== alias) accepted.set(alias, target);
   }
+  withholdOverlappingMerges(speech, accepted);
   if (!accepted.size) return speech;
   const speakersById = new Map<string, typeof speech.speakers[number]>();
   for (const speaker of speech.speakers) {
@@ -1377,12 +1424,28 @@ export function applyAcousticAssignments(
   };
 }
 
+/** Resolve the acoustic anchor against the final projection after label grouping. */
+export function applyRecoveredTurnAnchors(segments: NormalizedSpeech["segments"], anchors: ReadonlyMap<string, string>) {
+  if (!anchors.size) return segments;
+  const byId = new Map(segments.map(s => [s.id, s]));
+  return segments.map((s, index) => {
+    const anchorId = anchors.get(s.id);
+    const anchor = anchorId ? byId.get(anchorId) : undefined;
+    if (!anchor || anchor.speakerIds.length !== 1 || s.speakerIds.length || s.reviewed) return s;
+    const [speaker] = anchor.speakerIds;
+    const adjacent = [segments[index - 1], segments[index + 1]];
+    if (adjacent.some(turn => turn?.speakerIds.some(id => id !== speaker))) return s;
+    return { ...s, speakerIds: [speaker!] };
+  });
+}
+
 /** Apply only speaker attribution changes to the current meeting projection. */
 export function applyAcousticAssignmentsToMeeting(
   meeting: Meeting,
   assignments: readonly AcousticAssignment[],
   identities: readonly AcousticIdentity[],
   sourceIdOf?: (assignment: AcousticAssignment) => string,
+  recoveredTurns?: ReadonlyMap<string, string>,
 ): Meeting {
   const projection: NormalizedSpeech = {
     speakers: meeting.speakers,
@@ -1421,7 +1484,8 @@ export function applyAcousticAssignmentsToMeeting(
     recordingHash: meeting.audio?.hash ?? "",
     sourceRevision: meeting.revision,
   }, sourceIdOf, aliases);
-  const mappedById = new Map(mapped.segments.map((segment) => [segment.id, segment]));
+  const finalSegments = recoveredTurns ? applyRecoveredTurnAnchors(mapped.segments, recoveredTurns) : mapped.segments;
+  const mappedById = new Map(finalSegments.map((segment) => [segment.id, segment]));
   if (mapped.speakers.every((speaker, index) => speaker.id === meeting.speakers[index]?.id) &&
       meeting.segments.every((segment) => segment.speakerIds.join("\u0000") === mappedById.get(segment.id)?.speakerIds.join("\u0000"))) {
     return meeting;

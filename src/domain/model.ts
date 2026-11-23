@@ -4,6 +4,7 @@ import { z } from "zod";
 import {AgentContextItemSchema, MEMO_AGENT_LEGACY_REQUEST_LIMIT, MEMO_AGENT_MAX_REQUESTS, MEMO_AGENT_MAX_TOOLS_PER_RESPONSE, MEMO_AGENT_RECORD_BYTES} from "./memo-agent-contract";
 import { AgentRouteSchema, resolveAgentRoute } from "./memo-agent-route";
 import { ReferenceVideoSchema, type ReferenceVideo } from "./reference-video";
+import { OverlapEvidenceSchema } from "./overlap-evidence";
 // A synthesis can cite up to five extraction facts, each with up to 100 sources.
 export const MAX_MEMO_ITEM_SOURCES = 500;
 export const MAX_JOBS = 400;
@@ -12,7 +13,11 @@ export const id = () => crypto.randomUUID();
 export const localDate = (now = new Date()) =>
   `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 const key = z.string().uuid();
-const transcriptId = z.union([key, z.string().regex(/^part-\d+:[A-Za-z0-9_-]+(?::\d+)?$/).max(100)]);
+const uuidPattern = z.regexes.uuid();
+const chunkIdPattern = /^part-\d+:[A-Za-z0-9_-]+(?::\d+)?$/;
+const transcriptId = z.string().max(100).refine(value =>
+  value.startsWith("part-") ? chunkIdPattern.test(value) : uuidPattern.test(value),
+);
 const text = z.string().max(20000);
 const time = z.number().finite().nonnegative().nullable();
 export const SegmentSchema = z
@@ -258,7 +263,12 @@ const AudioSchema = z.object({
   hash: z.string().regex(/^[a-f0-9]{64}$/),
   present: z.boolean(),
   chunked: ChunkedAudioSchema.optional(),
+  overlapEvidence: OverlapEvidenceSchema.optional(),
 }).strict().superRefine((audio, context) => {
+  const evidence = audio.overlapEvidence;
+  if (evidence && (audio.hash !== evidence.audioSha256 || audio.duration === null ||
+      (evidence.intervals.at(-1)?.end ?? Infinity) > audio.duration))
+    context.addIssue({ code: "custom", message: "Overlap evidence must match the source recording and its duration." });
   if (audio.chunked && (audio.hash !== audio.chunked.manifestSha256 || audio.duration !== audio.chunked.totalSeconds)) {
     context.addIssue({ code: "custom", message: "Chunked audio metadata does not match its manifest." });
   }
@@ -354,7 +364,10 @@ export function pipelineSourceSegments(m: Meeting, pipeline: NonNullable<Meeting
 export function memoSnapshotSegments(m: Meeting, snapshot: z.infer<typeof PipelineSnapshotSchema> | z.infer<typeof ReferencedPipelineSnapshotSchema>): Segment[] {
   if ("segments" in snapshot) return snapshot.segments;
   const evidence = new Map([...m.history, ...m.segments].map(source => [ref(source), source]));
-  return snapshot.sourceRefs.map(source => {
+  return resolveSnapshotReferences(evidence, snapshot.sourceRefs);
+}
+function resolveSnapshotReferences(evidence: ReadonlyMap<string, Segment>, sourceRefs: { id: string; revision: number }[]): Segment[] {
+  return sourceRefs.map(source => {
     const segment = evidence.get(ref(source));
     if (!segment) throw new Error("Pipeline sources do not match meeting evidence.");
     return segment;
@@ -392,15 +405,15 @@ export function validateMeeting(value: unknown): Meeting {
     throw new Error("Duplicate record ID");
   if (m.segments.some((s) => s.speakerIds.some((x) => !speakerIds.has(x))))
     throw new Error("Unknown speaker reference");
-  const immutable = new Map<string, string>();
-  for (const s of [...m.history, ...m.segments]) {
-    const value = serializeSegmentEvidence(s);
-    if (immutable.has(ref(s)) && immutable.get(ref(s)) !== value)
+  const evidence = new Map<string, Segment>();
+  for (const source of [...m.history, ...m.segments]) {
+    const revisionKey = ref(source);
+    const previous = evidence.get(revisionKey);
+    if (previous && serializeSegmentEvidence(previous) !== serializeSegmentEvidence(source))
       throw new Error("Conflicting evidence revisions");
-    immutable.set(ref(s), value);
+    evidence.set(revisionKey, source);
   }
-  const refs = new Set([...m.history, ...m.segments].map(ref));
-  if (m.memos.some(v => (v.editUndo ?? []).some(entry => entry.before.id !== entry.after.id || !v.items.some(item => item.id === entry.before.id) || [...entry.before.sources, ...entry.after.sources].some(source => !refs.has(ref(source))))))
+  if (m.memos.some(v => (v.editUndo ?? []).some(entry => entry.before.id !== entry.after.id || !v.items.some(item => item.id === entry.before.id) || [...entry.before.sources, ...entry.after.sources].some(source => !evidence.has(ref(source))))))
     throw new Error("Invalid memo edit undo history.");
   if (m.jobs.some(job => job.contextual && job.stage !== "memo")) throw new Error("Contextual jobs require the memo stage.");
   if (m.schemaVersion === 1 && (m.memos.some(v => v.reviewCompletion || v.editUndo || v.restoredFrom) || m.jobs.some(job => job.contextual)))
@@ -408,7 +421,7 @@ export function validateMeeting(value: unknown): Meeting {
   if (
     m.memos.some((v) =>
       [...v.items, ...(v.originalItems || [])].some((i) =>
-        i.sources.some((s) => !refs.has(ref(s))),
+        i.sources.some((s) => !evidence.has(ref(s))),
       ),
     )
   )
@@ -428,7 +441,7 @@ export function validateMeeting(value: unknown): Meeting {
     new Intl.DateTimeFormat("en", {timeZone: plan.snapshot.timezone}).format();
     if (plan.sourceRevision !== plan.snapshot.revision || !/^\d{4}-\d{2}-\d{2}$/.test(plan.snapshot.date) || new Date(`${plan.snapshot.date}T12:00:00Z`).toISOString().slice(0,10) !== plan.snapshot.date)
       throw new Error("Invalid agent source snapshot.");
-    const sources = memoSnapshotSegments(m, plan.snapshot);
+    const sources = resolveSnapshotReferences(evidence, plan.snapshot.sourceRefs);
     const sourceRefs = new Set(sources.map(ref));
     const labels = new Set(plan.snapshot.speakers.map(speaker => speaker.id));
     if (labels.size !== plan.snapshot.speakers.length || new Set(sources.map(source => source.id)).size !== sources.length || sources.some(source => source.speakerIds.some(id => !labels.has(id))))
@@ -464,7 +477,9 @@ export function validateMeeting(value: unknown): Meeting {
         .slice(0, 10) !== pipeline.snapshot.date
     )
       throw new Error("Invalid pipeline meeting date.");
-    const snapshotSegments = pipelineSourceSegments(m, pipeline);
+    const snapshotSegments = "segments" in pipeline.snapshot
+      ? pipeline.snapshot.segments
+      : resolveSnapshotReferences(evidence, pipeline.snapshot.sourceRefs);
     const labels = new Set(pipeline.snapshot.speakers.map((s) => s.id));
     if (
       labels.size !== pipeline.snapshot.speakers.length ||
@@ -477,9 +492,10 @@ export function validateMeeting(value: unknown): Meeting {
       snapshotSegments.map((s) => [ref(s), s]),
     );
     if (
-      snapshotSegments.some(
-        (s) => immutable.get(ref(s)) !== serializeSegmentEvidence(s),
-      )
+      "segments" in pipeline.snapshot && snapshotSegments.some(source => {
+        const original = evidence.get(ref(source));
+        return !original || serializeSegmentEvidence(original) !== serializeSegmentEvidence(source);
+      })
     )
       throw new Error("Pipeline sources do not match meeting evidence.");
     if (

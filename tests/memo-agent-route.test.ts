@@ -50,6 +50,45 @@ test("the pinned OpenRouter SDK serializes the frozen route without fallback or 
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 
+test.each([
+  { provider: "openai", model: "gpt-6-luna" },
+  selection,
+])("$provider enforces the inclusive UTF-8 byte limit on the SDK request body", async (selected) => {
+  const testRoute = newAgentRoute(selected);
+  const limit = 256 * 1024;
+  const encoder = new TextEncoder();
+  const source = '合成记录 📝 "decision"\n'.repeat(64);
+  const payloads: string[] = [];
+  const send = vi.fn(async () => new Response("Synthetic provider response", { status: 400 }));
+  const fetch = vi.fn(async (input, init) => {
+    payloads.push(init.body);
+    assertAgentTransport(testRoute, input, init);
+    return send();
+  });
+  const run = (padding: string) => streamAgentRoute(
+    testRoute,
+    normalizeContext({ messages: [{ role: "user", content: source + padding, timestamp: 1 }] }),
+    { apiKey: "sk-synthetic-probe", fetch },
+  );
+
+  // Measure each adapter's native envelope before padding by a known byte count.
+  await run("");
+  const baseBytes = encoder.encode(payloads[0]).byteLength;
+  for (const offset of [-1, 0, 1]) {
+    const targetBytes = limit + offset;
+    const result = await run("x".repeat(targetBytes - baseBytes));
+    const payload = payloads.at(-1)!;
+    expect(encoder.encode(payload).byteLength).toBe(targetBytes);
+    expect(payload.length).toBeLessThan(limit);
+    if (offset > 0) {
+      expect(result.stopReason).toBe("error");
+      expect(result.errorMessage).toContain("256 KiB input budget");
+    }
+  }
+  expect(fetch).toHaveBeenCalledTimes(4);
+  expect(send).toHaveBeenCalledTimes(3);
+});
+
 test.each([429, 500, 503])(
   "OpenRouter HTTP %s is never retried by either SDK retry layer",
   async (status) => {

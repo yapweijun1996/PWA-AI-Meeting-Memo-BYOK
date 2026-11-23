@@ -8,8 +8,11 @@ import { URL } from "node:url";
 import { chromium, expect, webkit } from "@playwright/test";
 
 import { checkForWorkerUpdate } from "./test-pwa-worker-state.mjs";
+import { installRecoveryInterceptor, prepareRecoveryMeeting, verifyForwardRecovery } from "./test-pwa-recovery-fixture.mjs";
 
-const [baselineDir, candidateDir] = process.argv.slice(2);
+const [baselineDir, candidateDir, rehearsalFlag] = process.argv.slice(2);
+const rehearseRecovery = rehearsalFlag === "--rehearse-recovery";
+assert(!rehearsalFlag || rehearseRecovery, "Unknown rehearsal option");
 assert(baselineDir && candidateDir, "Usage: node scripts/test-pwa-install-integrity.mjs BASELINE_DIST CANDIDATE_DIST");
 
 async function readRelease(directory) {
@@ -82,13 +85,30 @@ try {
       staleAsset = undefined;
       browser = await engine.launch();
       const context = await browser.newContext();
+      if (rehearseRecovery) await installRecoveryInterceptor(context);
       const page = await context.newPage();
       await page.goto(url);
       await page.waitForFunction(() => !!globalThis.navigator.serviceWorker.controller);
       const entry = page.locator('script[type="module"][src]');
       await expect(entry).toHaveAttribute("src", baseline.entry);
+      const memoKey = "synthetic-test-only", speechKey = "synthetic-router-only";
+      await page.getByRole("link", { name: "Settings & API keys" }).click();
+      await page.getByLabel("OpenAI API key", { exact: true }).fill(memoKey);
+      await page.getByLabel("OpenRouter API key", { exact: true }).fill(speechKey);
+      await page.getByRole("button", { name: "Save settings" }).click();
+      await expect(page.getByRole("button", { name: "Saved on this device" })).toBeVisible();
+      await page.goto(url);
+      const fixture = rehearseRecovery ? await prepareRecoveryMeeting(page, baseline, url) : undefined;
       const before = await page.evaluate(async () => {
-        await globalThis.caches.open("pwa-integrity-unrelated-cache");
+        const other = await globalThis.caches.open("pwa-integrity-unrelated-cache");
+        await other.put("/other-app/sentinel", new globalThis.Response("other app cache data"));
+        // This origin hosts another app with its own private database.
+        await new Promise((resolve, reject) => {
+          const open = globalThis.indexedDB.open("pwa-integrity-unrelated-db", 1);
+          open.onupgradeneeded = () => open.result.createObjectStore("records").put("other app record", "sentinel");
+          open.onerror = () => reject(open.error);
+          open.onsuccess = () => { open.result.close(); resolve(); };
+        });
         return (await globalThis.caches.keys()).sort();
       });
       assert(before.some((name) => name.endsWith(`:${baseline.version}`)), "Initial app cache is missing");
@@ -106,11 +126,11 @@ try {
       const retainedCache = `meeting-memo-byok:${base}:${candidate.version}`;
       const retainedURL = new URL("retained-client.js", url).href;
       await page.evaluate(async ([name, key]) => {
-        await (await caches.open(name)).put(key, new Response("previously retained"));
+        await (await globalThis.caches.open(name)).put(key, new globalThis.Response("previously retained"));
       }, [retainedCache, retainedURL]);
       assert.equal(await checkForWorkerUpdate(page), "redundant");
       const retained = await page.evaluate(async ([name, key]) =>
-        (await caches.match(key, { cacheName: name }))?.text(), [retainedCache, retainedURL]);
+        (await globalThis.caches.match(key, { cacheName: name }))?.text(), [retainedCache, retainedURL]);
       assert.equal(retained, "previously retained");
 
       async function expectOfflineLaunch(expectedEntry) {
@@ -131,8 +151,51 @@ try {
       await page.getByRole("button", { name: "Confirm update", exact: true }).click();
       await expect(entry).toHaveAttribute("src", candidate.entry);
       await expectOfflineLaunch(candidate.entry);
-      assert(await page.evaluate(async () => (await globalThis.caches.keys()).includes("pwa-integrity-unrelated-cache")));
-      console.log(`PASS ${engine.name()} ${browser.version()}: rejected stale HTML and entry JS, launched old and new apps offline, and upgraded with confirmation`);
+      const inspectedEntries = await page.evaluate(async ({ base, needles }) => {
+        const sentinel = await globalThis.caches.match("/other-app/sentinel", { cacheName: "pwa-integrity-unrelated-cache" });
+        if (await sentinel?.text() !== "other app cache data") throw new Error("Unrelated cache record changed");
+        await new Promise((resolve, reject) => {
+          const open = globalThis.indexedDB.open("pwa-integrity-unrelated-db", 1);
+          open.onupgradeneeded = () => open.transaction.abort();
+          open.onerror = () => reject(open.error);
+          open.onsuccess = () => {
+            const db = open.result;
+            if (!db.objectStoreNames.contains("records")) {
+              db.close();
+              reject(new Error("Unrelated IndexedDB store disappeared"));
+              return;
+            }
+            const read = db.transaction("records").objectStore("records").get("sentinel");
+            read.onsuccess = () => {
+              db.close();
+              if (read.result === "other app record") resolve();
+              else reject(new Error("Unrelated IndexedDB record changed"));
+            };
+            read.onerror = () => { db.close(); reject(read.error); };
+          };
+        });
+        let count = 0;
+        for (const name of await globalThis.caches.keys()) {
+          if (!name.startsWith(`meeting-memo-byok:${base}:`)) continue;
+          const cache = await globalThis.caches.open(name);
+          for (const request of await cache.keys()) {
+            const url = new URL(request.url);
+            if (url.origin !== globalThis.location.origin || !url.pathname.startsWith(base)) throw new Error("Unexpected cached recipient");
+            const response = await cache.match(request);
+            const metadata = JSON.stringify([request.url, [...request.headers], response.url, [...response.headers]]);
+            const content = await response.text();
+            if (needles.some(value => metadata.includes(value) || content.includes(value))) throw new Error("Fixture credential found in app cache");
+            count++;
+          }
+        }
+        return count;
+      }, { base, needles: [memoKey, speechKey] });
+      assert(inspectedEntries > 0, "No app cache entries inspected");
+      if (fixture) {
+        const build = await verifyForwardRecovery(page, candidate, fixture);
+        console.log(`PASS ${engine.name()} ${browser.version()}: ${fixture.build} → ${build}; recovered the correction, historical receipt and original ZIP. Triage: memo, outcome unknown, possibly charged. One intercepted submission.`);
+      }
+      console.log(`PASS ${engine.name()} ${browser.version()}: rejected stale HTML and entry JS, launched old and new apps offline, and upgraded with confirmation. Inspected ${inspectedEntries} cached entries and preserved unrelated cache and database records.`);
     } catch (error) {
       process.exitCode = 1;
       console.error(`FAIL ${engine.name()}: ${error.message}`);

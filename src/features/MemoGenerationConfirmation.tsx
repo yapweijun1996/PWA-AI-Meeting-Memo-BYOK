@@ -21,6 +21,8 @@ export type MemoConfirmation = {
   plan?: MemoPipeline | null;
   planError?: string;
   agentPlan?: MemoAgentPlan;
+  agentPlanError?: string;
+  draftRoute?: AgentRoute;
 };
 
 export function MemoGenerationConfirmation({
@@ -64,7 +66,8 @@ export function MemoGenerationConfirmation({
   const missingKey = !(savedFinal && requestLimitReached) && !getKey(selection.provider);
   const localRecovery = savedFinal && (requestLimitReached || missingKey);
   const needsRetryReview = !localRecovery && needsMemoBillingReview(meeting, confirmation);
-  const planBlocked = Boolean(confirmation.planError && !agentPlan);
+  const planError = confirmation.agentPlanError ?? confirmation.planError;
+  const planBlocked = Boolean(planError && !agentPlan);
   const requestBlocked = requestLimitReached && !localRecovery;
   const canGenerate = !missingKey && !planBlocked && !requestLimitReached && costAcknowledged && (!needsRetryReview || reviewedRetry);
   const recoveryDescription = t("Recover notes from the saved final response and frozen source evidence. Nothing is sent to a provider.", "根据已保存的最终回应和冻结的来源证据恢复笔记，不会向服务商发送任何内容。");
@@ -113,7 +116,7 @@ export function MemoGenerationConfirmation({
       <section className="memo-confirm-section" aria-labelledby="memo-review-title">
         <h3 id="memo-review-title"><Icon glyph={Sparkles} size="control" />{t("Optional review", "可选复核")}</h3>
         {supportsAgentMemo(selection) ? <>
-          <label className="checkbox-label confirmation-consent memo-confirm-checkbox"><input type="checkbox" checked={!!agentPlan} onChange={event => {
+          <label className="checkbox-label confirmation-consent memo-confirm-checkbox"><input type="checkbox" checked={!!agentPlan || !!confirmation.agentPlanError} onChange={event => {
             onCostAcknowledged(false);
             onReviewedRetry(false);
             onToggleReview(event.target.checked);
@@ -136,7 +139,7 @@ export function MemoGenerationConfirmation({
             <p className="memo-confirm-hint">{t(`${agentPlan.jobIds.length} of ${MEMO_AGENT_MAX_REQUESTS} requests recorded; ${remainingAgentRequests(agentPlan)} remaining. Continuing or restoring a backup does not reset this count.`, `已记录 ${agentPlan.jobIds.length} / ${MEMO_AGENT_MAX_REQUESTS} 次请求；剩余 ${remainingAgentRequests(agentPlan)} 次。继续复核或恢复备份不会重置次数。`)}</p>
             <p className="memo-confirm-hint">{t("Space is checked before each request. If the meeting record fills, review pauses and saved responses remain.", "每次请求前都会检查空间；会议记录空间不足时复核会暂停，已保存的回应仍保留。")}</p>
             <details className="memo-confirm-details"><summary>{t("Review limits", "复核限制")}</summary><p>{t("Request or save failure stops the run. Reload never resumes it automatically. Limits: 256 KiB per request, 4 MiB per response, 8 KiB per lookup.", "请求或保存失败即停止；重新加载不会自动恢复。限制：每次请求 256 KiB、每次回应 4 MiB、每次查询 8 KiB。")}</p></details>
-          </> : <p className="memo-confirm-hint">{t("Pi reads selected excerpts; it does not guarantee a complete review.", "Pi 读取选取的片段，不保证完整审阅。")}</p>}
+          </> : <p className="memo-confirm-hint">{confirmation.agentPlanError ? t("Clear this option to choose standard memo generation.", "取消勾选即可使用标准纪要生成。") : t("Standard memo generation is selected.", "已选择标准纪要生成。")}</p>}
         </> : <p className="memo-confirm-hint">{t("Pi review supports OpenAI gpt-6-luna or OpenRouter openai/gpt-6-luna. Select an explicit route in Settings.", "Pi 复核支持 OpenAI gpt-6-luna 或 OpenRouter openai/gpt-6-luna。请在设置中选择明确路线。")}</p>}
       </section>
 
@@ -159,7 +162,7 @@ export function MemoGenerationConfirmation({
       {needsRetryReview && !reviewedRetry && <p className="memo-confirm-blocker">{t("Review the previous request and billing in Cost & processing before continuing.", "继续前请在“费用与处理”中核对之前的请求和账单。")}</p>}
       {requestBlocked && <p className="memo-confirm-blocker" role="alert">{translateMessage(AGENT_REQUEST_LIMIT_MESSAGE, language)}</p>}
       {localRecovery && <p className="memo-confirm-hint">{t("A final response is saved. Recovering validates it locally; no additional provider request is allowed.", "最终回应已保存。恢复时仅在本地校验，不会再发送服务商请求。")}</p>}
-      {planBlocked && <p className="memo-confirm-blocker" role="alert">{translateMessage(confirmation.planError!, language)}</p>}
+      {planBlocked && <p className="memo-confirm-blocker" role="alert">{translateMessage(planError!, language)}</p>}
       {missingKey && !localRecovery && <p className="memo-confirm-blocker"><a href="#/settings" className="text-button" onClick={onClose}>{t("Add your key in Settings first", "请先在设置中添加密钥")}</a></p>}
       {!localRecovery && <label className="checkbox-label confirmation-consent memo-confirm-checkbox"><input type="checkbox" checked={costAcknowledged} onChange={event => onCostAcknowledged(event.target.checked)} /><span>{t("I understand the selected data will be sent and may incur API charges.", "我了解所选数据将被发送，并可能产生 API 费用。")}</span></label>}
       <div className="modal-actions">

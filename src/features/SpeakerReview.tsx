@@ -1,4 +1,6 @@
 import { Button } from "../components/controls";
+import { detectedOverlap, recordingOverlap } from "../domain/overlap-evidence";
+import { OverlapNotice } from "./OverlapNotice";
 import { Icon } from "../components/Icon";
 import "./SpeakerPlayback.css";
 import "./SpeakerReview.css";
@@ -200,6 +202,13 @@ export function SpeakerReview({
     setModeNotice("");
     setMode(nextMode);
     return true;
+  }
+
+  function revealSpeakerName(input: HTMLInputElement) {
+    const player = input.closest(".workspace")?.querySelector(".audio-player");
+    if (player && input.getBoundingClientRect().bottom > player.getBoundingClientRect().top) {
+      input.scrollIntoView({ block: "center", behavior: "instant" });
+    }
   }
 
   function openSpeakerEditor(speakerId: string) {
@@ -578,7 +587,7 @@ export function SpeakerReview({
                 {avatars[speaker.id] && <Button type="button" className="text-button" disabled={locked || avatarBusy} onClick={() => { setAvatarBusy(true); void trackAvatarWrite(setSpeakerAvatar(meeting.id, speaker.id, null)).then(() => setAvatarError("")).catch(() => setAvatarError(t("Could not remove the avatar.", "\u65e0\u6cd5\u5220\u9664\u5934\u50cf\u3002"))).finally(() => setAvatarBusy(false)); }}>{t("Use default", "\u4f7f\u7528\u9ed8\u8ba4\u5934\u50cf")}</Button>}
               </div>{avatarError && <p className="notice danger" role="alert">{avatarError}</p>}
 
-              <label>{t("Display name", "显示名称")}<input aria-label={t(`Name for speaker ${index + 1}`, `\u7b2c ${index + 1} \u4f4d\u8bf4\u8bdd\u4eba\u7684\u59d3\u540d`)} data-speaker-input-id={speaker.id} value={draft} maxLength={80} disabled={locked} data-unsaved-edit={draft !== speaker.name ? "true" : "false"} onChange={(event) => setDrafts((current) => ({ ...current, [speaker.id]: event.target.value }))} /></label>
+              <label>{t("Display name", "显示名称")}<input aria-label={t(`Name for speaker ${index + 1}`, `\u7b2c ${index + 1} \u4f4d\u8bf4\u8bdd\u4eba\u7684\u59d3\u540d`)} data-speaker-input-id={speaker.id} onFocus={event => revealSpeakerName(event.currentTarget)} value={draft} maxLength={80} disabled={locked} data-unsaved-edit={draft !== speaker.name ? "true" : "false"} onChange={(event) => setDrafts((current) => ({ ...current, [speaker.id]: event.target.value }))} /></label>
               {saveErrors[speaker.id] && <p className="notice danger" role="alert">{saveErrors[speaker.id]}</p>}
               <p className="small muted">{t("Saving a name does not confirm it. Confirm only after reviewing the evidence.", "保存姓名不会确认身份。请审阅依据后再确认。")}</p>
               <div className="speaker-card-actions"><Button className="button secondary compact" disabled={locked || !draft.trim() || draft === speaker.name} data-unsaved-edit={draft !== speaker.name ? "true" : "false"} onClick={() => void saveSpeaker(speaker.id, "save")}>{t("Save name", "保存姓名")}</Button>
@@ -676,9 +685,10 @@ function PlaybackMode({
   );
   // Everything below depends on the playhead only through these boundaries, so subscribe to a
   // representative time of the current boundary interval instead of the raw frame-rate position.
+  const overlap = recordingOverlap(meeting.audio);
   const boundaries = useMemo(
-    () => playbackBoundaries(meeting.segments, captions),
-    [meeting.segments, captions],
+    () => playbackBoundaries(meeting.segments, captions, overlap?.intervals),
+    [meeting.segments, captions, overlap],
   );
   const position = useSyncExternalStore(
     clock.subscribe,
@@ -838,6 +848,8 @@ function PlaybackMode({
             {displayedCaptions.some((caption) => caption.speakerIds.length === 0) && <span className="playback-current-speaker"><span className="speaker-avatar" aria-hidden="true">?</span><strong>{t("Unknown speaker", "未知说话人")}</strong></span>}
           </div>
           <div className="playback-current-content" role="region" aria-label={t("Current captions", "当前字幕")} tabIndex={0}>
+            {overlap && current.length > 0 && detectedOverlap(overlap, position) &&
+              <OverlapNotice evidence={overlap} unknown={current.some(c => !c.speakerIds.length)} t={t} />}
             {context.length > 0 && <span className="playback-context-only">{t("Caption context during a word pause", "词间停顿的字幕上下文")}</span>}
             {displayedCaptions.map((caption) => (
               <div className="playback-current-caption" key={caption.id}>

@@ -5,7 +5,7 @@ test.use({ serviceWorkers: "block" });
 
 async function seedMeetings(page: Page) {
   await page.goto("./");
-  await expect(page.locator(".sidebar-recent")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your meetings" })).toBeVisible();
   const meetings = Array.from({ length: 5 }, (_, index) => ({
     ...sampleMeeting(),
     id: crypto.randomUUID(),

@@ -1,3 +1,4 @@
+import { syntheticMp3 } from "./helpers/synthetic-recording";
 import { test, expect } from "@playwright/test";
 
 const base = "/PWA-AI-Meeting-Memo-BYOK/";
@@ -7,13 +8,6 @@ const syntheticKey = "synthetic-chunked-playback-key";
 test.describe.configure({ timeout: 120_000 });
 test.use({ serviceWorkers: "block" });
 
-function syntheticMp3(): Buffer {
-  const frame = Buffer.alloc(417);
-  frame.set([0xff, 0xfb, 0x90, 0]);
-  const bytes = Buffer.alloc(63_000 * frame.length);
-  for (let offset = 0; offset < bytes.length; offset += frame.length) frame.copy(bytes, offset);
-  return bytes;
-}
 
 test("plays long local recordings across chunk boundaries", async ({ page, browserName }) => {
   const bytes = syntheticMp3();

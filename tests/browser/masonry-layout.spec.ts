@@ -1,3 +1,4 @@
+import { nextKeyboardControl } from "./helpers/keyboard";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { sampleMeeting } from "../../src/domain/model";
@@ -91,7 +92,7 @@ test("library cards share masonry behavior without changing sort or keyboard ord
       && fourth.top >= first.bottom + 15 && fourth.top <= first.bottom + 21;
   }).toBe(true);
   await page.locator(cards).first().focus();
-  await page.keyboard.press(browserName === "webkit" && process.platform === "darwin" ? "Alt+Tab" : "Tab");
+  await page.keyboard.press(nextKeyboardControl(browserName));
   await expect(page.locator(cards).nth(1)).toBeFocused();
   await page.setViewportSize({ width: 390, height: 900 });
   await expect.poll(async () => {

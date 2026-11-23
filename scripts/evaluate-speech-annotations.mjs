@@ -49,14 +49,72 @@ function ranges(values, speakers = false) {
       fail();
   return values;
 }
-function permutations(values, n) {
-  if (!n) return [[]];
-  return values.flatMap((v, i) =>
-    permutations(
-      values.filter((_, j) => j !== i),
-      n - 1,
-    ).map((rest) => [v, ...rest]),
+// Hungarian assignment on negated overlap durations. Silent padding lets an
+// unmatched label use a zero-weight column when the two label counts differ.
+function matchSpeakers(slices, referenceLabels, labels) {
+  const size = Math.max(referenceLabels.length, labels.length);
+  const columns = new Map(
+    referenceLabels.map((label, index) => [label, index + 1]),
   );
+  const rows = new Map(labels.map((label, index) => [label, index + 1]));
+  const costs = Array.from(
+    { length: size + 1 },
+    () => new Float64Array(size + 1),
+  );
+  for (const slice of slices)
+    for (const hypothesis of slice.h)
+      for (const reference of slice.r)
+        costs[rows.get(hypothesis)][columns.get(reference)] -= slice.duration;
+
+  const rowPotential = new Float64Array(size + 1);
+  const columnPotential = new Float64Array(size + 1);
+  const matchedRow = new Int32Array(size + 1);
+  for (let row = 1; row <= size; row++) {
+    matchedRow[0] = row;
+    let column = 0;
+    const visited = new Set();
+    const slack = new Float64Array(size + 1).fill(Infinity);
+    const predecessor = new Int32Array(size + 1);
+    do {
+      visited.add(column);
+      const activeRow = matchedRow[column];
+      let nextColumn = 0,
+        step = Infinity;
+      for (let next = 1; next <= size; next++) {
+        if (visited.has(next)) continue;
+        const reducedCost =
+          costs[activeRow][next] -
+          rowPotential[activeRow] -
+          columnPotential[next];
+        if (reducedCost < slack[next]) {
+          slack[next] = reducedCost;
+          predecessor[next] = column;
+        }
+        if (slack[next] < step) {
+          step = slack[next];
+          nextColumn = next;
+        }
+      }
+      if (!Number.isFinite(step)) fail();
+      for (let next = 0; next <= size; next++) {
+        if (visited.has(next)) {
+          rowPotential[matchedRow[next]] += step;
+          columnPotential[next] -= step;
+        } else slack[next] -= step;
+      }
+      column = nextColumn;
+    } while (matchedRow[column]);
+    while (column) {
+      const previous = predecessor[column];
+      matchedRow[column] = matchedRow[previous];
+      column = previous;
+    }
+  }
+  const mapping = new Map();
+  for (let column = 1; column <= referenceLabels.length; column++)
+    if (matchedRow[column] <= labels.length)
+      mapping.set(labels[matchedRow[column] - 1], referenceLabels[column - 1]);
+  return mapping;
 }
 
 /** Offline arithmetic over reviewed annotations, never audio analysis or identity recognition. */
@@ -89,7 +147,7 @@ export function evaluateSpeech(data) {
       if (!scope.length) fail();
       const referenceLabels = [...new Set(r.map((v) => v.speaker))],
         labels = [...new Set(h.map((v) => v.speaker))];
-      if (referenceLabels.length > 5 || labels.length > 5) fail();
+      if (referenceLabels.length > 50 || labels.length > 50) fail();
       const boundaries = [
         ...new Set([...r, ...h, ...scope].flatMap((v) => [v.start, v.end])),
       ].sort((a, b) => a - b);
@@ -109,26 +167,7 @@ export function evaluateSpeech(data) {
           ),
         });
       }
-      const targets = [...referenceLabels];
-      while (targets.length < labels.length) targets.push(null);
-      const candidates = permutations(targets, labels.length);
-      let best = -1,
-        bestMap = new Map();
-      for (const candidate of candidates) {
-        const mapping = new Map(
-          labels.map((label, i) => [label, candidate[i]]),
-        );
-        const correct = slices.reduce(
-          (sum, s) =>
-            sum +
-            s.duration * [...s.h].filter((v) => s.r.has(mapping.get(v))).length,
-          0,
-        );
-        if (correct > best) {
-          best = correct;
-          bestMap = mapping;
-        }
-      }
+      const bestMap = matchSpeakers(slices, referenceLabels, labels);
       let denominator = 0,
         miss = 0,
         falseAlarm = 0,

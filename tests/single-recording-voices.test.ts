@@ -194,6 +194,33 @@ describe("local voice check for a single MP3", () => {
     await deleteMeeting(meetingId);
   });
 
+  it.each([
+    { middleVoice: 0, assign: true },
+    { middleVoice: 90, assign: false },
+  ])("compares a masked turn against the current anchors of an unlabelled original ($middleVoice)", async ({ middleVoice, assign }) => {
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+    const meetingId = crypto.randomUUID();
+    const { saved } = await singleMp3Meeting(meetingId);
+    const current = [
+      segment("The original item includes", [LABEL_A], 1, 4),
+      segment("a further qualifying condition", [], 4, 6),
+      segment("which deserves a separate review.", [LABEL_A], 6, 9),
+      segment("A different speaker's clean turn.", [LABEL_B], 10, 13),
+    ];
+    const originals = current.map(s => ({ ...s, speakerIds: [] }));
+    const input = await saveMeeting(replaceTranscript(saved, saved.speakers, current, "synthetic", "masked", { originalSegments: originals }));
+    const provider = sequenceProvider([unit(middleVoice), unit(0), unit(2), unit(90)]);
+    const result = await analyzeSingleRecordingVoices(input, { provider, consent: true });
+    expect(result.meeting.segments[1]!.speakerIds).toEqual(assign ? [LABEL_A] : []);
+    expect(result.meeting.runs.at(-1)!.originalSegments.every(s => !s.speakerIds.length)).toBe(true);
+    expect(result.meeting.segments[0]).toEqual(input.segments[0]);
+    if (assign) {
+      expect(result.meeting.segments[1]!.revision).toBeGreaterThan(input.segments[1]!.revision);
+      expect(undoEdit(result.meeting).segments).toEqual(input.segments);
+    } else expect(result.meeting).toStrictEqual(input);
+    await deleteMeeting(meetingId);
+  });
+
   it("requires consent and a supported format, and rejects a changed recording", async () => {
     const meetingId = "00000000-0000-4000-8000-000000000023";
     const { saved } = await singleMp3Meeting(meetingId);

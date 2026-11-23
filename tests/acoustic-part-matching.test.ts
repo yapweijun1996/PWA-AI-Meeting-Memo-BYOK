@@ -159,6 +159,47 @@ describe("one-to-one matching of provider labels across parts", () => {
   });
 });
 
+describe("automatic matching without a supplied speaker count", () => {
+  function assignments(later: [string, number[]][]) {
+    const anchors: [string, number[]][] = [["first", [1, 0, 0]], ["second", [0, 1, 0]]];
+    // Mirrored samples in the final part keep the recording mean at zero.
+    const mirror: [string, number[]][] = [...anchors, ...later].map(([label, vector]) =>
+      [label, vector.map((value) => -value)],
+    );
+    const rng = random(1);
+    const embeddings = [anchors, later, mirror].flatMap((part, chunk) =>
+      part.flatMap(([label, vector], position) => [0, 1].map((n) => {
+        const sample = record(chunk, label, 0, position * 2 + n, rng);
+        sample.values.fill(0);
+        sample.values.splice(0, vector.length, ...vector);
+        return sample;
+      })),
+    );
+    return new Map(run(embeddings).assignments.map((assignment) => [assignment.sourceKey, assignment]));
+  }
+
+  it("an uncertain label does not reserve a returning speaker's voice", () => {
+    const uncertain: [string, number[]] = ["uncertain", [0.6, 0.6, Math.sqrt(0.28)]];
+    const returning: [string, number[]] = ["returning", [0.5, -0.5, Math.sqrt(0.5)]];
+    for (const later of [[uncertain, returning], [returning, uncertain]]) {
+      const result = assignments(later);
+      expect(result.get("1:uncertain")).toMatchObject({ state: "ambiguous", identityId: null });
+      expect(result.get("1:returning")).toMatchObject({ state: "matched", identityId: result.get("0:first")!.identityId });
+    }
+  });
+
+  it("equally supported contenders for one voice both remain unresolved in either turn order", () => {
+    const left: [string, number[]] = ["left", [0.6, 0, 0.8]];
+    const right: [string, number[]] = ["right", [0.6, 0, -0.8]];
+    for (const later of [[left, right], [right, left]]) {
+      const result = assignments(later);
+      for (const label of ["left", "right"]) {
+        expect(result.get(`1:${label}`)).toMatchObject({ state: "ambiguous", identityId: null });
+      }
+    }
+  });
+});
+
 describe("which average is removed before comparing", () => {
   const parts = [
     [{ label: "A", voice: 0 }, { label: "B", voice: 1 }, { label: "C", voice: 2 }],

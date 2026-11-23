@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
-import { confirm, memo, readPiMeeting, setup, sse, stream, tool } from "./helpers/memo-pi";
+import { confirm, memo, piBrowserOrigin, readPiMeeting, setup, sse, stream, tool } from "./helpers/memo-pi";
 
 test.use({ serviceWorkers: "block" });
 
@@ -10,9 +10,10 @@ const marker = "Synthetic selective review result";
 async function startReview(page: Page, respond: (route: Route, attempt: number) => Promise<void>, provider: "openai" | "openrouter" = "openai") {
   const attempts: number[] = [];
   const unexpected: string[] = [];
+  const appOrigin = piBrowserOrigin();
   await page.route("**/*", async route => {
     const url = new URL(route.request().url());
-    if (url.origin === "http://127.0.0.1:4180") return route.fallback();
+    if (url.origin === appOrigin) return route.fallback();
     if (url.href !== (provider === "openai" ? openAI : openRouter) || route.request().method() !== "POST") {
       unexpected.push(url.origin + url.pathname);
       return route.abort();

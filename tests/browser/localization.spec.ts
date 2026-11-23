@@ -125,6 +125,7 @@ test("topbar language choice persists and Malay fallback is explicit", async ({ 
   await expect(malay).toContainText("Partial translation");
   await malay.click();
   await expect(page.locator("html")).toHaveAttribute("lang", "ms");
+  await page.getByRole("button", { name: "Buka navigasi" }).click();
   await expect(page.getByRole("link", { name: /Mesyuarat anda/ })).toBeVisible();
   await page.reload();
   await expect(trigger).toHaveAccessibleName(/: Bahasa Melayu$/);

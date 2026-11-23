@@ -1,6 +1,6 @@
 # Owner acceptance pack
 
-Updated 2026-11-17. This is the procedure for the remaining external gates in task.md, not a record that those gates passed. Use the exact deployed build shown in Settings. Keep real recordings, annotations, account exports and screenshots containing keys outside Git and KB.
+Updated 2026-11-22. This is the procedure for the remaining external gates in task.md, not a record that those gates passed. Use the exact deployed build shown in Settings. Keep real recordings, annotations, account exports and screenshots containing keys outside Git and KB.
 
 ## Result record
 
@@ -50,12 +50,28 @@ Run the install-integrity check separately from `test:pwa`. A nonzero exit recor
 | Launch the old app offline after rejection, wait for explicit confirmation of the coherent upgrade, then launch the new app offline | PASS | PASS |
 | Protect active requests and unsaved edits, retain the saved correction across activation and recover from a stalled update | PASS | PASS |
 
+The local production candidate also passed an update during a queued **Accept** decision. With a previous Fact status write held, Chromium and WebKit committed the accepted review before reloading. An injected Accept write failure kept the page open, retained the earlier edit and allowed retry. Both cases preserved the original generated item and allowed reversing the decision with **Needs review**. The fixture simulates worker activation and uses real IndexedDB transactions. [Browser regressions](../tests/browser/sidebar-confirmation.spec.ts#L522)
+
 GitHub Pages delivery of this fix and physical-device installation remain separate acceptance cases. Retention of every asset used by an older open tab when a second waiting worker supersedes the first also needs a separate check.
 
 | Known gap | Current evidence |
 | --- | --- |
-| A queued memo Accept during an update | Prior tests reproduced the reload/write ordering. Actual data loss was not observed. [BUG-049](../BUGS.md#2026-11-22-pi-memo-audit-and-release-review) |
 | A Pi receipt near the ZIP limit | A previous near-limit fixture reproduced an export refusal after a Pi receipt. [BUG-051](../BUGS.md#2026-11-22-pi-memo-audit-and-release-review) |
+
+## Forward recovery and support rehearsal
+
+Engineering ran F6 and F7 on 2026-11-22 with Node 22.23.3 on macOS, Chromium 156.0.8078.4 and WebKit 27.2. The isolated static origin served a local copy of the published `ee188bc` release (worker `1711568a606292cc`) and the working-tree candidate `local-45df3fb-production-voice-validated` (worker `1319c034547437e9`). The candidate label identifies this local artifact. [Published build record](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/45034968825)
+
+- **Forward recovery passed in both engines.** The original app saved a transcript correction, one mock memo receipt with an unknown outcome, and a ZIP. Each browser rejected the mixed release, launched the original shell offline, then installed the coherent replacement after explicit confirmation. After the upgrade, meeting ID, schema version, revision, source segments, edit history and jobs matched the original archive. Restoring that archive created a new meeting ID with the same source revisions and receipt. The next submission stayed disabled until a separate billing-review acknowledgment, and the intercepted attempt count stayed at one. The rehearsal used a transcript-only fixture and existing storage schemas. [Two-build fixture](../scripts/test-pwa-install-integrity.mjs) · [Recovery assertions](../scripts/test-pwa-recovery-fixture.mjs)
+- **Support triage passed in both engines.** Settings → About displayed the complete published commit `ee188bc094df4cfa06a33977f22f9e407a1753fa`, which matched the loaded module and the release record. The workspace identified a memo with an unknown outcome, possible charges and an instruction to check the provider account before retrying. A separate mock HTTP 401 showed a failed memo, possible charges and an instruction to check the key for the selected provider. The diagnostic record contained the build, browser/version, stage, outcome, billing state and error category. All inputs were synthetic and all provider submissions were intercepted locally. [Support procedure](DEPLOYMENT.md#diagnose-a-failed-provider-request) · [HTTP rejection regression](../tests/browser/providers.spec.ts)
+
+To repeat the cross-build rehearsal, append `--rehearse-recovery` to the two-artifact install-integrity command above. Supply builds with different public build IDs.
+
+## Desktop keyboard and accessibility tree
+
+On 2026-11-23 a separate headless Chrome 158.0.8127.37 profile on macOS 27.2 opened static worker `89ee32e7bbcff7fc` with a synthetic reviewed-meeting fixture. Keyboard navigation selected the notes tab, activated Evidence Review, opened a frozen source citation, closed it with Escape, edited and accepted the note, then downloaded Markdown containing the accepted edit. Chromium's renderer accessibility tree exposed the review button's pressed state, citation focus, named source dialog and heading, source text, editing field and focused export action. Focus returned to the citation after the dialog closed. The app rendered light mode in both system-preference simulations. No external requests were observed.
+
+Apple's USB device service and ADB both returned zero attached phones or tablets. The native macOS accessibility query targeted only the test browser process. Its headless window exposed no native web area. Physical VoiceOver and TalkBack speech, touch, zoom and dark-mode acceptance remain open.
 
 ## Device and accessibility cases
 
@@ -73,7 +89,7 @@ GitHub Pages delivery of this fix and physical-device installation remain separa
 | D10 | Go offline after the shell and meeting are saved | Local review/play/edit/export works; cloud requests remain unavailable; reference video requires a connection |
 | D11 | Open a new release with a dirty editor or active request | No automatic reload; draft/request protection; explicit update progress and recoverable failure |
 | D12 | Restore full backup as a new copy; open missing-audio JSON | Sources and human edits survive; absent audio is explicit; keys are absent |
-| D13 | With a synthetic supported long recording, back up, restore as a new copy and reattach the identical original; also try a different file | Identical source is accepted without losing existing data; a different source is refused without replacing/deleting data. The identical-source path currently fails in synthetic local Chromium/WebKit checks; physical-device acceptance is NOT RUN pending REC01/REC02. |
+| D13 | With a synthetic supported long recording, back up, restore as a new copy and reattach the identical original; also try a different file | Identical source is accepted without losing existing data; a different source is refused without replacing/deleting data. Both reattachment cases pass in desktop Chromium and WebKit. Physical-device acceptance is NOT RUN. |
 
 ## Production provider and billing cases
 
@@ -119,7 +135,7 @@ Input shape:
 }
 ```
 
-The CLI makes no requests, writes no file and prints no transcript or speaker names. It accepts at most 30 runs, 5 labels per side, 1,000 intervals per array, 5,000 normalized text units and a 2 MiB document. Text uses NFKC, lower case, punctuation/symbol-to-space normalization; English is whitespace-token WER and Chinese is non-whitespace-character CER. Mixed-language scores must state that normalization and be reviewed alongside the original text.
+The CLI makes no requests, writes no file and prints no transcript or speaker names. It accepts at most 30 runs, 50 anonymous speaker labels per side, 1,000 intervals per array, 5,000 normalized text units and a 2 MiB document. Text uses NFKC, lower case, punctuation/symbol-to-space normalization; English is whitespace-token WER and Chinese is non-whitespace-character CER. Mixed-language scores must state that normalization and be reviewed alongside the original text.
 
 Diarization uses one optimal label assignment per run, no timing collar, overlap-inclusive reference speaker-seconds and only explicitly evaluated ranges. Miss, false-alarm and confusion durations are separate. Silence inside evaluated ranges counts for false alarms; unannotated ranges are excluded, not declared correct. Unknown-output coverage must be annotated separately; the tool cannot distinguish silence from an unknown model label automatically. A zero denominator returns null. Synthetic arithmetic tests are not model accuracy evidence.
 
@@ -129,8 +145,8 @@ Record number/date/amount/ERP-term errors, timing error samples, unknown coverag
 
 The repository routes recordings over 24,000,000 bytes to its long-import path, which accepts MP3/MPEG and supported M4A/MP4 up to a configured 4 GiB ceiling; each transcription upload is limited to 25,000,000 bytes. Unsupported long formats and unsupported MP4 variants are rejected. These are code limits, not measured universal phone capacities or proof of the currently deployed build. Measure import/checksum/save/play/backup time near each boundary, invalid containers, unknown MIME, quota denial, suspension and missing audio. Record memory only when the platform exposes a suitable measurement; otherwise mark unavailable.
 
-Container-aware local splitting and sequential chunk processing exist, but valid independent chunks, original timeline offsets/encoder delay, channel preservation, boundary repeats and meeting-scoped acoustic continuity still require applicable acceptance evidence. Never use arbitrary Blob byte slices, text-similarity deletion of repeated speech or automatic merging of same-named chunk speakers as voice evidence. Chunked audio and separate per-chunk speech/acoustic records are excluded from backup; synthetic local Chromium/WebKit restore checks reproduced an identity mismatch when reattaching the original. Keep the original meeting and file while REC01–03 remain open; do not send paid retries merely to test recovery. Physical device/resource limits remain open V06 evidence.
+Container-aware local splitting and sequential chunk processing exist, but valid independent chunks, original timeline offsets/encoder delay, channel preservation, boundary repeats and meeting-scoped acoustic continuity still require applicable acceptance evidence. Never use arbitrary Blob byte slices, text-similarity deletion of repeated speech or automatic merging of same-named chunk speakers as voice evidence. Chunked audio and separate per-chunk speech/acoustic records are excluded from backup. Restoring a copy and reattaching the identical recording recovers its audio. The app refuses another paid submission when a completed speech checkpoint required by the restored meeting is missing. Keep the original meeting for access to its checkpoints and keep the original recording. [Recovery evidence](VALIDATION.md) Physical device/resource limits remain open V06 evidence.
 
 ## Completion ownership
 
-The developer supplies tested code, synthetic evidence, compatible backup/update behavior and this pack. The owner supplies device results, consented annotations, provider billing evidence and usability sign-off. R08 is complete only after the applicable roadmap matrix has evidence. Passing builds or deployment cannot close missing real-data/device gates.
+Engineering owns test execution, device coverage, independent reference evaluation and defect resolution. Normal operation requires no owner-assisted speaker enrollment, listening exercise or manual merge. End users can review and correct meeting facts. External provider tests require existing consent for the specific audio, destination and charges. Record unavailable devices and missing reference data as open gates. R08 closes when the applicable roadmap matrix has evidence.

@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import { createMeeting, segment, type Meeting } from "../../../src/domain/model";
 
 export const key = "sk-synthetic-browser-agent-key";
@@ -118,6 +118,11 @@ export async function setup(page: Page, passageCount = 2, provider: "openai" | "
   return fixture;
 }
 
+export async function chooseStandardMemo(dialog: Locator) {
+  const review = dialog.getByRole("checkbox", { name: /Use selective transcript review|使用选择性转录复核/ });
+  if (await review.count()) await review.uncheck();
+}
+
 export async function confirm(page: Page) {
   await page
     .getByRole("button", { name: /^(Generate meeting notes|Regenerate)$/ })
@@ -129,13 +134,7 @@ export async function confirm(page: Page) {
       name: "Use selective transcript review (Pi, optional)",
       exact: true,
     }),
-  ).not.toBeChecked();
-  await dialog
-    .getByRole("checkbox", {
-      name: "Use selective transcript review (Pi, optional)",
-      exact: true,
-    })
-    .check();
+  ).toBeChecked();
   await expect(dialog).toContainText("total cost is unknown");
   await dialog.getByRole("checkbox", { name: "I understand the selected data will be sent and may incur API charges.", exact: true }).check();
   return dialog;

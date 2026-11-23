@@ -314,6 +314,37 @@ export async function deleteAcousticAssignments(meetingId: string): Promise<void
   await (await db()).delete("acousticAssignments", IDBKeyRange.bound([meetingId, ""], [meetingId, "\uffff"]));
 }
 
+/** Replace provisional groups together so a failed write can be resumed without losing labels. */
+export async function replaceAcousticGroups(
+  context: AcousticCheckpoint,
+  identities: readonly AcousticIdentity[],
+  assignments: readonly AcousticAssignment[],
+): Promise<void> {
+  const groups = identities.map((value) => parse(identitySchema, value));
+  const decisions = assignments.map((value) => parse(assignmentSchema, value));
+  for (const value of [...groups, ...decisions]) {
+    if (value.meetingId !== context.meetingId || value.recordingHash !== context.recordingHash || value.sourceRevision !== context.sourceRevision) {
+      throw new Error("Acoustic groups belong to another recording or revision.");
+    }
+  }
+  const tx = (await db()).transaction(["meetings", "acousticIdentities", "acousticAssignments"], "readwrite");
+  const meeting = await tx.objectStore("meetings").get(context.meetingId);
+  if (!meeting || meeting.audio?.hash !== context.recordingHash || meeting.revision !== context.sourceRevision) {
+    tx.abort();
+    await tx.done.catch(() => undefined);
+    throw new Error("Acoustic checkpoint is stale because the meeting or recording changed.");
+  }
+  const range = IDBKeyRange.bound([context.meetingId, ""], [context.meetingId, "\uffff"]);
+  const identityStore = tx.objectStore("acousticIdentities");
+  const assignmentStore = tx.objectStore("acousticAssignments");
+  await Promise.all([
+    identityStore.delete(range), assignmentStore.delete(range),
+    ...groups.map((row) => identityStore.put(row, [context.meetingId, row.id])),
+    ...decisions.map((row) => assignmentStore.put(row, [context.meetingId, row.sourceKey])),
+    tx.done,
+  ]);
+}
+
 export async function putAcousticCheckpoint(value: AcousticCheckpoint): Promise<void> {
   const parsed = parse(checkpointSchema, value);
   await putAcousticScoped("acousticCheckpoints", parsed.meetingId, parsed, parsed);

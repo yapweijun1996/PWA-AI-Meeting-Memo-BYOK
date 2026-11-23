@@ -238,14 +238,8 @@ test("Chinese large meeting can select review without sending a provider request
     "OpenAI",
     "gpt-6-luna",
     "会议语言",
-    "转录",
+    "选取的片段",
   ]);
-  await dialog
-    .getByRole("checkbox", {
-      name: "使用选择性转录复核（Pi，可选）",
-      exact: true,
-    })
-    .click();
   await expect(dialog.getByRole("alert")).toHaveCount(0);
   await expect(dialog.getByRole("checkbox", { name: "使用选择性转录复核（Pi，可选）", exact: true })).toBeChecked();
   await expect(dialog).toContainText("总费用未知");
@@ -270,8 +264,8 @@ test("Chinese capacity warning explains how to stop safely before a request", as
   await page.getByRole("button", { name: "生成会议笔记", exact: true }).click();
   const dialog = page.getByRole("dialog");
   const review = dialog.getByRole("checkbox", { name: "使用选择性转录复核（Pi，可选）", exact: true });
-  await review.click();
-  await expect(review).not.toBeChecked();
+  await expect(review).toBeChecked();
+  await expect(dialog.getByRole("button", { name: "生成新版笔记", exact: true })).toBeDisabled();
   await expect(dialog.getByRole("alert")).toContainText("未发送下一次请求");
   await expect(dialog.getByRole("alert")).toContainText("已保存的回应仍保留");
   await expect(dialog.getByRole("alert")).toContainText("精简本地历史");

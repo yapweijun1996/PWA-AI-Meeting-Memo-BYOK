@@ -75,3 +75,66 @@ test("Chinese CER normalization and malformed intervals are explicit", () => {
     }),
   ).toThrow("Invalid");
 });
+
+test.each([6, 50])(
+  "scores a global permutation of %i anonymous speakers",
+  (count) => {
+    const turns = Array.from({ length: count }, (_, i) => ({
+      start: i,
+      end: i + 1,
+      speaker: String(i),
+    }));
+    const referenceTurns = [
+      ...turns,
+      { start: count, end: count + 1, speaker: "0" },
+    ];
+    const hypothesisTurns = turns.map(({ start, end }, i) => ({
+      start,
+      end,
+      speaker: String((i + 1) % count),
+    }));
+    hypothesisTurns.push({ start: count, end: count + 1, speaker: "0" });
+    const result = evaluateSpeech({
+      schemaVersion: 1,
+      runs: [
+        {
+          ...run,
+          referenceTurns,
+          hypothesisTurns,
+          evaluatedRanges: [{ start: 0, end: count + 1 }],
+        },
+      ],
+    }).runs[0];
+    expect(result.referenceSpeakerSeconds).toBe(count + 1);
+    expect(result.confusionSpeakerSeconds).toBe(1);
+    expect(result.diarizationErrorRate).toBe(1 / (count + 1));
+  },
+);
+
+test("global speaker assignment can outweigh the strongest individual pair", () => {
+  const times = [
+    { start: 0, end: 9, ref: "A", hyp: "X" },
+    { start: 9, end: 17, ref: "B", hyp: "X" },
+    { start: 17, end: 25, ref: "A", hyp: "Y" },
+  ];
+  const result = evaluateSpeech({
+    schemaVersion: 1,
+    runs: [
+      {
+        ...run,
+        referenceTurns: times.map(({ start, end, ref }) => ({
+          start,
+          end,
+          speaker: ref,
+        })),
+        hypothesisTurns: times.map(({ start, end, hyp }) => ({
+          start,
+          end,
+          speaker: hyp,
+        })),
+        evaluatedRanges: [{ start: 0, end: 25 }],
+      },
+    ],
+  }).runs[0];
+  expect(result.confusionSpeakerSeconds).toBe(9);
+});
