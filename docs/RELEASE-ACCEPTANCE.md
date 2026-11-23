@@ -16,6 +16,14 @@ node scripts/create-acceptance-fixture.mjs private-fixtures/owner-acceptance
 
 Transfer `synthetic-playback.zip` to the device and use Restore backup. It contains eight seconds of low/high tones, authored timing/overlap/gaps, an untimed note and a clearly labeled authored memo. It contains no people, recognized speech, credentials or paid attempts. It exercises playback, review and restore; it cannot establish recognition accuracy. The generator refuses to overwrite an existing archive. Generated archives remain outside Git and the production artifact.
 
+For D13, create two valid long MP3 files with FFmpeg and transfer both to the device. They use different tones, the same encoding and approximately 26.4 MB each. `-n` protects an existing file. Use the first for import and identical reattachment, and the second for the rejection check.
+
+```sh
+mkdir -p private-fixtures/owner-acceptance
+ffmpeg -n -f lavfi -i 'sine=frequency=220:sample_rate=44100' -t 1100 -c:a libmp3lame -b:a 192k private-fixtures/owner-acceptance/long-original.mp3
+ffmpeg -n -f lavfi -i 'sine=frequency=440:sample_rate=44100' -t 1100 -c:a libmp3lame -b:a 192k private-fixtures/owner-acceptance/long-different.mp3
+```
+
 ## Local browser release checks
 
 Use the Node version in `.node-version` and a static build. The lifecycle test covers Chromium and WebKit with real workers and synthetic local data. It verifies offline reload, explicit activation, draft and request protection, cache isolation, and recovery when activation stalls.
@@ -90,6 +98,12 @@ Apple's USB device service and ADB both returned zero attached phones or tablets
 | D11 | Open a new release with a dirty editor or active request | No automatic reload; draft/request protection; explicit update progress and recoverable failure |
 | D12 | Restore full backup as a new copy; open missing-audio JSON | Sources and human edits survive; absent audio is explicit; keys are absent |
 | D13 | With a synthetic supported long recording, back up, restore as a new copy and reattach the identical original; also try a different file | Identical source is accepted without losing existing data; a different source is refused without replacing/deleting data. Both reattachment cases pass in desktop Chromium and WebKit. Physical-device acceptance is NOT RUN. |
+
+Use one row per device, mode and case. Replace the example status with the observed result and attach sanitized evidence. Record NOT RUN when the required device, version or accessibility setting is unavailable.
+
+| Case | Build SHA or build ID | Date | Device, OS and browser versions | Browser or installed | Language and assistive technology | Fixture | Result | Observed behavior and evidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| D01 | | | | | | Synthetic playback backup | NOT RUN | |
 
 ## Production provider and billing cases
 

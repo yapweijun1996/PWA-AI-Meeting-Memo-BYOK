@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import type { AcousticAssignment, AcousticEmbeddingRecord } from "../src/domain/acoustic-speaker";
 import { segment, type Meeting } from "../src/domain/model";
 import { buildVoiceEvaluationExport } from "../src/domain/voice-evaluation";
@@ -150,6 +152,23 @@ describe("offline voice evaluation", () => {
     expect(result.savedGrouping).toMatchObject({ labelsScored: 5, voices: 4, correctMerges: 0, wrongMerges: 1, missedMerges: 2, mergePrecision: 0, mergeRecall: 0 });
     expect(result.savedGrouping.labelsUndecidedByState).toEqual({ ambiguous: 1 });
     expect(result.savedGrouping.voicesMixingPeople).toEqual([{ voice: "V01", references: ["P01", "P02"] }]);
+  });
+
+  it("reports missing decisions and unresolved reference pairs in the CLI baseline", () => {
+    const path = "tests/fixtures/voice-evaluation.synthetic.json";
+    const result = JSON.parse(execFileSync(process.execPath, ["scripts/evaluate-voice-matching.mjs", path, "--replay"], { encoding: "utf8" }));
+    expect(result.counts).toMatchObject({ samples: 9, samplesWithReference: 8, labels: 8, labelsWithOneReference: 6, labelsMixingReferences: 1, labelsWithoutReference: 1 });
+    expect(result.savedGrouping).toMatchObject({
+      labelsScored: 4, referenceLabels: 6, labelDecisionCoverage: 4 / 6,
+      labelsUndecidedByState: { ambiguous: 1 }, labelsMissingDecision: 1,
+      correctMerges: 1, wrongMerges: 2, missedMerges: 2,
+      referenceSamePersonPairs: 10, unresolvedSamePersonPairs: 7,
+      mergePrecision: 1 / 3, mergeRecall: 1 / 3, mergeRecallAllReferencedPairs: 1 / 10,
+    });
+    expect(result.replay.runs[0]).toMatchObject({ labelsScored: 0, referenceSamePersonPairs: 10, unresolvedSamePersonPairs: 10 });
+    const fixture = JSON.parse(readFileSync(path, "utf8"));
+    fixture.decisions.push(fixture.decisions[0]);
+    expect(() => evaluateVoiceMatching(fixture)).toThrow(/Invalid or oversized/);
   });
 
   it("shows that removing the average separates voices that raw similarity cannot", () => {

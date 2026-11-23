@@ -8,6 +8,7 @@ From the repository root, using the project's pinned Node runtime:
 
 ```sh
 node scripts/evaluate-citation-annotations.mjs tests/fixtures/evidence-eval.synthetic.json
+node scripts/evaluate-citation-annotations.mjs tests/fixtures/memo-quality.synthetic.json
 npx vitest run tests/evidence-eval.test.ts
 ```
 
@@ -33,7 +34,13 @@ Reviewers must inspect both the note and its cited evidence. An omitted source c
 
 A zero denominator yields `null`, never zero. Rates describe only the reviewed claim set. `annotationComplete` is false when any item is marked partial or any claim is unknown. Even when true, it is only an annotation status: it does not prove reviewers found every claim, were correct, or evaluated two runs comparably.
 
-The current synthetic example has 17 cases, 18 claims, and one unknown. Its fixed labels intentionally include failures; its counts demonstrate the arithmetic and are **not model performance**. The score does not measure important source facts omitted entirely from a memo. Review those separately against a task-specific list of expected facts.
+The original version 1 fixture has 17 cases, 18 claims and one unknown. Its fixed labels demonstrate the arithmetic.
+
+## Version 2 grounded recall
+
+For a version 2 file, freeze a `goldFacts` array per case. Each fact has an anonymous unique `id`, atomic `text` and boolean `critical` flag. Each claim declares `requiredSourceAlternatives` in place of `requiredSources`. Use `null` when a sufficient source set cannot be determined, or provide a nonempty array of individually sufficient arrays of revision IDs. Any one complete set suffices. When none is complete, missing-reference counts use the set with the fewest missing references, then the smallest set if tied.
+
+Set `goldFactId` to the matched fact only for a supported atomic claim with a complete annotated evidence set. Set it to `null` for other claims. Repeated references to the same fact count once. A fact absent from a fully adjudicated memo counts as missed. An uncaptured fact whose memo includes incomplete or unknown adjudication is unresolved. An empty `items` array means the reviewed memo is empty. Use it only for confirmed empty output. Recall uses all frozen facts in its denominator, so incomplete adjudication yields a lower bound. Per-case recall is null with zero expected facts. The macro score averages non-null case recalls.
 
 ## Comparing model changes
 

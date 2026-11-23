@@ -114,15 +114,23 @@ export function evaluateVoiceMatching(data) {
       fail();
     seen.add(s.id);
   }
-  for (const d of data.decisions)
+  const decisionKeys = new Set();
+  for (const d of data.decisions) {
     if (
       !d ||
       !Number.isInteger(d.part) ||
+      d.part < 0 ||
       typeof d.label !== "string" ||
+      !d.label ||
       typeof d.state !== "string" ||
+      !d.state ||
       !(d.voice === null || typeof d.voice === "string")
     )
       fail();
+    const decisionKey = `${d.part}:${d.label}`;
+    if (decisionKeys.has(decisionKey)) fail();
+    decisionKeys.add(decisionKey);
+  }
 
   const differentPairs = data.differentLabelPairs ?? [];
   if (
@@ -142,11 +150,11 @@ export function evaluateVoiceMatching(data) {
   const labelReference = new Map();
   const mixedLabels = [];
   for (const [id, list] of byLabel) {
-    const counts = {};
-    for (const s of list) if (s.reference !== null) counts[s.reference] = (counts[s.reference] ?? 0) + 1;
-    const references = Object.keys(counts);
+    const counts = new Map();
+    for (const s of list) if (s.reference !== null) counts.set(s.reference, (counts.get(s.reference) ?? 0) + 1);
+    const references = [...counts.keys()];
     if (references.length === 1) labelReference.set(id, references[0]);
-    if (references.length > 1) mixedLabels.push({ part: list[0].part, label: list[0].label, samplesPerReference: counts });
+    if (references.length > 1) mixedLabels.push({ part: list[0].part, label: list[0].label, samplesPerReference: Object.fromEntries(counts) });
   }
 
   // Three views of the same vectors: as saved, minus the average of all samples
@@ -192,6 +200,7 @@ export function evaluateVoiceMatching(data) {
       labels: byLabel.size,
       labelsWithOneReference: labelReference.size,
       labelsMixingReferences: mixedLabels.length,
+      labelsWithoutReference: byLabel.size - labelReference.size - mixedLabels.length,
     },
     samplePairs,
     labelPairs,
@@ -206,13 +215,22 @@ export function evaluateVoiceMatching(data) {
  * people, a missed merge leaves one person's labels apart.
  */
 function scoreGrouping(decisions, labelReference, differentPairs) {
-  const undecidedByState = {};
+  const undecidedByState = new Map();
+  const labelsWithDecision = new Set();
   const scored = [];
   for (const d of decisions) {
     const reference = labelReference.get(d.key);
     if (reference === undefined) continue;
-    if (d.voice === null) undecidedByState[d.state] = (undecidedByState[d.state] ?? 0) + 1;
+    labelsWithDecision.add(d.key);
+    if (d.voice === null) undecidedByState.set(d.state, (undecidedByState.get(d.state) ?? 0) + 1);
     else scored.push({ voice: d.voice, reference });
+  }
+  const labelsPerPerson = new Map();
+  let referenceSamePersonPairs = 0;
+  for (const reference of labelReference.values()) {
+    const previous = labelsPerPerson.get(reference) ?? 0;
+    referenceSamePersonPairs += previous;
+    labelsPerPerson.set(reference, previous + 1);
   }
   let correctMerges = 0,
     wrongMerges = 0,
@@ -234,14 +252,20 @@ function scoreGrouping(decisions, labelReference, differentPairs) {
   for (const s of scored) peoplePerVoice.set(s.voice, (peoplePerVoice.get(s.voice) ?? new Set()).add(s.reference));
   return {
     labelsScored: scored.length,
-    labelsUndecidedByState: undecidedByState,
+    labelsUndecidedByState: Object.fromEntries(undecidedByState),
+    labelsMissingDecision: labelReference.size - labelsWithDecision.size,
+    referenceLabels: labelReference.size,
+    labelDecisionCoverage: ratio(scored.length, labelReference.size),
     voices: peoplePerVoice.size,
     referenceSpeakers: new Set(scored.map((s) => s.reference)).size,
     correctMerges,
     wrongMerges,
     missedMerges,
+    referenceSamePersonPairs,
+    unresolvedSamePersonPairs: referenceSamePersonPairs - correctMerges - missedMerges,
     mergePrecision: ratio(correctMerges, correctMerges + wrongMerges),
     mergeRecall: ratio(correctMerges, correctMerges + missedMerges),
+    mergeRecallAllReferencedPairs: ratio(correctMerges, referenceSamePersonPairs),
     voicesMixingPeople: [...peoplePerVoice]
       .filter(([, people]) => people.size > 1)
       .map(([voice, people]) => ({ voice, references: [...people].sort() })),
@@ -327,11 +351,17 @@ export function replayVoiceMatching(data, matcher) {
       voices: score.voices,
       labelsScored: score.labelsScored,
       labelsUndecided: Object.values(score.labelsUndecidedByState).reduce((sum, count) => sum + count, 0),
+      labelsMissingDecision: score.labelsMissingDecision,
+      referenceLabels: score.referenceLabels,
+      labelDecisionCoverage: score.labelDecisionCoverage,
       correctMerges: score.correctMerges,
       wrongMerges: score.wrongMerges,
       missedMerges: score.missedMerges,
+      referenceSamePersonPairs: score.referenceSamePersonPairs,
+      unresolvedSamePersonPairs: score.unresolvedSamePersonPairs,
       mergePrecision: score.mergePrecision,
       mergeRecall: score.mergeRecall,
+      mergeRecallAllReferencedPairs: score.mergeRecallAllReferencedPairs,
       humanDifferentPairsJoined: score.humanDifferentPairsJoined,
     };
   };

@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 2,
+  "name": "Synthetic memo quality baseline",
+  "annotation": "Authored synthetic development fixture. No independent adjudication or model generation.",
+  "cases": [
+    {
+      "id": "late-correction",
+      "language": "zh-CN-en",
+      "sources": [
+        { "id": "s1@1", "text": "We will start the pilot in May." },
+        { "id": "s1@2", "text": "Correction: the pilot starts in June." },
+        { "id": "s2@1", "text": "As agreed, pilot starts in June. Lin will check the stock report on Friday." },
+        { "id": "s3@1", "text": "回滚条件是连续两次对账失败。" }
+      ],
+      "goldFacts": [
+        { "id": "decision-pilot-date", "text": "The pilot starts in June.", "critical": true },
+        { "id": "action-stock-check", "text": "Lin will check the stock report on Friday.", "critical": true },
+        { "id": "rollback-condition", "text": "Rollback follows two consecutive reconciliation failures.", "critical": false }
+      ],
+      "items": [
+        {
+          "text": "The pilot starts in June.",
+          "citations": ["s2@1"],
+          "coverage": "complete",
+          "claims": [
+            { "text": "The pilot starts in June.", "support": "supported", "requiredSourceAlternatives": [["s1@2"], ["s2@1"]], "goldFactId": "decision-pilot-date", "reason": "Either corrected source establishes the final date." }
+          ]
+        },
+        {
+          "text": "Lin will check the stock report on Friday.",
+          "citations": ["s1@1"],
+          "coverage": "complete",
+          "claims": [
+            { "text": "Lin will check the stock report on Friday.", "support": "unsupported", "requiredSourceAlternatives": [["s2@1"]], "goldFactId": null, "reason": "The old pilot statement does not support the action." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "empty-memo",
+      "language": "en",
+      "sources": [{ "id": "s1@1", "text": "The team voted to hold the launch." }],
+      "goldFacts": [{ "id": "hold-launch", "text": "The team voted to hold the launch.", "critical": true }],
+      "items": []
+    },
+    {
+      "id": "unresolved-review",
+      "language": "zh-CN",
+      "sources": [{ "id": "s1@1", "text": "财务将在下次会议确认金额。" }],
+      "goldFacts": [{ "id": "finance-follow-up", "text": "Finance will confirm the amount at the next meeting.", "critical": true }],
+      "items": [
+        {
+          "text": "Finance will revisit the change.",
+          "citations": ["s1@1"],
+          "coverage": "partial",
+          "claims": [
+            { "text": "Finance will revisit the change.", "support": "unknown", "requiredSourceAlternatives": null, "goldFactId": null, "reason": "The review has not established which change the memo means." }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -56,4 +56,25 @@ describe("offline citation annotation metrics", () => {
     expect(failed.status).not.toBe(0);
     expect(failed.stderr).toContain("Usage:");
   });
+
+  it("rates grounded important-fact recall across complete, empty and unresolved memos", () => {
+    const path = "tests/fixtures/memo-quality.synthetic.json";
+    const result = JSON.parse(execFileSync(process.execPath, ["scripts/evaluate-citation-annotations.mjs", path], { encoding: "utf8" }));
+    expect(result.facts).toEqual({ expected: 5, captured: 1, missed: 3, unresolved: 1, criticalExpected: 4, criticalCaptured: 1, macroRecall: 1 / 9, criticalRecall: 1 / 4 });
+    expect(result.cases[0]).toMatchObject({ language: "zh-CN-en", missingReferences: 1, facts: { missed: ["action-stock-check", "rollback-condition"], unresolved: [] } });
+    expect(result.cases[1].facts).toMatchObject({ missed: ["hold-launch"], recall: 0 });
+    expect(result.cases[2].facts).toMatchObject({ missed: [], unresolved: ["finance-follow-up"], recall: 0 });
+  });
+
+  it("requires one complete evidence set and permits each gold fact to count once", async () => {
+    const input = JSON.parse(await readFile("tests/fixtures/memo-quality.synthetic.json", "utf8"));
+    const entry = input.cases[0];
+    entry.items.push(structuredClone(entry.items[0]));
+    expect(evaluateAnnotations(input).facts.captured).toBe(1);
+    entry.items[0].citations = ["s1@1"];
+    expect(() => evaluateAnnotations(input)).toThrow("supported claim has missing required sources");
+    entry.items[0].citations = ["s2@1"];
+    entry.items[1].claims[0].goldFactId = "action-stock-check";
+    expect(() => evaluateAnnotations(input)).toThrow("bad captured gold fact");
+  });
 });

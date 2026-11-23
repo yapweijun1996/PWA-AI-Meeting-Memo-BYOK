@@ -43,7 +43,7 @@ Thresholds below are initial engineering acceptance targets, to be ratified agai
 
 A critical fact concerns a decision, commitment, action owner/deadline, material number or condition whose error changes what a person should do. Freeze this definition before scoring. Zero observed critical failures on a finite set is a release gate, not a claim of zero production risk.
 
-The existing citation CLI excludes unknowns from assessed-claim denominators and cannot measure omitted facts or alternative evidence sets. Extend the schema/scorer for omission recall and alternative sets; do not silently reinterpret current output. Report annotation completeness and unknown rates next to every score. A system can inflate precision by omitting difficult facts; protect recall and critical completeness simultaneously.
+The citation CLI excludes unknowns from assessed-claim denominators. Version 2 also records grounded recall against a frozen list of important facts and permits alternative sufficient sets of exact source revisions. Report annotation completeness and unknown rates next to every score. A system can inflate precision by omitting difficult facts. Check recall and critical completeness alongside precision. [Citation fixture format and denominators](EVIDENCE-EVALUATION.md)
 
 Aggregate at meeting level to avoid a long meeting dominating the result. Report micro counts as supplemental, along with each stratum, worst-case failures and meeting-cluster bootstrap confidence intervals. Select thresholds and statistical comparison before candidate runs. Use at least three repeated generations on a fixed representative subset to characterize nondeterminism; report all runs and actual model versions. Additional calls are permitted for meaningful evaluation, not selected until the results look good.
 
@@ -63,6 +63,22 @@ Store concise verification reasons and source references, not private chain-of-t
 6. Diagnose the failing stage. Improve prompts, models, coverage or tools on development data only; re-evaluate the full protected set after a material change.
 7. Promote a model/profile only if quality gates and browser/provider recovery pass. Save the router version and reason. Regressions remain visible; no cheaper-route preference.
 8. Produce a signed-off release evidence packet tied to exact build SHA. Physical-device and human acceptance remain separate.
+
+### Offline development baselines
+
+Run with the repository's pinned Node. Both fixtures use invented data and manually assigned outcomes. The voice vectors are numeric examples and contain no recordings.
+
+```sh
+node scripts/evaluate-voice-matching.mjs tests/fixtures/voice-evaluation.synthetic.json
+node scripts/evaluate-citation-annotations.mjs tests/fixtures/memo-quality.synthetic.json
+npx vitest run tests/voice-evaluation.test.ts tests/evidence-eval.test.ts
+```
+
+The voice scorer reports reference coverage (8/9 samples and 6/8 labels with one usable reference) and assignments for 4/6 evaluable labels. Among ten labelled same-person pairs, one merge is correct, two pairs have separate assignments and seven are unresolved. Two different-person pairs were merged incorrectly. The all-reference recall is 1/10, and recall on same-person pairs with two decisions is 1/3. Use the same reference set for baseline and candidate. Record excluded mixed and unlabelled cases, the application path, and any human constraint or supplied speaker count.
+
+For a real diagnostic, retain the original recording and record its source revision and run locally. After a completed analysis, copy the saved assignments and usable vectors using the dedicated voice evaluation export, or regenerate them locally from the original recording when needed. Review the reference turns by ear and explicitly mark overlap and uncertainty. Freeze references before looking at candidate output. The exported vectors are sensitive, and ordinary meeting JSON does not supply them. The CLI's optional `--replay` exercises the shared multi-part matcher. Evaluate the production single-recording and one-label-per-part fallback by scoring actual saved output for each path.
+
+The synthetic memo baseline contains five reference facts. One is captured with a sufficient source set, three are missed and one remains unresolved because adjudication is incomplete. The per-meeting macro grounded recall is 1/9. An empty memo with a gold fact contributes zero, and meetings with no gold facts have a null recall. Keep candidate output blinded, map each independently reviewed claim to its frozen fact at most once per fact, and score against both reference text and provider-transcribed text. Report critical and per-language results with their denominators. Real recording accuracy, claim support and candidate quality remain unmeasured.
 
 ## Required negative and browser scenarios
 
