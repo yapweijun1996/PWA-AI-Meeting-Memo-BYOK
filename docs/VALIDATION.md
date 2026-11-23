@@ -1,5 +1,11 @@
 # Validation record
 
+## Hosted overlap recovery beta
+
+On 2026-11-24 in Singapore, [the main-push workflow](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/actions/runs/45287956439) verified and published [application commit 0645b5f](https://github.com/yapweijun1996/PWA-AI-Meeting-Memo-BYOK/commit/0645b5f4e48f22f77493a6b968d1b1dc8c6f0d63). All 765 unit tests in 80 files, lint, the design-system check, the build type check and the static artifact check passed. The served JavaScript contains the full application SHA. The served worker version `1b474c6d0e4ce2dc` matches the CI artifact.
+
+Fresh Chromium and WebKit profiles ran the [overlap recovery scenario](../tests/browser/overlap-evidence.spec.ts) against GitHub Pages. Both engines passed with a generated WAV and a generated chunked MP3, four cases in all. Each case checked the on-screen build identity, restored an audio-free ZIP, reattached the original synthetic recording, reloaded offline under service-worker control, checked the transcript and both playback views, then exported and compared the original passages and overlap evidence. The hosted test allowed requests only under the app's Pages path. The earlier local blind results and the Ubuntu WebKit media failure retain their original scope. Real recordings and provider credentials stayed out of the hosted test.
+
 ## Quality-first plan, review continuation and residual theme roles — 2026-11-17
 
 The owner requested documentation first, then verified runtime fixes and main publication. The documentation-only commit `cfe9abc8a8687a4629415c908618cfee942db6ff` was pushed and read back from `refs/heads/main` before code delivery. It adds `goal.md`, the full [quality-first plan](QUALITY-FIRST-PLAN.md) and [human-reference evaluation contract](QUALITY-EVALUATION.md), updates AGENTS/product/architecture/feature/task ownership, and supersedes historical cost-minimization policy without removing initial consent or unknown-outcome protection. Proposed roles, task graph, model router, measured quality thresholds and real-provider/device acceptance remain planned, not shipped by these documents.
